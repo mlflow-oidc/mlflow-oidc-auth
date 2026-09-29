@@ -8,7 +8,9 @@ chunk costs a thread-to-event-loop hop in the ASGI->WSGI bridge (~100 us under u
 has required a fixed MLflow since v6.0.0.
 
 These tests drive MLflow's real download handler through ``AuthAwareWSGIMiddleware`` — the
-bridge every Flask request crosses — and count the ASGI body messages that come out. Chunk
+bridge every Flask request crosses — and count the ASGI body messages that come out. The handler
+is mounted on its own Flask app: MLflow's global app gains the plugin's authorization hooks as
+soon as anything imports ``mlflow_oidc_auth.app``, and those are not what is under test here. Chunk
 counts, not timings, so the result is deterministic. They fail if either side regresses:
 MLflow going back to tiny chunks, or the bridge re-chunking or buffering the whole body.
 
@@ -20,8 +22,8 @@ import asyncio
 from typing import List, Tuple
 
 import pytest
+from flask import Flask
 from mlflow.server import ARTIFACTS_DESTINATION_ENV_VAR, SERVE_ARTIFACTS_ENV_VAR
-from mlflow.server import app as mlflow_flask_app
 from mlflow.server import handlers as mlflow_handlers
 
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
@@ -39,6 +41,14 @@ MAX_CHUNKS = len(PAYLOAD) // MIN_CHUNK + 2
 MAX_MESSAGE = 1024 * 1024
 
 ARTIFACT_PATH = "0/run/artifacts/model/big.bin"
+DOWNLOAD_ROUTE = "/api/2.0/mlflow-artifacts/artifacts/<path:artifact_path>"
+
+
+def _download_app() -> Flask:
+    """A Flask app serving only MLflow's proxied-artifact download handler, as MLflow routes it."""
+    app = Flask(__name__)
+    app.add_url_rule(DOWNLOAD_ROUTE, "download_artifact", mlflow_handlers._download_artifact, methods=["GET"])
+    return app
 
 
 @pytest.fixture
@@ -84,7 +94,7 @@ def _download_through_bridge() -> Tuple[int, List[bytes]]:
         elif message["type"] == "http.response.body" and message.get("body"):
             bodies.append(message["body"])
 
-    asyncio.run(AuthAwareWSGIMiddleware(mlflow_flask_app)(scope, receive, send))
+    asyncio.run(AuthAwareWSGIMiddleware(_download_app())(scope, receive, send))
     return status[0], bodies
 
 

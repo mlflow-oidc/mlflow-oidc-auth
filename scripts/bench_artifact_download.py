@@ -224,8 +224,8 @@ def _measure(label: str, port: int, auth, experiment_id: str, run_id: str, args,
 
 def _report(results: Dict[str, Dict[str, List[float]]], args) -> str:
     rows = [
-        ("curl", f"GET {args.size_mb} MB"),
-        ("large", f"client, {args.size_mb} MB"),
+        ("curl", f"GET {args.size_mb} MiB"),
+        ("large", f"client, {args.size_mb} MiB"),
         ("small", f"client, {args.small_files} x {args.small_kb} KB"),
         ("concurrent", f"{args.concurrency} parallel GETs"),
     ]
@@ -237,9 +237,9 @@ def _report(results: Dict[str, Dict[str, List[float]]], args) -> str:
         plain = statistics.median(results["plain"][key])
         plugin = statistics.median(results["plugin"][key])
         if key in ("curl", "large"):
-            cell = lambda s: f"{s:.2f} s ({args.size_mb / s:.0f} MB/s)"  # noqa: E731
+            cell = lambda s: f"{s:.2f} s ({args.size_mb / s:.0f} MiB/s)"  # noqa: E731
         elif key == "concurrent":
-            cell = lambda s: f"{s:.2f} s ({args.size_mb * args.concurrency / s:.0f} MB/s)"  # noqa: E731
+            cell = lambda s: f"{s:.2f} s ({args.size_mb * args.concurrency / s:.0f} MiB/s)"  # noqa: E731
         else:
             cell = lambda s: f"{s:.2f} s"  # noqa: E731
         lines.append(f"| {title} | {cell(plain)} | {cell(plugin)} | {plugin / plain:.2f}x |")
@@ -253,7 +253,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--secret-key", default=os.environ.get("AWS_SECRET_ACCESS_KEY", "rustfsadmin"))
     parser.add_argument("--region", default=os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
     parser.add_argument("--bucket", default=BUCKET_DEFAULT)
-    parser.add_argument("--size-mb", type=int, default=100, help="size of the large artifact (default: 100)")
+    parser.add_argument("--size-mb", type=int, default=100, help="size of the large artifact in MiB (default: 100)")
     parser.add_argument("--small-files", type=int, default=100, help="number of small artifacts (default: 100)")
     parser.add_argument("--small-kb", type=int, default=64, help="size of each small artifact (default: 64)")
     parser.add_argument("--iterations", type=int, default=3, help="repetitions; the median is reported (default: 3)")

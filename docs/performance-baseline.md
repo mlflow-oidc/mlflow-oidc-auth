@@ -196,14 +196,14 @@ three times — the payload, the server's upload spool and its download temp fil
 ### Baseline
 
 Measured on 2026-09-28 on one machine (Apple silicon, RustFS on loopback), MLflow 3.16.1, with
-the defaults: 100 MB artifact, 100 × 64 KB files, median of 3.
+the defaults: 100 MiB artifact, 100 × 64 KiB files, median of 3.
 
 | scenario | plain MLflow | with plugin | ratio |
 |---|---|---|---|
-| GET 100 MB | 0.10 s (1049 MB/s) | 0.10 s (1034 MB/s) | 1.01× |
-| client, 100 MB | 0.12 s (830 MB/s) | 0.13 s (756 MB/s) | 1.10× |
-| client, 100 × 64 KB | 0.32 s | 0.66 s | 2.07× |
-| 4 parallel GETs | 0.34 s (1169 MB/s) | 0.34 s (1189 MB/s) | 0.98× |
+| GET 100 MiB | 0.10 s (1049 MiB/s) | 0.10 s (1034 MiB/s) | 1.01× |
+| client, 100 MiB | 0.12 s (830 MiB/s) | 0.13 s (756 MiB/s) | 1.10× |
+| client, 100 × 64 KiB | 0.32 s | 0.66 s | 2.07× |
+| 4 parallel GETs | 0.34 s (1169 MiB/s) | 0.34 s (1189 MiB/s) | 0.98× |
 
 ### Findings
 
