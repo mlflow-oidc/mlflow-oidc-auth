@@ -5,7 +5,7 @@ This router handles permission management endpoints for groups, including
 experiment, model, and prompt permissions at the group level.
 """
 
-from typing import List
+from typing import List, Union
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response
 from fastapi.responses import JSONResponse
@@ -48,6 +48,7 @@ from mlflow_oidc_auth.utils import (
     get_username,
 )
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
@@ -140,7 +141,7 @@ GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/se
     response_model=GroupListResponse,
     tags=["groups"],
 )
-async def list_groups(username: str = Depends(get_username)) -> GroupListResponse:
+async def list_groups(username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> Union[GroupListResponse, JSONResponse]:
     """
     List all groups in the system.
 
@@ -150,11 +151,14 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     -----------
     username : str
         The authenticated username (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` on the group name (see ``utils/pagination.py``).
 
     Returns:
     --------
     GroupListResponse
-        The list of groups available in the system.
+        The list of groups available in the system. With ``limit`` or ``search``, the same bare
+        ``string[]`` holding only the requested page, and an ``X-Total-Count`` header.
 
     Raises:
     -------
@@ -164,7 +168,9 @@ async def list_groups(username: str = Depends(get_username)) -> GroupListRespons
     try:
         from mlflow_oidc_auth.store import store
 
-        groups = store.get_groups()
+        groups, headers = paginate_with_headers(store.get_groups(), key=lambda g: g, params=page)
+        if headers:
+            return JSONResponse(content=list(groups), headers=headers)
         return GroupListResponse(root=groups)
 
     except Exception as e:
@@ -250,17 +256,26 @@ async def create_group(
     description="Lists groups with their external id and member count. Admins only.",
     tags=["groups"],
 )
-async def list_group_details(admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+async def list_group_details(admin_username: str = Depends(check_admin_permission), page: PageQuery = NO_PAGE) -> JSONResponse:
     """List groups as objects, for the admin UI (issue #320).
 
     ``GET /groups`` keeps returning a bare ``string[]``. Groups have no ``managed_by`` of their
     own — ownership is recorded per membership — so none is reported.
 
+    Parameters:
+        admin_username: The authenticated administrator (injected).
+        page: Opt-in ``limit`` / ``offset`` / ``search`` on ``group_name`` (see
+            ``utils/pagination.py``). The total is returned in ``X-Total-Count``.
+
     Returns:
         JSONResponse: ``[{"group_name", "external_id", "member_count"}]``, ordered by name.
+
+    Raises:
+        HTTPException: 500 when the groups cannot be read.
     """
     try:
-        return JSONResponse(content=store.list_group_details())
+        rows, headers = paginate_with_headers(store.list_group_details(), key=lambda g: g["group_name"], params=page)
+        return JSONResponse(content=rows, headers=headers)
     except Exception as e:
         logger.error(f"Error listing group details: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve groups")

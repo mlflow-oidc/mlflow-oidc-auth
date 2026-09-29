@@ -72,6 +72,7 @@ from mlflow_oidc_auth.repository.group import UnknownMember
 from mlflow_oidc_auth.repository.scim_activity import MAX_PAGE_SIZE as MAX_ACTIVITY_PAGE_SIZE, OUTCOMES, outcome_for
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import SCIM_ADMIN_ROUTER_PREFIX, SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
 
@@ -1351,8 +1352,18 @@ def _token_http_error(exc: MlflowException) -> HTTPException:
 
 
 @scim_tokens_router.get("", summary="List SCIM tokens", description="Lists SCIM tokens. Hashes and plaintexts are never returned. Admins only.")
-async def list_scim_tokens(admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
-    return JSONResponse(content=[record.to_json() for record in store.list_scim_tokens()])
+async def list_scim_tokens(admin_username: str = Depends(check_admin_permission), page: PageQuery = NO_PAGE) -> JSONResponse:
+    """List SCIM tokens as a bare array, optionally paged and searched by name.
+
+    Parameters:
+        admin_username: The authenticated administrator (injected).
+        page: Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``).
+
+    Returns:
+        JSONResponse: ``[{"id", "name", "token_prefix", ...}]``, with ``X-Total-Count`` when paged.
+    """
+    records, headers = paginate_with_headers(store.list_scim_tokens(), key=lambda r: r.name, params=page, tiebreak=lambda r: r.id)
+    return JSONResponse(content=[record.to_json() for record in records], headers=headers)
 
 
 @scim_tokens_router.post(

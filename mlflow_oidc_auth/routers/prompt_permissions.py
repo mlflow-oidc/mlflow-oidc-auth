@@ -9,6 +9,7 @@ from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_prompts
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import PROMPT_PERMISSIONS_ROUTER_PREFIX
 
@@ -108,7 +109,7 @@ async def get_prompt_groups(
 
 
 @prompt_permissions_router.get(LIST_PROMPTS, summary="List accessible prompts", description="Retrieves a list of prompts that the user has access to.")
-async def list_prompts(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_prompts(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List prompts accessible to the authenticated user.
 
@@ -122,6 +123,9 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible items.
 
     Returns:
     --------
@@ -143,7 +147,11 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
         # Regular user can only see prompts they can manage
         prompts = filter_manageable_prompts(username, all_prompts)
 
+    # Paginate strictly after the permission filter: the total never counts a hidden prompt
+    prompts, headers = paginate_with_headers(prompts, key=lambda p: p.name, params=page)
+
     return JSONResponse(
+        headers=headers,
         content=[
             {
                 "name": model.name,
@@ -152,5 +160,5 @@ async def list_prompts(username: str = Depends(get_username), is_admin: bool = D
                 "aliases": model.aliases,
             }
             for model in prompts
-        ]
+        ],
     )

@@ -1,6 +1,8 @@
-from typing import List
+from typing import List, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.dependencies import check_experiment_manage_permission
@@ -9,6 +11,7 @@ from mlflow_oidc_auth.models import ExperimentSummary, GroupPermissionEntry, Use
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_experiments
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import EXPERIMENT_PERMISSIONS_ROUTER_PREFIX
 
@@ -109,7 +112,9 @@ async def get_experiment_groups(
     summary="List accessible experiments",
     description="Retrieves a list of MLflow experiments that the user has access to.",
 )
-async def list_experiments(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> List[ExperimentSummary]:
+async def list_experiments(
+    username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
+) -> Union[List[ExperimentSummary], JSONResponse]:
     """
     List experiments accessible to the authenticated user.
 
@@ -123,11 +128,15 @@ async def list_experiments(username: str = Depends(get_username), is_admin: bool
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible experiments.
 
     Returns:
     --------
     List[ExperimentSummary]
-        A list of experiment summaries containing name, ID, and tags.
+        A list of experiment summaries containing name, ID, and tags. With ``limit`` or
+        ``search``, the same list as a JSON response holding only the requested page.
 
     Raises:
     -------
@@ -145,5 +154,11 @@ async def list_experiments(username: str = Depends(get_username), is_admin: bool
         # Regular users only see experiments they can manage
         manageable_experiments = filter_manageable_experiments(username, all_experiments)
 
+    # Paginate strictly after the permission filter: the total never counts a hidden experiment
+    visible, headers = paginate_with_headers(manageable_experiments, key=lambda e: e.name, params=page, tiebreak=lambda e: e.experiment_id)
+
     # Format the response
-    return [ExperimentSummary(name=experiment.name, id=experiment.experiment_id, tags=experiment.tags) for experiment in manageable_experiments]
+    summaries = [ExperimentSummary(name=experiment.name, id=experiment.experiment_id, tags=experiment.tags) for experiment in visible]
+    if not headers:
+        return summaries
+    return JSONResponse(content=jsonable_encoder(summaries), headers=headers)

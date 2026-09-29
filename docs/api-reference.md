@@ -26,6 +26,60 @@ Request/response bodies reference these permission values:
 
 ---
 
+## Pagination and search
+
+Most list endpoints accept three **opt-in** query parameters. Without them an endpoint behaves
+exactly as before — same full list, same order, same body, no extra header — so existing clients
+are unaffected.
+
+| Parameter | Type | Default | Meaning |
+|-----------|------|---------|---------|
+| `limit` | integer, 1–500 | absent | Page size. Absent returns the full list. |
+| `offset` | integer, ≥ 0 | `0` | Items to skip. Ignored without `limit`. |
+| `search` | string, ≤ 256 chars | absent | Case-insensitive substring match on the item's name (the field listed below). Works with or without `limit`; an empty value is ignored. |
+
+Out-of-range values (`limit=0`, `limit=501`, `offset=-1`, non-integers) are rejected with `422`.
+
+When `limit` or `search` is given:
+
+- Items are ordered by their name, case-insensitively, then by id where the resource has one, and
+  only then sliced, so pages are stable across requests.
+- The body keeps the endpoint's usual shape — a bare array stays a bare array, `{"tokens": [...]}`
+  stays that object — but holds only the requested page. An `offset` past the end returns an
+  empty page.
+- The `X-Total-Count` response header holds the number of matching items before slicing.
+
+Pagination and search run **after** authorization filtering. For a non-admin, `X-Total-Count`
+counts only the resources that caller may see, never the ones hidden from them.
+
+| Endpoint | Searched field |
+|----------|----------------|
+| `GET /api/2.0/mlflow/permissions/experiments` | `name` (tie-break: `id`) |
+| `GET /api/2.0/mlflow/permissions/registered-models` | `name` |
+| `GET /api/2.0/mlflow/permissions/prompts` | `name` |
+| `GET /api/2.0/mlflow/permissions/gateways/endpoints` | `name` |
+| `GET /api/2.0/mlflow/permissions/gateways/secrets` | `key` |
+| `GET /api/2.0/mlflow/permissions/gateways/model-definitions` | `name` |
+| `GET /api/2.0/mlflow/permissions/groups` | the group name (`string[]`) |
+| `GET /api/2.0/mlflow/permissions/groups/details` | `group_name` |
+| `GET /api/2.0/mlflow/users` (also with `service=true`) | the username (`string[]`) |
+| `GET /api/2.0/mlflow/users/details` | `username` |
+| `GET /api/2.0/mlflow/users/current/tokens`, `GET /api/2.0/mlflow/users/{username}/tokens` | token `name` (tie-break: `id`) |
+| `GET /oidc/trash/experiments` | `name` (tie-break: `experiment_id`) |
+| `GET /oidc/trash/runs` | `run_name` (tie-break: `run_id`) |
+| `GET /api/2.0/mlflow/scim/tokens` | `name` (tie-break: `id`) |
+| `GET /oidc/webhook` | `name` (tie-break: `webhook_id`) |
+
+`GET /oidc/webhook` also keeps MLflow's own `max_results` / `page_token` paging. When `limit` or
+`search` is given, the plugin reads every webhook (up to 100 MLflow pages of 1,000), ignores
+`max_results` / `page_token`, and returns `next_page_token: null` — `limit` wins.
+
+Per-resource permission tables (`.../{id}/users`, `.../{id}/groups`), the MLflow workspace list,
+SCIM activity (which has its own cursor) and the `/scim/v2` protocol endpoints are not paged this
+way.
+
+---
+
 ## Auth Endpoints
 
 | Method | Path | Auth | Purpose |
@@ -449,7 +503,7 @@ All webhook endpoints require **admin** permissions.
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/oidc/webhook` | Create a webhook |
-| GET | `/oidc/webhook` | List webhooks. Query: `max_results`, `page_token` |
+| GET | `/oidc/webhook` | List webhooks. Query: `max_results`, `page_token`, or `limit` / `offset` / `search` (see [Pagination and search](#pagination-and-search)) |
 | GET | `/oidc/webhook/{webhook_id}` | Get webhook details |
 | PUT | `/oidc/webhook/{webhook_id}` | Update a webhook |
 | DELETE | `/oidc/webhook/{webhook_id}` | Delete a webhook |
@@ -658,7 +712,7 @@ for the next page, or `null` when this page was the last:
 | GET | `/api/2.0/mlflow/permissions/groups/details` | Admin | Groups with external id and member count |
 
 `GET /api/2.0/mlflow/users` and `GET /api/2.0/mlflow/permissions/groups` are unchanged and still
-return `string[]`.
+return `string[]` — also when paged (see [Pagination and search](#pagination-and-search)).
 
 **`GET /api/2.0/mlflow/users/details` response** (ordered by creation). `PATCH .../active`
 returns one such object:
