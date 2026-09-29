@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Tuple
 from urllib.parse import urlsplit
 
-
 TRUST_DOMAIN = re.compile(r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
 PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._~-]+$")
 MAX_TRUST_DOMAIN_LENGTH = 255
@@ -37,13 +36,7 @@ class SpiffeIdentity:
 
 def valid_trust_domain(value: Any) -> bool:
     """Whether ``value`` is a canonical SPIFFE trust domain."""
-    return (
-        isinstance(value, str)
-        and bool(value)
-        and len(value) <= MAX_TRUST_DOMAIN_LENGTH
-        and bool(TRUST_DOMAIN.fullmatch(value))
-        and ".." not in value
-    )
+    return isinstance(value, str) and bool(value) and len(value) <= MAX_TRUST_DOMAIN_LENGTH and bool(TRUST_DOMAIN.fullmatch(value)) and ".." not in value
 
 
 def parse_spiffe_id(subject: Any, expected_trust_domain: str | None = None) -> SpiffeIdentity:

@@ -215,20 +215,20 @@ class TestAuthPathQueryBudget:
         )
         bound_store.provision_workload_identity(identity.username, spiffe_id, provider.id, spiffe_id, "spiffe:spire")
 
-        key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-        private = key.as_dict(is_private=True)
-        public = key.as_dict(is_private=False)
+        key = generate_rsa_key()
+        private = key.as_dict(private=True)
+        public = key.as_dict(private=False)
         kid = public.get("kid") or key.thumbprint()
         private["kid"] = public["kid"] = kid
         public["use"] = "jwt-svid"
         monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], source="env"))
         monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [public]})
         now = int(time.time())
-        token = jwt.encode(
+        token = encode_jwt(
             {"alg": "RS256", "kid": kid},
             {"iss": provider.issuer, "aud": provider.audience, "sub": spiffe_id, "iat": now, "exp": now + 300},
             private,
-        ).decode()
+        )
 
         counts = _count_requests(counter, lambda: client.get(PROTECTED_PATH, headers={"Authorization": f"Bearer {token}"}))
 

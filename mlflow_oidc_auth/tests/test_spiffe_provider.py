@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from authlib.jose import JsonWebKey, jwt
+from starlette.requests import Request
 
 import mlflow_oidc_auth.auth as auth_module
 import mlflow_oidc_auth.middleware.auth_middleware as middleware_module
@@ -17,7 +17,7 @@ from mlflow_oidc_auth.middleware.auth_middleware import AuthMiddleware
 from mlflow_oidc_auth.provider_registry import ProviderConfig, RegistryLoadResult, build_provider_registry
 from mlflow_oidc_auth.routers.users import _ensure_local_tokens_allowed
 from mlflow_oidc_auth.spiffe import SpiffeIdError, parse_spiffe_id
-
+from mlflow_oidc_auth.tests.jose_helpers import encode_jwt, generate_rsa_key
 
 SPIFFE_ID = "spiffe://prokube.internal/ns/ml-team/sa/training-pipeline"
 ISSUER = "https://spire-oidc.prokube.internal"
@@ -26,9 +26,9 @@ AUDIENCE = "mlflow-api"
 
 @pytest.fixture
 def issuer():
-    key = JsonWebKey.generate_key("RSA", 2048, is_private=True)
-    private = key.as_dict(is_private=True)
-    public = key.as_dict(is_private=False)
+    key = generate_rsa_key()
+    private = key.as_dict(private=True)
+    public = key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     private["kid"] = public["kid"] = kid
     public["use"] = "jwt-svid"
@@ -74,7 +74,7 @@ def configured(provider, issuer, monkeypatch):
                 claims.pop(claim, None)
             else:
                 claims[claim] = value
-        return jwt.encode({"alg": "RS256", "kid": issuer.kid}, claims, issuer.private).decode()
+        return encode_jwt({"alg": "RS256", "kid": issuer.kid}, claims, issuer.private)
 
     return mint
 
@@ -226,17 +226,17 @@ class TestJwtSvidValidation:
         monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], source="env"))
         monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [wrong_use]})
         now = int(time.time())
-        token = jwt.encode(
+        token = encode_jwt(
             {"alg": "RS256", "kid": issuer.kid},
             {"iss": ISSUER, "aud": AUDIENCE, "sub": SPIFFE_ID, "exp": now + 300},
             issuer.private,
-        ).decode()
+        )
 
         with pytest.raises(ValueError, match="jwt-svid"):
             auth_module.validate_token(token)
 
     def test_a_key_for_another_use_cannot_shadow_a_jwt_svid_key(self, configured, issuer, monkeypatch):
-        foreign = JsonWebKey.generate_key("RSA", 2048, is_private=True).as_dict(is_private=False)
+        foreign = generate_rsa_key().as_dict(private=False)
         foreign.update({"kid": issuer.kid, "use": "sig"})
         monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [foreign, issuer.public]})
 
@@ -313,8 +313,9 @@ class TestRequestPolicyAndProvisioning:
     def test_provisioning_preserves_the_external_identity_and_mints_no_local_token(self, provider):
         identity = parse_spiffe_id(SPIFFE_ID, provider.trust_domain)
         events = []
+        store = MagicMock()
         with (
-            patch.object(middleware_module, "store") as store,
+            patch.object(middleware_module, "store", store),
             patch.object(middleware_module, "emit_audit_event", lambda event, **kwargs: events.append((event, kwargs))),
         ):
             AuthMiddleware._provision_spiffe_workload(identity, provider)
@@ -332,7 +333,8 @@ class TestRequestPolicyAndProvisioning:
     def test_a_workload_is_non_admin_even_if_the_database_flag_was_changed(self):
         middleware = AuthMiddleware(MagicMock())
         profile = SimpleNamespace(is_admin=True, active=True, managed_by="spiffe:spire", is_service_account=True)
-        with patch.object(middleware_module, "store") as store:
+        store = MagicMock()
+        with patch.object(middleware_module, "store", store):
             store.get_user_profile.return_value = profile
             state = middleware._get_user_auth_state("workload.example@spiffe.local", "spiffe:spire")
 
@@ -341,7 +343,8 @@ class TestRequestPolicyAndProvisioning:
     def test_a_human_username_collision_is_denied(self):
         middleware = AuthMiddleware(MagicMock())
         profile = SimpleNamespace(is_admin=True, active=True, managed_by="manual", is_service_account=False)
-        with patch.object(middleware_module, "store") as store:
+        store = MagicMock()
+        with patch.object(middleware_module, "store", store):
             store.get_user_profile.return_value = profile
             state = middleware._get_user_auth_state("workload.example@spiffe.local", "spiffe:spire")
 
@@ -351,7 +354,8 @@ class TestRequestPolicyAndProvisioning:
     def test_a_local_token_cannot_bypass_spiffe_policy(self):
         middleware = AuthMiddleware(MagicMock())
         profile = SimpleNamespace(is_admin=False, active=True, managed_by="spiffe:spire", is_service_account=True)
-        with patch.object(middleware_module, "store") as store:
+        store = MagicMock()
+        with patch.object(middleware_module, "store", store):
             store.get_user_profile.return_value = profile
             state = middleware._get_user_auth_state("workload.example@spiffe.local")
 
@@ -361,8 +365,21 @@ class TestRequestPolicyAndProvisioning:
     async def test_a_server_side_session_cannot_bypass_spiffe_policy(self):
         middleware = AuthMiddleware(MagicMock())
         middleware._authenticate_user = AsyncMock(return_value=(True, "workload.example@spiffe.local", ""))
-        request = MagicMock()
-        request.url.path = "/api/protected"
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "GET",
+                "scheme": "http",
+                "path": "/api/protected",
+                "raw_path": b"/api/protected",
+                "query_string": b"",
+                "root_path": "",
+                "headers": [],
+                "client": ("test", 50000),
+                "server": ("testserver", 80),
+            }
+        )
         request.state.resolved_session = SimpleNamespace(is_admin=True, is_active=True, managed_by="spiffe:spire")
         call_next = AsyncMock()
 
@@ -373,7 +390,8 @@ class TestRequestPolicyAndProvisioning:
 
     def test_a_spiffe_workload_cannot_create_a_local_token(self):
         profile = SimpleNamespace(managed_by="spiffe:spire")
-        with patch("mlflow_oidc_auth.routers.users.store") as store:
+        store = MagicMock()
+        with patch("mlflow_oidc_auth.routers.users.store", store):
             store.get_user_profile.return_value = profile
             with pytest.raises(Exception) as exc_info:
                 _ensure_local_tokens_allowed("workload.example@spiffe.local")

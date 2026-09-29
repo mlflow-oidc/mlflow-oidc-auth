@@ -214,6 +214,7 @@ async def create_access_token(
         headers={"Cache-Control": "no-store"},
     )
 
+
 def _issue_token(target_username: str, token_request: CreateUserTokenRequest, actor: str) -> JSONResponse:
     expiration = _parse_expiration(token_request.expiration)
     target_username = _ensure_local_tokens_allowed(target_username)
