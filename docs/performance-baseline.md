@@ -5,6 +5,7 @@ Whatever that costs is paid by every API call and every UI navigation, so it is 
 rest of the authentication work is held against.
 
 This page records the measured baseline (issue #305) and states the budget derived from it.
+[Artifact downloads](#artifact-downloads) covers proxied artifact throughput (issue #152).
 
 > **The budget: no change may raise the per-request statement counts in the table below.**
 > A change that needs more per-request data must fit it into the existing statements — widen the
@@ -165,6 +166,83 @@ unchanged 3 statements.
 Hashes written before that change keep verifying under their original method and are never
 re-hashed in place, so a deployment that upgrades and rotates nothing still pays the old ~50 ms
 until its tokens are rotated. Measure that path with `--hash-method scrypt:32768:8:1`.
+
+## Artifact downloads
+
+With `--serve-artifacts`, every artifact byte passes through the server, and so through the
+plugin's ASGI→WSGI bridge (`AuthAwareWSGIMiddleware`). Issue #152 reported model downloads
+about 10× slower with the plugin than without it.
+
+### Running the benchmark
+
+```bash
+# Any S3-compatible endpoint; RustFS is the quickest locally
+docker run -d --name rustfs -p 9000:9000 -e RUSTFS_ACCESS_KEY=rustfsadmin \
+    -e RUSTFS_SECRET_KEY=rustfsadmin rustfs/rustfs:latest
+
+python scripts/bench_artifact_download.py --s3-endpoint http://127.0.0.1:9000
+
+# The streaming contract, as a test
+pytest mlflow_oidc_auth/tests/perf/test_artifact_streaming.py
+```
+
+The script starts plain MLflow and MLflow with the plugin side by side, one worker each, against
+the same bucket. It then downloads through both, as a non-admin user who holds `READ` on the
+experiment, so every request takes the full permission check. `--size-mb`, `--small-files`,
+`--iterations`, `--concurrency` and `--json` adjust a run. The large artifact is written to disk
+three times — the payload, the server's upload spool and its download temp file — so keep
+`--size-mb` well below the free disk.
+
+### Baseline
+
+Measured on 2026-09-28 on one machine (Apple silicon, RustFS on loopback), MLflow 3.16.1, with
+the defaults: 100 MB artifact, 100 × 64 KB files, median of 3.
+
+| scenario | plain MLflow | with plugin | ratio |
+|---|---|---|---|
+| GET 100 MB | 0.10 s (1049 MB/s) | 0.10 s (1034 MB/s) | 1.01× |
+| client, 100 MB | 0.12 s (830 MB/s) | 0.13 s (756 MB/s) | 1.10× |
+| client, 100 × 64 KB | 0.32 s | 0.66 s | 2.07× |
+| 4 parallel GETs | 0.34 s (1169 MB/s) | 0.34 s (1189 MB/s) | 0.98× |
+
+### Findings
+
+**Large downloads are at parity; #152 was an MLflow bug.** On the reported versions — plugin
+5.6.1 with MLflow 3.4.0 — a 100 MB download ran at 2.5 MB/s. Plain MLflow 3.4.0 under uvicorn
+ran at the same 2.6 MB/s, while under gunicorn it reached 40 MB/s. MLflow before 3.8 served
+proxied downloads with `yield from file_handle`, which iterates a binary file *line by line*.
+For binary data that means ~255-byte chunks, ~410,000 of them per 100 MB. Each chunk costs a
+thread-to-event-loop hop in any ASGI→WSGI bridge (~100 µs under uvicorn), against a few µs as a
+socket write under gunicorn. The plugin always runs on uvicorn, so it exposed the bug that a
+gunicorn no-auth deployment never hit.
+
+MLflow fixed it in mlflow/mlflow#19520, released in 3.8.0, which streams in 1 MB chunks.
+Every plugin release since v6.0.0 requires a fixed MLflow.
+
+`test_artifact_streaming.py` pins the contract by chunk count rather than by time. A 4 MiB
+artifact must reach the client in at most 514 body messages, none larger than 1 MiB. Line
+iteration produces 16,384. The limits catch MLflow going back to small chunks, and they catch
+the bridge re-chunking or buffering the whole body in memory.
+
+**Small files pay the per-request cost.** Each download is one authenticated request: the
+middleware stack, then the Flask-side permission check. On one saturated worker that adds about
+3 ms per request, so 100 small files take roughly twice as long. With several workers, and the
+MLflow client's parallel downloads, it is mostly hidden. This cost is governed by the
+per-request budget above and by `test_query_counts.py`; nothing about it is specific to artifacts.
+
+**Concurrency is not serialized.** The bridge runs each request in its own
+`ThreadSensitiveContext`, so parallel downloads proceed in parallel.
+
+### Deployment notes
+
+- For very large models, consider `--no-serve-artifacts` together with bucket credentials or
+  pre-signed access on the clients. Downloads then go straight to the object store and never touch
+  the server. The trade-off is that artifact access is governed by the bucket's IAM, not by this
+  plugin's per-experiment permissions.
+- Proxied downloads are staged in the server's temp directory before streaming, so size the pod's
+  ephemeral storage for your largest artifact.
+- Set `--workers` (`MLFLOW_WORKERS`) for the concurrency you expect. A single worker serializes
+  the per-request cost described above.
 
 ## Caveats
 
