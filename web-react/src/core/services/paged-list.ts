@@ -4,6 +4,9 @@ import { requestWithHeaders } from "./api-utils";
 /** Response header carrying the number of items that match the query, across all pages. */
 export const TOTAL_COUNT_HEADER = "X-Total-Count";
 
+/** The largest page the server accepts (`MAX_PAGE_SIZE` on the backend). */
+export const MAX_SERVER_PAGE_SIZE = 500;
+
 /**
  * Pagination and search parameters for a list endpoint. Omitting `limit` asks for the full list,
  * exactly as before the endpoint supported pagination.
@@ -37,6 +40,11 @@ interface PagedListOptions<TBody, TItem> {
   displayKey: (item: TItem) => string;
   /** Extra query parameters the endpoint always needs (e.g. `service=true`). */
   queryParams?: QueryParams;
+  /**
+   * The endpoint does not return its full list without `limit` (webhooks: MLflow's own default
+   * page applies). "All" then walks the server's pages instead of asking once without `limit`.
+   */
+  fullListNeedsPaging?: boolean;
 }
 
 /** Turn a {@link ListQuery} into query parameters, leaving out what is not set. */
@@ -75,6 +83,9 @@ export async function fetchPagedList<TBody, TItem>(
   options: PagedListOptions<TBody, TItem>,
   signal?: AbortSignal,
 ): Promise<PagedResult<TItem>> {
+  if (query.limit === undefined && options.fullListNeedsPaging) {
+    return fetchEveryPage(endpoint, query, options, signal);
+  }
   const { data, headers } = await requestWithHeaders<TBody>(endpoint, {
     method: "GET",
     queryParams: { ...options.queryParams, ...listQueryParams(query) },
@@ -99,6 +110,33 @@ export async function fetchPagedList<TBody, TItem>(
     items: matching.slice(offset, offset + query.limit),
     total: matching.length,
   };
+}
+
+/**
+ * The whole list, walked in the largest pages the server allows, for endpoints whose unpaged
+ * response is not the full list. Stops when the reported total is reached or a page comes back
+ * empty, so a list that shrinks mid-walk cannot loop.
+ */
+async function fetchEveryPage<TBody, TItem>(
+  endpoint: string,
+  query: ListQuery,
+  options: PagedListOptions<TBody, TItem>,
+  signal?: AbortSignal,
+): Promise<PagedResult<TItem>> {
+  const items: TItem[] = [];
+  let total = 0;
+  for (;;) {
+    const page = await fetchPagedList<TBody, TItem>(
+      endpoint,
+      { ...query, limit: MAX_SERVER_PAGE_SIZE, offset: items.length },
+      options,
+      signal,
+    );
+    items.push(...page.items);
+    total = page.total;
+    if (page.items.length === 0 || items.length >= total) break;
+  }
+  return { items, total: Math.max(total, items.length) };
 }
 
 /**

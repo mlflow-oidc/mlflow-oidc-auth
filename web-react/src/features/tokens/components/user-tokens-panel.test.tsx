@@ -288,6 +288,37 @@ describe("UserTokensPanel", () => {
       );
     });
 
+    it("refreshes the account's token count after a change made while searching", async () => {
+      // One token on the account; the admin searches for it and deletes it.
+      mockTokens({ tokens: [tokens[0]] });
+      vi.mocked(service.deleteUserToken).mockResolvedValue({ deleted: 1 });
+      vi.mocked(service.listUserTokensPage).mockResolvedValue({
+        items: [],
+        total: 0,
+      });
+      render(<UserTokensPanel username="svc-bot" />);
+      const search = screen.getByPlaceholderText("Search tokens...");
+      fireEvent.change(search, { target: { value: tokens[0].name } });
+      fireEvent.submit(search.closest("form")!);
+      expect(
+        screen.getByRole("button", { name: "Revoke all tokens" }),
+      ).toBeEnabled();
+
+      fireEvent.click(screen.getByTitle(`Delete token ${tokens[0].name}`));
+      fireEvent.click(screen.getByRole("button", { name: "Delete token" }));
+
+      await waitFor(() =>
+        expect(service.listUserTokensPage).toHaveBeenCalledWith("svc-bot", {
+          limit: 1,
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Revoke all tokens" }),
+        ).toBeDisabled(),
+      );
+    });
+
     it("keeps the unfiltered token count for revoke-all while searching", () => {
       render(<UserTokensPanel username="svc-bot" />);
       const search = screen.getByPlaceholderText("Search tokens...");

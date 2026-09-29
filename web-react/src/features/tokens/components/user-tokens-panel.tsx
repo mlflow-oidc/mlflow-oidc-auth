@@ -12,6 +12,7 @@ import { formatDateTime } from "../../../shared/utils/format-date-time";
 import { useUserTokens } from "../hooks/use-user-tokens";
 import {
   deleteUserToken,
+  listUserTokensPage,
   revokeAllUserTokens,
 } from "../services/user-token-service";
 import { CreateUserTokenModal } from "./create-user-token-modal";
@@ -124,11 +125,20 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
     useUserTokens(username, submittedTerm);
 
   // "Revoke all" acts on every token, not just those matching the search, so
-  // it needs the unfiltered count: remember the last total seen without one.
+  // it needs the unfiltered count: the last total seen without a search, and a
+  // fresh count after every change (the listed total is the filtered one then).
   const [accountTokenCount, setAccountTokenCount] = useState(total);
   if (!submittedTerm && !isLoading && !error && total !== accountTokenCount) {
     setAccountTokenCount(total);
   }
+  const refreshAccountTokenCount = useCallback(async () => {
+    try {
+      const { total: count } = await listUserTokensPage(username, { limit: 1 });
+      setAccountTokenCount(count);
+    } catch {
+      // Keep the last known count; the list itself reports the error.
+    }
+  }, [username]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deletingToken, setDeletingToken] = useState<UserToken | null>(null);
@@ -141,8 +151,9 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
     (token: UserTokenWithSecret) => {
       showToast(`Token "${token.name}" created`, "success");
       refresh();
+      void refreshAccountTokenCount();
     },
-    [refresh, showToast],
+    [refresh, refreshAccountTokenCount, showToast],
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -163,8 +174,9 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
       setIsProcessing(false);
       setDeletingToken(null);
       refresh();
+      void refreshAccountTokenCount();
     }
-  }, [deletingToken, username, showToast, refresh]);
+  }, [deletingToken, username, showToast, refresh, refreshAccountTokenCount]);
 
   const handleConfirmRevokeAll = useCallback(async () => {
     if (username === undefined) return;
@@ -181,8 +193,9 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
       setIsProcessing(false);
       setIsRevokeAllOpen(false);
       refresh();
+      void refreshAccountTokenCount();
     }
-  }, [username, showToast, refresh]);
+  }, [username, showToast, refresh, refreshAccountTokenCount]);
 
   return (
     <>

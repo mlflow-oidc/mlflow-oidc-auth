@@ -24,6 +24,8 @@ export const fetchWebhooksPage = createPagedFetcher<
 >(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE, {
   extract: (body) => body?.webhooks ?? [],
   displayKey: (webhook) => webhook.name,
+  // Without `limit` the endpoint returns MLflow's default page (100), not every webhook.
+  fullListNeedsPaging: true,
 });
 
 export const createWebhook = async (data: WebhookCreateRequest) => {
