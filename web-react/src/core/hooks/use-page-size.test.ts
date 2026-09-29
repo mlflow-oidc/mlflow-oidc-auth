@@ -86,12 +86,12 @@ describe("usePageSize", () => {
   it("follows a change made in another tab", () => {
     const { result } = renderHook(() => usePageSize());
     act(() => {
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: PAGE_SIZE_STORAGE_KEY,
-          newValue: "40",
-        }),
-      );
+      // Built from a plain Event: the key/newValue a storage event carries are what the hook reads.
+      const event = Object.assign(new Event("storage"), {
+        key: PAGE_SIZE_STORAGE_KEY,
+        newValue: "40",
+      });
+      window.dispatchEvent(event);
     });
     expect(result.current.pageSize).toBe(40);
   });

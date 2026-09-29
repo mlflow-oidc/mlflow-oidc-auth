@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, List
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mlflow.store.entities.paged_list import PagedList
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -188,12 +189,6 @@ def _webhook(i: int, name: str):
     )
 
 
-class _WebhookPage(list):
-    def __init__(self, items, token=None):
-        super().__init__(items)
-        self.token = token
-
-
 def _webhooks(stack, mock_store):
     hooks = [_webhook(i, n) for i, n in enumerate(NAMES)]
 
@@ -201,10 +196,10 @@ def _webhooks(stack, mock_store):
     # two pages, so the paged path has to follow the token.
     def list_webhooks(max_results=None, page_token=None):
         if max_results is None:
-            return _WebhookPage(hooks, token=None)
+            return PagedList(hooks, token=None)
         if page_token is None:
-            return _WebhookPage(hooks[:3], token="next")
-        return _WebhookPage(hooks[3:], token=None)
+            return PagedList(hooks[:3], token="next")
+        return PagedList(hooks[3:], token=None)
 
     stack.append(patch.object(webhook_module, "_get_model_registry_store", return_value=SimpleNamespace(list_webhooks=list_webhooks)))
 
@@ -220,10 +215,10 @@ CASES: Dict[str, Dict[str, Any]] = {
     "gateway-endpoints": dict(url=f"{GATEWAY_PERMISSIONS_ROUTER_PREFIX}/endpoints", setup=_gateway_endpoints, names=_bare("name")),
     "gateway-secrets": dict(url=f"{GATEWAY_PERMISSIONS_ROUTER_PREFIX}/secrets", setup=_gateway_secrets, names=_bare("key")),
     "gateway-model-definitions": dict(url=f"{GATEWAY_PERMISSIONS_ROUTER_PREFIX}/model-definitions", setup=_gateway_model_definitions, names=_bare("name")),
-    "groups": dict(url=GROUP_PERMISSIONS_ROUTER_PREFIX, setup=_groups, names=lambda body: list(body)),
+    "groups": dict(url=GROUP_PERMISSIONS_ROUTER_PREFIX, setup=_groups, names=list),
     "group-details": dict(url=f"{GROUP_PERMISSIONS_ROUTER_PREFIX}/details", setup=_group_details, names=_bare("group_name")),
-    "users": dict(url=USERS_ROUTER_PREFIX, setup=_users, names=lambda body: list(body)),
-    "service-accounts": dict(url=f"{USERS_ROUTER_PREFIX}?service=true", setup=_users, names=lambda body: list(body)),
+    "users": dict(url=USERS_ROUTER_PREFIX, setup=_users, names=list),
+    "service-accounts": dict(url=f"{USERS_ROUTER_PREFIX}?service=true", setup=_users, names=list),
     "user-details": dict(url=f"{USERS_ROUTER_PREFIX}/details", setup=_user_details, names=_bare("username")),
     "my-tokens": dict(url=f"{USERS_ROUTER_PREFIX}/current/tokens", setup=_user_tokens, names=lambda body: [t["name"] for t in body["tokens"]]),
     "user-tokens": dict(url=f"{USERS_ROUTER_PREFIX}/{ADMIN}/tokens", setup=_user_tokens, names=lambda body: [t["name"] for t in body["tokens"]]),
@@ -314,7 +309,7 @@ def test_webhooks_legacy_paging_still_forwarded(client):
 
     def list_webhooks(max_results=None, page_token=None):
         seen.update(max_results=max_results, page_token=page_token)
-        return _WebhookPage([_webhook(0, "only")], token="t2")
+        return PagedList([_webhook(0, "only")], token="t2")
 
     with patch.object(webhook_module, "_get_model_registry_store", return_value=SimpleNamespace(list_webhooks=list_webhooks)):
         resp = client.get(WEBHOOK_ROUTER_PREFIX, params={"max_results": 1, "page_token": "t1"})
@@ -341,7 +336,7 @@ def test_webhooks_scan_is_bounded(client):
 
     def list_webhooks(max_results=None, page_token=None):
         calls.append(page_token)
-        return _WebhookPage([_webhook(len(calls), f"h{len(calls)}")], token="more")
+        return PagedList([_webhook(len(calls), f"h{len(calls)}")], token="more")
 
     with patch.object(webhook_module, "_get_model_registry_store", return_value=SimpleNamespace(list_webhooks=list_webhooks)):
         resp = client.get(WEBHOOK_ROUTER_PREFIX, params={"limit": 5})
