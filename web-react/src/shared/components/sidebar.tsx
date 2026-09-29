@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAnglesLeft, faHeart } from "@fortawesome/free-solid-svg-icons";
 import { Button } from "./button";
 import { useRuntimeConfig } from "../context/use-runtime-config";
+import { WorkspacePicker } from "./workspace-picker";
 
 interface SidebarProps {
   currentUser: CurrentUser | null;
@@ -42,6 +43,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className={`${baseSidebarClasses} ${widthClass} overflow-y-auto`}>
       <div className="flex flex-col h-full">
+        {workspacesEnabled && (
+          <div className="px-2 pt-2">
+            <WorkspacePicker placement="sidebar" collapsed={!isOpen} />
+          </div>
+        )}
         <nav className="flex flex-col space-y-1 grow p-2">
           {sidebarData.map((link, index) => {
             const isAiStart = genAiGatewayEnabled && index === BASE_LINKS_COUNT;

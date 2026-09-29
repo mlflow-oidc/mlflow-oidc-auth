@@ -3,10 +3,12 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import type { PromptListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import { useSearch } from "../../core/hooks/use-search";
-import { useAllPrompts } from "../../core/hooks/use-all-prompts";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchPromptsPage } from "../../core/services/entity-service";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function PromptsPage() {
   const {
@@ -17,33 +19,22 @@ export default function PromptsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allPrompts } = useAllPrompts();
-
-  const promptsList = allPrompts || [];
-
-  const filteredPrompts = promptsList.filter((p) =>
-    p.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchPromptsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (prompt: PromptListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={prompt.name}
-        route="/prompts"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (prompt: PromptListItem) =>
+    buildEntityRoute("/prompts", prompt.name);
 
-  const columnsWithAction: ColumnConfig<PromptListItem>[] = [
+  const columns: ColumnConfig<PromptListItem>[] = [
     {
       header: "Name",
-      render: (item) => item.name,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
   ];
 
@@ -69,8 +60,10 @@ export default function PromptsPage() {
           </div>
 
           <EntityListTable
-            data={filteredPrompts}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>

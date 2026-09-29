@@ -3,6 +3,7 @@ import {
   createDynamicApiFetcher,
 } from "./create-api-fetcher.ts";
 import { requestWithStatus } from "./api-utils";
+import { createPagedFetcher } from "./paged-list";
 import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type {
   EntityPermission,
@@ -209,4 +210,44 @@ export const fetchGroupPromptPatternPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "GROUP_PROMPT_PATTERN_PERMISSIONS",
   responseType: [] as PromptPatternPermission[],
+});
+
+// Paginated list fetchers for the list pages (server-side `limit`/`offset`/`search`).
+const asArray = <T>(body: T[] | undefined): T[] => body ?? [];
+
+export const fetchGroupsPage = createPagedFetcher<string[], string>(
+  STATIC_API_ENDPOINTS.ALL_GROUPS,
+  { extract: asArray, displayKey: (group) => group },
+);
+
+export const fetchGroupDetailsPage = createPagedFetcher<
+  GroupDetails[],
+  GroupDetails
+>(STATIC_API_ENDPOINTS.GROUPS_DETAILS, {
+  extract: asArray,
+  displayKey: (group) => group.group_name,
+});
+
+export const fetchExperimentsPage = createPagedFetcher<
+  ExperimentListItem[],
+  ExperimentListItem
+>(STATIC_API_ENDPOINTS.ALL_EXPERIMENTS, {
+  extract: asArray,
+  displayKey: (experiment) => experiment.name,
+});
+
+export const fetchModelsPage = createPagedFetcher<
+  ModelListItem[],
+  ModelListItem
+>(STATIC_API_ENDPOINTS.ALL_MODELS, {
+  extract: asArray,
+  displayKey: (model) => model.name,
+});
+
+export const fetchPromptsPage = createPagedFetcher<
+  PromptListItem[],
+  PromptListItem
+>(STATIC_API_ENDPOINTS.ALL_PROMPTS, {
+  extract: asArray,
+  displayKey: (prompt) => prompt.name,
 });

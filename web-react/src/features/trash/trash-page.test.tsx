@@ -44,6 +44,13 @@ describe("TrashPage", () => {
     },
   ];
 
+  const pagination = (total: number) => ({
+    total,
+    page: 1,
+    pageSize: 20 as const,
+    onPageChange: vi.fn(),
+  });
+
   const defaultSearch = {
     searchTerm: "",
     submittedTerm: "",
@@ -67,6 +74,8 @@ describe("TrashPage", () => {
       "useDeletedExperiments",
     ).mockReturnValue({
       deletedExperiments: mockExperiments,
+      total: mockExperiments.length,
+      pagination: pagination(mockExperiments.length),
       isLoading: false,
       error: null,
       refresh: mockRefreshExp,
@@ -76,6 +85,8 @@ describe("TrashPage", () => {
 
     vi.spyOn(useDeletedRunsModule, "useDeletedRuns").mockReturnValue({
       deletedRuns: mockRuns,
+      total: mockRuns.length,
+      pagination: pagination(mockRuns.length),
       isLoading: false,
       error: null,
       refresh: mockRefreshRuns,
@@ -112,6 +123,22 @@ describe("TrashPage", () => {
     fireEvent.change(searchInput, { target: { value: "test" } });
     fireEvent.submit(searchInput.closest("form")!);
     expect(defaultSearch.handleSearchSubmit).toHaveBeenCalled();
+  });
+
+  it("sends the submitted search to both server-paginated lists", () => {
+    vi.spyOn(useSearchModule, "useSearch").mockReturnValue({
+      ...defaultSearch,
+      searchTerm: "Exp 1",
+      submittedTerm: "Exp 1",
+    } as unknown as ReturnType<typeof useSearchModule.useSearch>);
+
+    renderWithRouter();
+    expect(
+      useDeletedExperimentsModule.useDeletedExperiments,
+    ).toHaveBeenCalledWith("Exp 1");
+    expect(useDeletedRunsModule.useDeletedRuns).toHaveBeenCalledWith("Exp 1");
+    // Filtering is the server's job now: rows are rendered as returned.
+    expect(screen.getByText("Exp 2")).toBeDefined();
   });
 
   it("handles individual selection", () => {
@@ -252,9 +279,7 @@ describe("TrashPage", () => {
       deleted_experiments: [],
       total_deleted_runs: 0,
       total_deleted_experiments: 0,
-      failed_runs: [
-        { run_id: "run1", error: "Failed to delete artifacts" },
-      ],
+      failed_runs: [{ run_id: "run1", error: "Failed to delete artifacts" }],
     });
     renderWithRouter("/trash/runs");
 
@@ -319,7 +344,10 @@ describe("TrashPage", () => {
       total_deleted_runs: 0,
       total_deleted_experiments: 0,
       failed_experiments: [
-        { experiment_id: "exp1", error: "1 run(s) kept: artifact deletion failed" },
+        {
+          experiment_id: "exp1",
+          error: "1 run(s) kept: artifact deletion failed",
+        },
       ],
     });
     renderWithRouter();
@@ -386,6 +414,8 @@ describe("TrashPage", () => {
       "useDeletedExperiments",
     ).mockReturnValue({
       deletedExperiments: [],
+      total: 0,
+      pagination: pagination(0),
       isLoading: true,
       error: null,
       refresh: mockRefreshExp,
@@ -402,6 +432,8 @@ describe("TrashPage", () => {
       "useDeletedExperiments",
     ).mockReturnValue({
       deletedExperiments: [],
+      total: 0,
+      pagination: pagination(0),
       isLoading: false,
       error: "Error",
       refresh: mockRefreshExp,

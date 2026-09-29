@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  listWebhooks,
   createWebhook,
   getWebhook,
   updateWebhook,
@@ -17,26 +16,6 @@ vi.mock("./api-utils", () => ({
 describe("webhook-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("listWebhooks calls request with correct url", async () => {
-    await listWebhooks();
-    expect(apiUtils.request).toHaveBeenCalledWith(
-      STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE,
-      expect.objectContaining({
-        method: "GET",
-      }),
-    );
-  });
-
-  it("listWebhooks works without params", async () => {
-    await listWebhooks();
-    expect(apiUtils.request).toHaveBeenCalledWith(
-      STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE,
-      expect.objectContaining({
-        method: "GET",
-      }),
-    );
   });
 
   it("createWebhook calls request with POST and body", async () => {

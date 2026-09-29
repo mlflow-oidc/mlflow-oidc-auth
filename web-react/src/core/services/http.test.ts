@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   http,
   httpWithStatus,
+  httpWithHeaders,
   extractErrorMessage,
   _resetReauthForTests,
 } from "./http";
@@ -175,6 +176,27 @@ describe("http", () => {
       await expect(httpWithStatus("/test")).rejects.toThrow(
         'HTTP 400: {"detail": "bad name"}',
       );
+    });
+  });
+
+  describe("httpWithHeaders", () => {
+    it("returns the body, status and response headers", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({
+          "content-type": "application/json",
+          "X-Total-Count": "42",
+        }),
+        json: () => Promise.resolve(["a"]),
+        text: () => Promise.resolve('["a"]'),
+      } as Response);
+
+      const result = await httpWithHeaders<string[]>("/test");
+      expect(result.data).toEqual(["a"]);
+      expect(result.status).toBe(200);
+      expect(result.headers.get("X-Total-Count")).toBe("42");
     });
   });
 

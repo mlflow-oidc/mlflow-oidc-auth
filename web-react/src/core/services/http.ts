@@ -86,10 +86,15 @@ export interface HttpResult<T> {
   status: number;
 }
 
+/** {@link HttpResult} plus the response headers. */
+export interface HttpResultWithHeaders<T> extends HttpResult<T> {
+  headers: Headers;
+}
+
 async function httpRaw<T = unknown>(
   url: string,
   options: RequestOptions = {},
-): Promise<HttpResult<T>> {
+): Promise<HttpResultWithHeaders<T>> {
   const { params, ...rest } = options;
 
   const workspace = getActiveWorkspace();
@@ -117,14 +122,18 @@ async function httpRaw<T = unknown>(
 
   // 204 No Content — nothing to parse
   if (res.status === 204) {
-    return { data: undefined as unknown as T, status: res.status };
+    return {
+      data: undefined as unknown as T,
+      status: res.status,
+      headers: res.headers,
+    };
   }
 
   const contentType = res.headers.get("content-type") || "";
   const data = contentType.includes("application/json")
     ? ((await res.json()) as T)
     : ((await res.text()) as unknown as T);
-  return { data, status: res.status };
+  return { data, status: res.status, headers: res.headers };
 }
 
 export async function http<T = unknown>(
@@ -144,5 +153,17 @@ export async function httpWithStatus<T = unknown>(
   url: string,
   options: RequestOptions = {},
 ): Promise<HttpResult<T>> {
+  const { data, status } = await httpRaw<T>(url, options);
+  return { data, status };
+}
+
+/**
+ * Like {@link http}, but also returns the response's status and headers — for list endpoints that
+ * report the total number of matching items in a header (`X-Total-Count`).
+ */
+export async function httpWithHeaders<T = unknown>(
+  url: string,
+  options: RequestOptions = {},
+): Promise<HttpResultWithHeaders<T>> {
   return httpRaw<T>(url, options);
 }

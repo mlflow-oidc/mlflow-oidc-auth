@@ -1,17 +1,43 @@
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import UsersPage from "./users-page";
 import * as userService from "../../core/services/user-service";
 import type { UserDetails } from "../../shared/types/user";
+import { pagedListState } from "../../tests/paged-list-mock";
 
-const mockUseAllUsers = vi.fn();
+const mockLegacyUsers = vi.fn();
 const mockUseAllUserDetails = vi.fn();
 const mockUseSearch = vi.fn();
 const mockUseUser = vi.fn();
 const mockShowToast = vi.fn();
 
-vi.mock("../../core/hooks/use-all-users", () => ({
-  useAllUsers: () => mockUseAllUsers() as unknown,
+// The non-admin view pages usernames through usePagedList; the mock serves
+// mockLegacyUsers' list and applies the search the way the server does.
+const mockUsePagedList = vi.fn((_fetchPage: unknown, search: string = "") => {
+  const { allUsers, ...rest } = mockLegacyUsers() as {
+    allUsers: string[] | null;
+    isLoading: boolean;
+    error: Error | null;
+    refresh: () => void;
+  };
+  return pagedListState(
+    (allUsers ?? []).filter((u) =>
+      u.toLowerCase().includes(search.toLowerCase()),
+    ),
+    rest,
+  );
+});
+
+vi.mock("../../core/hooks/use-paged-list", () => ({
+  usePagedList: (fetchPage: unknown, search?: string) =>
+    mockUsePagedList(fetchPage, search),
 }));
 
 vi.mock("../../core/hooks/use-all-user-details", () => ({
@@ -73,27 +99,6 @@ vi.mock("../../shared/components/search-input", () => ({
   SearchInput: () => <div data-testid="search-input" />,
 }));
 
-vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: <T extends { id: string }>({
-    data,
-    columns,
-  }: {
-    data: T[];
-    columns: { header: React.ReactNode; render: (item: T) => React.ReactNode }[];
-  }) => (
-    <div data-testid="entity-list">
-      {data.map((item) => (
-        <div key={item.id} data-testid={`row-${item.id}`}>
-          {columns.map((col, i) => (
-            // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
-            <span key={i}>{col.render(item)}</span>
-          ))}
-        </div>
-      ))}
-    </div>
-  ),
-}));
-
 vi.mock("./components/user-sessions-modal", () => ({
   UserSessionsModal: ({
     username,
@@ -108,30 +113,6 @@ vi.mock("./components/user-sessions-modal", () => ({
         <button onClick={onClose}>close sessions</button>
       </div>
     ) : null,
-}));
-
-vi.mock("../../shared/components/row-action-button", () => ({
-  RowActionButton: () => <button>Manage permissions</button>,
-}));
-
-vi.mock("../../shared/components/icon-button", () => ({
-  IconButton: ({
-    title,
-    onClick,
-    disabled,
-  }: {
-    title: string;
-    onClick: () => void;
-    disabled?: boolean;
-  }) => (
-    <button
-      data-testid={`icon-btn-${title}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {title}
-    </button>
-  ),
 }));
 
 const adminUser: UserDetails = {
@@ -170,6 +151,37 @@ const inactiveScimUser: UserDetails = {
   managed_by: "scim",
 };
 
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+const renderPage = () =>
+  render(
+    <MemoryRouter initialEntries={["/users"]}>
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <>
+              <UsersPage />
+              <LocationDisplay />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+/** The table row that holds the given username's link. */
+const getRow = (username: string): HTMLElement => {
+  const row = screen
+    .getByRole("link", { name: username })
+    .closest<HTMLElement>('[role="row"]');
+  if (!row) throw new Error(`no row for ${username}`);
+  return row;
+};
+
 describe("UsersPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -180,7 +192,7 @@ describe("UsersPage", () => {
       handleSearchSubmit: vi.fn(),
       handleClearSearch: vi.fn(),
     });
-    mockUseAllUsers.mockReturnValue({
+    mockLegacyUsers.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -201,20 +213,60 @@ describe("UsersPage", () => {
     });
 
     it("renders the legacy username-only view", () => {
-      mockUseAllUsers.mockReturnValue({
+      mockLegacyUsers.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         allUsers: ["user1", "user2"],
       });
 
-      render(<UsersPage />);
+      renderPage();
 
       expect(screen.getByText("user1")).toBeInTheDocument();
       expect(screen.getByText("user2")).toBeInTheDocument();
       // No lifecycle columns for non-admins.
       expect(screen.queryByText("Active")).not.toBeInTheDocument();
       expect(mockUseAllUserDetails).not.toHaveBeenCalled();
+      expect(mockUsePagedList).toHaveBeenCalledWith(
+        userService.fetchUsersPage,
+        "",
+      );
+    });
+
+    it("links each username to its permissions page and navigates on row click", () => {
+      mockLegacyUsers.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        allUsers: ["a b@x.com", "team/1"],
+      });
+
+      const { container } = renderPage();
+
+      expect(screen.getByRole("link", { name: "a b@x.com" })).toHaveAttribute(
+        "href",
+        "/users/a b@x.com/experiments",
+      );
+      expect(screen.getByRole("link", { name: "team/1" })).toHaveAttribute(
+        "href",
+        "/users/team%2F1/experiments",
+      );
+      expect(
+        screen.queryByRole("columnheader", { name: "Permissions" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /manage permissions/i }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector(".invisible")).toBeNull();
+
+      const link = screen.getByRole("link", { name: "team/1" });
+      link.focus();
+      expect(document.activeElement).toBe(link);
+
+      fireEvent.click(within(getRow("team/1")).getAllByRole("cell")[0]);
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/users/team%2F1/experiments",
+      );
     });
   });
 
@@ -232,14 +284,14 @@ describe("UsersPage", () => {
         users: [adminUser],
       });
 
-      render(<UsersPage />);
+      renderPage();
 
       expect(screen.getByText("alice@example.com")).toBeInTheDocument();
       expect(screen.getByText("Alice")).toBeInTheDocument();
       expect(screen.getByText("Active")).toBeInTheDocument();
       expect(screen.getByText("Manual")).toBeInTheDocument();
       expect(
-        screen.getByTestId("icon-btn-Deactivate user"),
+        screen.getByRole("button", { name: "Deactivate user" }),
       ).toBeInTheDocument();
     });
 
@@ -252,11 +304,11 @@ describe("UsersPage", () => {
         users: [adminUser, scimUser],
       });
 
-      render(<UsersPage />);
+      renderPage();
       expect(screen.queryByTestId("sessions-modal")).not.toBeInTheDocument();
 
-      const row = screen.getByTestId(`row-${scimUser.username}`);
-      fireEvent.click(within(row).getByTestId("icon-btn-Sessions"));
+      const row = getRow(scimUser.username);
+      fireEvent.click(within(row).getByRole("button", { name: "Sessions" }));
       expect(screen.getByTestId("sessions-modal")).toHaveTextContent(
         scimUser.username,
       );
@@ -274,12 +326,12 @@ describe("UsersPage", () => {
         users: [inactiveUser],
       });
 
-      render(<UsersPage />);
+      renderPage();
 
       expect(screen.getByText("Inactive")).toBeInTheDocument();
       expect(screen.getByText("OIDC · okta-prod")).toBeInTheDocument();
       expect(
-        screen.getByTestId("icon-btn-Reactivate user"),
+        screen.getByRole("button", { name: "Reactivate user" }),
       ).toBeInTheDocument();
     });
 
@@ -295,9 +347,9 @@ describe("UsersPage", () => {
       const updated = { ...adminUser, active: false };
       vi.mocked(userService.setUserActive).mockResolvedValue(updated);
 
-      render(<UsersPage />);
+      renderPage();
 
-      fireEvent.click(screen.getByTestId("icon-btn-Deactivate user"));
+      fireEvent.click(screen.getByRole("button", { name: "Deactivate user" }));
 
       // Modal is open; confirm the deactivation.
       const dialogButtons = screen.getAllByText("Deactivate");
@@ -333,9 +385,9 @@ describe("UsersPage", () => {
       );
       vi.mocked(userService.setUserActive).mockRejectedValue(error);
 
-      render(<UsersPage />);
+      renderPage();
 
-      fireEvent.click(screen.getByTestId("icon-btn-Deactivate user"));
+      fireEvent.click(screen.getByRole("button", { name: "Deactivate user" }));
       const dialogButtons = screen.getAllByText("Deactivate");
       fireEvent.click(dialogButtons[dialogButtons.length - 1]);
 
@@ -360,9 +412,9 @@ describe("UsersPage", () => {
         active: false,
       });
 
-      render(<UsersPage />);
+      renderPage();
 
-      fireEvent.click(screen.getByTestId("icon-btn-Deactivate user"));
+      fireEvent.click(screen.getByRole("button", { name: "Deactivate user" }));
 
       expect(screen.getByText("Override ownership guard")).toBeInTheDocument();
 
@@ -396,9 +448,9 @@ describe("UsersPage", () => {
       const updated = { ...inactiveUser, active: true };
       vi.mocked(userService.setUserActive).mockResolvedValue(updated);
 
-      render(<UsersPage />);
+      renderPage();
 
-      fireEvent.click(screen.getByTestId("icon-btn-Reactivate user"));
+      fireEvent.click(screen.getByRole("button", { name: "Reactivate user" }));
 
       // The confirm modal, not an immediate call — otherwise there is no way to opt into the
       // ownership override for a directory-managed user.
@@ -438,9 +490,9 @@ describe("UsersPage", () => {
         active: true,
       });
 
-      render(<UsersPage />);
+      renderPage();
 
-      fireEvent.click(screen.getByTestId("icon-btn-Reactivate user"));
+      fireEvent.click(screen.getByRole("button", { name: "Reactivate user" }));
 
       expect(screen.getByText("Override ownership guard")).toBeInTheDocument();
 
@@ -471,7 +523,7 @@ describe("UsersPage", () => {
         users: [adminUser, inactiveUser],
       });
 
-      render(<UsersPage />);
+      renderPage();
 
       expect(screen.getByText("carol@example.com")).toBeInTheDocument();
 
@@ -483,6 +535,125 @@ describe("UsersPage", () => {
       );
 
       expect(screen.queryByText("carol@example.com")).not.toBeInTheDocument();
+    });
+
+    describe("row actions", () => {
+      beforeEach(() => {
+        mockUseAllUserDetails.mockReturnValue({
+          isLoading: false,
+          error: null,
+          refresh: vi.fn(),
+          updateLocalUser: vi.fn(),
+          users: [
+            { ...adminUser, username: "a b@x.com" },
+            { ...inactiveUser, username: "team/1" },
+          ],
+        });
+      });
+
+      it("links each username to its permissions page", () => {
+        renderPage();
+
+        expect(screen.getByRole("link", { name: "a b@x.com" })).toHaveAttribute(
+          "href",
+          "/users/a b@x.com/experiments",
+        );
+        expect(screen.getByRole("link", { name: "team/1" })).toHaveAttribute(
+          "href",
+          "/users/team%2F1/experiments",
+        );
+      });
+
+      it("navigates to the permissions page when the row is clicked", () => {
+        renderPage();
+
+        fireEvent.click(within(getRow("a b@x.com")).getByText("Alice"));
+        expect(screen.getByTestId("location")).toHaveTextContent(
+          "/users/a b@x.com/experiments",
+        );
+      });
+
+      it("drops the Permissions column and keeps the other columns", () => {
+        const { container } = renderPage();
+
+        expect(
+          screen.queryByRole("columnheader", { name: "Permissions" }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /manage permissions/i }),
+        ).not.toBeInTheDocument();
+        for (const header of [
+          "Username",
+          "Display name",
+          "State",
+          "Managed by",
+          "Admin",
+          "Actions",
+        ]) {
+          expect(
+            screen.getByRole("columnheader", { name: header }),
+          ).toBeInTheDocument();
+        }
+        expect(container.querySelector(".invisible")).toBeNull();
+      });
+
+      it("shows Sessions, Deactivate and Reactivate as visible, muted buttons", () => {
+        renderPage();
+
+        const activeRow = getRow("a b@x.com");
+        const inactiveRow = getRow("team/1");
+        const buttons = [
+          within(activeRow).getByRole("button", { name: "Sessions" }),
+          within(activeRow).getByRole("button", { name: "Deactivate user" }),
+          within(inactiveRow).getByRole("button", { name: "Reactivate user" }),
+        ];
+        for (const button of buttons) {
+          expect(button).toBeVisible();
+          expect(button).not.toHaveClass("invisible");
+          expect(button.closest(".invisible")).toBeNull();
+          expect(button).toHaveClass("text-text-primary");
+        }
+      });
+
+      it("opens the sessions modal without navigating", () => {
+        renderPage();
+
+        fireEvent.click(
+          within(getRow("a b@x.com")).getByRole("button", { name: "Sessions" }),
+        );
+        expect(screen.getByTestId("sessions-modal")).toHaveTextContent(
+          "a b@x.com",
+        );
+        expect(screen.getByTestId("location")).toHaveTextContent(/^\/users$/);
+      });
+
+      it("opens the deactivate modal without navigating", () => {
+        renderPage();
+        expect(screen.queryByText("Deactivate User")).not.toBeInTheDocument();
+
+        fireEvent.click(
+          within(getRow("a b@x.com")).getByRole("button", {
+            name: "Deactivate user",
+          }),
+        );
+        expect(screen.getByText("Deactivate User")).toBeInTheDocument();
+        expect(screen.getByTestId("location")).toHaveTextContent(/^\/users$/);
+      });
+
+      it("keeps the Show inactive switch working", () => {
+        renderPage();
+
+        const showInactiveLabel = screen
+          .getByText("Show inactive")
+          .closest("label");
+        fireEvent.click(
+          within(showInactiveLabel as HTMLElement).getByRole("switch"),
+        );
+        expect(
+          screen.queryByRole("link", { name: "team/1" }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByTestId("location")).toHaveTextContent(/^\/users$/);
+      });
     });
   });
 });

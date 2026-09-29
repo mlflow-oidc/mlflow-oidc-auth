@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { removeTrailingSlashes, encodeRouteParam } from "./string-utils";
+import {
+  removeTrailingSlashes,
+  encodeRouteParam,
+  buildEntityRoute,
+} from "./string-utils";
 
 describe("removeTrailingSlashes", () => {
   const cases: Array<[string | undefined | null, string]> = [
@@ -45,5 +49,26 @@ describe("encodeRouteParam", () => {
 
   it("keeps dots, hyphens and underscores unencoded", () => {
     expect(encodeRouteParam("my-app.v1_final")).toBe("my-app.v1_final");
+  });
+});
+
+describe("buildEntityRoute", () => {
+  it("joins route and encoded entity id", () => {
+    expect(buildEntityRoute("/experiments", "123")).toBe("/experiments/123");
+  });
+
+  it("normalizes leading slashes on the route", () => {
+    expect(buildEntityRoute("//groups", "team")).toBe("/groups/team");
+    expect(buildEntityRoute("groups", "team")).toBe("/groups/team");
+  });
+
+  it("encodes path-breaking characters in the entity id", () => {
+    expect(buildEntityRoute("/groups", "team/1")).toBe("/groups/team%2F1");
+  });
+
+  it("appends the suffix", () => {
+    expect(buildEntityRoute("/users", "a b@x.com", "/experiments")).toBe(
+      "/users/a b@x.com/experiments",
+    );
   });
 });

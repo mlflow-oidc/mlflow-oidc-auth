@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import * as useAuthModule from "./use-auth";
+import { _resetPageSizeForTests } from "./use-page-size";
 
 // Import hooks
 import { useCurrentUser } from "./use-current-user";
@@ -35,6 +36,7 @@ vi.mock("../services/trash-service");
 describe("Core Data Hooks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPageSizeForTests();
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
     });
@@ -163,9 +165,10 @@ describe("Core Data Hooks", () => {
           } as DeletedExperiment,
         ],
       };
-      vi.spyOn(trashService, "fetchDeletedExperiments").mockResolvedValue(
-        mockDeleted,
-      );
+      vi.spyOn(trashService, "fetchDeletedExperimentsPage").mockResolvedValue({
+        items: mockDeleted.deleted_experiments,
+        total: 1,
+      });
 
       const { result } = renderHook(() => useDeletedExperiments());
 
@@ -173,6 +176,7 @@ describe("Core Data Hooks", () => {
         expect(result.current.deletedExperiments).toEqual(
           mockDeleted.deleted_experiments,
         );
+        expect(result.current.total).toBe(1);
       });
     });
   });
@@ -192,13 +196,20 @@ describe("Core Data Hooks", () => {
           } as DeletedRun,
         ],
       };
-      vi.spyOn(trashService, "fetchDeletedRuns").mockResolvedValue(mockDeleted);
+      vi.spyOn(trashService, "fetchDeletedRunsPage").mockResolvedValue({
+        items: mockDeleted.deleted_runs,
+        total: 1,
+      });
 
       const { result } = renderHook(() => useDeletedRuns());
 
       await waitFor(() => {
         expect(result.current.deletedRuns).toEqual(mockDeleted.deleted_runs);
       });
+      expect(trashService.fetchDeletedRunsPage).toHaveBeenCalledWith(
+        { limit: 20, offset: 0, search: "" },
+        expect.any(AbortSignal),
+      );
     });
   });
 });

@@ -43,16 +43,31 @@ const tokens: UserToken[] = [
   },
 ];
 
-function mockTokens(
-  overrides: Partial<ReturnType<typeof hookModule.useUserTokens>> = {},
-) {
-  vi.mocked(hookModule.useUserTokens).mockReturnValue({
-    tokens,
-    isLoading: false,
-    error: null,
-    refresh: mockRefresh,
-    ...overrides,
-  });
+type HookState = ReturnType<typeof hookModule.useUserTokens>;
+
+/**
+ * Mock the hook as the server would answer: tokens filtered by the search argument, `total`
+ * counting the matches.
+ */
+function mockTokens(overrides: Partial<HookState> = {}) {
+  vi.mocked(hookModule.useUserTokens).mockImplementation(
+    (_owner, search = "") => {
+      const all = overrides.tokens ?? tokens;
+      const matching = all.filter((t) =>
+        t.name.toLowerCase().includes(search.toLowerCase()),
+      );
+      const total = overrides.total ?? matching.length;
+      return {
+        isLoading: false,
+        error: null,
+        refresh: mockRefresh,
+        ...overrides,
+        tokens: matching,
+        total,
+        pagination: { total, page: 1, pageSize: 20, onPageChange: vi.fn() },
+      };
+    },
+  );
 }
 
 const rowOf = (name: string) =>
@@ -66,7 +81,7 @@ describe("UserTokensPanel", () => {
 
   it("lists tokens with prefix, carried-over marker and status", () => {
     render(<UserTokensPanel />);
-    expect(hookModule.useUserTokens).toHaveBeenCalledWith(undefined);
+    expect(hookModule.useUserTokens).toHaveBeenCalledWith(undefined, "");
 
     const active = rowOf("ci-pipeline");
     expect(within(active).getByText("mlf_ab12cd34_…")).toBeInTheDocument();
@@ -92,13 +107,17 @@ describe("UserTokensPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("filters by name on search", () => {
+  it("sends the search to the server", () => {
     render(<UserTokensPanel />);
     fireEvent.change(screen.getByPlaceholderText("Search tokens..."), {
       target: { value: "laptop" },
     });
     fireEvent.submit(
       screen.getByPlaceholderText("Search tokens...").closest("form")!,
+    );
+    expect(hookModule.useUserTokens).toHaveBeenLastCalledWith(
+      undefined,
+      "laptop",
     );
     expect(screen.queryByText("ci-pipeline")).not.toBeInTheDocument();
     expect(screen.getByText("old-laptop")).toBeInTheDocument();
@@ -220,7 +239,7 @@ describe("UserTokensPanel", () => {
     it("uses the account's tokens and revokes all after confirmation", async () => {
       vi.mocked(service.revokeAllUserTokens).mockResolvedValue({ revoked: 2 });
       render(<UserTokensPanel username="svc-bot" />);
-      expect(hookModule.useUserTokens).toHaveBeenCalledWith("svc-bot");
+      expect(hookModule.useUserTokens).toHaveBeenCalledWith("svc-bot", "");
 
       fireEvent.click(
         screen.getByRole("button", { name: "Revoke all tokens" }),
@@ -267,6 +286,20 @@ describe("UserTokensPanel", () => {
       await waitFor(() =>
         expect(service.deleteUserToken).toHaveBeenCalledWith("svc-bot", 2),
       );
+    });
+
+    it("keeps the unfiltered token count for revoke-all while searching", () => {
+      render(<UserTokensPanel username="svc-bot" />);
+      const search = screen.getByPlaceholderText("Search tokens...");
+      fireEvent.change(search, { target: { value: "no-such-token" } });
+      fireEvent.submit(search.closest("form")!);
+
+      const revokeAll = screen.getByRole("button", {
+        name: "Revoke all tokens",
+      });
+      expect(revokeAll).toBeEnabled();
+      fireEvent.click(revokeAll);
+      expect(screen.getByText(/All 2 tokens of/)).toBeInTheDocument();
     });
 
     it("disables revoke-all when the account has no tokens", () => {

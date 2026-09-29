@@ -112,7 +112,6 @@ const columns = (
  * A table of an account's API tokens with create, delete and (admin) revoke-all actions.
  */
 export function UserTokensPanel({ username }: UserTokensPanelProps) {
-  const { tokens, isLoading, error, refresh } = useUserTokens(username);
   const { showToast } = useToast();
   const {
     searchTerm,
@@ -121,6 +120,15 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
+  const { tokens, total, pagination, isLoading, error, refresh } =
+    useUserTokens(username, submittedTerm);
+
+  // "Revoke all" acts on every token, not just those matching the search, so
+  // it needs the unfiltered count: remember the last total seen without one.
+  const [accountTokenCount, setAccountTokenCount] = useState(total);
+  if (!submittedTerm && !isLoading && !error && total !== accountTokenCount) {
+    setAccountTokenCount(total);
+  }
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deletingToken, setDeletingToken] = useState<UserToken | null>(null);
@@ -128,9 +136,6 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const isAdminView = username !== undefined;
-  const filteredTokens = tokens.filter((t) =>
-    t.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-  );
 
   const handleCreated = useCallback(
     (token: UserTokenWithSecret) => {
@@ -210,9 +215,11 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
               <Button
                 variant="danger"
                 onClick={() => setIsRevokeAllOpen(true)}
-                disabled={tokens.length === 0}
+                disabled={accountTokenCount === 0}
                 title={
-                  tokens.length === 0 ? "This account has no tokens" : undefined
+                  accountTokenCount === 0
+                    ? "This account has no tokens"
+                    : undefined
                 }
                 icon={faBan}
                 className="whitespace-nowrap h-8 mb-1 mt-2 ml-auto"
@@ -223,7 +230,8 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
           </div>
 
           <EntityListTable
-            data={filteredTokens}
+            data={tokens}
+            pagination={pagination}
             columns={columns(setDeletingToken)}
             searchTerm={submittedTerm}
           />
@@ -257,7 +265,7 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
             void handleConfirmRevokeAll();
           }}
           username={username}
-          tokenCount={tokens.length}
+          tokenCount={accountTokenCount}
           isProcessing={isProcessing}
         />
       )}

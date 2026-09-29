@@ -6,6 +6,7 @@ import type { ScimToken } from "../../../shared/types/scim";
 import * as useAuthModule from "../../../core/hooks/use-auth";
 import type { UseAuthResult } from "../../../core/hooks/use-auth";
 import * as workspaceContext from "../../../shared/context/use-workspace";
+import { _resetPageSizeForTests } from "../../../core/hooks/use-page-size";
 
 vi.mock("../services/scim-token-service");
 vi.mock("../../../core/hooks/use-auth");
@@ -25,6 +26,7 @@ describe("useScimTokens", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPageSizeForTests();
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
     } as UseAuthResult);
@@ -34,21 +36,25 @@ describe("useScimTokens", () => {
   });
 
   it("returns SCIM tokens", async () => {
-    vi.spyOn(scimTokenService, "listScimTokens").mockResolvedValue([
-      mockToken,
-    ]);
+    vi.spyOn(scimTokenService, "fetchScimTokensPage").mockResolvedValue({
+      items: [mockToken],
+      total: 1,
+    });
 
     const { result } = renderHook(() => useScimTokens());
 
     await waitFor(() => {
       expect(result.current.tokens).toEqual([mockToken]);
+      expect(result.current.total).toBe(1);
       expect(result.current.isLoading).toBe(false);
     });
   });
 
   it("returns empty array and error on failure", async () => {
     const mockError = new Error("Failed to fetch");
-    vi.spyOn(scimTokenService, "listScimTokens").mockRejectedValue(mockError);
+    vi.spyOn(scimTokenService, "fetchScimTokensPage").mockRejectedValue(
+      mockError,
+    );
 
     const { result } = renderHook(() => useScimTokens());
 
@@ -61,8 +67,8 @@ describe("useScimTokens", () => {
 
   it("refresh triggers a refetch", async () => {
     const listSpy = vi
-      .spyOn(scimTokenService, "listScimTokens")
-      .mockResolvedValue([mockToken]);
+      .spyOn(scimTokenService, "fetchScimTokensPage")
+      .mockResolvedValue({ items: [mockToken], total: 1 });
 
     const { result } = renderHook(() => useScimTokens());
 

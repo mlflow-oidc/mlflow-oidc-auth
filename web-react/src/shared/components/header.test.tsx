@@ -102,12 +102,12 @@ describe("Header", () => {
     expect(screen.getByTestId("mobile-nav")).toHaveTextContent("Open: false");
   });
 
-  it("renders workspace picker in header", () => {
+  it("does not render the workspace picker (it lives in the sidebar)", () => {
     render(
       <MemoryRouter>
         <Header />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("workspace-picker")).toBeInTheDocument();
+    expect(screen.queryByTestId("workspace-picker")).not.toBeInTheDocument();
   });
 });

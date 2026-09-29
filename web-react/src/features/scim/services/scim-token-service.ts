@@ -3,15 +3,20 @@ import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
 } from "../../../core/configs/api-endpoints";
-import { createStaticApiFetcher } from "../../../core/services/create-api-fetcher";
+import { createPagedFetcher } from "../../../core/services/paged-list";
 import type {
   ScimToken,
   ScimTokenWithSecret,
   CreateScimTokenRequest,
 } from "../../../shared/types/scim";
 
-export const listScimTokens = createStaticApiFetcher<ScimToken[]>({
-  endpointKey: "SCIM_TOKENS_RESOURCE",
+/** Paginated SCIM tokens; searched on the token name. */
+export const fetchScimTokensPage = createPagedFetcher<
+  ScimToken[] | undefined,
+  ScimToken
+>(STATIC_API_ENDPOINTS.SCIM_TOKENS_RESOURCE, {
+  extract: (body) => body ?? [],
+  displayKey: (token) => token.name,
 });
 
 export const createScimToken = async (

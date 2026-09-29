@@ -34,19 +34,19 @@ export default function WebhooksPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { webhooks, isLoading, error, refresh, updateLocalWebhook } =
-    useWebhooks();
+  const {
+    webhooks,
+    pagination,
+    isLoading,
+    error,
+    refresh,
+    updateLocalWebhook,
+  } = useWebhooks(submittedTerm);
   const { showToast } = useToast();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [deletingWebhook, setDeletingWebhook] = useState<Webhook | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const filteredWebhooks = useMemo(() => {
-    return webhooks.filter((webhook: Webhook) =>
-      webhook.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-    );
-  }, [webhooks, submittedTerm]);
 
   const handleTest = useCallback(
     async (webhook_id: string, name: string) => {
@@ -188,7 +188,8 @@ export default function WebhooksPage() {
           </div>
 
           <EntityListTable
-            data={filteredWebhooks}
+            data={webhooks}
+            pagination={pagination}
             columns={columns}
             searchTerm={submittedTerm}
           />

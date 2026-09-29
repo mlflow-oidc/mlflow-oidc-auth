@@ -1,5 +1,10 @@
 import { request } from "../../../core/services/api-utils";
 import {
+  fetchPagedList,
+  type ListQuery,
+  type PagedResult,
+} from "../../../core/services/paged-list";
+import {
   DYNAMIC_API_ENDPOINTS,
   STATIC_API_ENDPOINTS,
 } from "../../../core/configs/api-endpoints";
@@ -27,21 +32,27 @@ const itemEndpoint = (owner: TokenOwner, tokenId: number): string =>
     : DYNAMIC_API_ENDPOINTS.USER_TOKEN(owner, tokenId);
 
 /**
- * List an account's API tokens, expired ones included.
+ * One page of an account's API tokens, expired ones included; searched on the token name.
  *
  * @param owner - The account, or `undefined` for the signed-in user.
+ * @param query - Page window and search term; no `limit` returns every token.
  * @param signal - Optional abort signal.
- * @returns The tokens. Never contains a secret.
+ * @returns The page's tokens and the number of matching tokens. Never contains a secret.
  */
-export async function listUserTokens(
+export async function listUserTokensPage(
   owner: TokenOwner,
+  query: ListQuery,
   signal?: AbortSignal,
-): Promise<UserToken[]> {
-  const response = await request<{ tokens?: UserToken[] }>(
+): Promise<PagedResult<UserToken>> {
+  return fetchPagedList<{ tokens?: UserToken[] } | undefined, UserToken>(
     collectionEndpoint(owner),
-    { signal },
+    query,
+    {
+      extract: (body) => body?.tokens ?? [],
+      displayKey: (token) => token.name,
+    },
+    signal,
   );
-  return response.tokens ?? [];
 }
 
 /**

@@ -32,9 +32,18 @@ describe("Table Components", () => {
   });
 
   describe("TableFooter", () => {
-    it("renders footer", () => {
-      render(<TableFooter />);
-      expect(screen.getByText(/placeholder/)).toBeInTheDocument();
+    it("renders the pagination footer", () => {
+      render(
+        <TableFooter
+          total={0}
+          page={1}
+          pageSize={20}
+          onPageChange={() => {}}
+          onPageSizeChange={() => {}}
+        />,
+      );
+      expect(screen.getByLabelText("Rows per page")).toBeInTheDocument();
+      expect(screen.getByText("0 of 0")).toBeInTheDocument();
     });
   });
 

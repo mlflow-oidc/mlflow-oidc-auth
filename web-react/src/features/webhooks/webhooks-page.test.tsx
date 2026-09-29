@@ -41,13 +41,28 @@ describe("WebhooksPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(useWebhooksModule, "useWebhooks").mockReturnValue({
-      webhooks: mockWebhooks,
-      isLoading: false,
-      error: null,
-      refresh: mockRefresh,
-      updateLocalWebhook: mockUpdateLocalWebhook,
-    } as unknown as ReturnType<typeof useWebhooksModule.useWebhooks>);
+    // Answers like the server: filtered by the search argument.
+    vi.spyOn(useWebhooksModule, "useWebhooks").mockImplementation(
+      (search = "") => {
+        const webhooks = mockWebhooks.filter((w) =>
+          w.name.toLowerCase().includes(search.toLowerCase()),
+        );
+        return {
+          webhooks,
+          total: webhooks.length,
+          pagination: {
+            total: webhooks.length,
+            page: 1,
+            pageSize: 20,
+            onPageChange: vi.fn(),
+          },
+          isLoading: false,
+          error: null,
+          refresh: mockRefresh,
+          updateLocalWebhook: mockUpdateLocalWebhook,
+        };
+      },
+    );
 
     vi.spyOn(useSearchModule, "useSearch").mockReturnValue({
       searchTerm: "",
@@ -134,7 +149,7 @@ describe("WebhooksPage", () => {
     });
   });
 
-  it("filters webhooks based on search term", () => {
+  it("sends the submitted search term to the server", () => {
     vi.spyOn(useSearchModule, "useSearch").mockReturnValue({
       searchTerm: "Webhook 1",
       submittedTerm: "Webhook 1",
@@ -144,6 +159,7 @@ describe("WebhooksPage", () => {
     });
 
     render(<WebhooksPage />);
+    expect(useWebhooksModule.useWebhooks).toHaveBeenCalledWith("Webhook 1");
     expect(screen.getByText("Webhook 1")).toBeInTheDocument();
     expect(screen.queryByText("Webhook 2")).not.toBeInTheDocument();
   });

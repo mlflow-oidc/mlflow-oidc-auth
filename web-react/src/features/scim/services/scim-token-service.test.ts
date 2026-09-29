@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  listScimTokens,
   createScimToken,
   rotateScimToken,
   revokeScimToken,
@@ -15,16 +14,6 @@ vi.mock("../../../core/services/api-utils", () => ({
 describe("scim-token-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("listScimTokens calls request with the tokens resource", async () => {
-    await listScimTokens();
-    expect(apiUtils.request).toHaveBeenCalledWith(
-      STATIC_API_ENDPOINTS.SCIM_TOKENS_RESOURCE,
-      expect.objectContaining({
-        method: "GET",
-      }),
-    );
   });
 
   it("createScimToken calls request with POST and body", async () => {

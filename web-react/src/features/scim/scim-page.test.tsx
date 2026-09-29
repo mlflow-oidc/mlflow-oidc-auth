@@ -69,6 +69,8 @@ describe("ScimPage", () => {
     vi.clearAllMocks();
     vi.spyOn(useScimTokensModule, "useScimTokens").mockReturnValue({
       tokens: [activeToken, revokedToken],
+      total: 2,
+      pagination: { total: 2, page: 1, pageSize: 20, onPageChange: vi.fn() },
       isLoading: false,
       error: null,
       refresh: mockRefresh,
@@ -229,6 +231,8 @@ describe("ScimPage", () => {
   it("shows Expired (not Expiring) for a token whose expiry is in the past, and disables its actions", () => {
     vi.spyOn(useScimTokensModule, "useScimTokens").mockReturnValue({
       tokens: [activeToken, expiredToken],
+      total: 2,
+      pagination: { total: 2, page: 1, pageSize: 20, onPageChange: vi.fn() },
       isLoading: false,
       error: null,
       refresh: mockRefresh,
@@ -291,6 +295,8 @@ describe("ScimPage", () => {
   it("keeps the secret modal mounted and visible if the post-create refresh fails (#1)", async () => {
     let hookState: ReturnType<typeof useScimTokensModule.useScimTokens> = {
       tokens: [activeToken],
+      total: 1,
+      pagination: { total: 1, page: 1, pageSize: 20, onPageChange: vi.fn() },
       isLoading: false,
       error: null,
       refresh: () => {

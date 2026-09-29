@@ -1,27 +1,34 @@
 import { useCallback } from "react";
-import { useApi } from "../../../core/hooks/use-api";
+import { usePagedList } from "../../../core/hooks/use-paged-list";
+import type { ListQuery } from "../../../core/services/paged-list";
 import {
-  listUserTokens,
+  listUserTokensPage,
   type TokenOwner,
 } from "../services/user-token-service";
-import type { UserToken } from "../../../shared/types/user";
 
 /**
- * An account's API tokens.
+ * One page of an account's API tokens, searched server-side on the token name.
  *
  * @param owner - The account, or `undefined` for the signed-in user.
+ * @param search - Submitted search term; changing it goes back to page 1.
  */
-export function useUserTokens(owner: TokenOwner) {
-  const fetcher = useCallback(
-    (signal?: AbortSignal) => listUserTokens(owner, signal),
+export function useUserTokens(owner: TokenOwner, search = "") {
+  const fetchPage = useCallback(
+    (query: ListQuery, signal?: AbortSignal) =>
+      listUserTokensPage(owner, query, signal),
     [owner],
   );
-  const { data, isLoading, error, refetch } = useApi<UserToken[]>(fetcher);
+  const { items, total, pagination, isLoading, error, refresh } = usePagedList(
+    fetchPage,
+    search,
+  );
 
   return {
-    tokens: data ?? [],
+    tokens: items,
+    total,
+    pagination,
     isLoading,
     error,
-    refresh: refetch,
+    refresh,
   };
 }

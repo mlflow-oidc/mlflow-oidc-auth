@@ -3,10 +3,12 @@ import { EntityListTable } from "../../shared/components/entity-list-table";
 import type { ModelListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import { useSearch } from "../../core/hooks/use-search";
-import { useAllModels } from "../../core/hooks/use-all-models";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchModelsPage } from "../../core/services/entity-service";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function ModelsPage() {
   const {
@@ -17,33 +19,22 @@ export default function ModelsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allModels } = useAllModels();
-
-  const modelsList = allModels || [];
-
-  const filteredModels = modelsList.filter((m) =>
-    m.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchModelsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (model: ModelListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={model.name}
-        route="/models"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (model: ModelListItem) =>
+    buildEntityRoute("/models", model.name);
 
-  const columnsWithAction: ColumnConfig<ModelListItem>[] = [
+  const columns: ColumnConfig<ModelListItem>[] = [
     {
       header: "Name",
-      render: (item) => item.name,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
   ];
 
@@ -69,8 +60,10 @@ export default function ModelsPage() {
           </div>
 
           <EntityListTable
-            data={filteredModels}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>

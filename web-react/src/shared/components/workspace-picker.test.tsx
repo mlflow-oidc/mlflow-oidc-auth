@@ -115,7 +115,9 @@ describe("WorkspacePicker", () => {
     const button = screen.getByLabelText("Select workspace");
     fireEvent.click(button);
 
-    expect(screen.getByPlaceholderText("Filter workspaces...")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Filter workspaces..."),
+    ).toBeInTheDocument();
     expect(screen.getByText("workspace-a")).toBeInTheDocument();
     expect(screen.getByText("workspace-b")).toBeInTheDocument();
     expect(screen.getByText("production")).toBeInTheDocument();
@@ -170,7 +172,9 @@ describe("WorkspacePicker", () => {
     // The "All Workspaces" option in the dropdown (not in the button)
     const allWorkspacesOptions = screen.getAllByText(/All Workspaces/);
     // Click the one in the dropdown (role=option)
-    const dropdownOption = allWorkspacesOptions.find((el) => el.getAttribute("role") === "option");
+    const dropdownOption = allWorkspacesOptions.find(
+      (el) => el.getAttribute("role") === "option",
+    );
     fireEvent.click(dropdownOption!);
 
     expect(mockSetSelectedWorkspace).toHaveBeenCalledWith(null);
@@ -236,37 +240,101 @@ describe("WorkspacePicker", () => {
     fireEvent.click(screen.getByLabelText("Select workspace"));
 
     const options = screen.getAllByRole("option");
-    const selectedOption = options.find((el) => el.getAttribute("aria-selected") === "true" && el.textContent?.includes("workspace-b"));
+    const selectedOption = options.find(
+      (el) =>
+        el.getAttribute("aria-selected") === "true" &&
+        el.textContent?.includes("workspace-b"),
+    );
     expect(selectedOption).toBeDefined();
     expect(selectedOption!.textContent).toContain("✓");
   });
 
-  describe("route-based hiding", () => {
-    it("renders nothing on /workspaces route", () => {
-      const { container } = render(
-        <MemoryRouter initialEntries={["/workspaces"]}>
-          <WorkspacePicker />
-        </MemoryRouter>,
-      );
-      expect(container.querySelector("[data-testid='workspace-picker']")).toBeNull();
-    });
+  describe("cross-workspace routes", () => {
+    it.each(["/workspaces", "/workspaces/my-workspace"])(
+      "stays in place but disabled on %s, so the layout does not shift",
+      (route) => {
+        render(
+          <MemoryRouter initialEntries={[route]}>
+            <WorkspacePicker placement="sidebar" />
+          </MemoryRouter>,
+        );
+        const button = screen.getByLabelText("Select workspace");
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute(
+          "title",
+          "Workspace selection does not apply on this page",
+        );
 
-    it("renders nothing on /workspaces/:workspaceName route", () => {
-      const { container } = render(
-        <MemoryRouter initialEntries={["/workspaces/my-workspace"]}>
-          <WorkspacePicker />
-        </MemoryRouter>,
-      );
-      expect(container.querySelector("[data-testid='workspace-picker']")).toBeNull();
-    });
+        fireEvent.click(button);
+        fireEvent.keyDown(document, { key: "k", ctrlKey: true });
 
-    it("renders normally on non-hidden routes", () => {
+        expect(
+          screen.queryByTestId("workspace-picker-menu"),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it("is enabled on other routes", () => {
       render(
         <MemoryRouter initialEntries={["/experiments"]}>
           <WorkspacePicker />
         </MemoryRouter>,
       );
-      expect(screen.getByLabelText("Select workspace")).toBeInTheDocument();
+      expect(screen.getByLabelText("Select workspace")).toBeEnabled();
+    });
+  });
+
+  describe("sidebar placement", () => {
+    it("fills the sidebar and opens the list against the viewport, so the scrolling sidebar cannot clip it", () => {
+      render(
+        <MemoryRouter>
+          <WorkspacePicker placement="sidebar" />
+        </MemoryRouter>,
+      );
+      expect(screen.getByTestId("workspace-picker")).toHaveAttribute(
+        "data-placement",
+        "sidebar",
+      );
+      expect(screen.getByText("All Workspaces")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByLabelText("Select workspace"));
+
+      const menu = screen.getByTestId("workspace-picker-menu");
+      expect(menu).toHaveClass("fixed");
+      expect(menu.style.top).not.toBe("");
+      expect(screen.getByText("workspace-a")).toBeInTheDocument();
+    });
+
+    it("shows only the icon when collapsed, naming the workspace in the tooltip", () => {
+      (useWorkspace as Mock).mockReturnValue({
+        ...defaultWorkspaceContext,
+        selectedWorkspace: "workspace-a",
+      });
+      render(
+        <MemoryRouter>
+          <WorkspacePicker placement="sidebar" collapsed />
+        </MemoryRouter>,
+      );
+      const button = screen.getByLabelText("Select workspace");
+      expect(button).toHaveAttribute("title", "Workspace: workspace-a");
+      expect(screen.queryByText("workspace-a")).not.toBeInTheDocument();
+
+      fireEvent.click(button);
+
+      expect(screen.getByTestId("workspace-picker-menu")).toHaveClass("fixed");
+      expect(screen.getByText("workspace-b")).toBeInTheDocument();
+    });
+
+    it("keeps the header placement unchanged by default", () => {
+      render(
+        <MemoryRouter>
+          <WorkspacePicker />
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByLabelText("Select workspace"));
+      expect(screen.getByTestId("workspace-picker-menu")).toHaveClass(
+        "absolute",
+      );
     });
   });
 });

@@ -5,6 +5,21 @@ import { MemoryRouter } from "react-router";
 import { faHome } from "@fortawesome/free-solid-svg-icons";
 
 // Mock dependencies
+vi.mock("./workspace-picker", () => ({
+  WorkspacePicker: ({
+    placement,
+    collapsed,
+  }: {
+    placement?: string;
+    collapsed?: boolean;
+  }) => (
+    <div
+      data-testid="workspace-picker"
+      data-placement={placement}
+      data-collapsed={String(!!collapsed)}
+    />
+  ),
+}));
 vi.mock("./sidebar-data", () => ({
   getSidebarData: (
     isAdmin: boolean,
@@ -205,5 +220,55 @@ describe("Sidebar", () => {
     );
 
     expect(screen.queryByText("Workspaces")).not.toBeInTheDocument();
+  });
+
+  it("renders the workspace picker at the top when workspaces are enabled", () => {
+    mockRuntimeConfig.workspaces_enabled = true;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+    const picker = screen.getByTestId("workspace-picker");
+    expect(picker).toHaveAttribute("data-placement", "sidebar");
+    expect(picker).toHaveAttribute("data-collapsed", "false");
+  });
+
+  it("renders a collapsed picker when the sidebar is collapsed", () => {
+    mockRuntimeConfig.workspaces_enabled = true;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={false}
+          toggleSidebar={() => {}}
+          widthClass="w-12"
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("workspace-picker")).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    );
+  });
+
+  it("renders no picker when workspaces are disabled", () => {
+    mockRuntimeConfig.workspaces_enabled = false;
+    render(
+      <MemoryRouter>
+        <Sidebar
+          currentUser={null}
+          isOpen={true}
+          toggleSidebar={() => {}}
+          widthClass="w-64"
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("workspace-picker")).not.toBeInTheDocument();
   });
 });

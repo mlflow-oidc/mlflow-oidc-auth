@@ -60,6 +60,7 @@ function formatDate(value: string | null): string {
 export default function ScimPage() {
   const {
     tokens,
+    pagination,
     isLoading,
     error,
     refresh: refreshTokens,
@@ -280,7 +281,12 @@ export default function ScimPage() {
             </Button>
           </div>
 
-          <EntityListTable data={tokens} columns={columns} searchTerm="" />
+          <EntityListTable
+            data={tokens}
+            pagination={pagination}
+            columns={columns}
+            searchTerm=""
+          />
 
           <CreateScimTokenModal
             isOpen={isCreateOpen}

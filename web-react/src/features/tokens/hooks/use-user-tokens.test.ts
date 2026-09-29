@@ -6,6 +6,7 @@ import * as useAuthModule from "../../../core/hooks/use-auth";
 import type { UseAuthResult } from "../../../core/hooks/use-auth";
 import * as workspaceContext from "../../../shared/context/use-workspace";
 import type { UserToken } from "../../../shared/types/user";
+import { _resetPageSizeForTests } from "../../../core/hooks/use-page-size";
 
 vi.mock("../services/user-token-service");
 vi.mock("../../../core/hooks/use-auth");
@@ -25,6 +26,7 @@ const token: UserToken = {
 describe("useUserTokens", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPageSizeForTests();
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
     } as UseAuthResult);
@@ -32,18 +34,23 @@ describe("useUserTokens", () => {
   });
 
   it("loads the owner's tokens", async () => {
-    vi.mocked(service.listUserTokens).mockResolvedValue([token]);
-    const { result } = renderHook(() => useUserTokens("bob"));
+    vi.mocked(service.listUserTokensPage).mockResolvedValue({
+      items: [token],
+      total: 1,
+    });
+    const { result } = renderHook(() => useUserTokens("bob", "c"));
     await waitFor(() => expect(result.current.tokens).toEqual([token]));
-    expect(service.listUserTokens).toHaveBeenCalledWith(
+    expect(result.current.total).toBe(1);
+    expect(service.listUserTokensPage).toHaveBeenCalledWith(
       "bob",
+      { limit: 20, offset: 0, search: "c" },
       expect.any(AbortSignal),
     );
   });
 
   it("returns an empty list and the error on failure", async () => {
     const error = new Error("boom");
-    vi.mocked(service.listUserTokens).mockRejectedValue(error);
+    vi.mocked(service.listUserTokensPage).mockRejectedValue(error);
     const { result } = renderHook(() => useUserTokens(undefined));
     await waitFor(() => expect(result.current.error).toEqual(error));
     expect(result.current.tokens).toEqual([]);

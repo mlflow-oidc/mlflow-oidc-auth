@@ -41,10 +41,6 @@ export default function TrashPage() {
   const { showToast } = useToast();
   const [itemsToDelete, setItemsToDelete] = useState<TrashItem[] | null>(null);
 
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [activeTab]);
-
   const {
     searchTerm,
     submittedTerm,
@@ -53,23 +49,35 @@ export default function TrashPage() {
     handleClearSearch,
   } = useSearch();
 
+  // Both tabs page and search server-side; the search box is shared.
   const {
     deletedExperiments,
+    pagination: expPagination,
     isLoading: isExpLoading,
     error: expError,
     refresh: refreshExp,
-  } = useDeletedExperiments();
+  } = useDeletedExperiments(submittedTerm);
 
   const {
     deletedRuns,
+    pagination: runsPagination,
     isLoading: isRunsLoading,
     error: runsError,
     refresh: refreshRuns,
-  } = useDeletedRuns();
+  } = useDeletedRuns(submittedTerm);
 
   const isLoading = activeTab === "experiments" ? isExpLoading : isRunsLoading;
   const error = activeTab === "experiments" ? expError : runsError;
   const refresh = activeTab === "experiments" ? refreshExp : refreshRuns;
+  const pagination =
+    activeTab === "experiments" ? expPagination : runsPagination;
+
+  // Selection only ever covers visible rows: drop it when the tab, the page,
+  // the page size or the search changes.
+  const visiblePageKey = `${activeTab}:${pagination.page}:${String(pagination.pageSize)}:${submittedTerm}`;
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [visiblePageKey]);
 
   const data: TrashItem[] = useMemo(() => {
     if (activeTab === "experiments") {
@@ -93,15 +101,10 @@ export default function TrashPage() {
     }
   }, [activeTab, deletedExperiments, deletedRuns]);
 
-  const filteredData = useMemo(() => {
-    return data.filter((item) =>
-      item.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-    );
-  }, [data, submittedTerm]);
-
+  // Selection covers the rows on the current page.
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(filteredData.map((item) => item.id)));
+      setSelectedIds(new Set(data.map((item) => item.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -196,8 +199,8 @@ export default function TrashPage() {
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
             checked={
-              filteredData.length > 0 &&
-              selectedIds.size === filteredData.length
+              data.length > 0 &&
+              selectedIds.size === data.length
             }
             onChange={(e) => handleSelectAll(e.target.checked)}
           />
@@ -341,7 +344,8 @@ export default function TrashPage() {
           </div>
 
           <EntityListTable
-            data={filteredData}
+            data={data}
+            pagination={pagination}
             columns={columns}
             searchTerm={submittedTerm}
           />
