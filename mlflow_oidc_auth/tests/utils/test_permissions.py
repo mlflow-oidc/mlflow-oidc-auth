@@ -28,7 +28,6 @@ from mlflow_oidc_auth.utils.permissions import (
     PERMISSION_REGISTRY,
     _build_experiment_sources,
     _build_prompt_sources,
-    flush_permission_cache,
     _build_registered_model_sources,
     _get_experiment_group_permission_from_regex,
     _get_experiment_permission_from_regex,
