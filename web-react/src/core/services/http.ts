@@ -22,6 +22,21 @@ export function _resetReauthForTests(): void {
 }
 
 /**
+ * Reduce a ``?next=`` candidate to a same-origin path, or ``/``.
+ *
+ * ``location.pathname`` can itself start with ``//`` (``https://host//evil.com``),
+ * which a browser reads as a protocol-relative URL. The backend's
+ * ``_sanitize_next`` already refuses it; this keeps the SPA from building the
+ * redirect in the first place.
+ */
+function sanitizeNextPath(next: string): string {
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
+    return "/";
+  }
+  return next;
+}
+
+/**
  * Navigate to the OIDC login flow once on 401. /oidc/ui is in the auth
  * middleware's unprotected prefix list, so a plain reload would just bring
  * the SPA back into the same broken state — we have to actively redirect to
@@ -34,14 +49,6 @@ export function _resetReauthForTests(): void {
  * ``<base href>`` (which is ``<basePath>/oidc/ui/``). Use the runtime
  * config's ``basePath`` to get the proxy prefix.
  */
-function sanitizeNextPath(next: string): string {
-  // Only allow same-origin relative app paths.
-  if (!next.startsWith("/")) return "/";
-  if (next.startsWith("//")) return "/";
-  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(next)) return "/";
-  return next;
-}
-
 function triggerReauth(): void {
   if (reauthTriggered) return;
   if (typeof window === "undefined") return;
@@ -53,8 +60,8 @@ function triggerReauth(): void {
   const basePath = (runtime?.basePath ?? "").replace(/\/$/, "");
   const next =
     window.location.pathname + window.location.search + window.location.hash;
-  const safeNext = sanitizeNextPath(next);
-  const loginUrl = basePath + "/login?next=" + encodeURIComponent(safeNext);
+  const loginUrl =
+    basePath + "/login?next=" + encodeURIComponent(sanitizeNextPath(next));
   window.location.assign(loginUrl);
 }
 
@@ -95,18 +102,11 @@ export interface HttpResult<T> {
   status: number;
 }
 
-  const hasContentTypeHeader = rest.headers
-    ? new Headers(rest.headers).has("Content-Type")
-    : false;
-  const defaultContentTypeHeader =
-    rest.body !== undefined && !hasContentTypeHeader
-      ? { "Content-Type": "application/json" }
-      : {};
 /** {@link HttpResult} plus the response headers. */
 export interface HttpResultWithHeaders<T> extends HttpResult<T> {
   headers: Headers;
 }
-      ...defaultContentTypeHeader,
+
 async function httpRaw<T = unknown>(
   url: string,
   options: RequestOptions = {},
