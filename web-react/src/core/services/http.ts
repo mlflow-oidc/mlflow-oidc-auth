@@ -22,6 +22,18 @@ export function _resetReauthForTests(): void {
 }
 
 /**
+ * Whether ``next`` is a same-origin path the login flow can return to.
+ *
+ * ``location.pathname`` can itself start with ``//`` (``https://host//evil.com``),
+ * which a browser reads as a protocol-relative URL. The backend's
+ * ``_sanitize_next`` already refuses it; this keeps the SPA from building the
+ * redirect in the first place.
+ */
+function isSafeNextPath(next: string): boolean {
+  return next.startsWith("/") && !next.startsWith("//") && !next.includes("\\");
+}
+
+/**
  * Navigate to the OIDC login flow once on 401. /oidc/ui is in the auth
  * middleware's unprotected prefix list, so a plain reload would just bring
  * the SPA back into the same broken state — we have to actively redirect to
@@ -45,7 +57,11 @@ function triggerReauth(): void {
   const basePath = (runtime?.basePath ?? "").replace(/\/$/, "");
   const next =
     window.location.pathname + window.location.search + window.location.hash;
-  const loginUrl = basePath + "/login?next=" + encodeURIComponent(next);
+  // A rejected path sends no ``next`` at all: the backend then picks its own
+  // default, which carries the proxy prefix and DEFAULT_LANDING_PAGE_IS_PERMISSIONS.
+  const loginUrl = isSafeNextPath(next)
+    ? basePath + "/login?next=" + encodeURIComponent(next)
+    : basePath + "/login";
   window.location.assign(loginUrl);
 }
 
