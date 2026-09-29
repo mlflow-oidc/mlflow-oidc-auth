@@ -18,16 +18,15 @@ export function useUserTokens(owner: TokenOwner, search = "") {
       listUserTokensPage(owner, query, signal),
     [owner],
   );
-  const { items, total, pagination, isLoading, error, refresh } = usePagedList(
-    fetchPage,
-    search,
-  );
+  const { items, total, pagination, isLoading, isFetching, error, refresh } =
+    usePagedList(fetchPage, search);
 
   return {
     tokens: items,
     total,
     pagination,
     isLoading,
+    isFetching,
     error,
     refresh,
   };

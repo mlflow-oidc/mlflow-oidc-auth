@@ -53,6 +53,55 @@ describe("useApi", () => {
     });
   });
 
+  it("ignores a refetch that resolves after a newer request", async () => {
+    vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
+      isAuthenticated: true,
+    });
+    let resolveSlow: (value: string) => void = () => {};
+    const pageOne = vi
+      .fn()
+      .mockResolvedValueOnce("page 1")
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => (resolveSlow = resolve)),
+      );
+    const pageTwo = vi.fn().mockResolvedValue("page 2");
+
+    const { result, rerender } = renderHook(
+      ({ fetcher }) => useApi<string>(fetcher),
+      { initialProps: { fetcher: pageOne } },
+    );
+    await waitFor(() => expect(result.current.data).toBe("page 1"));
+
+    // Refresh page 1 (slow), then move to page 2 before it answers.
+    result.current.refetch();
+    rerender({ fetcher: pageTwo });
+    await waitFor(() => expect(result.current.data).toBe("page 2"));
+
+    resolveSlow("page 1 (late)");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.data).toBe("page 2");
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("reports data from the previous fetcher as stale", async () => {
+    vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
+      isAuthenticated: true,
+    });
+    const first = vi.fn().mockResolvedValue("first");
+    const second = vi.fn(() => new Promise<string>(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ fetcher }) => useApi<string>(fetcher),
+      { initialProps: { fetcher: first as () => Promise<string> } },
+    );
+    await waitFor(() => expect(result.current.data).toBe("first"));
+    expect(result.current.isStale).toBe(false);
+
+    rerender({ fetcher: second });
+    expect(result.current.data).toBe("first");
+    expect(result.current.isStale).toBe(true);
+  });
+
   it("re-fetches when workspace changes", async () => {
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,

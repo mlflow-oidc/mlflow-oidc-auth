@@ -59,6 +59,7 @@ function mockTokens(overrides: Partial<HookState> = {}) {
       const total = overrides.total ?? matching.length;
       return {
         isLoading: false,
+        isFetching: false,
         error: null,
         refresh: mockRefresh,
         ...overrides,
@@ -331,6 +332,22 @@ describe("UserTokensPanel", () => {
       expect(revokeAll).toBeEnabled();
       fireEvent.click(revokeAll);
       expect(screen.getByText(/All 2 tokens of/)).toBeInTheDocument();
+    });
+
+    it("keeps the account's token count while the cleared search is still loading", () => {
+      mockTokens();
+      const { rerender } = render(<UserTokensPanel username="svc-bot" />);
+      expect(
+        screen.getByRole("button", { name: "Revoke all tokens" }),
+      ).toBeEnabled();
+
+      // Search cleared, unfiltered page not back yet: the list still holds the
+      // filtered (empty) result, so its total must not become the account count.
+      mockTokens({ tokens: [], total: 0, isFetching: true });
+      rerender(<UserTokensPanel username="svc-bot" />);
+      expect(
+        screen.getByRole("button", { name: "Revoke all tokens" }),
+      ).toBeEnabled();
     });
 
     it("disables revoke-all when the account has no tokens", () => {
