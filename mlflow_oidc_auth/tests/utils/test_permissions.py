@@ -153,6 +153,8 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_experiment("exp_id", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
@@ -191,6 +193,8 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_registered_model("model_name", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
