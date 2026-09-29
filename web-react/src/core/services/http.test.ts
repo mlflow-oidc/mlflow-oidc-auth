@@ -242,6 +242,32 @@ describe("http", () => {
       );
     });
 
+    it("falls back to / when the path would leave the origin", async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "//evil.example/users",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith(
+        "/login?next=" + encodeURIComponent("/"),
+      );
+    });
+
     it("preserves search and hash in ?next=", async () => {
       Object.defineProperty(window, "location", {
         configurable: true,

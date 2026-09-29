@@ -22,6 +22,21 @@ export function _resetReauthForTests(): void {
 }
 
 /**
+ * Reduce a ``?next=`` candidate to a same-origin path, or ``/``.
+ *
+ * ``location.pathname`` can itself start with ``//`` (``https://host//evil.com``),
+ * which a browser reads as a protocol-relative URL. The backend's
+ * ``_sanitize_next`` already refuses it; this keeps the SPA from building the
+ * redirect in the first place.
+ */
+function sanitizeNextPath(next: string): string {
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
+    return "/";
+  }
+  return next;
+}
+
+/**
  * Navigate to the OIDC login flow once on 401. /oidc/ui is in the auth
  * middleware's unprotected prefix list, so a plain reload would just bring
  * the SPA back into the same broken state — we have to actively redirect to
@@ -45,7 +60,8 @@ function triggerReauth(): void {
   const basePath = (runtime?.basePath ?? "").replace(/\/$/, "");
   const next =
     window.location.pathname + window.location.search + window.location.hash;
-  const loginUrl = basePath + "/login?next=" + encodeURIComponent(next);
+  const loginUrl =
+    basePath + "/login?next=" + encodeURIComponent(sanitizeNextPath(next));
   window.location.assign(loginUrl);
 }
 
