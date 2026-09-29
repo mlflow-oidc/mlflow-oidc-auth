@@ -556,17 +556,14 @@ class _TokenDecoder:
 
 
 def _applicable_jwks(provider, jwks: dict) -> dict:
-    """Restrict SPIFFE validation to keys explicitly marked for JWT-SVID use."""
+    """Restrict SPIFFE validation to signing keys from the OIDC adapter."""
     if provider.type != "spiffe":
         return jwks
     keys = jwks.get("keys") if isinstance(jwks, dict) else None
-    applicable = [key for key in keys or [] if isinstance(key, dict) and key.get("use") == "jwt-svid"]
+    applicable = [key for key in keys or [] if isinstance(key, dict) and key.get("use") == "sig"]
     if not applicable:
-        raise ValueError(f"Provider '{provider.id}' published no key with use 'jwt-svid'")
-    # JOSE libraries understand the standard ``sig`` value, while SPIFFE deliberately defines
-    # ``jwt-svid``. Select on that exact value first, then remove only the metadata from copies
-    # offered to the decoder.
-    return {"keys": [{name: value for name, value in key.items() if name != "use"} for key in applicable]}
+        raise ValueError(f"Provider '{provider.id}' published no key with use 'sig'")
+    return {"keys": applicable}
 
 
 def _jwt_for(provider) -> _TokenDecoder:

@@ -31,7 +31,7 @@ def issuer():
     public = key.as_dict(private=False)
     kid = public.get("kid") or key.thumbprint()
     private["kid"] = public["kid"] = kid
-    public["use"] = "jwt-svid"
+    public.update({"alg": "RS256", "use": "sig"})
     return SimpleNamespace(private=private, public=public, kid=kid)
 
 
@@ -221,10 +221,13 @@ class TestJwtSvidValidation:
         with pytest.raises(ValueError, match="no issuer"):
             auth_module.validate_token(configured(iss=None))
 
-    def test_only_jwt_svid_keys_are_applicable(self, provider, issuer, monkeypatch):
-        wrong_use = dict(issuer.public, use="sig")
+    @pytest.mark.parametrize("wrong_use", [None, "enc", "jwt-svid"])
+    def test_only_oidc_signing_keys_are_applicable(self, provider, issuer, monkeypatch, wrong_use):
+        key = {name: value for name, value in issuer.public.items() if name != "use"}
+        if wrong_use is not None:
+            key["use"] = wrong_use
         monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], source="env"))
-        monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [wrong_use]})
+        monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [key]})
         now = int(time.time())
         token = encode_jwt(
             {"alg": "RS256", "kid": issuer.kid},
@@ -232,12 +235,12 @@ class TestJwtSvidValidation:
             issuer.private,
         )
 
-        with pytest.raises(ValueError, match="jwt-svid"):
+        with pytest.raises(ValueError, match="use 'sig'"):
             auth_module.validate_token(token)
 
-    def test_a_key_for_another_use_cannot_shadow_a_jwt_svid_key(self, configured, issuer, monkeypatch):
+    def test_a_key_for_another_use_cannot_shadow_an_oidc_signing_key(self, configured, issuer, monkeypatch):
         foreign = generate_rsa_key().as_dict(private=False)
-        foreign.update({"kid": issuer.kid, "use": "sig"})
+        foreign.update({"kid": issuer.kid, "use": "enc"})
         monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [foreign, issuer.public]})
 
         assert auth_module.validate_token(configured())["sub"] == SPIFFE_ID

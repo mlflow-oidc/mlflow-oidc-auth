@@ -220,7 +220,7 @@ class TestAuthPathQueryBudget:
         public = key.as_dict(private=False)
         kid = public.get("kid") or key.thumbprint()
         private["kid"] = public["kid"] = kid
-        public["use"] = "jwt-svid"
+        public["use"] = "sig"
         monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", RegistryLoadResult(providers=[provider], source="env"))
         monkeypatch.setattr(auth_module, "_get_provider_jwks", lambda selected, force_refresh=False: {"keys": [public]})
         now = int(time.time())

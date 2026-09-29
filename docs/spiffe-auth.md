@@ -22,16 +22,24 @@ rejected; obtain a new SVID after the change.
 
 ## Configure the OIDC Discovery Provider
 
-Deploy the [SPIRE OIDC Discovery Provider](https://github.com/spiffe/oidc-discovery-provider) for
-the same trust domain and publish it over HTTPS. Its discovery document must be available at:
+Deploy the
+[SPIRE OIDC Discovery Provider](https://github.com/spiffe/spire/tree/main/support/oidc-discovery-provider)
+for the same trust domain and publish it over HTTPS. Its discovery document must be available at:
 
 ```text
 https://spire-oidc.prokube.internal/.well-known/openid-configuration
 ```
 
+Configure the provider to publish the standard OIDC signing-key purpose:
+
+```hcl
+set_key_use = true
+```
+
 The discovery document's `issuer` must exactly equal `jwt_issuer`. Its `jwks_uri` must publish
-the SPIRE signing keys with `use: jwt-svid`. MLflow ignores all other keys and rejects a token if
-the key set contains no applicable JWT-SVID key.
+the SPIRE signing keys with `use: sig`. MLflow ignores keys with a missing or different `use` and
+rejects a token if the key set contains no applicable signing key. The OIDC Discovery Provider
+translates the raw SPIFFE bundle's `use: jwt-svid` purpose to the standard OIDC `sig` purpose.
 
 ## Configure MLflow
 
@@ -56,6 +64,7 @@ Add a non-interactive `spiffe` entry to `AUTH_PROVIDERS` alongside the human OID
     "issuer": "https://spire-oidc.prokube.internal",
     "discovery_url": "https://spire-oidc.prokube.internal/.well-known/openid-configuration",
     "audience": "mlflow-api",
+    "allowed_algorithms": ["RS256"],
     "trust_domain": "prokube.internal",
     "spiffe_id_allowlist": [
       "spiffe://prokube.internal/ns/ml-team/sa/training-pipeline",
@@ -68,6 +77,9 @@ Add a non-interactive `spiffe` entry to `AUTH_PROVIDERS` alongside the human OID
 `issuer`, `discovery_url`, `audience`, `trust_domain`, and a non-empty
 `spiffe_id_allowlist` are required. Allowlist entries are exact SPIFFE IDs: prefixes, globs,
 templates, and regular expressions are not supported. An empty allowlist admits nobody.
+
+Set `allowed_algorithms` to the asymmetric algorithm used by SPIRE's JWT authority. The example
+uses `RS256`; a SPIRE deployment using its default EC P-256 authority should use `ES256` instead.
 
 Use an audience dedicated to MLflow, such as `mlflow-api`. Do not use the trust-domain root or a
 broad audience shared by unrelated services. Removing an ID from the allowlist denies it on its
