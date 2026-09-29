@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { vi } from "vitest";
+import { vi, beforeEach } from "vitest";
 import MainLayout from "./main-layout";
 import type { UserContextValue } from "../hooks/use-user";
 
