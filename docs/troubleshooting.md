@@ -78,3 +78,18 @@ OIDC_ADMIN_GROUP_NAME=<object id of the admin group>
 - **Username.** The default `OIDC_USERNAME_FIELD=email,preferred_username` uses `email` when the
   account has one and falls back to the UPN in `preferred_username`. Accounts without a mailbox
   therefore log in under their UPN.
+
+## Artifact downloads are slow
+
+Check the MLflow version first. MLflow before 3.8 streamed proxied (`--serve-artifacts`) downloads
+line by line, in chunks of a few hundred bytes. Under uvicorn, which this plugin always uses, a
+100 MB model took around 40 seconds. The same server under gunicorn took a few seconds, so the
+slowdown looked like it came from the plugin. MLflow 3.8.0 fixed it, and every plugin release
+since 6.0.0 requires a fixed MLflow (issue #152).
+
+On a current release, large downloads run at the same speed with and without the plugin.
+Requests for many small files each pay the authentication and permission check. Give the server
+enough `--workers` for the traffic you expect. For very large models, `--no-serve-artifacts` lets
+clients read the bucket directly, at the cost of governing access through the bucket rather than
+through this plugin. See [Performance baseline](performance-baseline#artifact-downloads) for the
+measurements and the benchmark script.
