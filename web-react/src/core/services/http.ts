@@ -86,11 +86,18 @@ export interface HttpResult<T> {
   status: number;
 }
 
+  const hasContentTypeHeader = rest.headers
+    ? new Headers(rest.headers).has("Content-Type")
+    : false;
+  const defaultContentTypeHeader =
+    rest.body !== undefined && !hasContentTypeHeader
+      ? { "Content-Type": "application/json" }
+      : {};
 /** {@link HttpResult} plus the response headers. */
 export interface HttpResultWithHeaders<T> extends HttpResult<T> {
   headers: Headers;
 }
-
+      ...defaultContentTypeHeader,
 async function httpRaw<T = unknown>(
   url: string,
   options: RequestOptions = {},
