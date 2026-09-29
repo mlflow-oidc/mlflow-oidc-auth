@@ -3,6 +3,7 @@ import {
   createStaticApiFetcher,
 } from "./create-api-fetcher";
 import { request } from "./api-utils";
+import { createPagedFetcher } from "./paged-list";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -29,6 +30,22 @@ export const fetchAllServiceAccounts = createStaticApiFetcher<string[]>({
     service: true,
   },
 });
+
+/** Paginated usernames for the Users list page. */
+export const fetchUsersPage = createPagedFetcher<string[], string>(
+  STATIC_API_ENDPOINTS.USERS_RESOURCE,
+  { extract: (body) => body ?? [], displayKey: (username) => username },
+);
+
+/** Paginated service-account names for the Service Accounts list page. */
+export const fetchServiceAccountsPage = createPagedFetcher<string[], string>(
+  STATIC_API_ENDPOINTS.USERS_RESOURCE,
+  {
+    extract: (body) => body ?? [],
+    displayKey: (username) => username,
+    queryParams: { service: true },
+  },
+);
 
 export const fetchUserDetails = createDynamicApiFetcher<
   CurrentUser,

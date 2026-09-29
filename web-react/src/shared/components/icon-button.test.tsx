@@ -46,4 +46,30 @@ describe("IconButton", () => {
     expect(handleButtonClick).toHaveBeenCalled();
     expect(handleWrapperClick).not.toHaveBeenCalled();
   });
+
+  it("uses the default action style unless muted", () => {
+    render(<IconButton icon={faHome} onClick={() => {}} title="Home" />);
+    const button = screen.getByRole("button", { name: "Home" });
+    expect(button).toHaveClass("text-btn-primary");
+    expect(button).not.toHaveClass("text-text-primary");
+  });
+
+  it("renders a muted, still-visible button that brightens on row hover and focus", () => {
+    render(<IconButton icon={faHome} onClick={() => {}} title="Home" muted />);
+    const button = screen.getByRole("button", { name: "Home" });
+    expect(button).toHaveClass("text-text-primary");
+    expect(button).toHaveClass("group-hover:text-btn-primary");
+    expect(button).toHaveClass("focus-visible:text-btn-primary");
+    expect(button).not.toHaveClass("invisible");
+    expect(button).toBeVisible();
+  });
+
+  it("keeps working when muted", () => {
+    const handleClick = vi.fn();
+    render(
+      <IconButton icon={faHome} onClick={handleClick} title="Home" muted />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
 });

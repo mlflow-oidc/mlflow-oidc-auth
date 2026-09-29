@@ -2,8 +2,11 @@ import type { ColumnConfig } from "../types/table";
 
 export function TableHeader<T extends Record<string, unknown>>({
   columns,
+  hasRowChevron = false,
 }: {
   columns: ColumnConfig<T>[];
+  /** Reserve the width of the trailing chevron that navigable rows render. */
+  hasRowChevron?: boolean;
 }) {
   return (
     <div role="rowgroup" className="shrink-0">
@@ -25,6 +28,7 @@ export function TableHeader<T extends Record<string, unknown>>({
             {column.header}
           </div>
         ))}
+        {hasRowChevron && <div aria-hidden="true" className="w-6 shrink-0" />}
       </div>
     </div>
   );

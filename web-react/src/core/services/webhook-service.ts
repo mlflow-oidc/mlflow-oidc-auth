@@ -3,7 +3,7 @@ import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
 } from "../configs/api-endpoints";
-import { createStaticApiFetcher } from "./create-api-fetcher";
+import { createPagedFetcher } from "./paged-list";
 import type {
   Webhook,
   WebhookCreateRequest,
@@ -17,8 +17,15 @@ export type WebhookListResponse = {
   next_page_token?: string;
 };
 
-export const listWebhooks = createStaticApiFetcher<WebhookListResponse>({
-  endpointKey: "WEBHOOKS_RESOURCE",
+/** Paginated webhooks; searched on the webhook name. */
+export const fetchWebhooksPage = createPagedFetcher<
+  Partial<WebhookListResponse> | undefined,
+  Webhook
+>(STATIC_API_ENDPOINTS.WEBHOOKS_RESOURCE, {
+  extract: (body) => body?.webhooks ?? [],
+  displayKey: (webhook) => webhook.name,
+  // Without `limit` the endpoint returns MLflow's default page (100), not every webhook.
+  fullListNeedsPaging: true,
 });
 
 export const createWebhook = async (data: WebhookCreateRequest) => {

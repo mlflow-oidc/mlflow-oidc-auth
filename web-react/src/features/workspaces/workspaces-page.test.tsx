@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspacesPage from "./workspaces-page";
 
@@ -11,16 +12,16 @@ import type { Mock } from "vitest";
 
 const mockNavigate = vi.fn();
 
-vi.mock("react-router", () => ({
+vi.mock("react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router")>()),
   Navigate: (props: { to: string }) => {
     mockNavigate(props.to);
     return <div data-testid="navigate" data-to={props.to} />;
   },
 }));
 
-const mockUseRuntimeConfig: Mock<
-  () => { workspaces_enabled: boolean }
-> = vi.fn();
+const mockUseRuntimeConfig: Mock<() => { workspaces_enabled: boolean }> =
+  vi.fn();
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
   useRuntimeConfig: () => mockUseRuntimeConfig(),
@@ -110,35 +111,52 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({
+  EntityListTable: <T extends Record<string, unknown>>({
     data,
     columns,
+    getRowHref,
   }: {
-    data: WorkspaceListItem[];
+    data: T[];
     columns: {
-      header: string;
-      render: (item: WorkspaceListItem) => React.ReactNode;
+      header: React.ReactNode;
+      render: (item: T) => React.ReactNode;
     }[];
+    getRowHref?: (item: T) => string;
   }) => (
-    <div data-testid="entity-list">
-      {data.map((item) => (
-        <div key={item.name}>
-          {columns.map((col) => (
-            <span key={col.header}>{col.render(item)}</span>
-          ))}
-        </div>
-      ))}
-    </div>
+    <>
+      <div data-testid="entity-list-headers">
+        {columns.map((col, i) => (
+          // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+          <span key={i}>{col.header}</span>
+        ))}
+      </div>
+      <div data-testid="entity-list">
+        {data.map((item, rowIndex) => (
+          <div
+            // eslint-disable-next-line react-x/no-array-index-key -- test mock; rows are static per render
+            key={rowIndex}
+            data-testid="entity-row"
+            data-row-href={getRowHref?.(item)}
+          >
+            {columns.map((col, i) => (
+              // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+              <span key={i}>{col.render(item)}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
   ),
 }));
 
-vi.mock("../../shared/components/row-action-button", () => ({
-  RowActionButton: () => <button>Manage members</button>,
-}));
-
 vi.mock("../../shared/components/icon-button", () => ({
-  IconButton: ({ title }: { title: string }) => (
-    <button data-testid={`icon-btn-${title}`}>{title}</button>
+  IconButton: ({ title, muted }: { title: string; muted?: boolean }) => (
+    <button
+      data-testid={`icon-btn-${title}`}
+      data-muted={muted ? "true" : "false"}
+    >
+      {title}
+    </button>
   ),
 }));
 
@@ -175,6 +193,13 @@ const defaultMemberCounts: Record<string, WorkspaceMemberCounts> = {
   staging: { users: 3, groups: 1 },
 };
 
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <WorkspacesPage />
+    </MemoryRouter>,
+  );
+
 describe("WorkspacesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -210,7 +235,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
@@ -223,7 +248,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("production")).toBeInTheDocument();
     expect(screen.getByText("staging")).toBeInTheDocument();
   });
@@ -245,7 +270,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("production")).toBeInTheDocument();
     expect(screen.queryByText("staging")).not.toBeInTheDocument();
   });
@@ -259,12 +284,12 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("Error")).toBeInTheDocument();
   });
 
   it("renders empty state when no workspaces", () => {
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
     expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
   });
@@ -286,7 +311,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.queryByText("production")).not.toBeInTheDocument();
     expect(screen.queryByText("staging")).not.toBeInTheDocument();
   });
@@ -300,7 +325,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
   });
 
@@ -319,7 +344,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
@@ -331,7 +356,7 @@ describe("WorkspacesPage", () => {
       refresh: vi.fn(),
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText("Create Workspace")).toBeInTheDocument();
   });
 
@@ -343,7 +368,7 @@ describe("WorkspacesPage", () => {
       refresh: vi.fn(),
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.queryByText("Create Workspace")).not.toBeInTheDocument();
   });
 
@@ -356,7 +381,7 @@ describe("WorkspacesPage", () => {
       memberCounts: defaultMemberCounts,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByText(/5 users,/)).toBeInTheDocument();
     expect(screen.getByText(/2 groups/)).toBeInTheDocument();
     expect(screen.getByText(/3 users,/)).toBeInTheDocument();
@@ -372,7 +397,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getAllByText(/… users,/).length).toBe(2);
   });
 
@@ -392,7 +417,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getAllByTestId("icon-btn-Edit workspace").length).toBe(2);
     expect(screen.getAllByTestId("icon-btn-Delete workspace").length).toBe(2);
   });
@@ -413,7 +438,7 @@ describe("WorkspacesPage", () => {
       memberCounts: null,
     });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(
       screen.queryByTestId("icon-btn-Edit workspace"),
     ).not.toBeInTheDocument();
@@ -425,7 +450,88 @@ describe("WorkspacesPage", () => {
   it("redirects to home when workspaces are disabled", () => {
     mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: false });
 
-    render(<WorkspacesPage />);
+    renderPage();
     expect(screen.getByTestId("navigate")).toHaveAttribute("data-to", "/");
+  });
+
+  describe("row navigation", () => {
+    const setAdmin = (isAdmin: boolean) =>
+      mockUseUser.mockReturnValue({
+        currentUser: { is_admin: isAdmin },
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+      });
+
+    beforeEach(() => {
+      mockUseAllWorkspaces.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        allWorkspaces: [
+          { ...defaultWorkspaces[0], name: "a b@x.com" },
+          { ...defaultWorkspaces[1], name: "team/1" },
+        ],
+        memberCounts: null,
+      });
+    });
+
+    it("links each workspace name to its members page", () => {
+      renderPage();
+
+      expect(screen.getByRole("link", { name: "a b@x.com" })).toHaveAttribute(
+        "href",
+        "/workspaces/a b@x.com",
+      );
+      expect(screen.getByRole("link", { name: "team/1" })).toHaveAttribute(
+        "href",
+        "/workspaces/team%2F1",
+      );
+      screen.getAllByTestId("entity-row").forEach((row) => {
+        const link = within(row).getByRole("link");
+        expect(row).toHaveAttribute("data-row-href", link.getAttribute("href"));
+      });
+    });
+
+    it("has no Manage members button or hidden elements", () => {
+      setAdmin(true);
+      const { container } = renderPage();
+
+      expect(
+        screen.queryByRole("button", { name: /manage members/i }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector(".invisible")).toBeNull();
+    });
+
+    it("keeps admin edit/delete actions visible but muted", () => {
+      setAdmin(true);
+      renderPage();
+
+      const headers = screen.getByTestId("entity-list-headers");
+      expect(within(headers).getByText("Actions")).toBeInTheDocument();
+      [
+        ...screen.getAllByTestId("icon-btn-Edit workspace"),
+        ...screen.getAllByTestId("icon-btn-Delete workspace"),
+      ].forEach((button) => {
+        expect(button).toHaveAttribute("data-muted", "true");
+        expect(button.closest(".invisible")).toBeNull();
+      });
+    });
+
+    it("omits the empty Actions column for non-admins", () => {
+      setAdmin(false);
+      renderPage();
+
+      const headers = screen.getByTestId("entity-list-headers");
+      expect(within(headers).queryByText("Actions")).not.toBeInTheDocument();
+      expect(within(headers).getByText("Workspace Name")).toBeInTheDocument();
+    });
+
+    it("keeps the name link keyboard focusable", () => {
+      renderPage();
+      const link = screen.getByRole("link", { name: "team/1" });
+      link.focus();
+      expect(document.activeElement).toBe(link);
+    });
   });
 });

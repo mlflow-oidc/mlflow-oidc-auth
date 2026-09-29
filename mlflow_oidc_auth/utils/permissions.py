@@ -30,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -139,6 +139,20 @@ SCORER = "scorer"
 GATEWAY_ENDPOINT = "gateway_endpoint"
 GATEWAY_SECRET = "gateway_secret"
 GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
+
+# The same names as literals, for log messages. CodeQL treats anything derived from a
+# constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
+# the matching literal here rather than by echoing the value it was given. Kept in step
+# with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+_RESOURCE_TYPE_LOG_NAMES = (
+    "experiment",
+    "registered_model",
+    "prompt",
+    "scorer",
+    "gateway_endpoint",
+    "gateway_secret",
+    "gateway_model_definition",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +421,13 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     if len(samples) < _FALLBACK_SAMPLE_LIMIT and resource_id not in samples:
         samples.append(resource_id)
 
-    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", resource_type, permission.name, username, count)
+    # The level and the resource type are logged by fixed names, not read off the arguments:
+    # for a gateway secret both flow from secret-named code, and static analysis cannot tell
+    # that only a level and a type name, never the secret, reach the log.
+    level = next((name for name, known in ALL_PERMISSIONS.items() if known == permission), "UNKNOWN")
+    kind = next((name for name in _RESOURCE_TYPE_LOG_NAMES if name == resource_type), "resource")
+
+    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", kind, level, username, count)
 
     if not permission.can_read:
         # A fallback that grants nothing is the safe, expected shape.
@@ -415,8 +435,8 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
 
     if count in _FALLBACK_WARN_AT or count % _FALLBACK_WARN_EVERY == 0:
         logger.warning(
-            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on a {resource_type} to {username} "
-            f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
+            f"DEFAULT_MLFLOW_PERMISSION granted {level} on a {kind} to {username} "
+            f"because no explicit permission exists ({count} such grants for {kind} so far). "
             "Access is coming from configuration rather than a permission record. "
             "Call get_permission_fallback_samples() for the affected resource ids, or enable DEBUG logging. "
             "The shipped default is NO_PERMISSIONS (issue #293); see docs/permissions.md 'Migrating to deny-by-default'."

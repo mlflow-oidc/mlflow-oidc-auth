@@ -1,4 +1,5 @@
-import { useAllExperiments } from "../../core/hooks/use-all-experiments";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchExperimentsPage } from "../../core/services/entity-service";
 import { useSearch } from "../../core/hooks/use-search";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -6,7 +7,8 @@ import type { ExperimentListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function ExperimentsPage() {
   const {
@@ -17,33 +19,22 @@ export default function ExperimentsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allExperiments } = useAllExperiments();
-
-  const experimentsList = allExperiments || [];
-
-  const filteredExperiments = experimentsList.filter((experiment) =>
-    experiment.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchExperimentsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (experiment: ExperimentListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={experiment.id}
-        route="/experiments"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (experiment: ExperimentListItem) =>
+    buildEntityRoute("/experiments", experiment.id);
 
-  const columnsWithAction: ColumnConfig<ExperimentListItem>[] = [
+  const columns: ColumnConfig<ExperimentListItem>[] = [
     {
       header: "Experiment Name",
-      render: (item) => item.name,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
   ];
 
@@ -69,8 +60,10 @@ export default function ExperimentsPage() {
           </div>
 
           <EntityListTable
-            data={filteredExperiments}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>

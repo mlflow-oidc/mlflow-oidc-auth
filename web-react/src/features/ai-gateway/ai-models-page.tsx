@@ -1,4 +1,5 @@
-import { useAllGatewayModels } from "../../core/hooks/use-all-gateway-models";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchGatewayModelsPage } from "../../core/services/gateway-service";
 import { useSearch } from "../../core/hooks/use-search";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -6,7 +7,8 @@ import type { GatewayModelListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function AiModelsPage() {
   const {
@@ -17,37 +19,26 @@ export default function AiModelsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allGatewayModels } = useAllGatewayModels();
-
-  const modelsList = allGatewayModels || [];
-
-  const filteredModels = modelsList.filter((model) =>
-    model.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchGatewayModelsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (model: GatewayModelListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={model.name}
-        route="/ai-gateway/models"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (model: GatewayModelListItem) =>
+    buildEntityRoute("/ai-gateway/models", model.name);
 
-  const columnsWithAction: ColumnConfig<GatewayModelListItem>[] = [
+  const columns: ColumnConfig<GatewayModelListItem>[] = [
     {
       header: "Model Name",
-      render: (item) => item.name,
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
     {
       header: "Source",
       render: (item) => item.source,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
     },
   ];
 
@@ -73,8 +64,10 @@ export default function AiModelsPage() {
           </div>
 
           <EntityListTable
-            data={filteredModels}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>

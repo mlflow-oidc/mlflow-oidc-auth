@@ -2,6 +2,8 @@ import {
   createStaticApiFetcher,
   createDynamicApiFetcher,
 } from "./create-api-fetcher.ts";
+import { createPagedFetcher } from "./paged-list";
+import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type {
   GatewayEndpointListItem,
   GatewaySecretListItem,
@@ -30,6 +32,31 @@ export const fetchAllGatewayModels = createStaticApiFetcher<
 >({
   endpointKey: "ALL_GATEWAY_MODELS",
   responseType: [] as GatewayModelListItem[],
+});
+
+// Paginated gateway lists for the list pages
+export const fetchGatewayEndpointsPage = createPagedFetcher<
+  GatewayEndpointListItem[],
+  GatewayEndpointListItem
+>(STATIC_API_ENDPOINTS.ALL_GATEWAY_ENDPOINTS, {
+  extract: (body) => body ?? [],
+  displayKey: (endpoint) => endpoint.name,
+});
+
+export const fetchGatewaySecretsPage = createPagedFetcher<
+  GatewaySecretListItem[],
+  GatewaySecretListItem
+>(STATIC_API_ENDPOINTS.ALL_GATEWAY_SECRETS, {
+  extract: (body) => body ?? [],
+  displayKey: (secret) => secret.key,
+});
+
+export const fetchGatewayModelsPage = createPagedFetcher<
+  GatewayModelListItem[],
+  GatewayModelListItem
+>(STATIC_API_ENDPOINTS.ALL_GATEWAY_MODELS, {
+  extract: (body) => body ?? [],
+  displayKey: (model) => model.name,
 });
 
 // User Permissions for Gateway Resources

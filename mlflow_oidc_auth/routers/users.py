@@ -24,6 +24,7 @@ from mlflow_oidc_auth.repository.user_token import DEFAULT_TOKEN_NAME, MAX_TOKEN
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user
 from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageParams, PageQuery, paginate_with_headers
 
 from ._prefix import USERS_ROUTER_PREFIX
 
@@ -219,13 +220,26 @@ def _issue_token(target_username: str, token_request: CreateUserTokenRequest, ac
     return JSONResponse(content={**record.to_json(), "token": plaintext}, status_code=201, headers={"Cache-Control": "no-store"})
 
 
-def _list_tokens(target_username: str) -> JSONResponse:
+def _list_tokens(target_username: str, page: PageParams = NO_PAGE) -> JSONResponse:
+    """The ``{"tokens": [...]}`` body of a user's tokens, optionally paged and searched by name.
+
+    Parameters:
+        target_username: Whose tokens to list. The caller has already been authorized for them.
+        page: Opt-in ``limit`` / ``offset`` / ``search`` on the token name.
+
+    Returns:
+        JSONResponse: ``{"tokens": [...]}``, never cached, with ``X-Total-Count`` when paged.
+
+    Raises:
+        HTTPException: 404 for an unknown user.
+    """
     target_username = _require_user(target_username)
     try:
         records = store.list_user_tokens(target_username)
     except MlflowException as e:
         raise _token_http_error(e)
-    return JSONResponse(content={"tokens": [r.to_json() for r in records]}, headers={"Cache-Control": "no-store"})
+    records, headers = paginate_with_headers(records, key=lambda r: r.name, params=page, tiebreak=lambda r: r.id)
+    return JSONResponse(content={"tokens": [r.to_json() for r in records]}, headers={"Cache-Control": "no-store", **headers})
 
 
 def _delete_token(target_username: str, token_id: int, actor: str) -> JSONResponse:
@@ -249,9 +263,9 @@ def _delete_token(target_username: str, token_id: int, actor: str) -> JSONRespon
     summary="List my access tokens",
     description="Lists the authenticated user's access tokens, expired ones included. Never returns a token's secret.",
 )
-async def list_my_tokens(current_username: str = Depends(get_username)) -> JSONResponse:
-    """The caller's own access tokens (issue #189)."""
-    return _list_tokens(current_username)
+async def list_my_tokens(current_username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
+    """The caller's own access tokens (issue #189), optionally paged (``limit`` / ``offset`` / ``search``)."""
+    return _list_tokens(current_username, page)
 
 
 @users_router.post(
@@ -294,7 +308,7 @@ async def delete_my_token(token_id: int, current_username: str = Depends(get_use
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
-async def list_users(service: bool = False, username: str = Depends(get_username)) -> JSONResponse:
+async def list_users(service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List users in the system.
 
@@ -308,11 +322,14 @@ async def list_users(service: bool = False, username: str = Depends(get_username
         Whether to filter for service accounts only.
     username : str
         The authenticated username (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` on the username (see ``utils/pagination.py``).
 
     Returns:
     --------
     JSONResponse
-        A JSON response containing the list of users.
+        A JSON response containing the list of users — a bare ``string[]``, paged or not. When
+        paged or searched, ``X-Total-Count`` carries the number of matching usernames.
 
     Raises:
     -------
@@ -325,8 +342,9 @@ async def list_users(service: bool = False, username: str = Depends(get_username
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
+        users, headers = paginate_with_headers(users, key=lambda u: u, params=page)
 
-        return JSONResponse(content=users)
+        return JSONResponse(content=users, headers=headers)
 
     except Exception as e:
         logger.error(f"Error listing users: {str(e)}")
@@ -565,7 +583,7 @@ async def delete_user(
     summary="List users with lifecycle state",
     description="Lists users with their admin, service-account, active and managed_by state. Admins only.",
 )
-async def list_user_details(service: Optional[bool] = None, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+async def list_user_details(service: Optional[bool] = None, admin_username: str = Depends(check_admin_permission), page: PageQuery = NO_PAGE) -> JSONResponse:
     """List users as objects, for the admin UI (issue #320).
 
     ``GET /users`` keeps returning a bare ``string[]`` — the UI and API clients depend on it —
@@ -575,17 +593,23 @@ async def list_user_details(service: Optional[bool] = None, admin_username: str 
     Parameters:
         service: True for service accounts only, False for users only, omitted for both.
         admin_username: The authenticated administrator (injected).
+        page: Opt-in ``limit`` / ``offset`` / ``search`` on ``username`` (see
+            ``utils/pagination.py``). When given, rows are ordered by username instead.
 
     Returns:
         JSONResponse: ``[{"username", "display_name", "is_admin", "is_service_account", "active",
         "managed_by"}]``, ordered by creation.
+
+    Raises:
+        HTTPException: 500 when the users cannot be read.
     """
     try:
         _, rows = store.list_user_details(is_service_account=service)
     except Exception as e:
         logger.error(f"Error listing user details: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve users")
-    return JSONResponse(content=[{key: row[key] for key in USER_DETAIL_FIELDS} for row in rows])
+    rows, headers = paginate_with_headers(rows, key=lambda row: row["username"], params=page)
+    return JSONResponse(content=[{key: row[key] for key in USER_DETAIL_FIELDS} for row in rows], headers=headers)
 
 
 @users_router.patch(
@@ -807,13 +831,13 @@ async def get_user_information(username: str, admin_username: str = Depends(chec
     summary="List a user's access tokens",
     description="Lists a user's access tokens, expired ones included. Never returns a token's secret. Admins only.",
 )
-async def list_user_tokens(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
-    """Another user's access tokens (issue #189).
+async def list_user_tokens(username: str, admin_username: str = Depends(check_admin_permission), page: PageQuery = NO_PAGE) -> JSONResponse:
+    """Another user's access tokens (issue #189), optionally paged (``limit`` / ``offset`` / ``search``).
 
     Raises:
         HTTPException: 404 for an unknown user.
     """
-    return _list_tokens(username)
+    return _list_tokens(username, page)
 
 
 @users_router.post(

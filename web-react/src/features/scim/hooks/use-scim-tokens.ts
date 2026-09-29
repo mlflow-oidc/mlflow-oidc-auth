@@ -1,15 +1,17 @@
-import { listScimTokens } from "../services/scim-token-service";
-import type { ScimToken } from "../../../shared/types/scim";
-import { useApi } from "../../../core/hooks/use-api";
+import { fetchScimTokensPage } from "../services/scim-token-service";
+import { usePagedList } from "../../../core/hooks/use-paged-list";
 
+/** One page of SCIM bearer tokens (server-side pagination). */
 export function useScimTokens() {
-  const { data, isLoading, error, refetch } =
-    useApi<ScimToken[]>(listScimTokens);
+  const { items, total, pagination, isLoading, error, refresh } =
+    usePagedList(fetchScimTokensPage);
 
   return {
-    tokens: data ?? [],
+    tokens: items,
+    total,
+    pagination,
     isLoading,
     error,
-    refresh: refetch,
+    refresh,
   };
 }

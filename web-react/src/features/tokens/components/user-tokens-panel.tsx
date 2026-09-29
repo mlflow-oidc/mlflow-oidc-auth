@@ -12,6 +12,7 @@ import { formatDateTime } from "../../../shared/utils/format-date-time";
 import { useUserTokens } from "../hooks/use-user-tokens";
 import {
   deleteUserToken,
+  listUserTokensPage,
   revokeAllUserTokens,
 } from "../services/user-token-service";
 import { CreateUserTokenModal } from "./create-user-token-modal";
@@ -112,7 +113,6 @@ const columns = (
  * A table of an account's API tokens with create, delete and (admin) revoke-all actions.
  */
 export function UserTokensPanel({ username }: UserTokensPanelProps) {
-  const { tokens, isLoading, error, refresh } = useUserTokens(username);
   const { showToast } = useToast();
   const {
     searchTerm,
@@ -121,6 +121,24 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
+  const { tokens, total, pagination, isLoading, error, refresh } =
+    useUserTokens(username, submittedTerm);
+
+  // "Revoke all" acts on every token, not just those matching the search, so
+  // it needs the unfiltered count: the last total seen without a search, and a
+  // fresh count after every change (the listed total is the filtered one then).
+  const [accountTokenCount, setAccountTokenCount] = useState(total);
+  if (!submittedTerm && !isLoading && !error && total !== accountTokenCount) {
+    setAccountTokenCount(total);
+  }
+  const refreshAccountTokenCount = useCallback(async () => {
+    try {
+      const { total: count } = await listUserTokensPage(username, { limit: 1 });
+      setAccountTokenCount(count);
+    } catch {
+      // Keep the last known count; the list itself reports the error.
+    }
+  }, [username]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deletingToken, setDeletingToken] = useState<UserToken | null>(null);
@@ -128,16 +146,14 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const isAdminView = username !== undefined;
-  const filteredTokens = tokens.filter((t) =>
-    t.name.toLowerCase().includes(submittedTerm.toLowerCase()),
-  );
 
   const handleCreated = useCallback(
     (token: UserTokenWithSecret) => {
       showToast(`Token "${token.name}" created`, "success");
       refresh();
+      void refreshAccountTokenCount();
     },
-    [refresh, showToast],
+    [refresh, refreshAccountTokenCount, showToast],
   );
 
   const handleConfirmDelete = useCallback(async () => {
@@ -158,8 +174,9 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
       setIsProcessing(false);
       setDeletingToken(null);
       refresh();
+      void refreshAccountTokenCount();
     }
-  }, [deletingToken, username, showToast, refresh]);
+  }, [deletingToken, username, showToast, refresh, refreshAccountTokenCount]);
 
   const handleConfirmRevokeAll = useCallback(async () => {
     if (username === undefined) return;
@@ -176,8 +193,9 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
       setIsProcessing(false);
       setIsRevokeAllOpen(false);
       refresh();
+      void refreshAccountTokenCount();
     }
-  }, [username, showToast, refresh]);
+  }, [username, showToast, refresh, refreshAccountTokenCount]);
 
   return (
     <>
@@ -210,9 +228,11 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
               <Button
                 variant="danger"
                 onClick={() => setIsRevokeAllOpen(true)}
-                disabled={tokens.length === 0}
+                disabled={accountTokenCount === 0}
                 title={
-                  tokens.length === 0 ? "This account has no tokens" : undefined
+                  accountTokenCount === 0
+                    ? "This account has no tokens"
+                    : undefined
                 }
                 icon={faBan}
                 className="whitespace-nowrap h-8 mb-1 mt-2 ml-auto"
@@ -223,7 +243,8 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
           </div>
 
           <EntityListTable
-            data={filteredTokens}
+            data={tokens}
+            pagination={pagination}
             columns={columns(setDeletingToken)}
             searchTerm={submittedTerm}
           />
@@ -257,7 +278,7 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
             void handleConfirmRevokeAll();
           }}
           username={username}
-          tokenCount={tokens.length}
+          tokenCount={accountTokenCount}
           isProcessing={isProcessing}
         />
       )}

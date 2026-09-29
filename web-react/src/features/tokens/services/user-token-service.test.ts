@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createUserToken,
   deleteUserToken,
-  listUserTokens,
   revokeAllUserTokens,
 } from "./user-token-service";
 import * as apiUtils from "../../../core/services/api-utils";
@@ -16,23 +15,6 @@ const request = vi.mocked(apiUtils.request);
 describe("user-token-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("lists the signed-in user's tokens", async () => {
-    request.mockResolvedValue({ tokens: [{ id: 1 }] });
-    await expect(listUserTokens(undefined)).resolves.toEqual([{ id: 1 }]);
-    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens", {
-      signal: undefined,
-    });
-  });
-
-  it("lists another user's tokens with the username encoded", async () => {
-    request.mockResolvedValue({});
-    await expect(listUserTokens("a/b@x.com")).resolves.toEqual([]);
-    expect(request).toHaveBeenCalledWith(
-      "/api/2.0/mlflow/users/a%2Fb%40x.com/tokens",
-      { signal: undefined },
-    );
   });
 
   it("creates a token with name and expiration", async () => {

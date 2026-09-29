@@ -1,4 +1,5 @@
-import { useAllGatewayEndpoints } from "../../core/hooks/use-all-gateway-endpoints";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchGatewayEndpointsPage } from "../../core/services/gateway-service";
 import { useSearch } from "../../core/hooks/use-search";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -6,7 +7,8 @@ import type { GatewayEndpointListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function AiEndpointsPage() {
   const {
@@ -17,38 +19,26 @@ export default function AiEndpointsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allGatewayEndpoints } =
-    useAllGatewayEndpoints();
-
-  const endpointsList = allGatewayEndpoints || [];
-
-  const filteredEndpoints = endpointsList.filter((endpoint) =>
-    endpoint.name.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchGatewayEndpointsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (endpoint: GatewayEndpointListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={endpoint.name}
-        route="/ai-gateway/ai-endpoints"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (endpoint: GatewayEndpointListItem) =>
+    buildEntityRoute("/ai-gateway/ai-endpoints", endpoint.name);
 
-  const columnsWithAction: ColumnConfig<GatewayEndpointListItem>[] = [
+  const columns: ColumnConfig<GatewayEndpointListItem>[] = [
     {
       header: "Endpoint Name",
-      render: (item) => item.name,
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
     {
       header: "Type",
       render: (item) => item.type,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
     },
   ];
 
@@ -74,8 +64,10 @@ export default function AiEndpointsPage() {
           </div>
 
           <EntityListTable
-            data={filteredEndpoints}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>

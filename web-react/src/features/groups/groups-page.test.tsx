@@ -1,12 +1,18 @@
 import React from "react";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi } from "vitest";
 import GroupsPage from "./groups-page";
 import type { GroupDetails } from "../../shared/types/entity";
+import {
+  fetchGroupDetailsPage,
+  fetchGroupsPage,
+} from "../../core/services/entity-service";
+import { pagedListState } from "../../tests/paged-list-mock";
 
 import type { Mock } from "vitest";
 
-const mockUseAllGroups: Mock<
+const mockLegacyGroups: Mock<
   () => {
     isLoading: boolean;
     error: Error | null;
@@ -15,7 +21,7 @@ const mockUseAllGroups: Mock<
   }
 > = vi.fn();
 
-const mockUseAllGroupDetails: Mock<
+const mockGroupDetails: Mock<
   () => {
     isLoading: boolean;
     error: Error | null;
@@ -37,12 +43,27 @@ const mockUseSearch: Mock<
 const mockUseUser: Mock<() => { currentUser: { is_admin: boolean } | null }> =
   vi.fn();
 
-vi.mock("../../core/hooks/use-all-groups", () => ({
-  useAllGroups: () => mockUseAllGroups(),
-}));
+// The page pages both lists through usePagedList; the mock routes by fetcher
+// and applies the search the way the server does.
+const mockUsePagedList = vi.fn((fetchPage: unknown, search: string = "") => {
+  const term = search.toLowerCase();
+  if (fetchPage === fetchGroupsPage) {
+    const { allGroups, ...rest } = mockLegacyGroups();
+    return pagedListState(
+      (allGroups ?? []).filter((g) => g.toLowerCase().includes(term)),
+      rest,
+    );
+  }
+  const { groups, ...rest } = mockGroupDetails();
+  return pagedListState(
+    groups.filter((g) => g.group_name.toLowerCase().includes(term)),
+    rest,
+  );
+});
 
-vi.mock("../../core/hooks/use-all-group-details", () => ({
-  useAllGroupDetails: () => mockUseAllGroupDetails(),
+vi.mock("../../core/hooks/use-paged-list", () => ({
+  usePagedList: (fetchPage: unknown, search?: string) =>
+    mockUsePagedList(fetchPage, search),
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
@@ -86,28 +107,42 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: <T extends { id: string }>({
+  EntityListTable: <T extends Record<string, unknown>>({
     data,
     columns,
+    getRowHref,
   }: {
     data: T[];
-    columns: { render: (item: T) => React.ReactNode }[];
+    columns: {
+      header: React.ReactNode;
+      render: (item: T) => React.ReactNode;
+    }[];
+    getRowHref?: (item: T) => string;
   }) => (
-    <div data-testid="entity-list">
-      {data.map((item) => (
-        <div key={item.id} data-testid={`row-${item.id}`}>
-          {columns.map((col, i) => (
-            // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
-            <span key={i}>{col.render(item)}</span>
-          ))}
-        </div>
-      ))}
-    </div>
+    <>
+      <div data-testid="entity-list-headers">
+        {columns.map((col, i) => (
+          // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+          <span key={i}>{col.header}</span>
+        ))}
+      </div>
+      <div data-testid="entity-list">
+        {data.map((item, rowIndex) => (
+          <div
+            // eslint-disable-next-line react-x/no-array-index-key -- test mock; rows are static per render
+            key={rowIndex}
+            data-testid="entity-row"
+            data-row-href={getRowHref?.(item)}
+          >
+            {columns.map((col, i) => (
+              // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+              <span key={i}>{col.render(item)}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
   ),
-}));
-
-vi.mock("../../shared/components/row-action-button", () => ({
-  RowActionButton: () => <button>Manage permissions</button>,
 }));
 
 const mockOnCreated = { current: (() => {}) as () => void };
@@ -126,6 +161,33 @@ vi.mock("./components/create-group-modal", () => ({
   },
 }));
 
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <GroupsPage />
+    </MemoryRouter>,
+  );
+
+const expectRowNavigation = (
+  container: HTMLElement,
+  expected: [name: string, href: string][],
+) => {
+  expected.forEach(([name, href]) => {
+    const link = screen.getByRole("link", { name });
+    expect(link).toHaveAttribute("href", href);
+    expect(link.closest('[data-testid="entity-row"]')).toHaveAttribute(
+      "data-row-href",
+      href,
+    );
+  });
+  const headers = screen.getByTestId("entity-list-headers");
+  expect(within(headers).queryByText("Permissions")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /manage permissions/i }),
+  ).not.toBeInTheDocument();
+  expect(container.querySelector(".invisible")).toBeNull();
+};
+
 describe("GroupsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -136,13 +198,13 @@ describe("GroupsPage", () => {
       handleSearchSubmit: vi.fn(),
       handleClearSearch: vi.fn(),
     });
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: [],
     });
-    mockUseAllGroupDetails.mockReturnValue({
+    mockGroupDetails.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -152,52 +214,52 @@ describe("GroupsPage", () => {
   });
 
   it("renders correctly with groups", () => {
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: ["group1", "group2"],
     });
 
-    render(<GroupsPage />);
+    renderPage();
 
     expect(screen.getByText("group1")).toBeInTheDocument();
     expect(screen.getByText("group2")).toBeInTheDocument();
   });
 
   it("renders loading state", () => {
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: true,
       error: null,
       refresh: vi.fn(),
       allGroups: [],
     });
 
-    render(<GroupsPage />);
+    renderPage();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
   it("renders error state", () => {
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: new Error("Failed to load"),
       refresh: vi.fn(),
       allGroups: [],
     });
 
-    render(<GroupsPage />);
+    renderPage();
     expect(screen.getByText("Error")).toBeInTheDocument();
   });
 
   it("renders empty state when no groups", () => {
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: [],
     });
 
-    render(<GroupsPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
     expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
   });
@@ -211,14 +273,15 @@ describe("GroupsPage", () => {
       handleClearSearch: vi.fn(),
     });
 
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: ["group1", "group2"],
     });
 
-    render(<GroupsPage />);
+    renderPage();
+    expect(mockUsePagedList).toHaveBeenCalledWith(fetchGroupsPage, "group1");
     expect(screen.getByText("group1")).toBeInTheDocument();
     expect(screen.queryByText("group2")).not.toBeInTheDocument();
   });
@@ -232,28 +295,47 @@ describe("GroupsPage", () => {
       handleClearSearch: vi.fn(),
     });
 
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: ["group1", "group2"],
     });
 
-    render(<GroupsPage />);
+    renderPage();
     expect(screen.queryByText("group1")).not.toBeInTheDocument();
     expect(screen.queryByText("group2")).not.toBeInTheDocument();
   });
 
   it("handles null allGroups", () => {
-    mockUseAllGroups.mockReturnValue({
+    mockLegacyGroups.mockReturnValue({
       isLoading: false,
       error: null,
       refresh: vi.fn(),
       allGroups: null,
     });
 
-    render(<GroupsPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
+
+  it("links each group name to its permissions page (non-admin)", () => {
+    mockLegacyGroups.mockReturnValue({
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+      allGroups: ["a b@x.com", "team/1"],
+    });
+
+    const { container } = renderPage();
+    expectRowNavigation(container, [
+      ["a b@x.com", "/groups/a b@x.com/experiments"],
+      ["team/1", "/groups/team%2F1/experiments"],
+    ]);
+
+    const link = screen.getByRole("link", { name: "team/1" });
+    link.focus();
+    expect(document.activeElement).toBe(link);
   });
 
   describe("admin", () => {
@@ -273,40 +355,44 @@ describe("GroupsPage", () => {
     };
 
     it("does not call the legacy string-list hook", () => {
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         groups: [manualGroup],
       });
 
-      render(<GroupsPage />);
-      expect(mockUseAllGroups).not.toHaveBeenCalled();
+      renderPage();
+      expect(mockUsePagedList).not.toHaveBeenCalledWith(
+        fetchGroupsPage,
+        expect.anything(),
+      );
+      expect(mockUsePagedList).toHaveBeenCalledWith(fetchGroupDetailsPage, "");
     });
 
     it("renders member count and Manual source badge", () => {
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         groups: [manualGroup],
       });
 
-      render(<GroupsPage />);
+      renderPage();
       expect(screen.getByText("data-team")).toBeInTheDocument();
       expect(screen.getByText("3")).toBeInTheDocument();
       expect(screen.getByText("Manual")).toBeInTheDocument();
     });
 
     it("renders SCIM source badge when external_id is set", () => {
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         groups: [scimGroup],
       });
 
-      render(<GroupsPage />);
+      renderPage();
       expect(screen.getByText("platform")).toBeInTheDocument();
       expect(screen.getByText("7")).toBeInTheDocument();
       expect(screen.getByText("SCIM")).toBeInTheDocument();
@@ -320,49 +406,76 @@ describe("GroupsPage", () => {
         handleSearchSubmit: vi.fn(),
         handleClearSearch: vi.fn(),
       });
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         groups: [manualGroup, scimGroup],
       });
 
-      render(<GroupsPage />);
+      renderPage();
+      expect(mockUsePagedList).toHaveBeenCalledWith(
+        fetchGroupDetailsPage,
+        "data",
+      );
       expect(screen.getByText("data-team")).toBeInTheDocument();
       expect(screen.queryByText("platform")).not.toBeInTheDocument();
     });
 
     it("opens the create-group modal from the Create group button", () => {
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh: vi.fn(),
         groups: [manualGroup],
       });
 
-      render(<GroupsPage />);
+      renderPage();
 
-      expect(screen.queryByTestId("create-group-modal")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("create-group-modal"),
+      ).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
       expect(screen.getByTestId("create-group-modal")).toBeInTheDocument();
     });
 
     it("refreshes the group list when a group is created", () => {
       const refresh = vi.fn();
-      mockUseAllGroupDetails.mockReturnValue({
+      mockGroupDetails.mockReturnValue({
         isLoading: false,
         error: null,
         refresh,
         groups: [manualGroup],
       });
 
-      render(<GroupsPage />);
+      renderPage();
       fireEvent.click(screen.getByRole("button", { name: "+ Create group" }));
       act(() => {
         mockOnCreated.current();
       });
 
       expect(refresh).toHaveBeenCalled();
+    });
+
+    it("links each group name to its permissions page", () => {
+      mockGroupDetails.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        groups: [
+          { ...manualGroup, group_name: "a b@x.com" },
+          { ...scimGroup, group_name: "team/1" },
+        ],
+      });
+
+      const { container } = renderPage();
+      expectRowNavigation(container, [
+        ["a b@x.com", "/groups/a b@x.com/experiments"],
+        ["team/1", "/groups/team%2F1/experiments"],
+      ]);
+      expect(
+        within(screen.getByTestId("entity-list-headers")).getByText("Source"),
+      ).toBeInTheDocument();
     });
   });
 });

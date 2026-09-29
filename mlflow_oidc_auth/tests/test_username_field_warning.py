@@ -189,5 +189,9 @@ class TestGroupNamePatternWarnings:
         warnings = _warn_for_groups(group_name=["mlflow"], admin_group_name=["mlflow-admin"], group_name_pattern=[pattern])
         assert any("admits every user" in w for w in warnings)
 
+    def test_the_warning_does_not_echo_the_configured_pattern(self):
+        warnings = _warn_for_groups(group_name=["mlflow"], admin_group_name=["mlflow-admin"], group_name_pattern=["?*"])
+        assert warnings and not any("?*" in w for w in warnings)
+
     def test_a_scoped_pattern_is_silent(self):
         assert _warn_for_groups(group_name=["mlflow"], admin_group_name=["mlflow-admin"], group_name_pattern=["mlflow-*"]) == []

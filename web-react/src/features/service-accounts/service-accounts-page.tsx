@@ -1,18 +1,23 @@
 import { useState } from "react";
 import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
-import { RowActionButton } from "../../shared/components/row-action-button";
 import { IconButton } from "../../shared/components/icon-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 import type { ColumnConfig } from "../../shared/types/table";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { useSearch } from "../../core/hooks/use-search";
-import { useAllServiceAccounts } from "../../core/hooks/use-all-accounts";
+import { usePagedList } from "../../core/hooks/use-paged-list";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
-import { createUser, deleteUser } from "../../core/services/user-service";
+import {
+  createUser,
+  deleteUser,
+  fetchServiceAccountsPage,
+} from "../../core/services/user-service";
 import { useToast } from "../../shared/components/toast/use-toast";
 
 export default function ServiceAccountsPage() {
@@ -25,16 +30,12 @@ export default function ServiceAccountsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allServiceAccounts } =
-    useAllServiceAccounts();
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchServiceAccountsPage,
+    submittedTerm,
+  );
   const { currentUser } = useCurrentUser();
   const { showToast } = useToast();
-
-  const serviceAccountsList = allServiceAccounts || [];
-
-  const filteredServiceAccounts = serviceAccountsList.filter((username) =>
-    username.toLowerCase().includes(submittedTerm.toLowerCase()),
-  );
 
   const handleCreateServiceAccount = async (data: {
     name: string;
@@ -70,33 +71,22 @@ export default function ServiceAccountsPage() {
 
   const isAdmin = currentUser?.is_admin === true;
 
-  const tableData = filteredServiceAccounts.map((username) => ({
+  const tableData = items.map((username) => ({
     id: username,
     username,
   }));
+
+  const serviceAccountHref = (username: string) =>
+    buildEntityRoute("/service-accounts", username, "/experiments");
 
   const columns: ColumnConfig<{ id: string; username: string }>[] = [
     {
       header: "Service Account Name",
       render: ({ username }) => (
-        <span className="truncate block" title={username}>
+        <EntityNameLink to={serviceAccountHref(username)} title={username}>
           {username}
-        </span>
+        </EntityNameLink>
       ),
-    },
-    {
-      header: "Permissions",
-      render: ({ username }) => (
-        <div className="invisible group-hover:visible">
-          <RowActionButton
-            entityId={username}
-            suffix="/experiments"
-            route="/service-accounts"
-            buttonText="Manage permissions"
-          />
-        </div>
-      ),
-      className: "w-48",
     },
     ...(isAdmin
       ? [
@@ -106,6 +96,7 @@ export default function ServiceAccountsPage() {
               <IconButton
                 icon={faTrash}
                 title="Remove service account"
+                muted
                 onClick={() => {
                   void handleRemoveServiceAccount(username);
                 }}
@@ -151,8 +142,10 @@ export default function ServiceAccountsPage() {
 
           <EntityListTable
             data={tableData}
+            pagination={pagination}
             columns={columns}
             searchTerm={submittedTerm}
+            getRowHref={({ username }) => serviceAccountHref(username)}
           />
 
           <CreateServiceAccountModal

@@ -1,12 +1,33 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import PromptsPage from "./prompts-page";
+import { MemoryRouter } from "react-router";
+import type { ReactNode } from "react";
+import { pagedListState } from "../../tests/paged-list-mock";
+import { fetchPromptsPage } from "../../core/services/entity-service";
 
 const mockUseAllPrompts = vi.fn();
 const mockUseSearch = vi.fn();
 
-vi.mock("../../core/hooks/use-all-prompts", () => ({
-  useAllPrompts: () => mockUseAllPrompts() as unknown,
+// The list the server would page through; usePagedList is mocked to search
+// it the way the server does and return it as a single page.
+const mockUsePagedList = vi.fn();
+vi.mock("../../core/hooks/use-paged-list", () => ({
+  usePagedList: (fetchPage: unknown, search = "") => {
+    mockUsePagedList(fetchPage, search);
+    const { allPrompts, isLoading, error, refresh } = mockUseAllPrompts() as {
+      allPrompts: { name: string }[] | null;
+      isLoading: boolean;
+      error: Error | null;
+      refresh: () => void;
+    };
+    return pagedListState(
+      (allPrompts ?? []).filter((item: { name: string }) =>
+        item.name.toLowerCase().includes(search.toLowerCase()),
+      ),
+      { isLoading, error, refresh },
+    );
+  },
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
@@ -46,18 +67,47 @@ vi.mock("../../shared/components/search-input", () => ({
 }));
 
 vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({ data }: { data: { name: string }[] }) => (
-    <div data-testid="entity-list">
-      {data.map((item) => (
-        <div key={item.name}>{item.name}</div>
-      ))}
-    </div>
+  EntityListTable: <T extends Record<string, unknown>>({
+    data,
+    columns,
+    getRowHref,
+  }: {
+    data: T[];
+    columns: { header: ReactNode; render: (item: T) => ReactNode }[];
+    getRowHref?: (item: T) => string;
+  }) => (
+    <>
+      <div data-testid="entity-list-headers">
+        {columns.map((col, i) => (
+          // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+          <span key={i}>{col.header}</span>
+        ))}
+      </div>
+      <div data-testid="entity-list">
+        {data.map((item, rowIndex) => (
+          <div
+            // eslint-disable-next-line react-x/no-array-index-key -- test mock; rows are static per render
+            key={rowIndex}
+            data-testid="entity-row"
+            data-row-href={getRowHref?.(item)}
+          >
+            {columns.map((col, i) => (
+              // eslint-disable-next-line react-x/no-array-index-key -- test mock; columns are static per render
+              <span key={i}>{col.render(item)}</span>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
   ),
 }));
 
-vi.mock("../../shared/components/row-action-button", () => ({
-  RowActionButton: () => <button>Manage permissions</button>,
-}));
+const renderPage = () =>
+  render(
+    <MemoryRouter>
+      <PromptsPage />
+    </MemoryRouter>,
+  );
 
 describe("PromptsPage", () => {
   beforeEach(() => {
@@ -84,7 +134,7 @@ describe("PromptsPage", () => {
       allPrompts: [{ name: "Prompt A" }, { name: "Prompt B" }],
     });
 
-    render(<PromptsPage />);
+    renderPage();
 
     expect(screen.getByText("Prompt A")).toBeInTheDocument();
     expect(screen.getByText("Prompt B")).toBeInTheDocument();
@@ -98,7 +148,7 @@ describe("PromptsPage", () => {
       allPrompts: [],
     });
 
-    render(<PromptsPage />);
+    renderPage();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
   });
 
@@ -110,7 +160,7 @@ describe("PromptsPage", () => {
       allPrompts: [],
     });
 
-    render(<PromptsPage />);
+    renderPage();
     expect(screen.getByText("Error")).toBeInTheDocument();
   });
 
@@ -122,7 +172,7 @@ describe("PromptsPage", () => {
       allPrompts: [],
     });
 
-    render(<PromptsPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
     expect(screen.getByTestId("entity-list")).toBeEmptyDOMElement();
   });
@@ -143,7 +193,8 @@ describe("PromptsPage", () => {
       allPrompts: [{ name: "Prompt A" }, { name: "Prompt B" }],
     });
 
-    render(<PromptsPage />);
+    renderPage();
+    expect(mockUsePagedList).toHaveBeenCalledWith(fetchPromptsPage, "Prompt A");
     expect(screen.getByText("Prompt A")).toBeInTheDocument();
     expect(screen.queryByText("Prompt B")).not.toBeInTheDocument();
   });
@@ -164,7 +215,7 @@ describe("PromptsPage", () => {
       allPrompts: [{ name: "Prompt A" }, { name: "Prompt B" }],
     });
 
-    render(<PromptsPage />);
+    renderPage();
     expect(screen.queryByText("Prompt A")).not.toBeInTheDocument();
     expect(screen.queryByText("Prompt B")).not.toBeInTheDocument();
   });
@@ -177,7 +228,55 @@ describe("PromptsPage", () => {
       allPrompts: null,
     });
 
-    render(<PromptsPage />);
+    renderPage();
     expect(screen.getByTestId("entity-list")).toBeInTheDocument();
+  });
+
+  describe("row navigation", () => {
+    beforeEach(() => {
+      mockUseAllPrompts.mockReturnValue({
+        isLoading: false,
+        error: null,
+        refresh: vi.fn(),
+        allPrompts: [{ name: "a b@x.com" }, { name: "team/1" }],
+      });
+    });
+
+    it("renders each name as a link to its permissions page", () => {
+      renderPage();
+      const link0 = screen.getByRole("link", { name: "a b@x.com" });
+      expect(link0).toHaveAttribute("href", "/prompts/a b@x.com");
+      const link1 = screen.getByRole("link", { name: "team/1" });
+      expect(link1).toHaveAttribute("href", "/prompts/team%2F1");
+    });
+
+    it("makes the whole row navigate to the same destination as the name link", () => {
+      renderPage();
+      const rows = screen.getAllByTestId("entity-row");
+      rows.forEach((row) => {
+        const link = within(row).getByRole("link");
+        expect(row).toHaveAttribute("data-row-href", link.getAttribute("href"));
+      });
+    });
+
+    it("has no Permissions column, Manage permissions button or hidden elements", () => {
+      const { container } = renderPage();
+      const headers = screen.getByTestId("entity-list-headers");
+      expect(
+        within(headers).queryByText("Permissions"),
+      ).not.toBeInTheDocument();
+      expect(within(headers).getByText("Name")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /manage permissions/i }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector(".invisible")).toBeNull();
+    });
+
+    it("keeps the name link keyboard focusable", () => {
+      renderPage();
+      const link = screen.getAllByRole("link")[0];
+      link.focus();
+      expect(document.activeElement).toBe(link);
+    });
   });
 });

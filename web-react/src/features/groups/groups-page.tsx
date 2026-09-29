@@ -1,29 +1,25 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { Button } from "../../shared/components/button";
 import { useSearch } from "../../core/hooks/use-search";
-import { useAllGroups } from "../../core/hooks/use-all-groups";
-import { useAllGroupDetails } from "../../core/hooks/use-all-group-details";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import {
+  fetchGroupDetailsPage,
+  fetchGroupsPage,
+} from "../../core/services/entity-service";
 import { useUser } from "../../core/hooks/use-user";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 import { LifecycleBadge } from "../../shared/components/lifecycle-badge";
 import { CreateGroupModal } from "./components/create-group-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { GroupDetails } from "../../shared/types/entity";
 
-const renderPermissionsButton = (groupName: string) => (
-  <div className="invisible group-hover:visible">
-    <RowActionButton
-      entityId={groupName}
-      suffix="/experiments"
-      route="/groups"
-      buttonText="Manage permissions"
-    />
-  </div>
-);
+const groupHref = (groupName: string) =>
+  buildEntityRoute("/groups", groupName, "/experiments");
 
 /**
  * Non-admin view: `GET /permissions/groups/details` is admin-only, so
@@ -39,32 +35,24 @@ function LegacyGroupsView() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allGroups } = useAllGroups();
-
-  const groupsList = allGroups || [];
-
-  const filteredGroups = groupsList.filter((group) =>
-    group.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchGroupsPage,
+    submittedTerm,
   );
 
-  const tableData = filteredGroups.map((group) => ({
+  const tableData = items.map((group) => ({
     id: group,
     groupName: group,
   }));
 
-  const columnsWithAction: ColumnConfig<{ id: string; groupName: string }>[] = [
+  const columns: ColumnConfig<{ id: string; groupName: string }>[] = [
     {
       header: "Group Name",
       render: ({ groupName }) => (
-        <span className="truncate block" title={groupName}>
+        <EntityNameLink to={groupHref(groupName)} title={groupName}>
           {groupName}
-        </span>
+        </EntityNameLink>
       ),
-    },
-    {
-      header: "Permissions",
-      render: ({ groupName }) => renderPermissionsButton(groupName),
-      className: "flex-shrink-0",
     },
   ];
 
@@ -91,8 +79,10 @@ function LegacyGroupsView() {
 
           <EntityListTable
             data={tableData}
+            pagination={pagination}
             searchTerm={submittedTerm}
-            columns={columnsWithAction}
+            columns={columns}
+            getRowHref={({ groupName }) => groupHref(groupName)}
           />
         </>
       )}
@@ -114,19 +104,17 @@ function AdminGroupsView() {
     handleClearSearch,
   } = useSearch();
 
-  const { groups, isLoading, error, refresh } = useAllGroupDetails();
+  const {
+    items: groups,
+    pagination,
+    isLoading,
+    error,
+    refresh,
+  } = usePagedList(fetchGroupDetailsPage, submittedTerm);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const filteredGroups = useMemo(
-    () =>
-      groups.filter((group) =>
-        group.group_name.toLowerCase().includes(submittedTerm.toLowerCase()),
-      ),
-    [groups, submittedTerm],
-  );
-
-  const tableData: GroupRow[] = filteredGroups.map((group) => ({
+  const tableData: GroupRow[] = groups.map((group) => ({
     ...group,
     id: group.group_name,
   }));
@@ -135,9 +123,12 @@ function AdminGroupsView() {
     {
       header: "Group Name",
       render: (group) => (
-        <span className="truncate block" title={group.group_name}>
+        <EntityNameLink
+          to={groupHref(group.group_name)}
+          title={group.group_name}
+        >
           {group.group_name}
-        </span>
+        </EntityNameLink>
       ),
     },
     {
@@ -154,11 +145,6 @@ function AdminGroupsView() {
           managedBy={group.external_id ? "scim" : "manual"}
         />
       ),
-    },
-    {
-      header: "Permissions",
-      render: (group) => renderPermissionsButton(group.group_name),
-      className: "flex-shrink-0",
     },
   ];
 
@@ -192,8 +178,10 @@ function AdminGroupsView() {
 
           <EntityListTable
             data={tableData}
+            pagination={pagination}
             searchTerm={submittedTerm}
             columns={columns}
+            getRowHref={(group) => groupHref(group.group_name)}
           />
         </>
       )}

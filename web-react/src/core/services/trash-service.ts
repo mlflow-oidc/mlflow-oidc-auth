@@ -1,5 +1,5 @@
-import { createStaticApiFetcher } from "./create-api-fetcher";
 import { request } from "./api-utils";
+import { createPagedFetcher } from "./paged-list";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -10,22 +10,22 @@ import type {
   DeletedRun,
 } from "../../shared/types/entity";
 
-export const fetchDeletedExperiments = createStaticApiFetcher<{
-  deleted_experiments: DeletedExperiment[];
-}>({
-  endpointKey: "TRASH_EXPERIMENTS",
-  responseType: { deleted_experiments: [] } as {
-    deleted_experiments: DeletedExperiment[];
-  },
+/** Paginated deleted experiments; searched on the experiment name. */
+export const fetchDeletedExperimentsPage = createPagedFetcher<
+  { deleted_experiments?: DeletedExperiment[] },
+  DeletedExperiment
+>(STATIC_API_ENDPOINTS.TRASH_EXPERIMENTS, {
+  extract: (body) => body?.deleted_experiments ?? [],
+  displayKey: (experiment) => experiment.name,
 });
 
-export const fetchDeletedRuns = createStaticApiFetcher<{
-  deleted_runs: DeletedRun[];
-}>({
-  endpointKey: "TRASH_RUNS",
-  responseType: { deleted_runs: [] } as {
-    deleted_runs: DeletedRun[];
-  },
+/** Paginated deleted runs; searched on the run name. */
+export const fetchDeletedRunsPage = createPagedFetcher<
+  { deleted_runs?: DeletedRun[] },
+  DeletedRun
+>(STATIC_API_ENDPOINTS.TRASH_RUNS, {
+  extract: (body) => body?.deleted_runs ?? [],
+  displayKey: (run) => run.run_name || "",
 });
 
 export const cleanupTrash = async (params: {

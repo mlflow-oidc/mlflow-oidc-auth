@@ -19,3 +19,19 @@ export const encodeRouteParam = (value: string): string => {
     .replace(/\?/g, "%3F")
     .replace(/#/g, "%23");
 };
+
+/**
+ * Builds the in-app path to an entity's detail page, e.g.
+ * `buildEntityRoute("/users", "a b@x.com", "/experiments")` →
+ * `/users/a b@x.com/experiments`. The entity id is passed through
+ * {@link encodeRouteParam} so ids containing `/`, `?`, `#` or `%` stay a
+ * single path segment.
+ */
+export const buildEntityRoute = (
+  route: string,
+  entityId: string,
+  suffix = "",
+): string => {
+  const normalizedRoute = route.replace(/^\/+/, "");
+  return `/${normalizedRoute}/${encodeRouteParam(entityId)}${suffix}`;
+};

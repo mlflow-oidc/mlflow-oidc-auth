@@ -1,4 +1,5 @@
-import { useAllGatewaySecrets } from "../../core/hooks/use-all-gateway-secrets";
+import { usePagedList } from "../../core/hooks/use-paged-list";
+import { fetchGatewaySecretsPage } from "../../core/services/gateway-service";
 import { useSearch } from "../../core/hooks/use-search";
 import { SearchInput } from "../../shared/components/search-input";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -6,7 +7,8 @@ import type { GatewaySecretListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 
 export default function AiSecretsPage() {
   const {
@@ -17,34 +19,22 @@ export default function AiSecretsPage() {
     handleClearSearch,
   } = useSearch();
 
-  const { isLoading, error, refresh, allGatewaySecrets } =
-    useAllGatewaySecrets();
-
-  const secretsList = allGatewaySecrets || [];
-
-  const filteredSecrets = secretsList.filter((secret) =>
-    secret.key.toLowerCase().includes(submittedTerm.toLowerCase()),
+  const { isLoading, error, refresh, items, pagination } = usePagedList(
+    fetchGatewaySecretsPage,
+    submittedTerm,
   );
 
-  const renderPermissionsButton = (secret: GatewaySecretListItem) => (
-    <div className="invisible group-hover:visible">
-      <RowActionButton
-        entityId={secret.key}
-        route="/ai-gateway/secrets"
-        buttonText="Manage permissions"
-      />
-    </div>
-  );
+  const getRowHref = (secret: GatewaySecretListItem) =>
+    buildEntityRoute("/ai-gateway/secrets", secret.key);
 
-  const columnsWithAction: ColumnConfig<GatewaySecretListItem>[] = [
+  const columns: ColumnConfig<GatewaySecretListItem>[] = [
     {
       header: "Secret Key",
-      render: (item) => item.key,
-    },
-    {
-      header: "Permissions",
-      render: (item) => renderPermissionsButton(item),
-      className: "flex-shrink-0",
+      render: (item) => (
+        <EntityNameLink to={getRowHref(item)} title={item.key}>
+          {item.key}
+        </EntityNameLink>
+      ),
     },
   ];
 
@@ -70,8 +60,10 @@ export default function AiSecretsPage() {
           </div>
 
           <EntityListTable
-            data={filteredSecrets}
-            columns={columnsWithAction}
+            getRowHref={getRowHref}
+            data={items}
+            pagination={pagination}
+            columns={columns}
             searchTerm={submittedTerm}
           />
         </>
