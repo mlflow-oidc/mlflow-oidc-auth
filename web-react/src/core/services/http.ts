@@ -34,6 +34,14 @@ export function _resetReauthForTests(): void {
  * ``<base href>`` (which is ``<basePath>/oidc/ui/``). Use the runtime
  * config's ``basePath`` to get the proxy prefix.
  */
+function sanitizeNextPath(next: string): string {
+  // Only allow same-origin relative app paths.
+  if (!next.startsWith("/")) return "/";
+  if (next.startsWith("//")) return "/";
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(next)) return "/";
+  return next;
+}
+
 function triggerReauth(): void {
   if (reauthTriggered) return;
   if (typeof window === "undefined") return;
@@ -45,7 +53,8 @@ function triggerReauth(): void {
   const basePath = (runtime?.basePath ?? "").replace(/\/$/, "");
   const next =
     window.location.pathname + window.location.search + window.location.hash;
-  const loginUrl = basePath + "/login?next=" + encodeURIComponent(next);
+  const safeNext = sanitizeNextPath(next);
+  const loginUrl = basePath + "/login?next=" + encodeURIComponent(safeNext);
   window.location.assign(loginUrl);
 }
 
