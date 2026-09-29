@@ -16,7 +16,8 @@ import { usePageSize } from "./use-page-size";
  * @param search - Submitted search term, sent to the server; empty means no filter.
  * @returns The current page's items, the total, loading state and the `pagination` prop for
  *   `EntityListTable`. `isLoading` is only true while nothing has been loaded yet, so previous
- *   rows stay on screen while the next page is fetched (`isFetching`).
+ *   rows stay on screen while the next page is fetched (`isFetching`). Check `isFetching` before
+ *   treating `total` as the answer for the current query.
  */
 export function usePagedList<T>(fetchPage: PagedFetcher<T>, search = "") {
   const { pageSize } = usePageSize();
@@ -38,7 +39,8 @@ export function usePagedList<T>(fetchPage: PagedFetcher<T>, search = "") {
     (signal?: AbortSignal) => fetchPage({ limit, offset, search }, signal),
     [fetchPage, limit, offset, search],
   );
-  const { data, isLoading, error, refetch } = useApi<PagedResult<T>>(fetcher);
+  const { data, isLoading, isStale, error, refetch } =
+    useApi<PagedResult<T>>(fetcher);
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const total = data?.total ?? 0;
@@ -49,6 +51,7 @@ export function usePagedList<T>(fetchPage: PagedFetcher<T>, search = "") {
   if (
     data &&
     !isLoading &&
+    !isStale &&
     limit !== undefined &&
     page > 1 &&
     data.items.length === 0
@@ -70,7 +73,9 @@ export function usePagedList<T>(fetchPage: PagedFetcher<T>, search = "") {
     setPage,
     pagination,
     isLoading: isLoading && data === null,
-    isFetching: isLoading,
+    // Also true on the render right after the query changed, before the
+    // effect has started the new request: `data` still belongs to the old one.
+    isFetching: isLoading || isStale,
     error,
     refresh: refetch,
   };

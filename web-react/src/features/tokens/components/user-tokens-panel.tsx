@@ -121,14 +121,16 @@ export function UserTokensPanel({ username }: UserTokensPanelProps) {
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
-  const { tokens, total, pagination, isLoading, error, refresh } =
+  const { tokens, total, pagination, isLoading, isFetching, error, refresh } =
     useUserTokens(username, submittedTerm);
 
   // "Revoke all" acts on every token, not just those matching the search, so
   // it needs the unfiltered count: the last total seen without a search, and a
   // fresh count after every change (the listed total is the filtered one then).
+  // Gated on isFetching, not isLoading: right after the search is cleared the
+  // list still holds the filtered page until the unfiltered one arrives.
   const [accountTokenCount, setAccountTokenCount] = useState(total);
-  if (!submittedTerm && !isLoading && !error && total !== accountTokenCount) {
+  if (!submittedTerm && !isFetching && !error && total !== accountTokenCount) {
     setAccountTokenCount(total);
   }
   const refreshAccountTokenCount = useCallback(async () => {
