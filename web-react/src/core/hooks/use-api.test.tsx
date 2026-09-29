@@ -102,6 +102,29 @@ describe("useApi", () => {
     expect(result.current.isStale).toBe(true);
   });
 
+  it("reports data from the previous workspace as stale", async () => {
+    vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
+      isAuthenticated: true,
+    });
+    const workspaceSpy = vi
+      .spyOn(useWorkspaceModule, "useSelectedWorkspace")
+      .mockReturnValue("ws1");
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce("ws1 data")
+      .mockImplementationOnce(() => new Promise<string>(() => {}));
+
+    const { result, rerender } = renderHook(() => useApi<string>(fetcher));
+    await waitFor(() => expect(result.current.data).toBe("ws1 data"));
+    expect(result.current.isStale).toBe(false);
+
+    // Same fetcher, new workspace: the data still belongs to ws1.
+    workspaceSpy.mockReturnValue("ws2");
+    rerender();
+    expect(result.current.data).toBe("ws1 data");
+    expect(result.current.isStale).toBe(true);
+  });
+
   it("re-fetches when workspace changes", async () => {
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
