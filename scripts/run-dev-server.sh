@@ -7,7 +7,12 @@ mlflow=""
 # signal reaches the uvicorn reloader and its worker too, not just the mlflow CLI.
 # SIGTERM first so uvicorn shuts down cleanly; SIGKILL only if it hangs.
 cleanup() {
-  trap - EXIT INT TERM
+  trap - EXIT INT TERM HUP
+  # Nothing in here may abort the stop: after a closed terminal (SIGHUP) every echo
+  # fails, and under set -e (or SIGPIPE on a closed pipe) that would exit before the
+  # server is signalled.
+  set +e
+  trap '' PIPE
   if [ -n "$mlflow" ] && kill -0 "$mlflow" 2>/dev/null; then
     echo "Stopping tracking server..."
     kill -TERM -- "-$mlflow" 2>/dev/null || true
@@ -77,11 +82,12 @@ wait_server_ready() {
   return 1
 }
 
-# Registered before anything starts: Ctrl-C, a failed health check (set -e) and
-# yarn exiting all end up in cleanup.
+# Registered before anything starts: Ctrl-C, a closed terminal, a failed health
+# check (set -e) and yarn exiting all end up in cleanup.
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 check_yarn_and_node_version
 python_preconfigure
