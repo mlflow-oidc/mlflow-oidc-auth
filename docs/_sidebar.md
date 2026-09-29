@@ -13,5 +13,6 @@
 - [Admin UI](admin-ui)
 - [API Reference](api-reference)
 - [Development and Contribution](development)
+- [Troubleshooting](troubleshooting)
 - [Performance Baseline](performance-baseline)
 - [Agentic Development](agentic-development)

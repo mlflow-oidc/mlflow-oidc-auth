@@ -105,6 +105,7 @@ Authentication context flows from FastAPI middleware through an ASGI-to-WSGI bri
 | [SAML Authentication](saml-auth) | SAML 2.0 identity providers |
 | [SCIM Provisioning](scim) | Directory-driven users and groups |
 | [Programmatic Access](programmatic-access) | Which credential to use for automation and for interactive work |
+| [Troubleshooting](troubleshooting) | Login failures at the callback, Microsoft Entra ID setup |
 | [Kubernetes Service Accounts](kubernetes-auth) | Authenticating workloads with their service-account tokens |
 | [Permissions](permissions) | Permission system, hierarchy, and resolution |
 | [Workspaces](workspaces) | Multi-tenant workspace isolation |
