@@ -153,8 +153,8 @@ class TestPermissions(unittest.TestCase):
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_manage_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
-        """Test registered model management permission checking."""
+    def test_can_manage_registered_model_true(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (true case)."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
@@ -170,7 +170,11 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
 
-            flush_permission_cache()  # Clear cache before re-testing with different mock
+    @patch("mlflow_oidc_auth.utils.permissions.store")
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_can_manage_registered_model_false(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (false case)."""
+        with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
