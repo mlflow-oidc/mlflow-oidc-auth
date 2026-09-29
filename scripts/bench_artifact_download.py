@@ -36,6 +36,7 @@ server's download temp file — keep ``--size-mb`` well below the free disk.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -112,8 +113,9 @@ def _start_server(name: str, port: int, workdir: Path, env: Dict[str, str], dest
     ]
     if plugin:
         cmd[4:4] = ["--app-name", "oidc-auth"]
-    log = open(workdir / f"{name}.log", "wb")  # noqa: SIM115 - closed with the process
-    return subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    # The child gets its own copy of the descriptor, so the parent's can close once it has started.
+    with open(workdir / f"{name}.log", "wb") as log:
+        return subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 
 
 def _wait_healthy(port: int, proc: subprocess.Popen, log: Path, timeout: float = 120) -> None:
@@ -123,11 +125,10 @@ def _wait_healthy(port: int, proc: subprocess.Popen, log: Path, timeout: float =
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             raise RuntimeError(f"server on :{port} exited; see {log}:\n{log.read_text()[-2000:]}")
-        try:
+        # Refused connections are expected until the server binds its port.
+        with contextlib.suppress(requests.RequestException):
             if requests.get(f"http://127.0.0.1:{port}/health", timeout=2).status_code == 200:
                 return
-        except requests.RequestException:
-            pass
         time.sleep(1)
     raise RuntimeError(f"server on :{port} did not become healthy in {timeout}s; see {log}")
 
@@ -226,7 +227,7 @@ def _report(results: Dict[str, Dict[str, List[float]]], args) -> str:
     rows = [
         ("curl", f"GET {args.size_mb} MiB"),
         ("large", f"client, {args.size_mb} MiB"),
-        ("small", f"client, {args.small_files} x {args.small_kb} KB"),
+        ("small", f"client, {args.small_files} x {args.small_kb} KiB"),
         ("concurrent", f"{args.concurrency} parallel GETs"),
     ]
     lines = [
@@ -302,10 +303,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
     finally:
         for proc in procs:
-            try:
+            # A server that already exited has no process group left to signal.
+            with contextlib.suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
         for proc in procs:
             try:
                 proc.wait(timeout=30)
