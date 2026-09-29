@@ -242,7 +242,7 @@ describe("http", () => {
       );
     });
 
-    it("falls back to / when the path would leave the origin", async () => {
+    it("omits ?next= when the path would leave the origin", async () => {
       Object.defineProperty(window, "location", {
         configurable: true,
         value: {
@@ -263,9 +263,7 @@ describe("http", () => {
       } as Response);
 
       await expect(http("/api/users")).rejects.toThrow("HTTP 401");
-      expect(assignSpy).toHaveBeenCalledWith(
-        "/login?next=" + encodeURIComponent("/"),
-      );
+      expect(assignSpy).toHaveBeenCalledWith("/login");
     });
 
     it("preserves search and hash in ?next=", async () => {
