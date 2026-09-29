@@ -28,7 +28,6 @@ from mlflow_oidc_auth.utils.permissions import (
     PERMISSION_REGISTRY,
     _build_experiment_sources,
     _build_prompt_sources,
-    flush_permission_cache,
     _build_registered_model_sources,
     _get_experiment_group_permission_from_regex,
     _get_experiment_permission_from_regex,
@@ -120,7 +119,7 @@ class TestPermissions(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
     def test_can_manage_experiment(self, mock_get_permission_from_store_or_default, mock_store):
-        """Test experiment management permission checking."""
+        """Test experiment management permission checking when access is granted."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
@@ -136,7 +135,11 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_experiment("exp_id", "user"))
 
-            flush_permission_cache()  # Clear cache before re-testing with different mock
+    @patch("mlflow_oidc_auth.utils.permissions.store")
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_cannot_manage_experiment(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test experiment management permission checking when access is denied."""
+        with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -150,11 +153,13 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_experiment("exp_id", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_manage_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
-        """Test registered model management permission checking."""
+    def test_can_manage_registered_model_true(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (true case)."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
@@ -170,7 +175,11 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
 
-            flush_permission_cache()  # Clear cache before re-testing with different mock
+    @patch("mlflow_oidc_auth.utils.permissions.store")
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_can_manage_registered_model_false(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (false case)."""
+        with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -184,6 +193,8 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_registered_model("model_name", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
