@@ -266,6 +266,59 @@ describe("http", () => {
       expect(assignSpy).toHaveBeenCalledWith("/login");
     });
 
+    it("omits ?next= when the query holds a backslash", async () => {
+      // Browsers turn a backslash into "/" in the path but leave it as-is in the
+      // query and fragment, where the backend's _sanitize_next rejects it.
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "/oidc/ui/users",
+          search: "?filter=a\\b",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith("/login");
+    });
+
+    it("keeps the proxy prefix when it omits ?next=", async () => {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
+        basePath: "/proxy/path",
+      };
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "//evil.example/users",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith("/proxy/path/login");
+    });
+
     it("preserves search and hash in ?next=", async () => {
       Object.defineProperty(window, "location", {
         configurable: true,
