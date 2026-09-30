@@ -16,11 +16,13 @@ With workspaces disabled every resource lives in the default workspace, so every
 * the ``default`` workspace is the exception: it holds the resources from before workspaces were
   enabled, which those grants were made for, so a grant on a name found there is kept there even
   when the grantee has no workspace permission of its own;
-* no such workspace → left unassigned and reported;
-* it exists nowhere (the resource was deleted) → left unassigned and reported.
+* no such workspace, or the name exists nowhere (the resource was deleted) → marked unresolved
+  (:data:`~mlflow_oidc_auth.utils.grant_workspace.UNRESOLVED_WORKSPACE`) and reported.
 
-An unassigned grant matches nothing while workspaces are enabled, so nothing is widened; an
-administrator can re-grant it in the right workspace. Where a grant for the same workspace,
+An unresolved grant matches nothing and is never placed later: a resource created afterwards —
+in ``default`` or anywhere else — does not pick it up. An administrator can re-grant it in the
+right workspace and delete the unresolved row. If MLflow's resources cannot be read at all, nothing
+is marked and the next start tries again. Where a grant for the same workspace,
 resource and principal already exists, the explicit one is kept and the legacy row dropped.
 
 Never raises: a failure is logged, and the unassigned grants stay inert until the next start.
@@ -34,6 +36,7 @@ from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE
 
 logger = get_logger()
 
@@ -193,6 +196,7 @@ def _backfill(store) -> BackfillReport:
                     if not targets:
                         reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspace(s), grantee reaches none"
                         report.unresolved[table].append(f"{name} ({reason})")
+                        row.workspace = UNRESOLVED_WORKSPACE
                         continue
                 _place(session, model, row, resource_col, principal_col, targets, report, table)
             session.flush()
@@ -243,8 +247,8 @@ def _log(report: BackfillReport, workspaces_enabled: bool) -> None:
         logger.info("Grant workspace backfill: %d grant(s) assigned, %d copied to further workspaces, %d merged into existing grants", assigned, copied, merged)
     if report.unresolved_count:
         logger.warning(
-            "Grant workspace backfill: %d grant(s) could not be assigned a workspace and match nothing while workspaces are enabled; "
-            "re-grant them in the right workspace. %s",
+            "Grant workspace backfill: %d grant(s) could not be assigned a workspace; they are marked unresolved and match nothing. "
+            "Re-grant them in the right workspace. %s",
             report.unresolved_count,
             "; ".join(f"{table}: {', '.join(items[:10])}{' …' if len(items) > 10 else ''}" for table, items in report.unresolved.items()),
         )

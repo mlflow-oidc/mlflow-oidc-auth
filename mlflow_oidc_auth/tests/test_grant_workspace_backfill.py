@@ -9,6 +9,7 @@ import pytest
 import mlflow_oidc_auth.store as store_module
 from mlflow_oidc_auth import audit, grant_workspace_backfill
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE as UNRESOLVED
 
 ALICE = "alice@example.com"
 BOB = "bob@example.com"
@@ -116,7 +117,7 @@ class TestWorkspacesEnabled:
         with resources(registered_model={"churn": {"team-b"}}):
             report = grant_workspace_backfill.backfill_grant_workspaces(store)
 
-        assert rows(store, "SqlRegisteredModelPermission") == [("churn", None, "MANAGE")]
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", UNRESOLVED, "MANAGE")]
         assert report.unresolved_count == 1
 
     def test_the_default_workspace_keeps_grants_made_before_workspaces(self, store):
@@ -146,12 +147,12 @@ class TestWorkspacesEnabled:
         assert sum(report.assigned.values()) == 1 and sum(report.copied.values()) == 1
 
     @pytest.mark.parametrize("found", [set(), {"team-a", "team-b"}], ids=["deleted", "ambiguous"])
-    def test_an_unresolvable_grant_stays_inert_and_is_reported(self, store, audit_events, found):
+    def test_an_unresolvable_grant_is_marked_and_reported(self, store, audit_events, found):
         legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
         with resources(registered_model={"churn": found} if found else {}):
             report = grant_workspace_backfill.backfill_grant_workspaces(store)
 
-        assert rows(store, "SqlRegisteredModelPermission") == [("churn", None, "EDIT")]
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", UNRESOLVED, "EDIT")]
         assert report.unresolved_count == 1
         [event] = [e for e in audit_events if e["event"] == "permission.workspace_unresolved"]
         assert event["resource_type"] == "registered_model_permissions" and event["detail"]["count"] == 1
@@ -172,6 +173,30 @@ class TestWorkspacesEnabled:
 
         assert rows(store, "SqlRegisteredModelPermission") == [("churn", "team-a", "READ")]
         assert sum(report.merged.values()) == 1
+
+    def test_an_unresolved_grant_is_never_placed_later(self, store):
+        """A same-named resource created after the first run — here in default — must not pick up
+        the grant, even though a default-workspace name is otherwise kept without a reach check."""
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
+        with resources(registered_model={}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+        with resources(registered_model={"churn": {"default"}}):
+            report = grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", UNRESOLVED, "MANAGE")]
+        assert sum(report.assigned.values()) == 0
+
+    def test_an_unresolved_grant_does_not_count_with_workspaces_off_either(self, store, monkeypatch):
+        from mlflow_oidc_auth.utils import effective_registered_model_permission, permissions
+
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
+        with resources(registered_model={}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        permissions._get_permission_cache().clear()
+
+        assert effective_registered_model_permission("churn", ALICE).permission.name == "NO_PERMISSIONS"
 
     def test_unreadable_mlflow_changes_nothing(self, store):
         legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)

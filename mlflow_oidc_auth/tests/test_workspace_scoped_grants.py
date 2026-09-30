@@ -295,11 +295,8 @@ def api(store, monkeypatch):
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from starlette.middleware.sessions import SessionMiddleware
 
     from mlflow_oidc_auth.exceptions import register_exception_handlers
-    from mlflow_oidc_auth.middleware import AuthMiddleware
-    from mlflow_oidc_auth.middleware.workspace_context_middleware import WorkspaceContextMiddleware
     from mlflow_oidc_auth.routers.registered_model_permissions import registered_model_permissions_router
     from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
     from mlflow_oidc_auth.tests.scim.conftest import basic
@@ -313,13 +310,14 @@ def api(store, monkeypatch):
         "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
         lambda path, header: SimpleNamespace(name=(header or "").strip() or "default"),
     )
+    from mlflow_oidc_auth.app import add_middleware_stack
+
     app = FastAPI()
     register_exception_handlers(app)
     app.include_router(user_permissions_router)
     app.include_router(registered_model_permissions_router)
-    app.add_middleware(AuthMiddleware)
-    app.add_middleware(WorkspaceContextMiddleware)
-    app.add_middleware(SessionMiddleware, secret_key="test-secret-not-a-credential")
+    # The production order: Proxy -> Session -> WorkspaceContext -> Auth -> Permission.
+    add_middleware_stack(app)
     return SimpleNamespace(
         admin=TestClient(app, headers=basic(ADMIN, ADMIN_PASSWORD)),
         alice=TestClient(app, headers=basic(ALICE, ALICE_PASSWORD)),

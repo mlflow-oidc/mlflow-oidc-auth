@@ -76,7 +76,7 @@ start, before the server takes requests:
 |---|---|
 | Disabled | It is assigned `default`. |
 | Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ`. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there even without a workspace permission. |
-| Enabled, no such workspace, or the resource no longer exists | It stays unassigned, **matches nothing**, and is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
+| Enabled, no such workspace, or the resource no longer exists | It is marked **unresolved**: it matches nothing — with workspaces disabled too — and is never placed later, so a resource created afterwards does not pick it up. It is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
 
 An old grant reached every workspace's resource of its name — including ones another tenant created
 later — so a workspace's resource keeps it only where the grantee could already reach that
@@ -84,7 +84,14 @@ workspace. Where a grant for the same workspace, resource and principal already 
 existing one is kept.
 
 Deleting a workspace now also removes the grants on its models, prompts and gateway resources, so a
-workspace created later under the same name starts without them.
+workspace created later under the same name starts without them. When MLflow moves a deleted
+workspace's resources to `default` instead of deleting them, those resources arrive without grants
+and only administrators can manage them until they are granted again.
+
+A grant on a single model, prompt or gateway resource applies to its holder whether or not they
+have a permission on the workspace itself — that is how one resource is shared with someone outside
+the workspace. Removing someone's workspace permission does not remove such grants; revoke them on
+the resource.
 
 **Upgrade all replicas together.** While a replica on an older release writes grants, it writes them
 without a workspace; a request touching such a grant can fail until the next restart assigns it.

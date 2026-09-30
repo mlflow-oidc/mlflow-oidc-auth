@@ -17,10 +17,16 @@ before the column existed carry no workspace and match nothing until
 """
 
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
-from sqlalchemy import true
+from sqlalchemy import or_
 from sqlalchemy.sql.elements import ColumnElement
 
 from mlflow_oidc_auth.config import config
+
+#: Recorded by the startup backfill on a legacy grant it could not place in a workspace. MLflow's
+#: workspace names cannot contain ":", so it never equals a real workspace: the grant matches
+#: nothing — with workspaces disabled too — and the backfill does not try to place it again, so a
+#: resource created later can never pick it up.
+UNRESOLVED_WORKSPACE = "::unresolved"
 
 
 def current_grant_workspace() -> str:
@@ -53,15 +59,15 @@ def current_grant_workspace() -> str:
 def grant_workspace_condition(column) -> ColumnElement:
     """A filter on a grant table's ``workspace`` column for the current request.
 
-    With workspaces disabled the condition is always true: nothing is filtered, as before the
-    column existed. With workspaces enabled it matches only the request's grant workspace, so a
-    grant without a workspace matches nothing.
+    With workspaces disabled nothing is filtered, as before the column existed — except grants the
+    backfill marked unresolved. With workspaces enabled it matches only the request's grant
+    workspace, so a grant without a workspace matches nothing.
 
     Parameters:
         column: The grant model's ``workspace`` column.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
-        return true()
+        return or_(column.is_(None), column != UNRESOLVED_WORKSPACE)
     return column == current_grant_workspace()
 
 
@@ -71,6 +77,7 @@ def in_grant_workspace(grant) -> bool:
     For code that reads grants through a user's ORM relationships rather than a scoped query.
     Always true with workspaces disabled.
     """
+    workspace = getattr(grant, "workspace", None)
     if not config.MLFLOW_ENABLE_WORKSPACES:
-        return True
-    return getattr(grant, "workspace", None) == current_grant_workspace()
+        return workspace != UNRESOLVED_WORKSPACE
+    return workspace == current_grant_workspace()

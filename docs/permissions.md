@@ -416,7 +416,7 @@ workspace keeps its grants. See [Workspaces → Grants on models, prompts and ga
 
 ## Gateway Permissions
 
-AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order.
+AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order; a user's group grant is the most permissive grant any of their groups holds on the resource.
 
 Gateway permissions are managed through:
 - **Admin UI**: The gateway section (when `OIDC_GEN_AI_GATEWAY_ENABLED=true`)
