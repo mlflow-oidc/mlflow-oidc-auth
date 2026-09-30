@@ -312,6 +312,133 @@ responses list what enforcing it would grant, update, keep, skip or remove. Swit
 once the list is what you expect. `POST /api/3.0/mlflow/workspace-rules/preview` shows the same for
 a rule that is not saved yet, or — with `rule_id` — for unsaved changes to an existing rule.
 
+### Examples
+
+Each example shows the rule, then what it does to groups that exist or arrive. The workspaces
+`acme`, `globex` and `initech` exist; `umbrella` does not.
+
+#### One rule for every tenant
+
+Every tenant's data-science group follows one naming convention:
+
+```
+Name:        tenant data scientists
+Pattern:     ^team-(?P<ws>[a-z0-9-]+)-ds$
+Permission:  EDIT
+Mode:        enforce
+```
+
+| Group | Result |
+|---|---|
+| `team-acme-ds` | `EDIT` on `acme` |
+| `team-globex-ds` | `EDIT` on `globex` |
+| `team-umbrella-ds` | skip: workspace does not exist — granted automatically once the workspace is created and the rule is saved again |
+| `team-default-ds` | skip: the default workspace is never granted by a rule |
+| `team-acme-ds-old` | no match — the whole name must match |
+| `partner:team-acme-ds` | no match — a partner provider's group carries its prefix |
+
+Onboarding a new tenant is now: create the workspace, create `team-<tenant>-ds` in the identity
+provider. The group gets `EDIT` the moment SCIM, an admin or a member's first login brings it in.
+
+#### Different access for different groups of a tenant
+
+Two rules, one per suffix. They never compete, because no group matches both:
+
+```
+Name:        tenant engineers      Pattern: ^team-(?P<ws>[a-z0-9-]+)-eng$      Permission: EDIT
+Name:        tenant viewers        Pattern: ^team-(?P<ws>[a-z0-9-]+)-viewers$  Permission: READ
+```
+
+`team-acme-eng` gets `EDIT` on `acme`; `team-acme-viewers` gets `READ` on `acme`. A member of both
+groups gets the higher of the two, as with any group grant.
+
+#### Only the tenants you name
+
+A pattern that captures any name trusts whoever can create groups in the directory. To admit only
+known tenants, list them in the workspace group:
+
+```
+Pattern:     ^team-(?P<ws>acme|globex)-ds$
+```
+
+`team-acme-ds` and `team-globex-ds` match; `team-initech-ds` does not, even though `initech` exists.
+Add a tenant by editing the pattern — saving it backfills the new tenant's group.
+
+#### A partner identity provider
+
+Groups from a provider other than `default` are stored as `<provider-id>:<name>`. A rule for them
+names that prefix, so it can never match your own groups, and yours never match theirs:
+
+```
+Name:        partner analysts
+Pattern:     ^partner:analysts-(?P<ws>[a-z0-9-]+)$
+Permission:  READ
+```
+
+`partner:analysts-acme` gets `READ` on `acme`. A group called `analysts-acme` from your own provider
+does not match this rule.
+
+#### Overlapping rules
+
+```
+Rule 1   Pattern: ^team-(?P<ws>[a-z0-9-]+)-ds$            Permission: READ
+Rule 2   Pattern: ^team-(?P<ws>[a-z0-9-]+)-(ds|ml)$       Permission: EDIT
+```
+
+| Group | Result |
+|---|---|
+| `team-acme-ds` | `READ` from rule 1; rule 2 reports `shadowed` (the lowest id wins) |
+| `team-acme-ml` | `EDIT` from rule 2 — rule 1 does not match it |
+
+Delete or disable rule 1 and rule 2 takes `team-acme-ds` over with `EDIT`. To give one group more
+than a broad rule does, a narrower rule is not enough when the broad one is older — give that group
+a manual grant instead, which no rule ever overrides.
+
+#### A single group
+
+The rule builder in the admin UI writes this for one group and its workspace:
+
+```
+Pattern:     ^team-(?P<ws>acme)-ds$
+```
+
+It matches `team-acme-ds` and nothing else. The workspace part is still a named group, because a rule
+always takes the workspace from the group's name.
+
+#### What a rule cannot do
+
+| You want | Why a rule cannot | Instead |
+|---|---|---|
+| `data-scientists` → `acme` | The group name does not contain the workspace name, so there is nothing for `(?P<ws>...)` to capture | Grant the group on the workspace's page |
+| Anyone → the `default` workspace | Rules never grant it | Grant it by hand |
+| A workspace created on demand | Rules never create workspaces | Create the workspace; save the rule again to backfill |
+| `MANAGE` | Above the default ceiling | Raise `WORKSPACE_RULES_MAX_PERMISSION` — and read the startup warning |
+
+#### Rolling a rule out through the API
+
+Create it in `report` mode, read what it would do, then enforce it:
+
+```bash
+MLFLOW=https://mlflow.example.com
+AUTH="-u admin@example.com:$ADMIN_TOKEN"
+
+# 1. Create in report mode (the default): nothing is written, the response lists the plan.
+curl $AUTH -X POST "$MLFLOW/api/3.0/mlflow/workspace-rules" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "tenant data scientists", "pattern": "^team-(?P<ws>[a-z0-9-]+)-ds$", "permission": "EDIT"}'
+
+# 2. Preview it again later, against the groups that exist by then.
+curl $AUTH "$MLFLOW/api/3.0/mlflow/workspace-rules/1/preview"
+
+# 3. Enforce it: the response lists every grant written.
+curl $AUTH -X PATCH "$MLFLOW/api/3.0/mlflow/workspace-rules/1" \
+  -H "Content-Type: application/json" -d '{"mode": "enforce"}'
+```
+
+A plan line looks like
+`{"action": "grant", "group": "team-acme-ds", "workspace": "acme", "permission": "EDIT", "applied": true, ...}`;
+see the [API reference](api-reference#workspace-group-rules-admin-only) for every field.
+
 ### Audit
 
 | Event | When |

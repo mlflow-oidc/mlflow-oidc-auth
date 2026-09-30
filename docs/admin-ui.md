@@ -197,6 +197,14 @@ non-admin and answers `404` while workspaces are off.
   name — so for any other pair the builder says so: grant that group on the workspace's page
   instead. The default workspace is not offered. The built pattern can still be edited and
   previewed before saving.
+
+  | Group | Workspace | Every group of the same shape | Pattern written |
+  |---|---|---|---|
+  | `team-acme-ds` | `acme` | off | `^team-(?P<ws>acme)-ds$` — that group only |
+  | `team-acme-ds` | `acme` | on | `^team-(?P<ws>[a-z0-9-]+)-ds$` — `team-globex-ds`, … too |
+  | `partner:ml-acme` | `acme` | on | `^partner:ml-(?P<ws>[a-z0-9-]+)$` — the partner's `ml-*` groups |
+  | `acme` | `acme` | off | `^(?P<ws>acme)$` |
+  | `data-scientists` | `acme` | — | not built: grant the group on `acme`'s page instead |
 - **Preview**: lists each existing group the pattern matches, its target workspace, and what
   enforcing the rule would do — grant, update, unchanged, remove, skip (with the reason, such as a
   manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A new

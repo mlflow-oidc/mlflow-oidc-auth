@@ -25,6 +25,17 @@ describe("buildRulePattern", () => {
     );
   });
 
+  it("matches the examples in docs/admin-ui.md", () => {
+    const pattern = (group: string, workspace: string, every: boolean) => {
+      const built = buildRulePattern(group, workspace, every);
+      return built.ok ? built.pattern : null;
+    };
+    expect(pattern("partner:ml-acme", "acme", true)).toBe(
+      "^partner:ml-(?P<ws>[a-z0-9-]+)$",
+    );
+    expect(pattern("acme", "acme", false)).toBe("^(?P<ws>acme)$");
+  });
+
   it("prefers an occurrence delimited by separators", () => {
     const built = buildRulePattern("teamacme-acme", "acme", false);
     expect(built).toEqual(
