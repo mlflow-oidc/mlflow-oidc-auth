@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import request
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, request_body_dict
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_run_experiment_id, request_body_dict
 
 # ---------------------------------------------------------------------------
 # Dual-spelling extraction (security-critical)
@@ -164,7 +164,7 @@ def validate_can_update_trace_from_run_id(username: str) -> bool:
     store = _get_tracking_store()
     for run_id in run_ids:
         try:
-            experiment_id = store.get_run(run_id).info.experiment_id
+            experiment_id = get_run_experiment_id(store, run_id)
         except Exception:
             return False
         if not effective_experiment_permission(experiment_id, username).permission.can_update:

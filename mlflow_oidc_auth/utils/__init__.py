@@ -18,6 +18,7 @@ from .data_fetching import (
     fetch_all_gateway_endpoints,
     fetch_all_gateway_secrets,
     fetch_all_gateway_model_definitions,
+    get_run_experiment_id,
 )
 
 from .permissions import (
@@ -94,6 +95,7 @@ __all__ = [
     "fetch_all_gateway_endpoints",
     "fetch_all_gateway_secrets",
     "fetch_all_gateway_model_definitions",
+    "get_run_experiment_id",
     # Permissions
     "effective_experiment_permission",
     "effective_new_experiment_permission",

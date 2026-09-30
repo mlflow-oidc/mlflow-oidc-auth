@@ -26,7 +26,7 @@ from typing import Any
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import effective_scorer_permission
+from mlflow_oidc_auth.utils import effective_scorer_permission, get_run_experiment_id
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators._model_uri import is_gateway_provider, split_model_uri
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments, trace_ids_permission
@@ -73,7 +73,7 @@ def _update_on_traces(trace_ids: Any, username: str) -> None:
 def _update_on_run(run_id: Any, username: str) -> None:
     run_id = _id(run_id)
     try:
-        experiment_id = _get_tracking_store().get_run(run_id).info.experiment_id
+        experiment_id = get_run_experiment_id(_get_tracking_store(), run_id)
     except Exception:
         raise _Unauthorized
     _require(permission_on_all_experiments([experiment_id], username).can_update)

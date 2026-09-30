@@ -13,12 +13,15 @@ Key Features:
 - Gateway endpoint fetching from MLflow's unified gateway
 """
 
+import inspect
 from typing import Any, Dict, List, Optional
 
 from mlflow.entities import Experiment
 from mlflow.entities.model_registry import RegisteredModel
 from mlflow.server.handlers import _get_model_registry_store, _get_tracking_store
 from mlflow.store.entities.paged_list import PagedList
+from mlflow.store.tracking.abstract_store import AbstractStore
+from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 
 from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model, effective_experiment_permission
 
@@ -342,3 +345,49 @@ def fetch_all_gateway_model_definitions() -> List[Dict[str, Any]]:
             all_models.append(model)
 
     return all_models
+
+
+def _has_run_row_lookup() -> bool:
+    """Whether MLflow's SQL store still has ``_get_run(session, run_uuid)``.
+
+    ``get_run`` is built on this private method. If an MLflow release changes it,
+    ``get_run_experiment_id`` falls back to ``get_run``: checks get slower, not broken.
+    """
+    lookup = getattr(SqlAlchemyStore, "_get_run", None)
+    return lookup is not None and {"session", "run_uuid"} <= set(inspect.signature(lookup).parameters)
+
+
+_RUN_ROW_LOOKUP = _has_run_row_lookup()
+
+
+def get_run_experiment_id(tracking_store: AbstractStore, run_id: str) -> str:
+    """
+    Return the id of the experiment a run belongs to, without loading the whole run.
+
+    A run inherits its permissions from its experiment, so a run-scoped check needs only
+    this id. ``get_run`` on MLflow's SQL store also loads every latest metric, param and
+    tag of the run, plus its inputs and outputs (7 statements on MLflow 3.14 to 3.16), and
+    builds an entity for every row. For a run with thousands of metric keys, each check
+    then costs as much as a ``runs/get``, even on a route that reads one metric key.
+
+    On MLflow's SQL store (workspace-aware or not) this reads the run's own row, with the
+    query that ``get_run`` itself runs, minus the eager loads. MLflow's own write paths
+    (``log_batch``, ``set_tag``) use the same query. The workspace scoping and the
+    ``RESOURCE_DOES_NOT_EXIST`` error are the same as ``get_run``. Every other store, a SQL
+    store subclass that overrides ``get_run``, and an MLflow release without that private
+    query (``_has_run_row_lookup``) go through ``get_run``.
+
+    Args:
+        tracking_store: The MLflow tracking store.
+        run_id: The run ID.
+
+    Returns:
+        The experiment ID, as a string, like ``Run.info.experiment_id``.
+
+    Raises:
+        MlflowException: When the run cannot be resolved, as ``get_run`` raises.
+    """
+    if _RUN_ROW_LOOKUP and getattr(type(tracking_store), "get_run", None) is SqlAlchemyStore.get_run:
+        with tracking_store.ManagedSessionMaker() as session:
+            return str(tracking_store._get_run(session=session, run_uuid=run_id).experiment_id)
+    return tracking_store.get_run(run_id).info.experiment_id

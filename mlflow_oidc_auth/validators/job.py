@@ -17,7 +17,7 @@ from mlflow.server.jobs import get_job
 
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, intersect_permissions
-from mlflow_oidc_auth.utils import all_source_values
+from mlflow_oidc_auth.utils import all_source_values, get_run_experiment_id
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 
 logger = get_logger()
@@ -40,7 +40,7 @@ def _experiment_of_job(job_id: str) -> str | None:
         return str(experiment_id)
     if run_id := params.get("run_id"):
         try:
-            return str(_get_tracking_store().get_run(str(run_id)).info.experiment_id)
+            return str(get_run_experiment_id(_get_tracking_store(), str(run_id)))
         except Exception:
             logger.debug("Could not resolve the run of a job for authorization")
     return None
