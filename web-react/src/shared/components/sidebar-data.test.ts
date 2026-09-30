@@ -36,12 +36,13 @@ describe("sidebar-data", () => {
 
   it("returns all links when everything enabled", () => {
     const data = getSidebarData(true, true, true);
-    // 6 base + 3 AI + 1 workspace + 3 admin = 13
-    expect(data).toHaveLength(13);
+    // 6 base + 3 AI + 1 workspace + 3 admin + Workspace rules = 14
+    expect(data).toHaveLength(14);
     expect(data.map((item) => item.label)).toContain("AI Endpoints");
     expect(data.map((item) => item.label)).toContain("Workspaces");
     expect(data.map((item) => item.label)).toContain("Trash");
     expect(data.map((item) => item.label)).toContain("Webhooks");
     expect(data.map((item) => item.label)).toContain("SCIM");
+    expect(data.map((item) => item.label)).toContain("Workspace rules");
   });
 });

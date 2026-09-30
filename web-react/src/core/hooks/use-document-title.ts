@@ -20,6 +20,7 @@ const SECTIONS: Record<string, string> = {
   users: "Users",
   webhooks: "Webhooks",
   workspaces: "Workspaces",
+  "workspace-rules": "Workspace rules",
 };
 
 // /ai-gateway/<kind>/... is a section per kind.

@@ -49,6 +49,7 @@ These pages appear when `MLFLOW_ENABLE_WORKSPACES=true`:
 | Page | Path | Description |
 |------|------|-------------|
 | Workspaces | `/workspaces` | List workspaces. Click to manage user/group workspace permissions |
+| Workspace rules | `/workspace-rules` | Admin only. Rules that attach groups to workspaces by group name. See [Workspace rules](#workspace-rules) |
 
 ### Admin Tools
 
@@ -172,6 +173,35 @@ in [SCIM Provisioning](scim):
   the SCIM id), status, outcome and error. Failed requests are highlighted. Filter by outcome, and
   **Load more** pages further back, as far as `SCIM_ACTIVITY_RETENTION_DAYS` keeps. See
   [Provisioning status and activity](scim#provisioning-status-and-activity) for what is recorded.
+
+## Workspace rules
+
+The **Workspace rules** page (`/workspace-rules`) manages the rules described in
+[Workspaces → Group rules](workspaces#group-rules). It is shown only to administrators, and only
+when `MLFLOW_ENABLE_WORKSPACES=true`: the navigation entry is hidden otherwise, and the route sends a
+non-admin to the access-denied page. This is cosmetic — the server refuses every rule request from a
+non-admin and answers `404` while workspaces are off.
+
+- **Rules table**: name, pattern, permission, mode (a **Report** or **Enforce** badge), whether the
+  rule is enabled, and when it last changed. Rules are listed oldest first; when several match the
+  same group and workspace, the oldest wins.
+- **Create / edit**: name, group name pattern, permission, mode and enabled. The permission choices
+  stop at the server's ceiling (`WORKSPACE_RULES_MAX_PERMISSION`); an existing rule above a lowered
+  ceiling shows its permission marked as such, and saving the rule without touching it keeps it.
+  New rules start in **Report** mode.
+- **Preview**: lists each existing group the pattern matches, its target workspace, and what
+  enforcing the rule would do — grant, update, unchanged, remove, skip (with the reason, such as a
+  manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A saved
+  rule is previewed as saved; an unsaved rule or unsaved changes are previewed as a new rule would
+  be.
+- **Delete**: asks for confirmation, then deletes the rule and every workspace permission it
+  granted. Grants made by hand stay.
+
+A server error, such as a pattern without the `(?P<ws>...)` group, is shown in the dialog as the
+server worded it. Group names and patterns are always displayed as text.
+
+The grants a rule creates appear on the workspace's page like any other group permission. Editing
+one there turns it into a manual grant that no rule changes again.
 
 ## Workspace Picker
 

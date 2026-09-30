@@ -20,6 +20,7 @@ describe("pageTitleFor", () => {
     ["/trash/runs", "Trash · MLflow Access Control"],
     ["/user/tokens", "My account · MLflow Access Control"],
     ["/scim", "SCIM · MLflow Access Control"],
+    ["/workspace-rules", "Workspace rules · MLflow Access Control"],
     ["/auth", "Sign in · MLflow Access Control"],
     ["/403", "Access denied · MLflow Access Control"],
     ["/no-such-page", "Not found · MLflow Access Control"],
