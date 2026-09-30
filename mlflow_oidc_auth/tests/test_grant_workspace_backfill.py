@@ -210,6 +210,16 @@ class TestWorkspacesEnabled:
         with patch.object(grant_workspace_backfill, "_mlflow_resource_workspaces", side_effect=RuntimeError("boom")):
             assert grant_workspace_backfill.backfill_grant_workspaces(store) is None
 
+    def test_losing_a_race_with_another_worker_rolls_back_and_never_raises(self, store, monkeypatch):
+        from sqlalchemy.exc import IntegrityError
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
+        with patch.object(grant_workspace_backfill, "_place", side_effect=IntegrityError("INSERT", {}, Exception("unique"))):
+            assert grant_workspace_backfill.backfill_grant_workspaces(store) is None
+
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", None, "EDIT")]
+
 
 class TestReadingMlflowsResources:
     def test_every_workspaces_resources_are_seen(self, tmp_path, monkeypatch):

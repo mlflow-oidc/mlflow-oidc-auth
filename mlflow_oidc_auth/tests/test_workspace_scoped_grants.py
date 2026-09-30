@@ -349,7 +349,8 @@ class TestThePermissionApiUsesTheRequestsWorkspace:
         assert [(u["name"], u["permission"]) for u in users_b] == [(VICTOR, "READ")]
 
         api.admin.patch(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "EDIT"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
-        assert api.admin.delete(f"{USERS_API}/{VICTOR}/registered-models/churn", headers={"X-MLFLOW-WORKSPACE": "team-a"}).status_code == 200
+        response = api.admin.delete(f"{USERS_API}/{VICTOR}/registered-models/churn", headers={"X-MLFLOW-WORKSPACE": "team-a"})
+        assert response.status_code == 200
         assert _rows(store) == [(VICTOR, "churn", "team-b", "EDIT")]
 
     def test_no_header_is_the_default_workspace(self, api, store):

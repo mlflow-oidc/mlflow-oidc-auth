@@ -73,7 +73,8 @@ enabled again.
 #### Upgrading: existing grants
 
 Grants made before this release carry no workspace. They are assigned one automatically on every
-start, before the server takes requests:
+start, before the server takes requests. When several workers start at once, one of them assigns
+them and the others change nothing:
 
 | Workspaces | What happens to an existing grant |
 |---|---|
