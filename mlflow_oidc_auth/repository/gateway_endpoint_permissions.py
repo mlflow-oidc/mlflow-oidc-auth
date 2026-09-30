@@ -8,3 +8,4 @@ from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 class GatewayEndpointPermissionRepository(BaseUserPermissionRepository[SqlGatewayEndpointPermission, GatewayEndpointPermission]):
     model_class = SqlGatewayEndpointPermission
     resource_id_attr = "endpoint_id"
+    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)

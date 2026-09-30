@@ -15,6 +15,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
 )
+from sqlalchemy import and_, true
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
@@ -25,12 +26,39 @@ from mlflow_oidc_auth.repository.utils import (
     get_user,
     validate_regex,
 )
+from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace, grant_workspace_condition
 
 ModelT = TypeVar("ModelT")
 EntityT = TypeVar("EntityT")
 
 
-class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
+class _GrantWorkspaceScope:
+    """Workspace scoping for grants on name-keyed resources (see utils/grant_workspace.py).
+
+    Subclasses whose resources MLflow keeps unique per ``(workspace, name)`` — registered models
+    and prompts, gateway endpoints, secrets and model definitions — set ``workspace_scoped``: every
+    lookup by resource and every per-principal list then matches only the request's grant
+    workspace, and every new grant records it. Experiments (globally unique ids) and scorers leave
+    it unset and are unaffected. Deleting all of one principal's grants stays global.
+    """
+
+    workspace_scoped: bool = False
+    model_class: Type
+
+    def _in_scope(self):
+        if not self.workspace_scoped:
+            return true()
+        return grant_workspace_condition(self.model_class.workspace)
+
+    def _resource_is(self, resource_id):
+        condition = getattr(self.model_class, self.resource_id_attr) == resource_id
+        return and_(condition, self._in_scope()) if self.workspace_scoped else condition
+
+    def _new_row_fields(self) -> dict:
+        return {"workspace": current_grant_workspace()} if self.workspace_scoped else {}
+
+
+class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT]):
     """Base class for user-level permission repositories.
 
     Subclasses must set:
@@ -59,7 +87,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlUser, self.model_class.user_id == SqlUser.id)
                 .filter(
-                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                    self._resource_is(resource_id),
                     SqlUser.username == username,
                 )
                 .one()
@@ -92,6 +120,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
                         self.resource_id_attr: resource_id,
                         "user_id": user.id,
                         "permission": permission,
+                        **self._new_row_fields(),
                     }
                 )
                 session.add(perm)
@@ -124,7 +153,12 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
             # Single JOIN rather than resolving the user first: this is called once per
             # resource type when building a permission context, so the redundant user
             # lookups added up (issue #253).
-            rows = session.query(self.model_class).join(SqlUser, SqlUser.id == self.model_class.user_id).filter(SqlUser.username == username).all()
+            rows = (
+                session.query(self.model_class)
+                .join(SqlUser, SqlUser.id == self.model_class.user_id)
+                .filter(SqlUser.username == username, self._in_scope())
+                .all()
+            )
             return [r.to_mlflow_entity() for r in rows]
 
     def list_permissions_for_resource(self, resource_id: str) -> List[EntityT]:
@@ -134,7 +168,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
         :return: A list of permission entities for the resource.
         """
         with self._Session() as session:
-            rows = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == resource_id).all()
+            rows = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_permission(self, resource_id: str, username: str, permission: str) -> EntityT:
@@ -166,7 +200,7 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all permissions from old_name to new_name."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == old_name).all()
+            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
             for perm in perms:
                 setattr(perm, self.resource_id_attr, new_name)
             session.flush()
@@ -174,13 +208,13 @@ class BaseUserPermissionRepository(Generic[ModelT, EntityT]):
     def wipe(self, resource_id: str) -> None:
         """Delete all permissions for a resource."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == resource_id).all()
+            perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
             for p in perms:
                 session.delete(p)
             session.flush()
 
 
-class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
+class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT]):
     """Base class for group-level permission repositories.
 
     Subclasses must set:
@@ -208,7 +242,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlGroup, self.model_class.group_id == SqlGroup.id)
                 .filter(
-                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                    self._resource_is(resource_id),
                     SqlGroup.group_name == group_name,
                 )
                 .one()
@@ -238,7 +272,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         return (
             session.query(self.model_class)
             .filter(
-                getattr(self.model_class, self.resource_id_attr) == resource_id,
+                self._resource_is(resource_id),
                 self.model_class.group_id == group.id,
             )
             .one_or_none()
@@ -281,6 +315,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                         self.resource_id_attr: resource_id,
                         "group_id": group.id,
                         "permission": permission,
+                        **self._new_row_fields(),
                     }
                 )
                 session.add(perm)
@@ -300,7 +335,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id, self._in_scope()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_permissions_for_group_id(self, group_id: int) -> List[EntityT]:
@@ -310,7 +345,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
         :return: A list of permission entities for the group.
         """
         with self._Session() as session:
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id, self._in_scope()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_groups_for_resource(self, resource_id: str) -> List[tuple[str, str]]:
@@ -323,7 +358,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
             rows = (
                 session.query(SqlGroup.group_name, self.model_class.permission)
                 .join(self.model_class, self.model_class.group_id == SqlGroup.id)
-                .filter(getattr(self.model_class, self.resource_id_attr) == resource_id)
+                .filter(self._resource_is(resource_id))
                 .all()
             )
             return [(str(group_name), str(permission)) for group_name, permission in rows]
@@ -349,7 +384,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                 .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
                 .filter(
                     SqlUser.username == username,
-                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                    self._resource_is(resource_id),
                 )
                 .order_by(self.model_class.group_id)
                 .all()
@@ -391,7 +426,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlUserGroup, SqlUserGroup.group_id == self.model_class.group_id)
                 .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
-                .filter(SqlUser.username == username)
+                .filter(SqlUser.username == username, self._in_scope())
                 .order_by(self.model_class.group_id)
                 .all()
             )
@@ -411,7 +446,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
             perm = (
                 session.query(self.model_class)
                 .filter(
-                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                    self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
                 )
                 .one()
@@ -431,7 +466,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
             perm = (
                 session.query(self.model_class)
                 .filter(
-                    getattr(self.model_class, self.resource_id_attr) == resource_id,
+                    self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
                 )
                 .one()
@@ -442,7 +477,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all group permissions from old_name to new_name."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == old_name).all()
+            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
             for perm in perms:
                 setattr(perm, self.resource_id_attr, new_name)
             session.flush()
@@ -450,7 +485,7 @@ class BaseGroupPermissionRepository(Generic[ModelT, EntityT]):
     def wipe(self, resource_id: str) -> None:
         """Delete all group permissions for a resource."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(getattr(self.model_class, self.resource_id_attr) == resource_id).all()
+            perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
             for p in perms:
                 session.delete(p)
             session.flush()

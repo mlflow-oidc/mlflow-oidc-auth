@@ -40,11 +40,48 @@ When workspaces are enabled, these resources are automatically scoped to the act
 | Webhooks | Treated as workspace-isolated by the model registry store |
 | Deleted Experiments (Trash) | Filtered by workspace — restore and hard-delete respect workspace boundaries |
 | Registered Model Tags, Aliases | Scoped through their parent model's workspace |
+| Prompts | Registered models, scoped the same way |
+| AI Gateway endpoints, secrets, model definitions | MLflow's tracking store keeps them per workspace |
 
 **Not workspace-scoped:**
 - Users and groups (global across all workspaces)
-- Permission records (global — permissions reference specific resources within workspaces)
-- AI Gateway endpoints, secrets, model definitions (not workspace-isolated by MLflow)
+- Pattern (regex) grants — they match resource names in every workspace
+
+### Grants on models, prompts and gateway resources
+
+MLflow keeps registered models, prompts and AI Gateway endpoints, secrets and model definitions
+unique per **workspace and name**: two workspaces can each have a model called `churn`. A grant on
+one of them — to a user or a group — therefore belongs to one workspace's resource:
+
+- A grant is recorded in the workspace the request names (`X-MLFLOW-WORKSPACE`), or in the
+  `default` workspace when it names none. The admin UI sends the workspace chosen in the workspace
+  picker; with **All Workspaces** selected it sends none, so grants are made and listed in `default`.
+- A grant applies only to requests in that workspace. A grant on `churn` in `team-a` gives nothing
+  on `team-b`'s `churn`, and creating a same-named resource in another workspace grants its creator
+  nothing on this one.
+- Deleting or renaming a resource updates only the grants of that workspace's resource.
+- The permission API lists and changes the grants of the request's workspace.
+- Experiment and scorer grants are keyed by experiment id, which MLflow keeps unique across
+  workspaces, so they need no workspace of their own.
+
+With workspaces disabled every resource lives in `default`, new grants record it, and nothing is
+filtered — behaviour is unchanged.
+
+#### Upgrading: existing grants
+
+Grants made before this release carry no workspace. They are assigned one automatically on every
+start, before the server takes requests:
+
+| Workspaces | What happens to an existing grant |
+|---|---|
+| Disabled | It is assigned `default`. |
+| Enabled, the name exists in one workspace | It is assigned that workspace. |
+| Enabled, the name exists in several | It is kept once in each of those workspaces where the grantee already has at least `READ`, and nowhere else. |
+| Enabled, no such workspace, or the resource no longer exists | It stays unassigned, **matches nothing**, and is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
+
+Where a grant for the same workspace, resource and principal already exists, the existing one is
+kept. Downgrading keeps one grant per resource and principal (the `default` workspace's when there
+is one) and logs how many were removed.
 
 ## Workspace Permissions
 

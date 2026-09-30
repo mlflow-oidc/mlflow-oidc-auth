@@ -72,6 +72,10 @@ class _Spec(NamedTuple):
     #: Index into the key tuple of the value a regex is matched against. ``None`` for experiments,
     #: whose patterns match the experiment *name*, which only the tracking store knows.
     regex_key_index: Optional[int]
+    #: Grants on a resource MLflow keeps unique per ``(workspace, name)``. With workspaces enabled
+    #: the grant's ``workspace`` leads the key (see :func:`_effective`); with them disabled the key
+    #: is the name alone, exactly as before the column existed.
+    workspace_scoped: bool = False
 
 
 def _specs() -> List[_Spec]:
@@ -125,12 +129,14 @@ def _specs() -> List[_Spec]:
             SqlRegisteredModelRegexPermission,
             SqlRegisteredModelGroupRegexPermission,
             0,
+            True,
         ),
         # A scorer's patterns match the scorer name, as in ``_build_scorer_sources``.
         _Spec(
             SCORER, SqlScorerPermission, SqlScorerGroupPermission, ("experiment_id", "scorer_name"), SqlScorerRegexPermission, SqlScorerGroupRegexPermission, 1
         ),
-        # Gateway resolvers pass one value to both the grant lookup and the pattern match: the key.
+        # Name-keyed resources are unique per (workspace, name) in MLflow (``workspace_scoped``).
+        # Gateway resolvers pass the name to both the grant lookup and the pattern match: the key.
         _Spec(
             GATEWAY_ENDPOINT,
             SqlGatewayEndpointPermission,
@@ -139,6 +145,7 @@ def _specs() -> List[_Spec]:
             SqlGatewayEndpointRegexPermission,
             SqlGatewayEndpointGroupRegexPermission,
             0,
+            True,
         ),
         _Spec(
             GATEWAY_MODEL_DEFINITION,
@@ -148,6 +155,7 @@ def _specs() -> List[_Spec]:
             SqlGatewayModelDefinitionRegexPermission,
             SqlGatewayModelDefinitionGroupRegexPermission,
             0,
+            True,
         ),
         # The resource-type label is written inline: a module constant carrying "secret" in its
         # name makes static analysis treat the label (not a secret) as sensitive wherever it is logged.
@@ -159,13 +167,26 @@ def _specs() -> List[_Spec]:
             SqlGatewaySecretRegexPermission,
             SqlGatewaySecretGroupRegexPermission,
             0,
+            True,
         ),
         _Spec(WORKSPACE, SqlWorkspacePermission, SqlWorkspaceGroupPermission, ("workspace",), SqlWorkspaceRegexPermission, SqlWorkspaceGroupRegexPermission, 0),
     ]
 
 
+def _effective(spec: _Spec) -> _Spec:
+    """``spec`` as this run sees it: a workspace-scoped kind is keyed by ``(workspace, name)`` when
+    workspaces are enabled, so two workspaces' resources of one name are judged separately."""
+    from mlflow_oidc_auth.config import config
+
+    if not spec.workspace_scoped or not getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
+        return spec
+    return spec._replace(key_columns=("workspace",) + spec.key_columns, regex_key_index=spec.regex_key_index + 1)
+
+
 def _resource_id(keys: Tuple[str, ...]) -> str:
-    return "/".join(str(k) for k in keys)
+    # A grant from before workspaces were recorded has no workspace: rendered as an empty segment,
+    # and turned back into NULL by the hand-over (see _transfer_in_session).
+    return "/".join("" if k is None else str(k) for k in keys)
 
 
 def _key_columns(model, names):
@@ -548,19 +569,21 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     # the answer differs between the two; a name that is both, in different workspaces, must be held
     # as both.
     verdicts: Dict[Tuple[str, ...], str] = {}
-    pending_models: Dict[str, Tuple[str, ...]] = {}
+    pending_models: Dict[str, List[Tuple[str, ...]]] = {}
+    name_at = spec.regex_key_index
     for keys in mine:
-        as_model, as_prompt = _judge(holders, keys, keys[0], False, workspace), _judge(holders, keys, keys[0], True, workspace)
+        as_model, as_prompt = _judge(holders, keys, keys[name_at], False, workspace), _judge(holders, keys, keys[name_at], True, workspace)
         if as_model == as_prompt:
             verdicts[keys] = as_model
         else:
             verdicts[keys] = UNKNOWN
-            pending_models[keys[0]] = keys
+            pending_models.setdefault(keys[name_at], []).append(keys)
     if pending_models:
         kinds = _prompt_kinds(sorted(pending_models))
-        for name, keys in pending_models.items():
+        for name, pending in pending_models.items():
             if name in kinds:
-                verdicts[keys] = HELD if all(_judge(holders, keys, name, kind, workspace) == HELD for kind in kinds[name]) else NOT_HELD
+                for keys in pending:
+                    verdicts[keys] = HELD if all(_judge(holders, keys, name, kind, workspace) == HELD for kind in kinds[name]) else NOT_HELD
     return verdicts
 
 
@@ -580,7 +603,7 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
     ctx = _Context(session, user_id)
     orphans: List[Tuple[str, str, str]] = []
 
-    for spec in _specs():
+    for spec in map(_effective, _specs()):
         key_names = spec.key_columns
         user_keys = _key_columns(spec.user_model, key_names)
         group_keys = _key_columns(spec.group_model, key_names)
@@ -689,14 +712,19 @@ def _valid_fallback(session, fallback: Optional[str], departing_id: int):
 
 def _transfer_in_session(session, target_id: int, orphans: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     """Grant ``MANAGE`` on each orphan to ``target_id``, raising an existing lower grant."""
-    specs: Dict[str, _Spec] = {spec.resource_type: spec for spec in _specs()}
+    specs: Dict[str, _Spec] = {spec.resource_type: _effective(spec) for spec in _specs()}
     transferred: List[Tuple[str, str]] = []
     for resource_type, resource_id in orphans:
         user_model, key_names = specs[resource_type].user_model, specs[resource_type].key_columns
         values = resource_id.split("/", len(key_names) - 1)
-        criteria = {name: value for name, value in zip(key_names, values)}
+        criteria = {name: (None if name == "workspace" and value == "" else value) for name, value in zip(key_names, values)}
         existing = session.query(user_model).filter_by(user_id=target_id, **criteria).one_or_none()
         if existing is None:
+            if specs[resource_type].workspace_scoped and "workspace" not in criteria:
+                # Workspaces disabled: every resource lives in the default workspace.
+                from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+                criteria["workspace"] = DEFAULT_WORKSPACE_NAME
             session.add(user_model(user_id=target_id, permission=MANAGE, **criteria))
         else:
             existing.permission = MANAGE

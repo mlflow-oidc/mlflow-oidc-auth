@@ -7,6 +7,7 @@ from mlflow_oidc_auth.dependencies import check_registered_model_manage_permissi
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_models
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_registered_models
@@ -75,7 +76,7 @@ async def get_registered_model_users(
         # Check if the user is associated with the registered model
         user_models = {}
         if hasattr(user, "registered_model_permissions") and user.registered_model_permissions:
-            user_models = {model.name: model.permission for model in user.registered_model_permissions}
+            user_models = {model.name: model.permission for model in user.registered_model_permissions if in_grant_workspace(model)}
 
         if name in user_models:
             users.append(

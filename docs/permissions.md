@@ -93,6 +93,9 @@ Regex permissions use Python regular expression syntax to match resource names b
 1. Patterns are ordered by **priority** (lower number = checked first)
 2. The **first matching pattern** determines the permission
 3. Both user-level and group-level regex permissions are supported
+4. With workspaces enabled, a pattern matches resource names in **every** workspace. Grants on a
+   single model, prompt or gateway resource, by contrast, belong to one workspace (see
+   [Workspaces](workspaces#grants-on-models-prompts-and-gateway-resources))
 
 ### Pattern Examples
 
@@ -407,6 +410,10 @@ When resources are deleted or renamed, associated permissions are automatically 
 | Rename gateway endpoint | All endpoint permission records are updated to the new name |
 | Delete workspace | All workspace permissions are deleted, cache is flushed |
 
+With workspaces enabled, deleting or renaming a registered model, prompt or gateway resource changes
+only the grants of the resource in the request's workspace; a same-named resource in another
+workspace keeps its grants. See [Workspaces → Grants on models, prompts and gateway resources](workspaces#grants-on-models-prompts-and-gateway-resources).
+
 ## Gateway Permissions
 
 AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order.
@@ -456,6 +463,7 @@ Key points:
 - When workspaces are enabled, `DEFAULT_MLFLOW_PERMISSION` is not used as a resource fallback — workspace permissions take that role
 - With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
+- Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
 
 ## De-provisioning
 
@@ -508,7 +516,9 @@ against the same value the resolver uses:
 - gateway resources and workspaces: their name
 
 Experiment names and the model-or-prompt distinction come from MLflow. With workspaces enabled, each
-lookup is tried in every workspace. A name that is a model in one workspace and a prompt in another
+lookup is tried in every workspace, and a registered model, prompt or gateway resource is identified
+by its workspace and name: it is reported as `<workspace>/<name>` (for example `team-a/churn`), and
+the hand-over grants `MANAGE` on that workspace's resource. A name that is a model in one workspace and a prompt in another
 must be held as both. At most 1000 store calls are made per resource type. When the answer depends on
 a lookup that fails, the resource is reported with `via: "unresolved"` and a warning is logged, and it
 is **never** handed over. Administrators are not counted, because an administrator can always recover

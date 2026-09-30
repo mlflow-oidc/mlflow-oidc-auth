@@ -283,6 +283,12 @@ def create_app() -> FastAPI:
     app.before_request(before_request_hook)
     app.after_request(after_request_hook)
 
+    # Grants on name-keyed resources carry the resource's workspace; give one to any recorded before
+    # they did. Runs on every start, workspaces enabled or not, and never raises.
+    from mlflow_oidc_auth.grant_workspace_backfill import backfill_grant_workspaces
+
+    backfill_grant_workspaces()
+
     # Seed default workspace and register workspace routers when workspaces are enabled (WSFND-04)
     if config.MLFLOW_ENABLE_WORKSPACES:
         _seed_default_workspace()

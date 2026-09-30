@@ -1,0 +1,62 @@
+"""The workspace a name-keyed grant belongs to.
+
+MLflow keeps registered models (and prompts, which are registered models), gateway endpoints,
+gateway secrets and gateway model definitions unique per ``(workspace, name)``. A grant on one of
+them names the resource by name, so it must also say which workspace's resource it is — otherwise
+a grant on ``churn`` in one workspace would apply to another workspace's ``churn``.
+
+The grant workspace is always the one MLflow serves the request from: the workspace the request
+names, or the default workspace when it names none. With ``MLFLOW_ENABLE_WORKSPACES`` off every
+resource lives in the default workspace, new grants record it, and lookups do not filter on the
+workspace at all — so a deployment that has never enabled workspaces behaves exactly as before,
+including for grants written before the column existed (``workspace IS NULL``).
+
+With workspaces on, a lookup matches only grants recorded for the request's workspace. Grants from
+before the column existed carry no workspace and match nothing until
+:mod:`mlflow_oidc_auth.grant_workspace_backfill` assigns them one at startup.
+"""
+
+from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+from sqlalchemy import true
+from sqlalchemy.sql.elements import ColumnElement
+
+from mlflow_oidc_auth.config import config
+
+
+def current_grant_workspace() -> str:
+    """The workspace grants are read and written in for the current request.
+
+    Returns:
+        The request's workspace, or ``default`` when it names none or workspaces are disabled.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return DEFAULT_WORKSPACE_NAME
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+    return get_request_workspace() or DEFAULT_WORKSPACE_NAME
+
+
+def grant_workspace_condition(column) -> ColumnElement:
+    """A filter on a grant table's ``workspace`` column for the current request.
+
+    With workspaces disabled the condition is always true: nothing is filtered, as before the
+    column existed. With workspaces enabled it matches only the request's grant workspace, so a
+    grant without a workspace matches nothing.
+
+    Parameters:
+        column: The grant model's ``workspace`` column.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return true()
+    return column == current_grant_workspace()
+
+
+def in_grant_workspace(grant) -> bool:
+    """Whether an already-loaded grant entity belongs to the current request's grant workspace.
+
+    For code that reads grants through a user's ORM relationships rather than a scoped query.
+    Always true with workspaces disabled.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return True
+    return getattr(grant, "workspace", None) == current_grant_workspace()

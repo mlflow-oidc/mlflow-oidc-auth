@@ -23,6 +23,7 @@ from mlflow_oidc_auth.repository.utils import get_group
 class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
+    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # -- private helper: prompt=True filter -----------------------------------
 
@@ -38,7 +39,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
             return (
                 session.query(SqlRegisteredModelGroupPermission)
                 .filter(
-                    SqlRegisteredModelGroupPermission.name == name,
+                    self._resource_is(name),
                     SqlRegisteredModelGroupPermission.group_id == group_id,
                     SqlRegisteredModelGroupPermission.prompt == True,
                 )
@@ -61,7 +62,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
         _validate_permission(permission)
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
-            perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True)
+            perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True, **self._new_row_fields())
             session.add(perm)
             session.flush()
             return perm.to_mlflow_entity()
@@ -74,6 +75,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
                 .filter(
                     SqlRegisteredModelGroupPermission.group_id == group.id,
                     SqlRegisteredModelGroupPermission.prompt == True,
+                    self._in_scope(),
                 )
                 .all()
             )
@@ -91,7 +93,7 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
                     SqlRegisteredModelGroupPermission,
                     SqlRegisteredModelGroupPermission.group_id == SqlGroup.id,
                 )
-                .filter(SqlRegisteredModelGroupPermission.name == name)
+                .filter(self._resource_is(name))
                 .filter(SqlRegisteredModelGroupPermission.prompt == True)
                 .all()
             )

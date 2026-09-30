@@ -230,6 +230,9 @@ When workspaces are enabled, a workspace selector appears in the UI header. Swit
 - Automatically refreshes all data views (experiments, models, webhooks, trash)
 - Updates the `X-MLFLOW-WORKSPACE` header for all API calls
 - Persists the selected workspace in local storage
+- Selects which workspace's grants the model, prompt and AI Gateway permission pages show and change.
+  Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources));
+  with **All Workspaces** selected, they are the `default` workspace's
 
 ## Search and Filtering
 

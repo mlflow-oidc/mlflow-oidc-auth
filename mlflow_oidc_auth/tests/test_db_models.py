@@ -199,8 +199,8 @@ class TestSqlRegisteredModelPermission:
 
     def test_unique_constraint(self, db_session, sample_user):
         """Test unique constraint on name and user_id."""
-        perm1 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ")
-        perm2 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="WRITE")
+        perm1 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ", workspace="default")
+        perm2 = SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="WRITE", workspace="default")
 
         db_session.add(perm1)
         db_session.commit()
@@ -208,6 +208,12 @@ class TestSqlRegisteredModelPermission:
         db_session.add(perm2)
         with pytest.raises(IntegrityError):
             db_session.commit()
+
+    def test_the_same_name_in_another_workspace_is_a_separate_grant(self, db_session, sample_user):
+        """MLflow keeps names unique per workspace; so are grants on them."""
+        db_session.add(SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="READ", workspace="team-a"))
+        db_session.add(SqlRegisteredModelPermission(name="model123", user_id=sample_user.id, permission="MANAGE", workspace="team-b"))
+        db_session.commit()
 
 
 class TestSqlGroup:
@@ -333,8 +339,8 @@ class TestSqlRegisteredModelGroupPermission:
 
     def test_unique_constraint(self, db_session, sample_group):
         """Test unique constraint on name and group_id."""
-        perm1 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ")
-        perm2 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="WRITE")
+        perm1 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ", workspace="default")
+        perm2 = SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="WRITE", workspace="default")
 
         db_session.add(perm1)
         db_session.commit()
@@ -342,6 +348,12 @@ class TestSqlRegisteredModelGroupPermission:
         db_session.add(perm2)
         with pytest.raises(IntegrityError):
             db_session.commit()
+
+    def test_the_same_name_in_another_workspace_is_a_separate_grant(self, db_session, sample_group):
+        """MLflow keeps names unique per workspace; so are grants on them."""
+        db_session.add(SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="READ", workspace="team-a"))
+        db_session.add(SqlRegisteredModelGroupPermission(name="model123", group_id=sample_group.id, permission="MANAGE", workspace="team-b"))
+        db_session.commit()
 
 
 class TestSqlExperimentRegexPermission:

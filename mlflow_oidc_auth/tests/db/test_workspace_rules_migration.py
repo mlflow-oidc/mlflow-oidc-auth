@@ -69,7 +69,7 @@ class TestRevisionChain:
 
     def test_single_head(self, tmp_path):
         heads = ScriptDirectory.from_config(_get_alembic_config(_sqlite_uri(tmp_path))).get_heads()
-        assert heads == [RULES_REVISION], f"expected a single head, got {heads}"
+        assert len(heads) == 1, f"expected a single head, got {heads}"
 
 
 class TestUpgrade:

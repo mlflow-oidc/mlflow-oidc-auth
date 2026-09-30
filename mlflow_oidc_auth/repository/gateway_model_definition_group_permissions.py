@@ -12,6 +12,7 @@ class GatewayModelDefinitionGroupPermissionRepository(
 ):
     model_class = SqlGatewayModelDefinitionGroupPermission
     resource_id_attr = "model_definition_id"
+    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # -- Custom methods matching original API ---------------------------------
 

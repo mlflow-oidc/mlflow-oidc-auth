@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,13 +13,17 @@ class SqlRegisteredModelPermission(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
-    __table_args__ = (UniqueConstraint("name", "user_id", name="unique_name_user"),)
+    # The workspace of the resource this grant names (see utils/grant_workspace.py). NULL only for
+    # a grant from before the column existed, until the startup backfill assigns one.
+    workspace: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
+    __table_args__ = (UniqueConstraint("workspace", "name", "user_id", name="uq_rm_perm_workspace_name_user"),)
 
     def to_mlflow_entity(self):
         return RegisteredModelPermission(
             name=self.name,
             user_id=self.user_id,
             permission=self.permission,
+            workspace=self.workspace,
         )
 
 
@@ -27,14 +33,18 @@ class SqlRegisteredModelGroupPermission(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
+    # The workspace of the resource this grant names (see utils/grant_workspace.py). NULL only for
+    # a grant from before the column existed, until the startup backfill assigns one.
+    workspace: Mapped[Optional[str]] = mapped_column(String(63), nullable=True)
     prompt: Mapped[bool] = mapped_column(Boolean, default=False)
-    __table_args__ = (UniqueConstraint("name", "group_id", name="unique_name_group"),)
+    __table_args__ = (UniqueConstraint("workspace", "name", "group_id", name="uq_rm_group_perm_workspace_name_group"),)
 
     def to_mlflow_entity(self):
         return RegisteredModelPermission(
             name=self.name,
             group_id=self.group_id,
             permission=self.permission,
+            workspace=self.workspace,
             prompt=bool(self.prompt),
         )
 

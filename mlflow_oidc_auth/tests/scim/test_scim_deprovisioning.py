@@ -556,7 +556,8 @@ class TestOrphansThroughGroupsAndRegex:
 
         found = orphaned_events(audit_events)
         assert found[("experiment", "1")]["via"] == "unresolved" and "transferred_to" not in found[("experiment", "1")]
-        assert found[("registered_model", "model-z")]["transferred_to"] == "steward@example.com"
+        # With workspaces on, a name-keyed resource is identified by (workspace, name).
+        assert found[("registered_model", "default/model-z")]["transferred_to"] == "steward@example.com"
         assert bound_store.list_experiment_permissions("steward@example.com") == []
         assert [p.name for p in bound_store.list_registered_model_permissions("steward@example.com")] == ["model-z"]
         assert any("unresolved" in r.getMessage() and r.levelno >= logging.WARNING for r in caplog.records)
