@@ -60,7 +60,6 @@ class WorkspaceRuleResponse(BaseModel):
     name: str
     pattern: str
     permission: str
-    rule_id: Optional[int] = Field(None, description="An existing rule being edited: preview under its id and with the grants it holds")
     mode: str
     enabled: bool
     created_by: Optional[str] = None

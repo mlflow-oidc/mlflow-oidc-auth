@@ -296,10 +296,12 @@ the same way.
 | A rule is created, updated or enabled | The rule is backfilled over every existing group: it grants what it matches and removes the grants it holds that it no longer matches. |
 | A rule is deleted, disabled or switched to `report` | Only that rule's grants are removed; the other enforcing rules are then applied to the groups that lost one. |
 | A rule is only renamed | Nothing: no grant changes. |
+| A rule is saved again with a grant field, even unchanged | Backfilled, as on update — the way to retry after a failed backfill. |
 
 If MLflow's workspace store cannot be reached, a rule writes nothing — it never reads an outage as
 "the workspace does not exist", which would remove its grants. A rule saved during an outage is
-saved; its response carries an `error`, and saving it again retries. Groups that arrive any other
+saved; its response carries an `error`, and saving it again with any of its pattern, permission,
+mode or enabled — even unchanged — retries. Groups that arrive any other
 way are picked up by the next backfill. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
 the login or the SCIM request that brought the group.
 
@@ -318,7 +320,7 @@ a rule that is not saved yet, or — with `rule_id` — for unsaved changes to a
 | `permission.provisioned` | A rule created or changed a grant; `detail` holds `rule_id`, `workspace`, `group`, `permission` (and `previous` for a change) |
 | `permission.deprovisioned` | A rule removed one of its grants |
 | `workspace_rule.skipped` | An enforcing rule left a group alone; `detail.reason` says why (`manual grant`, `workspace does not exist`, `held by rule N`, a shadowing rule, the ceiling, the `default` workspace) |
-| `workspace_rule.failed` | A rule could not run for groups that arrived |
+| `workspace_rule.failed` | A rule could not run for groups that arrived, or a saved rule's backfill failed (`detail.operation: backfill`) |
 
 The actor is the administrator for rule changes and backfills, and the source that brought the
 group for arrivals (`scim`, `oidc:<provider>`, `saml:<provider>`, or the admin's username).

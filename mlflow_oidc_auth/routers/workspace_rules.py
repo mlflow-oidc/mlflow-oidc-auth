@@ -102,8 +102,11 @@ def _apply(rule: WorkspaceGroupRule, admin: str) -> Tuple[List[RuleGrantChange],
             status="denied",
         )
         if isinstance(exc, workspace_rules.WorkspaceStoreUnavailable):
-            return [], "The rule was saved, but its grants were not updated: MLflow's workspace store is unavailable. Save the rule again to retry."
-        return [], "The rule was saved, but its grants were not updated. Save the rule again to retry."
+            return (
+                [],
+                "The rule was saved, but its grants were not updated: MLflow's workspace store is unavailable. Save the rule again, with any of its pattern, permission, mode or enabled, to retry.",
+            )
+        return [], "The rule was saved, but its grants were not updated. Save the rule again, with any of its pattern, permission, mode or enabled, to retry."
 
 
 def _preview_or_503(fn, *args, **kwargs) -> List[RuleGrantChange]:
@@ -187,6 +190,9 @@ async def update_workspace_rule(
 
     after = replace(before, **fields)
     grants_change = any(getattr(before, f) != getattr(after, f) for f in _GRANT_FIELDS)
+    # Sending a grant field — even unchanged — asks for the grants to be brought in line: that is how
+    # an admin retries after a backfill failed. A rename alone touches nothing.
+    reconcile = grants_change or any(f in fields for f in _GRANT_FIELDS)
     enforcing = workspace_rules.is_enforcing(after)
     rule, removed = store.update_workspace_group_rule(rule_id, fields, clear_grants=grants_change and not enforcing)
     emit_audit_event(
@@ -201,7 +207,7 @@ async def update_workspace_rule(
     error = None
     if removed:
         changes += workspace_rules.reapply_after_removal(removed, actor=admin)
-    if grants_change and rule.enabled:
+    if reconcile and rule.enabled:
         applied, error = _apply(rule, admin)
         changes += applied
     return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(changes), error=error)

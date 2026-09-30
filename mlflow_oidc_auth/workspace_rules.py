@@ -302,7 +302,9 @@ def preview(rule: WorkspaceGroupRule) -> List[RuleGrantChange]:
     Raises:
         WorkspaceStoreUnavailable: MLflow's workspace store cannot answer.
     """
-    return _execute(evaluate(rule, store.list_rule_eligible_group_names()), scope=None, dry_run=True)
+    competitors = _enforcing_rules()
+    changes = _execute(evaluate(rule, store.list_rule_eligible_group_names(), competitors=competitors), scope=None, dry_run=True)
+    return _preview_takeovers(rule, changes, competitors)
 
 
 def preview_unsaved(pattern: str, permission: str, *, rule_id: Optional[int] = None) -> List[RuleGrantChange]:
@@ -338,7 +340,25 @@ def preview_unsaved(pattern: str, permission: str, *, rule_id: Optional[int] = N
             updated_at=now,
         )
     competitors = [r for r in rules if is_enforcing(r) and r.id != draft.id]
-    return _execute(evaluate(draft, store.list_rule_eligible_group_names(), competitors=competitors), scope=None, dry_run=True)
+    changes = _execute(evaluate(draft, store.list_rule_eligible_group_names(), competitors=competitors), scope=None, dry_run=True)
+    return _preview_takeovers(draft, changes, competitors)
+
+
+def _is_held_by_other(change: RuleGrantChange) -> bool:
+    return change.action == "skip" and bool(change.reason) and change.reason.startswith(HELD_BY_RULE)
+
+
+def _preview_takeovers(rule: WorkspaceGroupRule, changes: List[RuleGrantChange], competitors: Sequence[WorkspaceGroupRule]) -> List[RuleGrantChange]:
+    """In a preview, show a pair a higher-id enforcing rule holds as what enforcing would do: take it over."""
+    enforcing = {r.id for r in competitors}
+    previewed = []
+    for change in changes:
+        if _is_held_by_other(change):
+            holder_id = int(change.reason[len(HELD_BY_RULE) :])
+            if holder_id > rule.id and holder_id in enforcing:
+                change = replace(change, action="grant", reason=f"takes over from rule {holder_id}")
+        previewed.append(change)
+    return previewed
 
 
 def _take_over_held(
@@ -356,7 +376,7 @@ def _take_over_held(
     """
     held: Dict[int, Set[str]] = {}
     for change in changes:
-        if change.action == "skip" and change.reason and change.reason.startswith(HELD_BY_RULE):
+        if _is_held_by_other(change):
             holder_id = int(change.reason[len(HELD_BY_RULE) :])
             if holder_id > rule.id:
                 held.setdefault(holder_id, set()).add(change.group)
@@ -376,8 +396,11 @@ def _take_over_held(
     if not released:
         return changes
     retried = _execute(evaluate(rule, released, competitors=competitors, workspace_exists=exists), scope=released, dry_run=False)
+    # Only the ``held by`` lines are superseded: anything else ``rule`` already wrote for those groups
+    # (a removal elsewhere, say) stays in the result, to be reported and audited.
+    kept = [c for c in changes if not (c.group in released and _is_held_by_other(c))]
     # The holder's lines carry its own rule_id; the caller audits only ``rule``'s, so they are not audited twice.
-    return _sorted([*(c for c in changes if c.group not in released), *retried, *handed_over])
+    return _sorted([*kept, *retried, *handed_over])
 
 
 def backfill(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
