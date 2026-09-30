@@ -45,6 +45,9 @@ export const Modal: React.FC<ModalProps> = ({
         // Escape: let the parent decide. Closing natively here would hide the dialog while the
         // parent still thinks it is open — and a parent busy saving keeps it open on purpose.
         e.preventDefault();
+        // React passes `cancel` up its component tree although the native event does not bubble,
+        // so a dialog opened inside this one would close both. Answer only for this dialog.
+        if (e.target !== e.currentTarget) return;
         onClose();
       }}
     >

@@ -49,6 +49,24 @@ describe("Modal", () => {
     expect(cancel.defaultPrevented).toBe(true);
   });
 
+  it("Escape in a dialog opened inside another closes only the inner one", () => {
+    const closeOuter = vi.fn();
+    const closeInner = vi.fn();
+    render(
+      <Modal isOpen={true} onClose={closeOuter} title="Outer">
+        <Modal isOpen={true} onClose={closeInner} title="Inner">
+          <div>Inner content</div>
+        </Modal>
+      </Modal>,
+    );
+
+    const inner = screen.getByText("Inner content").closest("dialog") as HTMLElement;
+    fireEvent(inner, new Event("cancel", { cancelable: true }));
+
+    expect(closeInner).toHaveBeenCalledTimes(1);
+    expect(closeOuter).not.toHaveBeenCalled();
+  });
+
   it("calls onClose when clicking backdrop", () => {
     const handleClose = vi.fn();
     render(
