@@ -384,7 +384,8 @@ class TestOwnership:
         assert response.status_code == 200
         assert grants(store) == {("gamma", "ops-gamma"): ("READ", ops), ("beta", "manual-beta"): ("USE", None)}
         assert sorted((c["group"], c["action"]) for c in response.json()["changes"]) == [("team-acme", "remove"), ("team-beta", "remove")]
-        assert client.get(f"{RULES}/{tenants}").status_code == 404
+        result = client.get(f"{RULES}/{tenants}")
+        assert result.status_code == 404
 
     def test_disable_rule_removes_only_its_grants(self, client, store):
         store.populate_groups(["team-acme", "ops-gamma", "manual-beta"])
@@ -450,7 +451,8 @@ class TestHardening:
 
         # Nor on arrival.
         store.populate_groups(["team-delta"], written_by="saml:partner")
-        assert workspace_rules.apply_rules_for_groups(["team-delta"], source="saml:partner") == []
+        result = workspace_rules.apply_rules_for_groups(["team-delta"], source="saml:partner")
+        assert result == []
 
     def test_the_default_workspace_is_never_granted(self, client, store):
         store.populate_groups(["team-default"])
@@ -497,7 +499,8 @@ class TestHardening:
 
         client.delete(f"{RULES}/{rule_id}")
 
-        assert store.reconcile_workspace_group_rule(rule_id, plan.desired, scope={"team-acme"}, expected=stale) == []
+        result = store.reconcile_workspace_group_rule(rule_id, plan.desired, scope={"team-acme"}, expected=stale)
+        assert result == []
         assert grants(store) == {}
 
     def test_workspace_cache_is_invalidated_even_if_the_permission_cache_flush_fails(self, client, store, monkeypatch):
@@ -565,7 +568,8 @@ class TestWorkspaceStoreOutage:
         store.populate_groups(["team-acme"])
         outage()
 
-        assert client.get(f"{RULES}/{rule_id}/preview").status_code == 503
+        result = client.get(f"{RULES}/{rule_id}/preview")
+        assert result.status_code == 503
 
     def test_arrival_during_an_outage_writes_nothing_and_does_not_fail(self, client, store, scim, outage, audit_events):
         create_rule(client)

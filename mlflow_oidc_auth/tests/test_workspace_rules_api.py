@@ -111,7 +111,8 @@ def _grant_rows(store):
 class TestAccess:
     @pytest.mark.parametrize("method,path,body", ENDPOINTS, ids=[f"{m} {p}" for m, p, _ in ENDPOINTS])
     def test_non_admin_gets_403_on_every_endpoint(self, admin, alice, store, method, path, body):
-        assert admin.post(RULES, json=VALID).status_code == 201, "a rule 1 exists, so a 404 cannot stand in for the 403"
+        result = admin.post(RULES, json=VALID)
+        assert result.status_code == 201, "a rule 1 exists, so a 404 cannot stand in for the 403"
 
         response = _call(alice, method, path, body)
 
@@ -120,15 +121,19 @@ class TestAccess:
         assert store.get_workspace_group_rule(1).enabled is True
 
     def test_anonymous_is_refused(self, app):
-        assert TestClient(app).get(RULES).status_code == 401
+        result = TestClient(app).get(RULES)
+        assert result.status_code == 401
 
     @pytest.mark.parametrize("method,path,body", ENDPOINTS, ids=[f"{m} {p}" for m, p, _ in ENDPOINTS])
     def test_endpoints_404_when_workspaces_disabled(self, admin, alice, store, monkeypatch, method, path, body):
-        assert admin.post(RULES, json=VALID).status_code == 201
+        result = admin.post(RULES, json=VALID)
+        assert result.status_code == 201
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
 
-        assert _call(admin, method, path, body).status_code == 404
-        assert _call(alice, method, path, body).status_code == 404, "the gate must answer before the admin check"
+        result = _call(admin, method, path, body)
+        assert result.status_code == 404
+        result = _call(alice, method, path, body)
+        assert result.status_code == 404, "the gate must answer before the admin check"
         assert [r.name for r in store.list_workspace_group_rules()] == ["tenants"]
 
 
@@ -139,17 +144,21 @@ class TestValidation:
         assert "WORKSPACE_RULES_MAX_PERMISSION" in response.json()["detail"]
 
         monkeypatch.setattr(config, "WORKSPACE_RULES_MAX_PERMISSION", "READ")
-        assert admin.post(RULES, json={**VALID, "permission": "USE"}).status_code == 400
-        assert admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "USE"}).status_code == 400
+        result = admin.post(RULES, json={**VALID, "permission": "USE"})
+        assert result.status_code == 400
+        result = admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "USE"})
+        assert result.status_code == 400
         assert store.list_workspace_group_rules() == []
 
         rule_id = admin.post(RULES, json={**VALID, "permission": "READ"}).json()["rule"]["id"]
-        assert admin.patch(f"{RULES}/{rule_id}", json={"permission": "EDIT"}).status_code == 400
+        result = admin.patch(f"{RULES}/{rule_id}", json={"permission": "EDIT"})
+        assert result.status_code == 400
         assert store.get_workspace_group_rule(rule_id).permission == "READ"
 
     def test_manage_is_allowed_only_when_the_ceiling_is_raised(self, admin, monkeypatch):
         monkeypatch.setattr(config, "WORKSPACE_RULES_MAX_PERMISSION", "MANAGE")
-        assert admin.post(RULES, json={**VALID, "permission": "MANAGE"}).status_code == 201
+        result = admin.post(RULES, json={**VALID, "permission": "MANAGE"})
+        assert result.status_code == 201
 
     def test_no_permissions_rejected_400(self, admin, store):
         response = admin.post(RULES, json={**VALID, "permission": "NO_PERMISSIONS"})
@@ -178,30 +187,42 @@ class TestValidation:
 
         assert response.status_code == 400
         assert "256" in response.json()["detail"]
-        assert admin.post(RULES, json={**VALID, "pattern": "^(?P<ws>" + "a" * 246 + ")$"}).status_code == 201, "256 itself is allowed"
+        result = admin.post(RULES, json={**VALID, "pattern": "^(?P<ws>" + "a" * 246 + ")$"})
+        assert result.status_code == 201, "256 itself is allowed"
 
     def test_unknown_mode_and_unknown_field_rejected(self, admin):
-        assert admin.post(RULES, json={**VALID, "mode": "yolo"}).status_code == 400
-        assert admin.post(RULES, json={**VALID, "is_admin": True}).status_code == 422
+        result = admin.post(RULES, json={**VALID, "mode": "yolo"})
+        assert result.status_code == 400
+        result = admin.post(RULES, json={**VALID, "is_admin": True})
+        assert result.status_code == 422
 
     def test_blank_name_rejected(self, admin, store):
-        assert admin.post(RULES, json={**VALID, "name": "   "}).status_code == 422
+        result = admin.post(RULES, json={**VALID, "name": "   "})
+        assert result.status_code == 422
         assert store.list_workspace_group_rules() == []
         rule_id = admin.post(RULES, json=VALID).json()["rule"]["id"]
-        assert admin.patch(f"{RULES}/{rule_id}", json={"name": " "}).status_code == 422
-        assert admin.post(RULES, json={**VALID, "name": "  ops  "}).json()["rule"]["name"] == "ops"
+        result = admin.patch(f"{RULES}/{rule_id}", json={"name": " "})
+        assert result.status_code == 422
+        result = admin.post(RULES, json={**VALID, "name": "  ops  "})
+        assert result.json()["rule"]["name"] == "ops"
 
     def test_unknown_rule_is_404_before_validation(self, admin):
-        assert admin.patch(f"{RULES}/999", json={"pattern": "no-ws-group"}).status_code == 404
+        result = admin.patch(f"{RULES}/999", json={"pattern": "no-ws-group"})
+        assert result.status_code == 404
 
     def test_duplicate_name_is_409(self, admin):
-        assert admin.post(RULES, json=VALID).status_code == 201
-        assert admin.post(RULES, json=VALID).status_code == 409
+        result = admin.post(RULES, json=VALID)
+        assert result.status_code == 201
+        result = admin.post(RULES, json=VALID)
+        assert result.status_code == 409
 
     def test_unknown_rule_is_404(self, admin):
-        assert admin.get(f"{RULES}/999").status_code == 404
-        assert admin.patch(f"{RULES}/999", json={"enabled": False}).status_code == 404
-        assert admin.delete(f"{RULES}/999").status_code == 404
+        result = admin.get(f"{RULES}/999")
+        assert result.status_code == 404
+        result = admin.patch(f"{RULES}/999", json={"enabled": False})
+        assert result.status_code == 404
+        result = admin.delete(f"{RULES}/999")
+        assert result.status_code == 404
 
 
 class TestPreview:
@@ -241,7 +262,8 @@ class TestEditPreview:
 
         assert [(c["action"], c["previous"], c["permission"], c["rule_id"]) for c in as_edit] == [("update", "EDIT", "READ", rule_id)]
         assert [c["action"] for c in as_new] == ["shadowed"]
-        assert admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "READ", "rule_id": 999}).status_code == 404
+        result = admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "READ", "rule_id": 999})
+        assert result.status_code == 404
 
 
 class TestList:
