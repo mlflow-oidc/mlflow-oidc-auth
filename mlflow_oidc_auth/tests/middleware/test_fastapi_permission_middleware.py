@@ -939,3 +939,99 @@ class TestJobSearchFiltering:
 
         with pytest.raises(ValueError):
             _filter_job_search_response("alice@example.com", b'{"unexpected": true}')
+
+
+# ---------------------------------------------------------------------------
+# Gateway routes never see this plugin's credentials
+# ---------------------------------------------------------------------------
+
+
+class TestGatewayCredentialStripping:
+    """MLflow's gateway copies the caller's headers onto the request it sends to the provider on its
+    passthrough and proxy routes, so this plugin's credentials must be gone before those handlers run."""
+
+    SENT = {
+        "Cookie": "mlflow_oidc_session=not-a-real-session",
+        "Authorization": "Bearer not-a-real-token",
+        "X-Custom": "kept",
+    }
+
+    @staticmethod
+    def _app(is_admin, route):
+        app = _create_app_with_auth(username="user@example.com", is_admin=is_admin)
+
+        @app.post(route)
+        async def gateway_echo(request: Request):
+            return {"headers": {k.lower(): v for k, v in request.headers.items()}}
+
+        app.router.routes.insert(0, app.router.routes.pop())
+        return app
+
+    def _received(self, is_admin, route, path, body=None):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=True):
+            response = TestClient(self._app(is_admin, route)).post(path, headers=self.SENT, json=body or {})
+        assert response.status_code == 200, response.text
+        return response.json()["headers"]
+
+    @pytest.mark.parametrize("is_admin", [False, True])
+    @pytest.mark.parametrize(
+        "route,path,body",
+        [
+            ("/gateway/openai/v1/chat/completions", "/gateway/openai/v1/chat/completions", {"model": "my-endpoint"}),
+            ("/gateway/anthropic/v1/messages", "/gateway/anthropic/v1/messages", {"model": "my-endpoint"}),
+        ],
+    )
+    def test_forwarding_routes_see_neither_cookie_nor_authorization(self, is_admin, route, path, body):
+        received = self._received(is_admin, route, path, body)
+
+        assert "cookie" not in received
+        assert "authorization" not in received
+        assert received["x-custom"] == "kept"
+
+    @pytest.mark.parametrize("is_admin", [False, True])
+    def test_the_raw_proxy_sees_neither_cookie_nor_authorization(self, is_admin):
+        """The raw proxy forwards every header it gets to the provider — for a permitted non-admin too."""
+        received = self._received(is_admin, "/gateway/proxy/{endpoint}/{rest:path}", "/gateway/proxy/my-endpoint/v1/chat/completions")
+
+        assert "cookie" not in received
+        assert "authorization" not in received
+
+    @pytest.mark.parametrize("is_admin", [False, True])
+    @pytest.mark.parametrize(
+        "route,path,body",
+        [
+            ("/gateway/{endpoint}/mlflow/invocations", "/gateway/my-endpoint/mlflow/invocations", None),
+            ("/gateway/mlflow/v1/chat/completions", "/gateway/mlflow/v1/chat/completions", {"model": "my-endpoint"}),
+        ],
+    )
+    def test_typed_routes_keep_authorization_for_guardrails_but_never_the_cookie(self, is_admin, route, path, body):
+        """These routes never forward headers; a sanitize guardrail calls back into MLflow with the caller's token."""
+        received = self._received(is_admin, route, path, body)
+
+        assert "cookie" not in received
+        assert received["authorization"] == "Bearer not-a-real-token"
+
+    def test_a_denied_request_is_refused(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=False):
+            response = TestClient(self._app(False, "/gateway/{endpoint}/mlflow/invocations")).post(
+                "/gateway/my-endpoint/mlflow/invocations", headers=self.SENT, json={}
+            )
+
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "path,kept",
+        [
+            ("/gateway/openai/v1/responses", [(b"x-other", b"d")]),
+            ("/gateway/some-future/route", [(b"x-other", b"d")]),
+            ("/gateway/ep/mlflow/invocations", [(b"Authorization", b"b"), (b"authorization", b"c"), (b"x-other", b"d")]),
+        ],
+    )
+    def test_the_strip_is_case_insensitive_and_unknown_routes_lose_authorization(self, path, kept):
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _strip_client_credentials
+
+        request = MagicMock(spec=Request)
+        request.scope = {"headers": [(b"cookie", b"a"), (b"Authorization", b"b"), (b"authorization", b"c"), (b"x-other", b"d")]}
+        _strip_client_credentials(request, path)
+
+        assert request.scope["headers"] == kept
