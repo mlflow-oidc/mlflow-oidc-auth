@@ -621,8 +621,9 @@ belongs to — a delete or disable also lists the grants a previously shadowed r
 `PATCH` that leaves the rule enabled and enforcing backfills it; one that disables it or switches it
 to `report` removes its grants in the same transaction; one that only renames it changes no grant.
 When a rule is saved but its grants cannot be brought in line (MLflow's workspace store is
-unavailable), the save stands, nothing else is written, and the response carries `error`; saving
-it again retries.
+unavailable), the save stands, nothing else is written, and the response carries `error`; a `PATCH`
+carrying any of `pattern`, `permission`, `mode` or `enabled` — even unchanged — retries. A preview
+shows a group a higher-id enforcing rule holds as `grant` with the reason `takes over from rule N`.
 
 ---
 

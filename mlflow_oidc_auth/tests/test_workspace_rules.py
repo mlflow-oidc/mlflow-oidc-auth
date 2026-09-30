@@ -582,6 +582,48 @@ class TestWorkspaceStoreOutage:
         assert events(audit_events, "workspace_rule.failed")
 
 
+class TestRetryAndTakeoverReporting:
+    def test_saving_again_retries_a_failed_backfill(self, client, store, mlflow_workspaces, monkeypatch):
+        from mlflow.server import handlers
+
+        store.populate_groups(["team-acme"])
+        monkeypatch.setattr(handlers, "_get_workspace_store", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
+        body = create_rule(client)
+        assert body["error"] and grants(store) == {}
+
+        monkeypatch.setattr(handlers, "_get_workspace_store", lambda *a, **k: mlflow_workspaces)
+        result = client.patch(f"{RULES}/{body['rule']['id']}", json={"permission": "EDIT"})
+
+        assert result.json()["error"] is None
+        assert grants(store) == {("acme", "team-acme"): ("EDIT", body["rule"]["id"])}
+
+    def test_a_takeover_keeps_the_winners_other_removals_audited(self, client, store, audit_events):
+        """Rule 1 moves from acme to beta for the same group, where rule 2 holds the grant: its
+        removal on acme must still be reported and audited alongside the takeover on beta."""
+        store.populate_groups(["team-acme-beta"])
+        first = create_rule(client, name="first", pattern=r"^team-(?P<ws>[a-z]+)-[a-z]+$", permission="READ")["rule"]["id"]
+        second = create_rule(client, name="second", pattern=r"^team-[a-z]+-(?P<ws>[a-z]+)$", permission="EDIT")["rule"]["id"]
+        assert grants(store) == {("acme", "team-acme-beta"): ("READ", first), ("beta", "team-acme-beta"): ("EDIT", second)}
+        audit_events.clear()
+
+        result = client.patch(f"{RULES}/{first}", json={"pattern": r"^team-[a-z]+-(?P<ws>[a-z]+)$"})
+
+        assert grants(store) == {("beta", "team-acme-beta"): ("READ", first)}
+        lines = {(c["action"], c["workspace"], c["rule_id"]) for c in result.json()["changes"]}
+        assert {("remove", "acme", first), ("grant", "beta", first), ("remove", "beta", second)} <= lines
+        deprovisioned = {(e["detail"]["workspace"], e["detail"]["rule_id"]) for e in events(audit_events, "permission.deprovisioned")}
+        assert deprovisioned == {("acme", first), ("beta", second)}
+
+    def test_a_preview_shows_a_takeover_as_a_grant(self, client, store):
+        store.populate_groups(["team-acme"])
+        first = create_rule(client, name="first", permission="READ", mode="report")["rule"]["id"]
+        second = create_rule(client, name="second", permission="EDIT")["rule"]["id"]
+
+        [line] = client.get(f"{RULES}/{first}/preview").json()["changes"]
+
+        assert (line["action"], line["reason"]) == ("grant", f"takes over from rule {second}")
+
+
 class TestRenameOnly:
     def test_a_rename_touches_no_grant(self, client, store, audit_events):
         store.populate_groups(["team-acme"])
