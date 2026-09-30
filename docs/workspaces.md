@@ -167,6 +167,12 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 | **Trash** | Deleted experiments and runs are filtered by workspace. Restore and hard-delete are workspace-scoped |
 | **Webhooks** | Webhook CRUD operations are scoped to the active workspace |
 
+### MCP server registry
+
+MLflow keeps an MCP server registry per workspace. Reading it requires at least `READ` on the
+workspace the request names — the default workspace when it names none — like any other
+workspace-scoped resource. Changing it is admin-only.
+
 ## Workspace Detection During Login
 
 When a user logs in via OIDC, the plugin can automatically detect and provision workspace access:
