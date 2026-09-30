@@ -16,6 +16,11 @@ import { useAllServiceAccounts } from "../../../core/hooks/use-all-accounts";
 import { useAllGroups } from "../../../core/hooks/use-all-groups";
 import { Button } from "../../../shared/components/button";
 import { GrantPermissionModal } from "./grant-permission-modal";
+import {
+  CHOOSE_WORKSPACE_TITLE,
+  GrantWorkspaceNotice,
+} from "./grant-workspace-notice";
+import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
 import { useState } from "react";
 
 interface EntityPermissionsManagerProps {
@@ -52,6 +57,7 @@ export function EntityPermissionsManager({
     refresh,
   });
 
+  const scope = useGrantWorkspaceScope(resourceType);
   const { allUsers } = useAllUsers();
   const { allServiceAccounts } = useAllServiceAccounts();
   const { allGroups } = useAllGroups();
@@ -103,13 +109,17 @@ export function EntityPermissionsManager({
         <div className="flex space-x-2">
           <IconButton
             icon={faEdit}
-            title="Edit permission"
+            title={scope.canChange ? "Edit permission" : CHOOSE_WORKSPACE_TITLE}
             onClick={() => handleEditClick(item)}
+            disabled={!scope.canChange}
           />
           <IconButton
             icon={faTrash}
-            title="Remove permission"
+            title={
+              scope.canChange ? "Remove permission" : CHOOSE_WORKSPACE_TITLE
+            }
             onClick={() => void handleRemovePermission(item)}
+            disabled={!scope.canChange}
           />
         </div>
       ),
@@ -128,15 +138,18 @@ export function EntityPermissionsManager({
 
       {!isLoading && !error && (
         <>
+          <GrantWorkspaceNotice scope={scope} />
           <div className="flex items-center space-x-2 mb-4">
             <Button
               variant="secondary"
               onClick={() => setIsAddUserModalOpen(true)}
-              disabled={availableUsers.length === 0}
+              disabled={!scope.canChange || availableUsers.length === 0}
               title={
-                availableUsers.length === 0
-                  ? "All users already have permissions"
-                  : "Add user permission"
+                !scope.canChange
+                  ? CHOOSE_WORKSPACE_TITLE
+                  : availableUsers.length === 0
+                    ? "All users already have permissions"
+                    : "Add user permission"
               }
             >
               + Add
@@ -144,11 +157,13 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddAccountModalOpen(true)}
-              disabled={availableAccounts.length === 0}
+              disabled={!scope.canChange || availableAccounts.length === 0}
               title={
-                availableAccounts.length === 0
-                  ? "All service accounts already have permissions"
-                  : "Add service account permission"
+                !scope.canChange
+                  ? CHOOSE_WORKSPACE_TITLE
+                  : availableAccounts.length === 0
+                    ? "All service accounts already have permissions"
+                    : "Add service account permission"
               }
             >
               + Add Service Account
@@ -156,11 +171,13 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddGroupModalOpen(true)}
-              disabled={availableGroups.length === 0}
+              disabled={!scope.canChange || availableGroups.length === 0}
               title={
-                availableGroups.length === 0
-                  ? "All groups already have permissions"
-                  : "Add group permission"
+                !scope.canChange
+                  ? CHOOSE_WORKSPACE_TITLE
+                  : availableGroups.length === 0
+                    ? "All groups already have permissions"
+                    : "Add group permission"
               }
             >
               + Add Group

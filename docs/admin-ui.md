@@ -231,8 +231,11 @@ When workspaces are enabled, a workspace selector appears in the UI header. Swit
 - Updates the `X-MLFLOW-WORKSPACE` header for all API calls
 - Persists the selected workspace in local storage
 - Selects which workspace's grants the model, prompt and AI Gateway permission pages show and change.
-  Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources));
-  with **All Workspaces** selected, they are the `default` workspace's
+  Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources)),
+  and each of those pages — and the matching tabs of a user or group — names the workspace. With
+  **All Workspaces** selected they show the `default` workspace's grants read-only: choose a
+  workspace to add, change or remove one. Experiment grants are unaffected.
+- The "Add New Regex Rule" dialog notes that a pattern matches resource names in every workspace.
 
 ## Search and Filtering
 
