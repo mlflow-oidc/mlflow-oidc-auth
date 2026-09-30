@@ -13,7 +13,7 @@ import time
 import uuid
 from urllib.parse import quote
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 # =============================================================================
@@ -85,7 +85,7 @@ def _create_prompt(client: httpx.Client, prompt_name: str, prompt_text: str) -> 
         json={
             "name": prompt_name,
             "description": "Initial version",
-            "source": "test-source",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": prompt_text},
@@ -187,7 +187,7 @@ def _create_prompt_version(client: httpx.Client, prompt_name: str, text: str) ->
         json={
             "name": prompt_name,
             "description": "Permission test version",
-            "source": "perm-test-source",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": text},

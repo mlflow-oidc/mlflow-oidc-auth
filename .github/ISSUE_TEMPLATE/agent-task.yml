@@ -1,0 +1,87 @@
+name: Agent task
+description: A self-contained, self-validating unit of work an AI agent or contributor can execute without further context
+title: "<type>(<scope>): "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every field below exists so that someone — or something — with no memory of the
+        discussion that produced this issue can execute it correctly and prove that they did.
+
+        If you cannot fill in **Acceptance criteria** as runnable commands, the task is not ready.
+        See [docs/agentic-development.md](../../docs/agentic-development.md).
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this exists and what is wrong today. Cite real code as `path/to/file.py:123`.
+      placeholder: |
+        `_get_claims_options` (mlflow_oidc_auth/auth.py:71-85) builds a single {iss, aud} pair,
+        so only one identity provider can be validated per deployment.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What changes, as specific bullets naming real files.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Explicitly out of scope
+      description: What this task must NOT touch. This is what keeps the diff from sprawling.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: >
+        Each criterion must be a command that can be run, with its expected result. If you cannot
+        express it as a command, it is an opinion — turn it into a check or cut it.
+      value: |
+        - [ ] `pytest mlflow_oidc_auth/tests/... -k ...` passes
+        - [ ] `pre-commit run --all-files` passes
+        - [ ] Negative test: `pytest ... -k denies_...` proves the denial path
+        - [ ] Migration reverses: `alembic downgrade -1 && alembic upgrade head` on SQLite and PostgreSQL
+    validations:
+      required: true
+
+  - type: input
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issue numbers that must merge first. Write "none" if there are none.
+      placeholder: "#308, #309 — or: none"
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security notes
+      description: >
+        If this touches authentication, authorization, sessions, tokens, permissions, related
+        migrations, or GitHub Actions — what is the failure mode, and which negative test proves
+        it cannot happen? Write "not security-relevant" if it genuinely is not.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Readiness
+      options:
+        - label: An agent with no prior context could execute this without asking a question
+          required: true
+        - label: Every acceptance criterion is a runnable command
+          required: true
+        - label: This is one coherent change, not several bundled together
+          required: true

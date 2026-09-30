@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import * as useAuthModule from "./use-auth";
+import { _resetPageSizeForTests } from "./use-page-size";
 
 // Import hooks
 import { useCurrentUser } from "./use-current-user";
@@ -12,7 +13,6 @@ import { useAllPrompts } from "./use-all-prompts";
 import { useAllUsers } from "./use-all-users";
 import { useDeletedExperiments } from "./use-deleted-experiments";
 import { useDeletedRuns } from "./use-deleted-runs";
-import { useUserDetails } from "./use-user-details";
 
 // Import fetchers to mock
 import * as userService from "../services/user-service";
@@ -36,6 +36,7 @@ vi.mock("../services/trash-service");
 describe("Core Data Hooks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPageSizeForTests();
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
     });
@@ -50,7 +51,6 @@ describe("Core Data Hooks", () => {
         groups: [],
         id: 1,
         is_service_account: false,
-        password_expiration: null,
       };
       vi.spyOn(userService, "fetchCurrentUser").mockResolvedValue(mockUser);
 
@@ -165,9 +165,10 @@ describe("Core Data Hooks", () => {
           } as DeletedExperiment,
         ],
       };
-      vi.spyOn(trashService, "fetchDeletedExperiments").mockResolvedValue(
-        mockDeleted,
-      );
+      vi.spyOn(trashService, "fetchDeletedExperimentsPage").mockResolvedValue({
+        items: mockDeleted.deleted_experiments,
+        total: 1,
+      });
 
       const { result } = renderHook(() => useDeletedExperiments());
 
@@ -175,6 +176,7 @@ describe("Core Data Hooks", () => {
         expect(result.current.deletedExperiments).toEqual(
           mockDeleted.deleted_experiments,
         );
+        expect(result.current.total).toBe(1);
       });
     });
   });
@@ -194,44 +196,20 @@ describe("Core Data Hooks", () => {
           } as DeletedRun,
         ],
       };
-      vi.spyOn(trashService, "fetchDeletedRuns").mockResolvedValue(mockDeleted);
+      vi.spyOn(trashService, "fetchDeletedRunsPage").mockResolvedValue({
+        items: mockDeleted.deleted_runs,
+        total: 1,
+      });
 
       const { result } = renderHook(() => useDeletedRuns());
 
       await waitFor(() => {
         expect(result.current.deletedRuns).toEqual(mockDeleted.deleted_runs);
       });
-    });
-  });
-
-  describe("useUserDetails", () => {
-    it("returns user details when username is provided", async () => {
-      const mockUser: CurrentUser = {
-        username: "user1",
-        is_admin: false,
-        display_name: "User 1",
-        groups: [],
-        id: 2,
-        is_service_account: false,
-        password_expiration: null,
-      };
-      vi.spyOn(userService, "fetchUserDetails").mockResolvedValue(mockUser);
-
-      const { result } = renderHook(() =>
-        useUserDetails({ username: "user1" }),
+      expect(trashService.fetchDeletedRunsPage).toHaveBeenCalledWith(
+        { limit: 20, offset: 0, search: "" },
+        expect.any(AbortSignal),
       );
-
-      await waitFor(() => {
-        expect(result.current.user).toEqual(mockUser);
-      });
-    });
-
-    it("does not fetch when username is null", async () => {
-      const spy = vi.spyOn(userService, "fetchUserDetails");
-      renderHook(() => useUserDetails({ username: null }));
-      // Wait a tick to ensure no async actions were triggered
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(spy).not.toHaveBeenCalled();
     });
   });
 });

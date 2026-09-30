@@ -5,8 +5,6 @@ simple inheritance from BaseUserPermissionRepository.  We inherit for the
 constructor and session wiring but override every data method.
 """
 
-from typing import Callable, List
-
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
     INVALID_STATE,
@@ -68,7 +66,7 @@ class ScorerPermissionRepository(BaseUserPermissionRepository[SqlScorerPermissio
                 return perm.to_mlflow_entity()
             except IntegrityError as e:
                 raise MlflowException(
-                    f"Scorer permission already exists ({experiment_id}, {scorer_name}, {username}): {e}",
+                    f"Scorer permission already exists ({experiment_id}, {scorer_name}, {username})",
                     RESOURCE_ALREADY_EXISTS,
                 ) from e
 

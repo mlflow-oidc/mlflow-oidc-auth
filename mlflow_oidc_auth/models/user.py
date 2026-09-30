@@ -10,6 +10,13 @@ class CreateAccessTokenRequest(BaseModel):
     expiration: Optional[str] = None  # ISO 8601 format string
 
 
+class CreateUserTokenRequest(BaseModel):
+    """Request model for issuing a named access token (issue #189)."""
+
+    name: str  # Unique among the user's tokens
+    expiration: str  # ISO 8601; required, at most one year away
+
+
 class CreateUserRequest(BaseModel):
     """Request model for creating users."""
 

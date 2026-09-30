@@ -1,5 +1,6 @@
 """Tests for workspace hook registration, _find_validator() extension, creation gating, and after_request filtering."""
 
+import importlib
 import json
 from unittest.mock import MagicMock, patch
 
@@ -181,7 +182,7 @@ class TestWorkspaceCreationGating:
     @pytest.fixture(autouse=True)
     def _reset_creation_paths_cache(self):
         """Reset the lazy-cached creation paths set between tests."""
-        import mlflow_oidc_auth.hooks.before_request as br_module
+        br_module = importlib.import_module("mlflow_oidc_auth.hooks.before_request")
 
         br_module._WORKSPACE_GATED_CREATION_PATHS = None
         yield

@@ -87,7 +87,7 @@ class TestPermissiveDefaultAnnouncement:
         warning = self._warn_for(default_permission, workspaces=False)
 
         assert warning is not None
-        assert "becomes NO_PERMISSIONS in the next major version" in warning
+        assert "The shipped default is NO_PERMISSIONS" in warning
         assert "docs/permissions.md" in warning, "the warning must point at the migration"
 
     def test_a_denying_default_is_already_migrated(self):

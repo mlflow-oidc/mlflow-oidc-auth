@@ -14,7 +14,8 @@ import type { WorkspaceListItem } from "../../shared/types/entity";
 import type { ColumnConfig } from "../../shared/types/table";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
-import { RowActionButton } from "../../shared/components/row-action-button";
+import { EntityNameLink } from "../../shared/components/entity-name-link";
+import { buildEntityRoute } from "../../shared/utils/string-utils";
 import { deleteWorkspace } from "../../core/services/workspace-service";
 import { CreateWorkspaceModal } from "./components/create-workspace-modal";
 import { EditWorkspaceModal } from "./components/edit-workspace-modal";
@@ -72,10 +73,17 @@ export default function WorkspacesPage() {
     }
   };
 
+  const workspaceHref = (workspace: WorkspaceListItem) =>
+    buildEntityRoute("/workspaces", workspace.name);
+
   const columns: ColumnConfig<WorkspaceListItem>[] = [
     {
       header: "Workspace Name",
-      render: (item) => item.name,
+      render: (item) => (
+        <EntityNameLink to={workspaceHref(item)} title={item.name}>
+          {item.name}
+        </EntityNameLink>
+      ),
     },
     {
       header: "Description",
@@ -94,44 +102,41 @@ export default function WorkspacesPage() {
         </span>
       ),
     },
-    {
-      header: "Actions",
-      render: (workspace) => (
-        <div className="invisible group-hover:visible flex space-x-1">
-          <RowActionButton
-            entityId={workspace.name}
-            route="/workspaces"
-            buttonText="Manage members"
-          />
-          {isAdmin && (
-            <>
-              <IconButton
-                icon={faEdit}
-                title="Edit workspace"
-                onClick={() =>
-                  setEditWorkspace({
-                    name: workspace.name,
-                    description: workspace.description,
-                    default_artifact_root: workspace.default_artifact_root,
-                  })
-                }
-              />
-              <IconButton
-                icon={faTrash}
-                title="Delete workspace"
-                onClick={() =>
-                  setDeleteTarget({
-                    name: workspace.name,
-                    description: workspace.description,
-                  })
-                }
-              />
-            </>
-          )}
-        </div>
-      ),
-      className: "flex-shrink-0",
-    },
+    ...(isAdmin
+      ? [
+          {
+            header: "Actions",
+            render: (workspace: WorkspaceListItem) => (
+              <div className="flex space-x-1">
+                <IconButton
+                  icon={faEdit}
+                  title="Edit workspace"
+                  muted
+                  onClick={() =>
+                    setEditWorkspace({
+                      name: workspace.name,
+                      description: workspace.description,
+                      default_artifact_root: workspace.default_artifact_root,
+                    })
+                  }
+                />
+                <IconButton
+                  icon={faTrash}
+                  title="Delete workspace"
+                  muted
+                  onClick={() =>
+                    setDeleteTarget({
+                      name: workspace.name,
+                      description: workspace.description,
+                    })
+                  }
+                />
+              </div>
+            ),
+            className: "flex-shrink-0",
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -169,6 +174,7 @@ export default function WorkspacesPage() {
             data={filteredWorkspaces}
             columns={columns}
             searchTerm={submittedTerm}
+            getRowHref={workspaceHref}
           />
 
           <CreateWorkspaceModal

@@ -1,5 +1,7 @@
 """SQLAlchemy ORM models for workspace permission tables."""
 
+from typing import Optional
+
 from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -40,6 +42,12 @@ class SqlWorkspaceGroupPermission(Base):
     workspace: Mapped[str] = mapped_column(String(255), primary_key=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), primary_key=True)
     permission: Mapped[str] = mapped_column(String(255), nullable=False)
+    # The rule that created this grant (issue #418), or NULL for a manual grant. A rule only ever
+    # changes rows carrying its own id; an administrator's edit through the workspace-permission
+    # API clears it, turning the grant into a manual one.
+    rule_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("workspace_group_rules.id", name="fk_workspace_group_permissions_rule_id"), nullable=True, index=True
+    )
 
     group = relationship("SqlGroup")
 
@@ -49,6 +57,7 @@ class SqlWorkspaceGroupPermission(Base):
             group_id=self.group_id,
             permission=self.permission,
             group_name=self.group.group_name if self.group else None,
+            rule_id=self.rule_id,
         )
 
 

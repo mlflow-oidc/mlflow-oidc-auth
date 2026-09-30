@@ -6,6 +6,7 @@ export type ButtonVariant =
   | "action"
   | "danger"
   | "ghost"
+  | "muted"
   | "primary"
   | "secondary";
 
@@ -59,6 +60,19 @@ export function Button({
       hover:text-btn-primary-hover dark:hover:text-btn-primary-hover-dark
       border-btn-secondary dark:border-btn-secondary-dark
       hover:border-btn-secondary-border-hover dark:hover:border-btn-secondary-border-hover-dark
+  `,
+    // Low-emphasis row action: secondary text colour until the row (`group`)
+    // is hovered, the button itself is hovered, or it has keyboard focus.
+    muted: `
+      p-1 border text-xs border-transparent
+      bg-btn-secondary dark:bg-btn-secondary-dark
+      text-text-primary dark:text-text-primary-dark
+      group-hover:text-btn-primary dark:group-hover:text-btn-primary-dark
+      hover:bg-btn-secondary-hover dark:hover:bg-btn-secondary-hover-dark
+      hover:text-btn-primary-hover dark:hover:text-btn-primary-hover-dark
+      hover:border-btn-secondary-border-hover dark:hover:border-btn-secondary-border-hover-dark
+      focus-visible:text-btn-primary dark:focus-visible:text-btn-primary-dark
+      focus-visible:border-btn-secondary-border-hover dark:focus-visible:border-btn-secondary-border-hover-dark
   `,
     ghost: `
       p-1 px-2 py-2

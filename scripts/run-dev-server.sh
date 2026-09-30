@@ -1,10 +1,31 @@
 #!/usr/bin/env bash
 set -e
 
+mlflow=""
+
+# Stop the tracking server. It runs in its own process group (see below), so the
+# signal reaches the uvicorn reloader and its worker too, not just the mlflow CLI.
+# SIGTERM first so uvicorn shuts down cleanly; SIGKILL only if it hangs.
 cleanup() {
-    echo "Cleaning up..."
-    kill $mlflow $ui 2>/dev/null
-    exit
+  trap - EXIT INT TERM HUP
+  # Nothing in here may abort the stop: after a closed terminal (SIGHUP) every echo
+  # fails, and under set -e (or SIGPIPE on a closed pipe) that would exit before the
+  # server is signalled.
+  set +e
+  trap '' PIPE
+  if [ -n "$mlflow" ] && kill -0 "$mlflow" 2>/dev/null; then
+    echo "Stopping tracking server..."
+    kill -TERM -- "-$mlflow" 2>/dev/null || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 -- "-$mlflow" 2>/dev/null || break
+      sleep 1
+    done
+    if kill -0 -- "-$mlflow" 2>/dev/null; then
+      echo "Tracking server did not stop in 10s, killing it"
+      kill -KILL -- "-$mlflow" 2>/dev/null || true
+    fi
+    wait "$mlflow" 2>/dev/null || true
+  fi
 }
 
 python_preconfigure() {
@@ -61,13 +82,22 @@ wait_server_ready() {
   return 1
 }
 
+# Registered before anything starts: Ctrl-C, a closed terminal, a failed health
+# check (set -e) and yarn exiting all end up in cleanup.
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
 check_yarn_and_node_version
 python_preconfigure
 source venv/bin/activate
+# Job control on for this one command: the server gets its own process group, whose
+# id is its pid, so cleanup can signal the whole tree at once.
+set -m
 mlflow --env-file .env server --uvicorn-opts "--reload --log-level debug" --app-name oidc-auth --host 0.0.0.0 --port 8080 --backend-store-uri=sqlite:///mlflow.db &
 mlflow=$!
-wait_server_ready localhost:8080/health
+set +m
+wait_server_ready http://localhost:8080/health
 ui_preconfigure
 yarn --cwd web-react watch
-
-trap cleanup SIGINT

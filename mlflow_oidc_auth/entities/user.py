@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
-
 # Import directly from sibling modules to avoid circular imports
 from mlflow_oidc_auth.entities.experiment import ExperimentPermission
 from mlflow_oidc_auth.entities.gateway_endpoint import GatewayEndpointPermission
@@ -13,33 +10,11 @@ from mlflow_oidc_auth.entities.registered_model import RegisteredModelPermission
 from mlflow_oidc_auth.entities.scorer import ScorerPermission
 
 
-def _parse_optional_datetime(value: Any) -> datetime | None:
-    """Parse an optional datetime from JSON-ish inputs.
-
-    Accepts:
-    - None
-    - datetime
-    - ISO 8601 strings (optionally ending with 'Z')
-    """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        candidate = value
-        if candidate.endswith("Z"):
-            candidate = candidate[:-1] + "+00:00"
-        return datetime.fromisoformat(candidate)
-    raise TypeError(f"Unsupported datetime value type: {type(value).__name__}")
-
-
 class User:
     def __init__(
         self,
         id_: int | None = None,
         username: str | None = None,
-        password_hash: str | None = None,
-        password_expiration=None,
         is_admin: bool = False,
         is_service_account: bool = False,
         display_name: str | None = None,
@@ -50,12 +25,15 @@ class User:
         gateway_model_definition_permissions=None,
         gateway_secret_permissions=None,
         groups=None,
+        active: bool = True,
+        managed_by: str = "manual",
     ):
         # Provide sensible defaults so tests can construct User with partial data.
+        # ``active`` defaults True and ``managed_by`` to "manual" to match the #333 backfill:
+        # a User built without them describes a normal, locally managed, enabled account, so no
+        # existing construction site silently produces a disabled one.
         self._id = id_
         self._username = username
-        self._password_hash = password_hash
-        self._password_expiration = password_expiration
         self._is_admin = is_admin
         self._is_service_account = is_service_account
         self._experiment_permissions = experiment_permissions or []
@@ -66,6 +44,8 @@ class User:
         self._gateway_secret_permissions = gateway_secret_permissions or []
         self._display_name = display_name
         self._groups = groups or []
+        self._active = active
+        self._managed_by = managed_by
 
     @property
     def id(self):
@@ -74,18 +54,6 @@ class User:
     @property
     def username(self):
         return self._username
-
-    @property
-    def password_hash(self):
-        return self._password_hash
-
-    @property
-    def password_expiration(self):
-        return self._password_expiration
-
-    @password_expiration.setter
-    def password_expiration(self, password_expiration):
-        self._password_expiration = password_expiration
 
     @property
     def is_admin(self):
@@ -163,6 +131,20 @@ class User:
     def groups(self):
         return self._groups
 
+    @property
+    def active(self) -> bool:
+        """Whether the account may authenticate.
+
+        Entra and other directories deprovision with ``PATCH active:false`` rather than a
+        delete, so this is the state a deprovisioned user lands in (issue #311).
+        """
+        return self._active
+
+    @property
+    def managed_by(self) -> str:
+        """Which source owns this row — ``manual``, ``scim`` or ``oidc:<provider_id>``."""
+        return self._managed_by
+
     @groups.setter
     def groups(self, groups):
         self._groups = groups
@@ -179,7 +161,6 @@ class User:
             "gateway_endpoint_permissions": [p.to_json() for p in self.gateway_endpoint_permissions],
             "gateway_model_definition_permissions": [p.to_json() for p in self.gateway_model_definition_permissions],
             "gateway_secret_permissions": [p.to_json() for p in self.gateway_secret_permissions],
-            "password_expiration": self.password_expiration.isoformat() if self.password_expiration else None,
             "display_name": self.display_name,
             "groups": [g.to_json() for g in self.groups] if self.groups else [],
         }
@@ -211,8 +192,6 @@ class User:
             id_=dictionary.get("id"),
             username=dictionary.get("username"),
             display_name=dictionary.get("display_name"),
-            password_hash="REDACTED",
-            password_expiration=_parse_optional_datetime(dictionary.get("password_expiration")),
             is_admin=bool(dictionary.get("is_admin", False)),
             is_service_account=dictionary.get("is_service_account", False),
             experiment_permissions=[ExperimentPermission.from_json(p) for p in dictionary.get("experiment_permissions", [])],

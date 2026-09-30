@@ -15,12 +15,11 @@ entrypoints.
 """
 
 import os
-import sys
 from typing import NoReturn
 
 import click
 
-from mlflow_oidc_auth.config_providers.mlflow_env import configure_mlflow_environment, get_mlflow_config_summary
+from mlflow_oidc_auth.config_providers.mlflow_env import configure_mlflow_environment, get_mlflow_config_summary, redact_uri_passwords
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -91,14 +90,14 @@ def main(ctx: click.Context, show_config: bool, dry_run: bool) -> NoReturn | Non
 
     if dry_run:
         click.echo("\nWould execute:")
-        click.echo(f"  {' '.join(mlflow_args)}")
+        click.echo(f"  {redact_uri_passwords(' '.join(mlflow_args))}")
         click.echo("\nWith environment variables:")
         summary = get_mlflow_config_summary()
         for key, value in sorted(summary.items()):
             click.echo(f"  {key}={value}")
         return
 
-    logger.info(f"Starting MLflow server: {' '.join(mlflow_args)}")
+    logger.info("Starting MLflow server: %s", redact_uri_passwords(" ".join(mlflow_args)))
 
     # Use execvp to replace current process with mlflow
     # This is the standard container entrypoint pattern - no subprocess overhead

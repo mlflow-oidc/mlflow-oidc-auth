@@ -11,6 +11,7 @@ from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import fetch_all_gateway_model_definitions, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_model_definitions
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 logger = get_logger()
 
@@ -84,7 +85,9 @@ async def get_gateway_model_definition_groups(
     summary="List all gateway model definitions",
     description="Retrieves a list of all gateway model definitions from MLflow.",
 )
-async def list_gateway_model_definitions(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_gateway_model_definitions(
+    username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
+) -> JSONResponse:
     """
     List gateway model definitions accessible to the authenticated user.
 
@@ -98,6 +101,9 @@ async def list_gateway_model_definitions(username: str = Depends(get_username), 
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible items.
 
     Returns:
     --------
@@ -120,15 +126,19 @@ async def list_gateway_model_definitions(username: str = Depends(get_username), 
             # Regular users only see model definitions they can manage
             models = filter_manageable_gateway_model_definitions(username, all_models)
 
+        # Paginate strictly after the permission filter: the total never counts a hidden item
+        models, headers = paginate_with_headers(models, key=lambda m: m.get("name", ""), params=page)
+
         # Format the response to match the expected frontend schema
         return JSONResponse(
+            headers=headers,
             content=[
                 {
                     "name": model.get("name", ""),
                     "source": model.get("source") or model.get("provider", ""),
                 }
                 for model in models
-            ]
+            ],
         )
     except Exception as e:
         logger.error(f"Error listing gateway model definitions: {e}")

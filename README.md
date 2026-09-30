@@ -1,11 +1,11 @@
-# mlflow-oidc-auth
+# MLflow Access Control (`mlflow-oidc-auth`)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Downloads](https://static.pepy.tech/badge/mlflow-oidc-auth/month)](https://pepy.tech/projects/mlflow-oidc-auth)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mlflow-oidc/mlflow-oidc-auth)
 
-OpenID Connect (OIDC) authentication and authorization plugin for MLflow.
+Authentication and access control for MLflow tracking servers: single sign-on (OIDC, SAML 2.0), SCIM user and group provisioning, service accounts, and per-resource permissions for users, groups and workspaces.
 
-This plugin allows you to use OIDC for user management in MLflow, enabling single sign-on (SSO) capabilities and centralized user management.
+It is an MLflow server plugin, installed as `mlflow-oidc-auth` and started with `--app-name oidc-auth`. The package keeps its original name; it has long since grown beyond OIDC.
 
 ## Disclaimer
 
@@ -14,13 +14,13 @@ MLflow and related marks are trademarks of their respective owners.
 Maintained by Kharkevich Engineering Lab.
 
 ### Features
-- OIDC-based authentication for MLflow UI and API
-- User management through OIDC provider
-- User-level access control
-- Group-based access control
-- Permissions management based on regular expressions (allows or denies access to specific MLflow resources based on regular expressions and assigns permissions to users or groups)
-- Support for session, JWT, and basic authentication methods
-- Compatible with mlflow-client (basic auth)
+- **Single sign-on** for the MLflow UI and API through any OpenID Connect provider (confidential or PKCE public clients) or SAML 2.0 identity provider, with several providers side by side
+- **Programmatic access**: automation authenticates with short-lived workload identities — Kubernetes service-account tokens or IdP client-credentials / workload-identity tokens (JWT bearer); people using the MLflow client from a laptop or notebook use named personal access tokens (basic auth). See [Programmatic access](docs/programmatic-access.md)
+- **SCIM 2.0 provisioning** of users and groups from your directory
+- **Permissions** (READ, USE, EDIT, MANAGE) on experiments, registered models, prompts, scorers and AI Gateway resources, granted to users, groups or regex patterns, with deny by default
+- **Workspaces** for multi-tenant isolation on a shared MLflow server
+- **Admin UI** for users, groups, service accounts, permissions, workspaces, webhooks and trash
+- **Operations**: server-side sessions, audit log, health probes, Redis-backed permission cache, and secrets from AWS, Azure, HashiCorp Vault or Kubernetes
 
 ### Documentation
 

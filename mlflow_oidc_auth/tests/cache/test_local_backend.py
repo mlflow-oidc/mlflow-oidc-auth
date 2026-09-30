@@ -2,7 +2,6 @@
 
 import time
 
-import pytest
 
 from mlflow_oidc_auth.cache.backend import CacheBackend
 from mlflow_oidc_auth.cache.local_backend import LocalTTLCacheBackend

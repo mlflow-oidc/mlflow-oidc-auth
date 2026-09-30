@@ -13,6 +13,12 @@ export type ModelListItem = {
 
 export type PromptListItem = ModelListItem;
 
+export type GroupDetails = {
+  group_name: string;
+  external_id: string | null;
+  member_count: number;
+};
+
 export type PermissionLevel =
   | "READ"
   | "USE"
@@ -97,6 +103,21 @@ export type DeletedRun = {
   lifecycle_stage: string;
 };
 
+export type CleanupFailure = {
+  run_id?: string;
+  experiment_id?: string;
+  error: string;
+};
+
+export type CleanupTrashResponse = {
+  deleted_runs: string[];
+  deleted_experiments: string[];
+  total_deleted_runs: number;
+  total_deleted_experiments: number;
+  failed_runs?: CleanupFailure[];
+  failed_experiments?: CleanupFailure[];
+};
+
 export type WebhookStatus = "ACTIVE" | "DISABLED";
 
 export type Webhook = {
@@ -174,6 +195,72 @@ export type WorkspaceGroupPermission = {
   group_name: string;
   permission: PermissionLevel;
 };
+
+/** How a workspace group rule behaves: `report` writes nothing, `enforce` grants. */
+export type WorkspaceRuleMode = "report" | "enforce";
+
+/** A permission a workspace group rule may grant. `NO_PERMISSIONS` is never one. */
+export type WorkspaceRulePermission = "READ" | "USE" | "EDIT" | "MANAGE";
+
+/** An admin-managed rule attaching groups to workspaces by group name (issue #418). */
+export type WorkspaceRule = {
+  id: number;
+  name: string;
+  pattern: string;
+  permission: WorkspaceRulePermission;
+  mode: WorkspaceRuleMode;
+  enabled: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WorkspaceRuleList = {
+  rules: WorkspaceRule[];
+  /** WORKSPACE_RULES_MAX_PERMISSION: no rule may grant more. */
+  max_permission: WorkspaceRulePermission;
+  /** The permissions a rule may grant under the ceiling, lowest first. */
+  allowed_permissions: WorkspaceRulePermission[];
+};
+
+export type WorkspaceRuleChangeAction =
+  | "grant"
+  | "update"
+  | "keep"
+  | "remove"
+  | "skip"
+  | "shadowed";
+
+/** One line of a rule's plan: what happens to one group's grant on one workspace. */
+export type WorkspaceRuleChange = {
+  action: WorkspaceRuleChangeAction;
+  group: string;
+  workspace: string;
+  permission: string | null;
+  reason: string | null;
+  previous: string | null;
+  /** Whether it was written. Always false in a preview and for a report-mode rule. */
+  applied: boolean;
+  /** The rule this line belongs to; a delete also lists grants another rule took over. */
+  rule_id: number | null;
+};
+
+export type WorkspaceRulePlan = {
+  rule: WorkspaceRule | null;
+  changes: WorkspaceRuleChange[];
+  /** Set when the rule was saved but its grants could not be updated; saving again retries. */
+  error?: string | null;
+};
+
+export type WorkspaceRuleCreateRequest = {
+  name: string;
+  pattern: string;
+  permission: WorkspaceRulePermission;
+  mode: WorkspaceRuleMode;
+  enabled: boolean;
+};
+
+export type WorkspaceRuleUpdateRequest = Partial<WorkspaceRuleCreateRequest>;
 
 export type WorkspaceCrudCreateRequest = {
   name: string;

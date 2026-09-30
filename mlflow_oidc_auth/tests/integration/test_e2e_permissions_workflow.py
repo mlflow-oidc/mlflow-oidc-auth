@@ -31,10 +31,10 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote, urljoin
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 
@@ -177,7 +177,7 @@ def _create_prompt(client: httpx.Client, base_url: str, prompt_name: str, prompt
         json={
             "name": prompt_name,
             "description": "e2e commit",
-            "source": "e2e-source",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": prompt_text},
@@ -217,7 +217,7 @@ def _create_prompt_version(client: httpx.Client, base_url: str, prompt_name: str
         json={
             "name": prompt_name,
             "description": "e2e edit",
-            "source": "e2e-source-edit",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": prompt_text},

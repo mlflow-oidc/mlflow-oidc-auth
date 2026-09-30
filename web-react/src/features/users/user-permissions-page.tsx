@@ -1,8 +1,10 @@
-import type { PermissionType } from "../../shared/types/entity";
-import { SharedPermissionsPage } from "../permissions/shared-permissions-page";
+import {
+  SharedPermissionsPage,
+  type SharedPermissionsTab,
+} from "../permissions/shared-permissions-page";
 
 interface UserPermissionsPageProps {
-  type: PermissionType;
+  type: SharedPermissionsTab;
 }
 
 export default function UserPermissionsPage({

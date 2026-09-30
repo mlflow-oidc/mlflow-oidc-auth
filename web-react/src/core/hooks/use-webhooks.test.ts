@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useWebhooks } from "./use-webhooks";
 import * as webhookService from "../services/webhook-service";
-import type { WebhookListResponse } from "../services/webhook-service";
 import * as useAuthModule from "./use-auth";
 import type { UseAuthResult } from "./use-auth";
 import * as workspaceContext from "../../shared/context/use-workspace";
+import type { Webhook } from "../../shared/types/entity";
+import { _resetPageSizeForTests } from "./use-page-size";
 
 vi.mock("../services/webhook-service");
 vi.mock("./use-auth");
@@ -14,6 +15,7 @@ vi.mock("../../shared/context/use-workspace");
 describe("useWebhooks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetPageSizeForTests();
     vi.spyOn(useAuthModule, "useAuth").mockReturnValue({
       isAuthenticated: true,
     } as UseAuthResult);
@@ -23,7 +25,7 @@ describe("useWebhooks", () => {
   });
 
   it("returns webhooks data", async () => {
-    const mockWebhooks: WebhookListResponse = {
+    const mockWebhooks: { webhooks: Webhook[] } = {
       webhooks: [
         {
           webhook_id: "1",
@@ -37,7 +39,10 @@ describe("useWebhooks", () => {
         },
       ],
     };
-    vi.spyOn(webhookService, "listWebhooks").mockResolvedValue(mockWebhooks);
+    vi.spyOn(webhookService, "fetchWebhooksPage").mockResolvedValue({
+      items: mockWebhooks.webhooks,
+      total: mockWebhooks.webhooks.length,
+    });
 
     const { result } = renderHook(() => useWebhooks());
 
@@ -49,7 +54,7 @@ describe("useWebhooks", () => {
 
   it("returns empty array and error on failure", async () => {
     const mockError = new Error("Failed to fetch");
-    vi.spyOn(webhookService, "listWebhooks").mockRejectedValue(mockError);
+    vi.spyOn(webhookService, "fetchWebhooksPage").mockRejectedValue(mockError);
 
     const { result } = renderHook(() => useWebhooks());
 
@@ -61,7 +66,7 @@ describe("useWebhooks", () => {
   });
 
   it("applies local status overrides from updateLocalWebhook", async () => {
-    const mockWebhooks: WebhookListResponse = {
+    const mockWebhooks: { webhooks: Webhook[] } = {
       webhooks: [
         {
           webhook_id: "1",
@@ -75,7 +80,10 @@ describe("useWebhooks", () => {
         },
       ],
     };
-    vi.spyOn(webhookService, "listWebhooks").mockResolvedValue(mockWebhooks);
+    vi.spyOn(webhookService, "fetchWebhooksPage").mockResolvedValue({
+      items: mockWebhooks.webhooks,
+      total: mockWebhooks.webhooks.length,
+    });
 
     const { result } = renderHook(() => useWebhooks());
 
@@ -91,7 +99,7 @@ describe("useWebhooks", () => {
   });
 
   it("refetches when workspace changes", async () => {
-    const mockWebhooks: WebhookListResponse = {
+    const mockWebhooks: { webhooks: Webhook[] } = {
       webhooks: [
         {
           webhook_id: "1",
@@ -106,8 +114,8 @@ describe("useWebhooks", () => {
       ],
     };
     const listSpy = vi
-      .spyOn(webhookService, "listWebhooks")
-      .mockResolvedValue(mockWebhooks);
+      .spyOn(webhookService, "fetchWebhooksPage")
+      .mockResolvedValue({ items: mockWebhooks.webhooks, total: 1 });
     const workspaceSpy = vi.spyOn(
       workspaceContext,
       "useSelectedWorkspace",
@@ -129,6 +137,21 @@ describe("useWebhooks", () => {
     await waitFor(() => {
       expect(listSpy.mock.calls.length).toBeGreaterThan(
         callCountAfterFirstFetch,
+      );
+    });
+  });
+
+  it("sends the search term to the server", async () => {
+    const spy = vi
+      .spyOn(webhookService, "fetchWebhooksPage")
+      .mockResolvedValue({ items: [], total: 0 });
+
+    renderHook(() => useWebhooks("deploy"));
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(
+        { limit: 20, offset: 0, search: "deploy" },
+        expect.any(AbortSignal),
       );
     });
   });

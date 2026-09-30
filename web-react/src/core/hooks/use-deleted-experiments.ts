@@ -1,20 +1,21 @@
-import { fetchDeletedExperiments } from "../services/trash-service";
-import type { DeletedExperiment } from "../../shared/types/entity";
-import { useApi } from "./use-api";
+import { fetchDeletedExperimentsPage } from "../services/trash-service";
+import { usePagedList } from "./use-paged-list";
 
-export function useDeletedExperiments() {
-  const {
-    data: response,
-    isLoading,
-    error,
-    refetch: refresh,
-  } = useApi<{ deleted_experiments: DeletedExperiment[] }>(
-    fetchDeletedExperiments,
-  );
+/**
+ * One page of deleted experiments, searched server-side on the experiment name.
+ *
+ * @param search - Submitted search term; changing it goes back to page 1.
+ */
+export function useDeletedExperiments(search = "") {
+  const { items, total, pagination, isLoading, isFetching, error, refresh } =
+    usePagedList(fetchDeletedExperimentsPage, search);
 
   return {
-    deletedExperiments: response?.deleted_experiments || [],
+    deletedExperiments: items,
+    total,
+    pagination,
     isLoading,
+    isFetching,
     error,
     refresh,
   };

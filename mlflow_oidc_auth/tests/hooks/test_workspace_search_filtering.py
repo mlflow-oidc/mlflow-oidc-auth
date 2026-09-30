@@ -9,7 +9,6 @@ Tests _can_access_workspace helper and workspace filtering in:
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from flask import Flask
 
 app = Flask(__name__)
@@ -772,7 +771,7 @@ class TestFilterSearchLoggedModelsWorkspace:
         from mlflow_oidc_auth.hooks.after_request import _filter_search_logged_models
 
         mock_response = MagicMock()
-        mock_response.json = {"models": []}
+        mock_response.json = {"models": [{"info": {"experiment_id": "exp_1"}}, {"info": {"experiment_id": "exp_2"}}]}
 
         mock_request_message = MagicMock()
         mock_request_message.experiment_ids = ["exp_1", "exp_2"]
@@ -849,7 +848,7 @@ class TestFilterSearchLoggedModelsWorkspace:
         from mlflow_oidc_auth.hooks.after_request import _filter_search_logged_models
 
         mock_response = MagicMock()
-        mock_response.json = {"models": []}
+        mock_response.json = {"models": [{"info": {"experiment_id": "exp_1"}}], "next_page_token": "token123"}
 
         mock_request_message = MagicMock()
         mock_request_message.experiment_ids = ["exp_1"]
@@ -917,7 +916,7 @@ class TestFilterSearchLoggedModelsWorkspace:
         from mlflow_oidc_auth.hooks.after_request import _filter_search_logged_models
 
         mock_response = MagicMock()
-        mock_response.json = {"models": []}
+        mock_response.json = {"models": [], "next_page_token": "token123"}
 
         mock_request_message = MagicMock()
         mock_request_message.experiment_ids = ["exp_1", "exp_2"]

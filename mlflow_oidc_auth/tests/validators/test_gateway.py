@@ -506,3 +506,159 @@ class TestGatewayCrossFieldBypass:
                 ),
             ):
                 assert validate_can_read_gateway_endpoint("owner") is True
+
+
+# ---------------------------------------------------------------------------
+# Referenced resources: USE on the secret / model definitions
+# ---------------------------------------------------------------------------
+
+from mlflow_oidc_auth.validators import gateway as gateway_validators  # noqa: E402
+
+
+def _ref_ctx(path, body):
+    return app.test_request_context(path=path, method="POST", json=body, content_type="application/json")
+
+
+def _names(mapping):
+    return lambda resource_id: mapping.get(resource_id)
+
+
+class TestReferencedSecret:
+    PATH_CREATE = "/api/3.0/mlflow/gateway/model-definitions/create"
+    PATH_UPDATE = "/api/3.0/mlflow/gateway/model-definitions/update"
+
+    def test_create_without_secret_is_allowed(self):
+        with _ref_ctx(self.PATH_CREATE, {"name": "md"}):
+            assert gateway_validators.validate_can_create_gateway_model_definition("u") is True
+
+    @pytest.mark.parametrize("can_use", [True, False])
+    def test_create_checks_use_on_secret(self, can_use):
+        with (
+            _ref_ctx(self.PATH_CREATE, {"name": "md", "secret_id": "s1"}),
+            patch.object(gateway_validators, "_resolve_secret_name_from_id", _names({"s1": "secret-a"})),
+            patch.object(gateway_validators, "can_use_gateway_secret", return_value=can_use) as use,
+        ):
+            assert gateway_validators.validate_can_create_gateway_model_definition("u") is can_use
+            use.assert_called_once_with("secret-a", "u")
+
+    def test_create_with_unresolvable_secret_is_denied(self):
+        with (
+            _ref_ctx(self.PATH_CREATE, {"name": "md", "secret_id": "gone"}),
+            patch.object(gateway_validators, "_resolve_secret_name_from_id", _names({})),
+            patch.object(gateway_validators, "can_use_gateway_secret", return_value=True),
+        ):
+            assert gateway_validators.validate_can_create_gateway_model_definition("u") is False
+
+    @pytest.mark.parametrize("can_use", [True, False])
+    def test_update_checks_target_then_new_secret(self, can_use):
+        with (
+            _ref_ctx(self.PATH_UPDATE, {"model_definition_id": "md1", "secret_id": "s1"}),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names({"md1": "md-a"})),
+            patch.object(gateway_validators, "_resolve_secret_name_from_id", _names({"s1": "secret-a"})),
+            patch.object(gateway_validators, "can_update_gateway_model_definition", return_value=True),
+            patch.object(gateway_validators, "can_use_gateway_secret", return_value=can_use),
+        ):
+            assert gateway_validators.validate_can_update_gateway_model_definition("u") is can_use
+
+    def test_update_denied_on_target_does_not_consult_secret(self):
+        with (
+            _ref_ctx(self.PATH_UPDATE, {"model_definition_id": "md1", "secret_id": "s1"}),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names({"md1": "md-a"})),
+            patch.object(gateway_validators, "can_update_gateway_model_definition", return_value=False),
+            patch.object(gateway_validators, "can_use_gateway_secret", return_value=True) as use,
+        ):
+            assert gateway_validators.validate_can_update_gateway_model_definition("u") is False
+            use.assert_not_called()
+
+
+class TestReferencedModelDefinitions:
+    CREATE = "/api/3.0/mlflow/gateway/endpoints/create"
+    UPDATE = "/api/3.0/mlflow/gateway/endpoints/update"
+    ATTACH = "/api/3.0/mlflow/gateway/endpoints/models/attach"
+    MDS = {"md1": "md-a", "md2": "md-b"}
+
+    def test_create_without_model_definitions_is_allowed(self):
+        with _ref_ctx(self.CREATE, {"name": "ep"}):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is True
+
+    def test_create_needs_use_on_every_model_definition(self):
+        body = {"name": "ep", "model_configs": [{"model_definition_id": "md1"}, {"modelDefinitionId": "md2"}]}
+        with (
+            _ref_ctx(self.CREATE, body),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names(self.MDS)),
+            patch.object(gateway_validators, "can_use_gateway_model_definition", side_effect=lambda n, u: n == "md-a") as use,
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is False
+            assert [c.args[0] for c in use.call_args_list] == ["md-a", "md-b"]
+
+    def test_create_with_unresolvable_model_definition_is_denied(self):
+        with (
+            _ref_ctx(self.CREATE, {"name": "ep", "model_configs": [{"model_definition_id": "gone"}]}),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names(self.MDS)),
+            patch.object(gateway_validators, "can_use_gateway_model_definition", return_value=True),
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is False
+
+    @pytest.mark.parametrize("can_use", [True, False])
+    def test_update_config_checks_endpoint_and_model_definitions(self, can_use):
+        with (
+            _ref_ctx(self.UPDATE, {"endpoint_id": "ep1", "model_configs": [{"model_definition_id": "md1"}]}),
+            patch.object(gateway_validators, "_resolve_endpoint_name_from_id", _names({"ep1": "ep-a"})),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names(self.MDS)),
+            patch.object(gateway_validators, "can_update_gateway_endpoint", return_value=True),
+            patch.object(gateway_validators, "can_use_gateway_model_definition", return_value=can_use),
+        ):
+            assert gateway_validators.validate_can_update_gateway_endpoint_config("u") is can_use
+
+    def test_update_config_denied_on_endpoint(self):
+        with (
+            _ref_ctx(self.UPDATE, {"endpoint_id": "ep1"}),
+            patch.object(gateway_validators, "_resolve_endpoint_name_from_id", _names({"ep1": "ep-a"})),
+            patch.object(gateway_validators, "can_update_gateway_endpoint", return_value=False),
+        ):
+            assert gateway_validators.validate_can_update_gateway_endpoint_config("u") is False
+
+    @pytest.mark.parametrize("key", ["model_config", "modelConfig"])
+    @pytest.mark.parametrize("can_use", [True, False])
+    def test_attach_checks_endpoint_and_model_definition(self, key, can_use):
+        with (
+            _ref_ctx(self.ATTACH, {"endpoint_id": "ep1", key: {"model_definition_id": "md1"}}),
+            patch.object(gateway_validators, "_resolve_endpoint_name_from_id", _names({"ep1": "ep-a"})),
+            patch.object(gateway_validators, "_resolve_model_definition_name_from_id", _names(self.MDS)),
+            patch.object(gateway_validators, "can_update_gateway_endpoint", return_value=True),
+            patch.object(gateway_validators, "can_use_gateway_model_definition", return_value=can_use) as use,
+        ):
+            assert gateway_validators.validate_can_attach_model_to_gateway_endpoint("u") is can_use
+            use.assert_called_once_with("md-a", "u")
+
+
+class TestEndpointUsageExperiment:
+    CREATE = "/api/3.0/mlflow/gateway/endpoints/create"
+    UPDATE = "/api/3.0/mlflow/gateway/endpoints/update"
+
+    @pytest.mark.parametrize("can_update, expected", [(True, True), (False, False)])
+    def test_create_checks_update_on_experiment(self, can_update, expected):
+        with (
+            _ref_ctx(self.CREATE, {"name": "ep", "experiment_id": "7"}),
+            patch.object(gateway_validators, "referenced_experiment_permission", return_value=MagicMock(can_update=can_update)) as perm,
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is expected
+            perm.assert_called_once_with("7", "u")
+
+    def test_update_checks_update_on_experiment(self):
+        with (
+            _ref_ctx(self.UPDATE, {"endpoint_id": "ep1", "experimentId": "7"}),
+            patch.object(gateway_validators, "_resolve_endpoint_name_from_id", _names({"ep1": "ep-a"})),
+            patch.object(gateway_validators, "can_update_gateway_endpoint", return_value=True),
+            patch.object(gateway_validators, "referenced_experiment_permission", return_value=MagicMock(can_update=False)) as perm,
+        ):
+            assert gateway_validators.validate_can_update_gateway_endpoint_config("u") is False
+            perm.assert_called_once_with("7", "u")
+
+    def test_no_experiment_is_not_checked(self):
+        with (
+            _ref_ctx(self.CREATE, {"name": "ep"}),
+            patch.object(gateway_validators, "referenced_experiment_permission") as perm,
+        ):
+            assert gateway_validators.validate_can_create_gateway_endpoint("u") is True
+            perm.assert_not_called()

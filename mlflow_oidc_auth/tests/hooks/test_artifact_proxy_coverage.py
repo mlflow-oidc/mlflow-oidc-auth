@@ -24,6 +24,21 @@ from mlflow_oidc_auth.validators import (
 from mlflow.server import app  # the real routing table: view_args match production
 
 
+class _EveryExperimentExists:
+    """Every experiment id exists and is active, so these tests exercise path parsing and
+    permission resolution. Non-existent experiments are covered in test_artifact_fail_closed."""
+
+    def get_experiment(self, experiment_id):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(experiment_id=experiment_id, lifecycle_stage="active", workspace=None)
+
+
+@pytest.fixture(autouse=True)
+def _tracking_store(monkeypatch):
+    monkeypatch.setattr("mlflow.server.handlers._tracking_store", _EveryExperimentExists())
+
+
 def _mlflow_artifact_rules():
     """Every artifact-proxy (path, method) MLflow actually serves."""
     from mlflow.server import app as mlflow_flask_app
@@ -203,7 +218,7 @@ class TestDoubleEncodedPathCannotBypass:
     """MLflow decodes the artifact path REPEATEDLY; werkzeug decodes a URL once.
 
     Parsing the once-decoded value let a double-encoded path miss the experiment-id
-    match, fall back to DEFAULT_MLFLOW_PERMISSION (shipped default MANAGE = allow), and
+    match, fall back to DEFAULT_MLFLOW_PERMISSION (then shipped as MANAGE = allow), and
     still be served by MLflow — a fail-open on both the list and download routes.
     """
 
@@ -236,7 +251,7 @@ class TestScopedReviewBypasses:
     @pytest.mark.parametrize("prefix", ["", "./", "%2e/", "%252e/", ".//"])
     def test_dot_prefix_cannot_defeat_the_anchored_patterns(self, prefix):
         """Both id patterns anchor at position 0, so a leading "./" made them miss and
-        resolution fell back to DEFAULT_MLFLOW_PERMISSION — allow on the shipped default —
+        resolution fell back to DEFAULT_MLFLOW_PERMISSION — allow on the then-shipped MANAGE —
         while MLflow normalises the same path and serves the experiment."""
         import posixpath
 
@@ -306,19 +321,37 @@ class TestExperimentRootPathsResolve:
 
         assert _experiment_id_from_artifact_path(artifact_path) == "12", f"{artifact_path!r} fell back to the permissive default"
 
-    @pytest.mark.parametrize("artifact_path", ["", "/", "./", "not-a-number/x", "workspaces/ws1", "workspaces/ws1/", "models/foo"])
-    def test_paths_naming_no_experiment_do_not_resolve(self, artifact_path):
-        """These name no experiment — but note what "no experiment" currently MEANS.
+    @pytest.mark.parametrize(
+        "artifact_path", ["", "/", "./", ".", "./.", ".//", "%2e", "%252e", "not-a-number/x", "workspaces/ws1", "workspaces/ws1/", "models/foo"]
+    )
+    @pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+    def test_paths_naming_no_experiment_do_not_resolve(self, artifact_path, method):
+        """These name no experiment, and "no experiment" now means DENY (issue #289).
 
-        Returning None sends the caller to DEFAULT_MLFLOW_PERMISSION, which ships as
-        MANAGE, so under the shipped default these shapes are ALLOWED rather than
-        denied. This test pins the parser's output, NOT a security property: do not read
-        it as a hardening assertion. Making the unresolvable case deny is tracked in
-        issue #289, and doing so will require changing this test — correctly.
+        The parser returns None for them. That used to send the caller to
+        DEFAULT_MLFLOW_PERMISSION, which then shipped as MANAGE, so under that default
+        these shapes were ALLOWED — ``DELETE .../artifacts/.`` emptied every experiment's
+        artifacts. Asserted under a MANAGE default so the deny can only come from the code.
         """
-        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path
+        from unittest.mock import patch
+
+        from flask import request
+
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.validators.experiment import _experiment_id_from_artifact_path, _get_permission_from_experiment_id_artifact_proxy
 
         assert _experiment_id_from_artifact_path(artifact_path) is None
+
+        with app.test_request_context("/api/2.0/mlflow-artifacts/artifacts/x", method=method):
+            request.view_args = {"artifact_path": artifact_path}
+            with (
+                patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE"),
+                patch("mlflow_oidc_auth.validators.experiment.effective_experiment_permission") as resolved,
+            ):
+                permission = _get_permission_from_experiment_id_artifact_proxy("u")
+                resolved.assert_not_called()
+
+        assert not (permission.can_read or permission.can_update or permission.can_delete), f"{artifact_path!r} was not denied"
 
     @pytest.mark.parametrize(
         "artifact_path",

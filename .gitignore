@@ -191,3 +191,7 @@ nginx.conf
 .kiro/
 E2E_TEST_CASES.md
 mlartifacts/
+
+# Local agent scratch state (worktrees created by agent workflows)
+.claude/worktrees/
+.claude/settings.local.json

@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import PromptPermissionsPage from "./prompt-permissions-page";
 
 const mockUsePromptUserPermissions = vi.fn();

@@ -56,11 +56,13 @@ class WorkspaceGroupPermission:
         group_id: int,
         permission: str,
         group_name: str | None = None,
+        rule_id: int | None = None,
     ):
         self._workspace = workspace
         self._group_id = group_id
         self._permission = permission
         self._group_name = group_name
+        self._rule_id = rule_id
 
     @property
     def workspace(self) -> str:
@@ -78,12 +80,18 @@ class WorkspaceGroupPermission:
     def group_name(self) -> str | None:
         return self._group_name
 
+    @property
+    def rule_id(self) -> int | None:
+        """The workspace group rule that created this grant, or None for a manual grant."""
+        return self._rule_id
+
     def to_json(self) -> dict:
         return {
             "workspace": self._workspace,
             "group_id": self._group_id,
             "permission": self._permission,
             "group_name": self._group_name,
+            "rule_id": self._rule_id,
         }
 
 

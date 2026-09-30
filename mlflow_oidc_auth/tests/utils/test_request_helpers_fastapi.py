@@ -6,6 +6,7 @@ including parameter extraction, authentication, and user information retrieval.
 """
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import asyncio
 
@@ -46,6 +47,24 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
         asyncio.run(test_async())
 
+    def test_get_username_from_session_ignores_a_deactivated_user(self):
+        """``resolve`` reports the active flag rather than filtering on it, so the middleware can
+        audit "deactivated" separately. This helper feeds ``is_authenticated``, which is a
+        dependency of an endpoint on an unprotected prefix, and must apply the check itself."""
+
+        async def test_async():
+            mock_request = MagicMock(spec=Request)
+            mock_request.state = MagicMock()
+            mock_request.state.username = None
+            mock_request.session = {"session_id": "sid-inactive"}
+
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="gone@example.com", is_active=False)
+                result = await get_username_from_session(mock_request)
+            self.assertIsNone(result)
+
+        asyncio.run(test_async())
+
     def test_get_username_from_session_with_session_fallback(self):
         """Test username extraction from session fallback."""
 
@@ -53,9 +72,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             mock_request = MagicMock(spec=Request)
             mock_request.state = MagicMock()
             mock_request.state.username = None
-            mock_request.session = {"username": "session_user"}
+            mock_request.session = {"session_id": "sid-1"}
 
-            result = await get_username_from_session(mock_request)
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="session_user", is_active=True)
+                result = await get_username_from_session(mock_request)
             self.assertEqual(result, "session_user")
 
         asyncio.run(test_async())
@@ -83,9 +104,11 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
             # Remove username attribute
             if hasattr(mock_request.state, "username"):
                 delattr(mock_request.state, "username")
-            mock_request.session = {"username": "session_user"}
+            mock_request.session = {"session_id": "sid-1"}
 
-            result = await get_username_from_session(mock_request)
+            with patch("mlflow_oidc_auth.store.store") as mock_store:
+                mock_store.resolve_auth_session.return_value = SimpleNamespace(username="session_user", is_active=True)
+                result = await get_username_from_session(mock_request)
             self.assertEqual(result, "session_user")
 
         asyncio.run(test_async())
@@ -196,6 +219,19 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
             result = await get_username_from_bearer_token(mock_credentials)
             self.assertIsNone(result)
+
+        asyncio.run(test_async())
+
+    @patch("mlflow_oidc_auth.utils.request_helpers_fastapi.validate_token")
+    def test_get_username_from_bearer_token_uses_preferred_username_fallback(self, mock_validate_token):
+        """Test that the preferred_username fallback (via extract_username) still works here."""
+
+        async def test_async():
+            mock_credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test_token")
+            mock_validate_token.return_value = {"preferred_username": "User.Name"}
+
+            result = await get_username_from_bearer_token(mock_credentials)
+            self.assertEqual(result, "user.name")  # normalized to lowercase
 
         asyncio.run(test_async())
 
@@ -340,17 +376,49 @@ class TestRequestHelpersFastAPI(unittest.TestCase):
 
         asyncio.run(test_async())
 
-    def test_get_base_path_with_forwarded_prefix(self):
-        """Test base path extraction with X-Forwarded-Prefix header."""
+    def test_get_base_path_uses_root_path(self):
+        """The prefix recorded in the scope's root_path is the base path."""
 
         async def test_async():
             mock_request = MagicMock(spec=Request)
-            mock_request.headers = {"x-forwarded-prefix": "/my-app/"}
+            mock_request.headers = {}
+            mock_request.scope = {"root_path": "/my-app/"}
             mock_request.base_url = MagicMock()
             mock_request.base_url.path = ""
 
             result = await get_base_path(mock_request)
             self.assertEqual(result, "/my-app")
+
+        asyncio.run(test_async())
+
+    def test_get_base_path_ignores_forwarded_prefix_header(self):
+        """The raw X-Forwarded-Prefix header is not read; only what the proxy middleware recorded counts."""
+
+        async def test_async():
+            mock_request = MagicMock(spec=Request)
+            mock_request.headers = {"x-forwarded-prefix": "/my-app/"}
+            mock_request.scope = {"root_path": ""}
+            mock_request.base_url = MagicMock()
+            mock_request.base_url.path = ""
+
+            result = await get_base_path(mock_request)
+            self.assertEqual(result, "")
+
+        asyncio.run(test_async())
+
+    def test_get_base_path_drops_non_path_prefix(self):
+        """A prefix that does not start with a single slash is dropped."""
+
+        async def test_async():
+            for value in ("//other.example", "//", "my-app", "///x"):
+                mock_request = MagicMock(spec=Request)
+                mock_request.headers = {}
+                mock_request.scope = {"root_path": value}
+                mock_request.base_url = MagicMock()
+                mock_request.base_url.path = ""
+
+                result = await get_base_path(mock_request)
+                self.assertEqual(result, "", value)
 
         asyncio.run(test_async())
 

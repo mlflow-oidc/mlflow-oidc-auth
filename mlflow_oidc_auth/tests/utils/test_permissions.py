@@ -28,7 +28,6 @@ from mlflow_oidc_auth.utils.permissions import (
     PERMISSION_REGISTRY,
     _build_experiment_sources,
     _build_prompt_sources,
-    flush_permission_cache,
     _build_registered_model_sources,
     _get_experiment_group_permission_from_regex,
     _get_experiment_permission_from_regex,
@@ -120,7 +119,7 @@ class TestPermissions(unittest.TestCase):
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
     def test_can_manage_experiment(self, mock_get_permission_from_store_or_default, mock_store):
-        """Test experiment management permission checking."""
+        """Test experiment management permission checking when access is granted."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
@@ -136,7 +135,11 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_experiment("exp_id", "user"))
 
-            flush_permission_cache()  # Clear cache before re-testing with different mock
+    @patch("mlflow_oidc_auth.utils.permissions.store")
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_cannot_manage_experiment(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test experiment management permission checking when access is denied."""
+        with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -150,11 +153,13 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_experiment("exp_id", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_can_manage_registered_model(self, mock_get_permission_from_store_or_default, mock_store):
-        """Test registered model management permission checking."""
+    def test_can_manage_registered_model_true(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (true case)."""
         with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
@@ -170,7 +175,11 @@ class TestPermissions(unittest.TestCase):
             )
             self.assertTrue(can_manage_registered_model("model_name", "user"))
 
-            flush_permission_cache()  # Clear cache before re-testing with different mock
+    @patch("mlflow_oidc_auth.utils.permissions.store")
+    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    def test_can_manage_registered_model_false(self, mock_get_permission_from_store_or_default, mock_store):
+        """Test registered model management permission checking (false case)."""
+        with self.app.test_request_context():
             mock_get_permission_from_store_or_default.return_value = PermissionResult(
                 Permission(
                     name="perm",
@@ -184,6 +193,8 @@ class TestPermissions(unittest.TestCase):
                 "user",
             )
             self.assertFalse(can_manage_registered_model("model_name", "user"))
+            # The decision came from this test's mock, not a cached result from another test.
+            mock_get_permission_from_store_or_default.assert_called_once()
 
     @patch("mlflow_oidc_auth.utils.permissions.store")
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
@@ -743,3 +754,53 @@ class TestPermissionCacheWorkspaceKey:
         with patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", False):
             assert perms._get_cache_workspace() is None
             assert perms._make_cache_key("experiment", "1", "bob", None) == "experiment:1:bob"
+
+
+class TestPermissionCacheCompositeKey:
+    """A scorer is (experiment_id, scorer_name); the cache key must carry both."""
+
+    def test_two_scorers_in_one_experiment_resolve_differently_within_the_ttl(self, tmp_path, monkeypatch):
+        from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        s = SqlAlchemyStore()
+        s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        monkeypatch.setattr(perms, "store", s)
+        s.create_user("bob", "Bob")
+        s.create_scorer_permission("1", "mine", "bob", "MANAGE")
+        s.create_scorer_permission("1", "theirs", "bob", "NO_PERMISSIONS")
+
+        perms.flush_permission_cache()
+        try:
+            # Same experiment, same user, back to back — well inside any TTL.
+            mine = perms.effective_scorer_permission("1", "mine", "bob").permission
+            theirs = perms.effective_scorer_permission("1", "theirs", "bob").permission
+            assert mine.can_manage is True
+            assert theirs.can_read is False, "the first scorer's cached decision was served for the second"
+            # And the reverse order, from a warm cache.
+            assert perms.effective_scorer_permission("1", "mine", "bob").permission.can_manage is True
+        finally:
+            perms.flush_permission_cache()
+
+    def test_composite_key_components_cannot_collide(self):
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        a = perms._make_cache_key("scorer", "1:a", "bob", None, scorer_name="b")
+        b = perms._make_cache_key("scorer", "1", "bob", None, scorer_name="a:b")
+        assert a != b
+        assert perms._make_cache_key("scorer", "1", "bob", None, scorer_name="x") != perms._make_cache_key("scorer", "1", "bob", None, scorer_name="y")
+        assert perms._make_cache_key("scorer", "1", "bob", "ws", scorer_name="x") != perms._make_cache_key("scorer", "1", "bob", "ws2", scorer_name="x")
+
+    def test_invalidation_targets_the_composite_entry(self, monkeypatch):
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        deleted = []
+
+        class _RecordingCache:
+            def delete(self, key):
+                deleted.append(key)
+
+        monkeypatch.setattr(perms, "_get_permission_cache", _RecordingCache)
+        monkeypatch.setattr(perms, "_get_cache_workspace", lambda: None)
+        perms.invalidate_permission_cache("scorer", "1", "bob", scorer_name="mine")
+        assert deleted == [perms._make_cache_key("scorer", "1", "bob", None, scorer_name="mine")]

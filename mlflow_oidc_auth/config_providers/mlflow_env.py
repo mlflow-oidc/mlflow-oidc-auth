@@ -23,6 +23,7 @@ Usage Options:
 """
 
 import os
+import re
 from typing import Any
 
 from mlflow_oidc_auth.config_providers import config_manager
@@ -102,13 +103,55 @@ def configure_mlflow_environment(
         if value is not None:
             os.environ[env_var] = str(value)
             configured[env_var] = value
-            # Log without showing secret values
-            if SECRET_CLASSIFICATION.get(config_key) in (SecretLevel.SECRET, SecretLevel.SENSITIVE):
-                logger.info(f"Configured {env_var} from provider (value hidden)")
-            else:
-                logger.info(f"Configured {env_var}={value}")
+            # Log the variable name only. Values are never logged: besides the classified secrets,
+            # artifact locations and server options can embed credentials (e.g. an FTP artifact
+            # root with user:password in the URI).
+            logger.info("Configured %s from provider", env_var)
 
     return configured
+
+
+# ``scheme://user:password@`` - the password part of a URI's userinfo.
+# A URI anywhere in free text (e.g. a command line): scheme, "://", then up to whitespace.
+_URI = re.compile(r"(?<![A-Za-z0-9+.\-])[A-Za-z][A-Za-z0-9+.\-]*://\S+")
+# Query parameters that carry credentials (SQLAlchemy/psycopg2 accept ``?password=``).
+_SECRET_QUERY_PARAM = re.compile(
+    r"(?P<key>[?&;](?:password|passwd|pwd|secret|client_secret|token|access_token|sslpassword|api_key|apikey)=)[^&;#\s]*",
+    re.IGNORECASE,
+)
+_MASK = "********"
+
+
+def _redact_uri(uri: str) -> str:
+    """Mask the userinfo password and credential query values of one URI.
+
+    Userinfo ends at the *last* ``@`` of the whitespace-free token, and the password starts at the
+    first ``:`` after ``://``. That covers a username that is an e-mail address and a password with
+    an unencoded ``@``, ``/``, ``?`` or ``#`` (SQLAlchemy accepts all of these). It can over-mask a
+    URI whose path or query holds both ``:`` and ``@``, which is the safe direction for display.
+    """
+    scheme, rest = uri.split("://", 1)
+    at = rest.rfind("@")
+    if at != -1 and ":" in rest[:at]:
+        user = rest[:at].split(":", 1)[0]
+        rest = f"{user}:{_MASK}@{rest[at + 1:]}"
+    rest = _SECRET_QUERY_PARAM.sub(lambda m: m.group("key") + _MASK, rest)
+    return f"{scheme}://{rest}"
+
+
+def redact_uri_passwords(value: str) -> str:
+    """Mask the credentials of every URI in a string.
+
+    Masks the password in ``scheme://user:password@host`` and the values of credential query
+    parameters such as ``?password=``.
+
+    Parameters:
+        value: A single URI, or free text such as command-line options that may contain URIs.
+
+    Returns:
+        The same text with each such credential replaced by ``********``.
+    """
+    return _URI.sub(lambda m: _redact_uri(m.group(0)), value)
 
 
 def get_mlflow_config_summary() -> dict[str, str]:
@@ -124,5 +167,7 @@ def get_mlflow_config_summary() -> dict[str, str]:
             if SECRET_CLASSIFICATION.get(config_key) in (SecretLevel.SECRET, SecretLevel.SENSITIVE):
                 summary[env_var] = "********"
             else:
-                summary[env_var] = value
+                # Unclassified values (artifact roots, server options) can still embed
+                # credentials in a URI, e.g. an FTP artifact root.
+                summary[env_var] = redact_uri_passwords(value)
     return summary

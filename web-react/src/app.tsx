@@ -5,6 +5,7 @@ import RedirectIfAuth from "./features/auth/components/redirect-if-auth";
 import { LoadingSpinner } from "./shared/components/loading-spinner";
 import MainLayout from "./core/components/main-layout";
 import ForbiddenPage from "./features/forbidden/forbidden-page";
+import { useDocumentTitle } from "./core/hooks/use-document-title";
 
 const AuthPage = React.lazy(() => import("./features/auth/auth-page"));
 const AiEndpointsPage = React.lazy(
@@ -56,6 +57,9 @@ const WorkspacesPage = React.lazy(
 const WorkspaceDetailPage = React.lazy(
   () => import("./features/workspaces/workspace-detail-page"),
 );
+const WorkspaceRulesPage = React.lazy(
+  () => import("./features/workspace-rules/workspace-rules-page"),
+);
 
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
@@ -66,6 +70,7 @@ const UserPermissionsPage = React.lazy(
 const WebhooksPage = React.lazy(
   () => import("./features/webhooks/webhooks-page"),
 );
+const ScimPage = React.lazy(() => import("./features/scim/scim-page"));
 const NotFoundPage = React.lazy(
   () => import("./features/not-found/not-found-page"),
 );
@@ -83,6 +88,8 @@ const ProtectedLayoutRoute = ({
 );
 
 export default function App() {
+  useDocumentTitle();
+
   return (
     <Routes>
       <Route
@@ -301,6 +308,14 @@ export default function App() {
           </ProtectedLayoutRoute>
         }
       />
+      <Route
+        path="/service-accounts/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ServiceAccountPermissionPage type="tokens" />
+          </ProtectedLayoutRoute>
+        }
+      />
 
       <Route
         path="/workspaces"
@@ -315,6 +330,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <WorkspaceDetailPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/workspace-rules"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <WorkspaceRulesPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -392,10 +415,26 @@ export default function App() {
         }
       />
       <Route
+        path="/users/:username/tokens"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <UserPermissionsPage type="tokens" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/webhooks"
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WebhooksPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/scim"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <ScimPage />
           </ProtectedLayoutRoute>
         }
       />

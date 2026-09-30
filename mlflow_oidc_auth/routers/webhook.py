@@ -23,10 +23,12 @@ Supported webhook events (MLflow 3.8.x):
 - prompt_alias.deleted
 """
 
-from typing import Optional
+from typing import List, Optional, Union
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from mlflow.entities.webhook import Webhook, WebhookEvent, WebhookStatus
 from mlflow.store.db.db_types import DATABASE_ENGINES
 from mlflow.tracking._model_registry.registry import ModelRegistryStoreRegistry
@@ -44,6 +46,7 @@ from mlflow_oidc_auth.models import (
     WebhookTestResponse,
     WebhookUpdateRequest,
 )
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import WEBHOOK_ROUTER_PREFIX
 
@@ -225,42 +228,29 @@ def create_webhook(
     return _webhook_to_response(webhook)
 
 
-@webhook_router.get(
-    "",
-    response_model=WebhookListResponse,
-    summary="List webhooks",
-    description="List all webhooks with pagination support. Only admin users can view webhooks.",
-)
-def list_webhooks(
-    max_results: Optional[int] = Query(None, description="Maximum number of webhooks to return", ge=1, le=1000),
-    page_token: Optional[str] = Query(None, description="Token for pagination"),
-    admin_username: str = Depends(check_admin_permission),
-) -> WebhookListResponse:
-    """
-    List all webhooks with pagination support.
+#: MLflow page size used when every webhook is read for ``limit`` / ``offset`` / ``search``.
+WEBHOOK_SCAN_PAGE_SIZE = 1000
 
-    This endpoint allows administrators to retrieve a paginated list of all webhooks
-    in the system.
+#: Most MLflow pages read for one paged request — bounds the scan at 100,000 webhooks.
+WEBHOOK_SCAN_MAX_PAGES = 100
 
-    Args:
-        max_results: Maximum number of webhooks to return per page.
-        page_token: Token for pagination to get the next page of results.
-        admin_username: The username of the authenticated admin (injected by dependency).
+
+def _fetch_webhook_page(store, max_results: Optional[int], page_token: Optional[str]):
+    """One page of webhooks from MLflow, with store failures mapped to 503.
+
+    Parameters:
+        store: The model registry store.
+        max_results: MLflow page size, or None for MLflow's default.
+        page_token: MLflow page token, or None for the first page.
 
     Returns:
-        A paginated list of webhooks.
+        The page as MLflow returns it (iterable, with a ``token`` attribute for the next page).
 
     Raises:
-        HTTPException: If listing fails or user lacks admin permissions.
+        HTTPException: 503 when webhook secrets cannot be decrypted or the store fails.
     """
-    logger.info(f"Admin {admin_username} listing webhooks")
-
-    store = _get_model_registry_store()
-    logger.debug(f"Store obtained: {store}")
-
-    # Get webhooks from MLflow store (defensive)
     try:
-        webhooks_page = store.list_webhooks(
+        return store.list_webhooks(
             max_results=max_results,
             page_token=page_token,
         )
@@ -284,6 +274,81 @@ def list_webhooks(
         logger.error(f"Failed to list webhooks: {e}", exc_info=True)
         # Return service unavailable to avoid internal 500s leaking implementation details
         raise HTTPException(status_code=503, detail="Webhook service temporarily unavailable.")
+
+
+def _fetch_all_webhooks(store) -> List[Webhook]:
+    """Every webhook, reading MLflow's pages in turn, bounded by ``WEBHOOK_SCAN_MAX_PAGES``.
+
+    Parameters:
+        store: The model registry store.
+
+    Returns:
+        List[Webhook]: All webhooks, or the first ``WEBHOOK_SCAN_MAX_PAGES`` pages of them.
+
+    Raises:
+        HTTPException: 503 when the store fails.
+    """
+    webhooks: List[Webhook] = []
+    page_token: Optional[str] = None
+    for _ in range(WEBHOOK_SCAN_MAX_PAGES):
+        page = _fetch_webhook_page(store, WEBHOOK_SCAN_PAGE_SIZE, page_token)
+        page_token = getattr(page, "token", None)
+        webhooks.extend(page)
+        if not page_token:
+            return webhooks
+    logger.warning(f"Webhook listing stopped after {WEBHOOK_SCAN_MAX_PAGES} pages; later webhooks are not included")
+    return webhooks
+
+
+@webhook_router.get(
+    "",
+    response_model=WebhookListResponse,
+    summary="List webhooks",
+    description="List all webhooks with pagination support. Only admin users can view webhooks. "
+    "Pages either with MLflow's max_results/page_token, or with limit/offset/search (which reads every webhook, "
+    "orders them by name and returns the total in X-Total-Count). When both are given, limit/offset/search wins.",
+)
+def list_webhooks(
+    max_results: Optional[int] = Query(None, description="Maximum number of webhooks to return", ge=1, le=1000),
+    page_token: Optional[str] = Query(None, description="Token for pagination"),
+    admin_username: str = Depends(check_admin_permission),
+    page: PageQuery = NO_PAGE,
+) -> Union[WebhookListResponse, JSONResponse]:
+    """
+    List all webhooks with pagination support.
+
+    This endpoint allows administrators to retrieve a paginated list of all webhooks
+    in the system.
+
+    Args:
+        max_results: Maximum number of webhooks to return per page (MLflow paging).
+        page_token: Token for pagination to get the next page of results (MLflow paging).
+        admin_username: The username of the authenticated admin (injected by dependency).
+        page: Opt-in ``limit`` / ``offset`` / ``search`` on the webhook name. When given, every
+            webhook is read, ``max_results`` / ``page_token`` are ignored, ``next_page_token`` is
+            null, and the total is returned in ``X-Total-Count``.
+
+    Returns:
+        A paginated list of webhooks.
+
+    Raises:
+        HTTPException: If listing fails or user lacks admin permissions.
+    """
+    logger.info(f"Admin {admin_username} listing webhooks")
+
+    store = _get_model_registry_store()
+    logger.debug(f"Store obtained: {store}")
+
+    if page.active:
+        # limit/offset/search wins over max_results/page_token: read everything, then slice
+        webhook_responses = [_webhook_to_response(webhook) for webhook in _fetch_all_webhooks(store)]
+        visible, headers = paginate_with_headers(webhook_responses, key=lambda w: w.name, params=page, tiebreak=lambda w: w.webhook_id)
+        logger.info(f"Retrieved {len(visible)} webhooks for {admin_username}")
+        body = WebhookListResponse(webhooks=visible, next_page_token=None)
+        return JSONResponse(content=jsonable_encoder(body), headers=headers)
+
+    # Get webhooks from MLflow store (defensive)
+    webhooks_page = _fetch_webhook_page(store, max_results, page_token)
 
     # Preserve token before materializing/consuming the paged result
     next_page_token = getattr(webhooks_page, "token", None)

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import type { ToastMessage } from "./toast-types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -19,12 +19,19 @@ export const Toast: React.FC<ToastProps> = ({
   duration,
   onClose,
 }) => {
+  // Callers pass a fresh `onClose` on every render; keep the timer keyed on `duration` only so a
+  // re-render (another toast arriving, the toast moving into a dialog) does not restart it.
+  const onCloseRef = useRef(onClose);
+  useLayoutEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (duration) {
-      const timer = setTimeout(onClose, duration);
+      const timer = setTimeout(() => onCloseRef.current(), duration);
       return () => clearTimeout(timer);
     }
-  }, [duration, onClose]);
+  }, [duration]);
 
   const styles = {
     success:

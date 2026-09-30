@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { http, extractErrorMessage, _resetReauthForTests } from "./http";
+import {
+  http,
+  httpWithStatus,
+  httpWithHeaders,
+  extractErrorMessage,
+  _resetReauthForTests,
+} from "./http";
 
-vi.mock("../../shared/context/workspace-context", () => ({
+vi.mock("../../shared/context/active-workspace", () => ({
   getActiveWorkspace: vi.fn(() => null),
 }));
 
-import { getActiveWorkspace } from "../../shared/context/workspace-context";
+import { getActiveWorkspace } from "../../shared/context/active-workspace";
 
 globalThis.fetch = vi.fn<typeof fetch>();
 
@@ -127,6 +133,73 @@ describe("http", () => {
     );
   });
 
+  describe("httpWithStatus", () => {
+    it("returns the parsed body alongside a 201 status", async () => {
+      const mockResponse = { message: "created" };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 201,
+        statusText: "Created",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(mockResponse),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      } as Response);
+
+      const result = await httpWithStatus("/test");
+      expect(result).toEqual({ data: mockResponse, status: 201 });
+    });
+
+    it("returns the parsed body alongside a 200 status", async () => {
+      const mockResponse = { message: "already exists" };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: () => Promise.resolve(mockResponse),
+        text: () => Promise.resolve(JSON.stringify(mockResponse)),
+      } as Response);
+
+      const result = await httpWithStatus("/test");
+      expect(result).toEqual({ data: mockResponse, status: 200 });
+    });
+
+    it("still throws on error status, same as http()", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        headers: new Headers(),
+        text: () => Promise.resolve('{"detail": "bad name"}'),
+      } as Response);
+
+      await expect(httpWithStatus("/test")).rejects.toThrow(
+        'HTTP 400: {"detail": "bad name"}',
+      );
+    });
+  });
+
+  describe("httpWithHeaders", () => {
+    it("returns the body, status and response headers", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({
+          "content-type": "application/json",
+          "X-Total-Count": "42",
+        }),
+        json: () => Promise.resolve(["a"]),
+        text: () => Promise.resolve('["a"]'),
+      } as Response);
+
+      const result = await httpWithHeaders<string[]>("/test");
+      expect(result.data).toEqual(["a"]);
+      expect(result.status).toBe(200);
+      expect(result.headers.get("X-Total-Count")).toBe("42");
+    });
+  });
+
   describe("401 reauth redirect", () => {
     let assignSpy: ReturnType<typeof vi.fn>;
     let originalLocation: Location;
@@ -150,10 +223,8 @@ describe("http", () => {
       delete (window as { __RUNTIME_CONFIG__?: unknown }).__RUNTIME_CONFIG__;
     });
 
-    afterEachRestoreLocation: {
-      // jsdom limitation: the location stub is replaced per-test in beforeEach,
-      // so explicit restore isn't required.
-    }
+    // jsdom limitation: the location stub is replaced per-test in beforeEach,
+    // so explicit restore isn't required.
 
     it("redirects to /login with ?next= on 401 from a non-auth page", async () => {
       vi.mocked(fetch).mockResolvedValue({
@@ -169,6 +240,83 @@ describe("http", () => {
       expect(assignSpy).toHaveBeenCalledWith(
         "/login?next=" + encodeURIComponent("/oidc/ui/users"),
       );
+    });
+
+    it("omits ?next= when the path would leave the origin", async () => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "//evil.example/users",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith("/login");
+    });
+
+    it("omits ?next= when the query holds a backslash", async () => {
+      // Browsers turn a backslash into "/" in the path but leave it as-is in the
+      // query and fragment, where the backend's _sanitize_next rejects it.
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "/oidc/ui/users",
+          search: "?filter=a\\b",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith("/login");
+    });
+
+    it("keeps the proxy prefix when it omits ?next=", async () => {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
+        basePath: "/proxy/path",
+      };
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+          ...window.location,
+          pathname: "//evil.example/users",
+          search: "",
+          hash: "",
+          assign: assignSpy,
+        },
+      });
+
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        headers: new Headers(),
+        text: () => Promise.resolve("expired"),
+      } as Response);
+
+      await expect(http("/api/users")).rejects.toThrow("HTTP 401");
+      expect(assignSpy).toHaveBeenCalledWith("/proxy/path/login");
     });
 
     it("preserves search and hash in ?next=", async () => {

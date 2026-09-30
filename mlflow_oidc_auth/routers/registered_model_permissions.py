@@ -10,6 +10,7 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_models
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_registered_models
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._prefix import REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX
 
@@ -110,7 +111,7 @@ async def get_registered_model_groups(
 @registered_model_permissions_router.get(
     LIST_MODELS, summary="List accessible registered models", description="Retrieves a list of registered models that the user has access to."
 )
-async def list_models(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin)) -> JSONResponse:
+async def list_models(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List registered models accessible to the authenticated user.
 
@@ -124,6 +125,9 @@ async def list_models(username: str = Depends(get_username), is_admin: bool = De
         The authenticated username (injected by dependency).
     is_admin : bool
         Whether the user has admin privileges (injected by dependency).
+    page : PageParams
+        Opt-in ``limit`` / ``offset`` / ``search`` (see ``utils/pagination.py``). Applied after the
+        permission filter, so the ``X-Total-Count`` header counts only visible items.
 
     Returns:
     --------
@@ -145,7 +149,11 @@ async def list_models(username: str = Depends(get_username), is_admin: bool = De
         # Regular user can only see models they can manage
         registered_models = filter_manageable_models(username, all_models)
 
+    # Paginate strictly after the permission filter: the total never counts a hidden model
+    registered_models, headers = paginate_with_headers(registered_models, key=lambda m: m.name, params=page)
+
     return JSONResponse(
+        headers=headers,
         content=[
             {
                 "name": model.name,
@@ -154,5 +162,5 @@ async def list_models(username: str = Depends(get_username), is_admin: bool = De
                 "aliases": model.aliases,
             }
             for model in registered_models
-        ]
+        ],
     )

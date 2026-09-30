@@ -1,14 +1,22 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import ServiceAccountsPage from "./service-accounts-page";
-import * as useAllAccountsModule from "../../core/hooks/use-all-accounts";
+import * as usePagedListModule from "../../core/hooks/use-paged-list";
+import { pagedListState } from "../../tests/paged-list-mock";
 import * as useCurrentUserModule from "../../core/hooks/use-current-user";
 import * as userService from "../../core/services/user-service";
 import * as useToastModule from "../../shared/components/toast/use-toast";
 import * as useSearchModule from "../../core/hooks/use-search";
 import React from "react";
 
-vi.mock("../../core/hooks/use-all-accounts");
+vi.mock("../../core/hooks/use-paged-list");
 vi.mock("../../core/hooks/use-current-user");
 vi.mock("../../core/services/user-service");
 vi.mock("../../shared/components/toast/use-toast");
@@ -31,36 +39,6 @@ vi.mock("../../shared/components/page/page-container", () => ({
 vi.mock("../../shared/components/page/page-status", () => ({
   default: ({ isLoading }: { isLoading: boolean }) =>
     isLoading ? <div>Loading...</div> : null,
-}));
-
-vi.mock("../../shared/components/entity-list-table", () => ({
-  EntityListTable: ({
-    data,
-    columns,
-  }: {
-    data: { username: string }[];
-    columns: {
-      header: string;
-      render: (user: { username: string }) => React.ReactNode;
-    }[];
-  }) => (
-    <div data-testid="sa-list">
-      {data.map((item) => (
-        <div key={item.username}>
-          {item.username}
-          {columns.find((c) => c.header === "Actions")?.render(item)}
-        </div>
-      ))}
-    </div>
-  ),
-}));
-
-vi.mock("../../shared/components/icon-button", () => ({
-  IconButton: ({ title, onClick }: { title: string; onClick: () => void }) => (
-    <button onClick={onClick} title={title}>
-      {title}
-    </button>
-  ),
 }));
 
 vi.mock("./components/create-service-account-modal", () => ({
@@ -88,6 +66,28 @@ vi.mock("./components/create-service-account-modal", () => ({
     ) : null,
 }));
 
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+const renderPage = () =>
+  render(
+    <MemoryRouter initialEntries={["/service-accounts"]}>
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <>
+              <ServiceAccountsPage />
+              <LocationDisplay />
+            </>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+
 describe("ServiceAccountsPage", () => {
   const mockShowToast = vi.fn();
   const mockRefresh = vi.fn();
@@ -95,14 +95,9 @@ describe("ServiceAccountsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
-      allServiceAccounts: ["sa1"],
-      isLoading: false,
-      error: null,
-      refresh: mockRefresh,
-    } as unknown as ReturnType<
-      typeof useAllAccountsModule.useAllServiceAccounts
-    >);
+    vi.mocked(usePagedListModule.usePagedList).mockReturnValue(
+      pagedListState(["sa1"], { refresh: mockRefresh }),
+    );
 
     vi.spyOn(useCurrentUserModule, "useCurrentUser").mockReturnValue({
       currentUser: { is_admin: true, username: "admin" },
@@ -126,12 +121,28 @@ describe("ServiceAccountsPage", () => {
   });
 
   it("renders correctly", () => {
-    render(<ServiceAccountsPage />);
+    renderPage();
     expect(screen.getByText("sa1")).toBeInTheDocument();
   });
 
+  it("pages service accounts server-side and sends the search term", () => {
+    vi.spyOn(useSearchModule, "useSearch").mockReturnValue({
+      searchTerm: "sa",
+      submittedTerm: "sa",
+      handleInputChange: vi.fn(),
+      handleSearchSubmit: vi.fn(),
+      handleClearSearch: vi.fn(),
+    } as unknown as ReturnType<typeof useSearchModule.useSearch>);
+
+    renderPage();
+    expect(usePagedListModule.usePagedList).toHaveBeenCalledWith(
+      userService.fetchServiceAccountsPage,
+      "sa",
+    );
+  });
+
   it("opens create modal", () => {
-    render(<ServiceAccountsPage />);
+    renderPage();
     fireEvent.click(screen.getByText("Create Service Account"));
     expect(screen.getByTestId("create-modal")).toBeInTheDocument();
   });
@@ -139,7 +150,7 @@ describe("ServiceAccountsPage", () => {
   it("creates service account", async () => {
     const mockCreateUser = vi.spyOn(userService, "createUser");
     mockCreateUser.mockResolvedValue({} as unknown as { message: string });
-    render(<ServiceAccountsPage />);
+    renderPage();
 
     fireEvent.click(screen.getByText("Create Service Account"));
     fireEvent.click(screen.getByText("Confirm Create"));
@@ -161,7 +172,7 @@ describe("ServiceAccountsPage", () => {
   it("handles creation error", async () => {
     const mockCreateUser = vi.spyOn(userService, "createUser");
     mockCreateUser.mockRejectedValue(new Error("Creation failed"));
-    render(<ServiceAccountsPage />);
+    renderPage();
 
     fireEvent.click(screen.getByText("Create Service Account"));
     fireEvent.click(screen.getByText("Confirm Create"));
@@ -177,7 +188,7 @@ describe("ServiceAccountsPage", () => {
   it("deletes service account", async () => {
     const mockDeleteUser = vi.spyOn(userService, "deleteUser");
     mockDeleteUser.mockResolvedValue(undefined);
-    render(<ServiceAccountsPage />);
+    renderPage();
 
     const deleteButton = screen.getByTitle("Remove service account");
     fireEvent.click(deleteButton);
@@ -189,6 +200,79 @@ describe("ServiceAccountsPage", () => {
         "success",
       );
       expect(mockRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it("does not navigate when the remove action is clicked", async () => {
+    vi.spyOn(userService, "deleteUser").mockResolvedValue(undefined);
+    renderPage();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove service account" }),
+    );
+    await waitFor(() => expect(userService.deleteUser).toHaveBeenCalled());
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/service-accounts$/,
+    );
+  });
+
+  describe("row navigation", () => {
+    beforeEach(() => {
+      vi.mocked(usePagedListModule.usePagedList).mockReturnValue(
+        pagedListState(["a b@x.com", "team/1"], { refresh: mockRefresh }),
+      );
+    });
+
+    it("links each name to its permissions page", () => {
+      renderPage();
+
+      expect(screen.getByRole("link", { name: "a b@x.com" })).toHaveAttribute(
+        "href",
+        "/service-accounts/a b@x.com/experiments",
+      );
+      expect(screen.getByRole("link", { name: "team/1" })).toHaveAttribute(
+        "href",
+        "/service-accounts/team%2F1/experiments",
+      );
+    });
+
+    it("navigates when the row is clicked", () => {
+      renderPage();
+
+      const row = screen
+        .getByRole("link", { name: "team/1" })
+        .closest<HTMLElement>('[role="row"]');
+      expect(row).not.toBeNull();
+      fireEvent.click(within(row as HTMLElement).getAllByRole("cell")[1]);
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/service-accounts/team%2F1/experiments",
+      );
+    });
+
+    it("has no Permissions column or hidden elements and a muted remove action", () => {
+      const { container } = renderPage();
+
+      expect(
+        screen.queryByRole("columnheader", { name: "Permissions" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /manage permissions/i }),
+      ).not.toBeInTheDocument();
+      expect(container.querySelector(".invisible")).toBeNull();
+      const removeButtons = screen.getAllByRole("button", {
+        name: "Remove service account",
+      });
+      expect(removeButtons).toHaveLength(2);
+      removeButtons.forEach((button) =>
+        expect(button).toHaveClass("text-text-primary"),
+      );
+    });
+
+    it("keeps the name link keyboard focusable", () => {
+      renderPage();
+      const link = screen.getByRole("link", { name: "a b@x.com" });
+      link.focus();
+      expect(document.activeElement).toBe(link);
     });
   });
 });

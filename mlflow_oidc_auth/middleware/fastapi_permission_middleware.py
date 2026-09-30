@@ -18,14 +18,19 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
-from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.routing import Match, Mount
 
+from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
+from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
+from mlflow_oidc_auth.validators.job_submission import can_submit_job
 
 logger = get_logger()
-
-_MLFLOW_MODELS_PATH = "/gateway/mlflow/v1/models"
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +54,54 @@ _GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGene
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
 
+# Pattern: /gateway/proxy/{endpoint_name}/{path:path} — MLflow's raw provider passthrough
+# (mlflow.server.gateway_api.raw_proxy). The endpoint is the first segment after /proxy/; the rest
+# is the provider path, which — like Starlette's ``{path:path}`` — may be empty.
+_RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.*$")
+
+# MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
+_JOBS_PREFIX = "/ajax-api/3.0/jobs"
+_JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
+
+# MCP server registry, mounted by MLflow under both the API and the UI prefix
+# (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes), each behind MLflow's static
+# prefix when one is configured. See _is_mcp_server_path.
+_MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
+
+
+# This plugin's credentials: the session cookie and the Basic/Bearer ``Authorization`` header.
+# MLflow's gateway forwards the caller's headers to the endpoint's provider on its passthrough and
+# proxy routes, stripping only its own ``X-MLflow-Authorization`` — see _strip_client_credentials.
+_GATEWAY_PREFIX = "/gateway/"
+
+# The gateway routes that never forward the caller's headers to a provider: MLflow's typed
+# invocations and chat-completions handlers call the provider's own chat/embeddings methods, which
+# send only the provider's headers. ``Authorization`` is kept on these, because a "sanitize"
+# guardrail makes MLflow call back into its own invocations route with the caller's Authorization.
+_TYPED_GATEWAY_ROUTE = re.compile(r"^/gateway/(?:[^/]+/mlflow/invocations|mlflow/v1/chat/completions)$")
+
+
+def _strip_client_credentials(request: Request, path: str) -> None:
+    """Remove this plugin's credentials from a gateway request before MLflow handles it.
+
+    MLflow's AI gateway copies the caller's headers onto the request it sends to a third-party
+    provider (``dict(request.headers)`` on the passthrough and proxy routes, merged under the
+    provider's own headers). The session cookie would then reach every provider, and the caller's
+    IdP token or access token would reach any provider that puts its API key in a header of its own
+    (``api-key``, ``x-api-key``, ``x-goog-api-key``). Authentication and authorization have already
+    run when this is called.
+
+    The cookie is removed on every gateway route: nothing downstream reads it. ``Authorization`` is
+    removed everywhere except the typed routes that never forward headers (``_TYPED_GATEWAY_ROUTE``)
+    — including on any gateway route MLflow adds later, so an unknown route is the safe case. The
+    one thing that costs: a sanitize guardrail on a passthrough or proxy route cannot call back into
+    MLflow with the caller's token, so it fails closed.
+
+    Mutates ``request.scope["headers"]``, which the route handler reads.
+    """
+    drop = {b"cookie"} if _TYPED_GATEWAY_ROUTE.match(path) else {b"cookie", b"authorization"}
+    request.scope["headers"] = [(name, value) for name, value in request.scope.get("headers", []) if name.lower() not in drop]
+
 
 # ---------------------------------------------------------------------------
 # Endpoint-name extraction (mirrors upstream _extract_gateway_endpoint_name)
@@ -62,6 +115,7 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     - ``/gateway/{endpoint_name}/mlflow/invocations``
     - Passthrough routes (endpoint in request body as ``model``)
     - Gemini routes (endpoint in URL path segment)
+    - ``/gateway/proxy/{endpoint_name}/{path}`` (raw provider passthrough)
     """
     # Pattern 1: /gateway/{endpoint_name}/mlflow/invocations
     if match := _INVOCATIONS_RE.match(path):
@@ -79,6 +133,10 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     if match := _GEMINI_STREAM.match(path):
         return match.group(1)
 
+    # Pattern 9: raw provider passthrough, endpoint in the first path segment after /proxy/
+    if match := _RAW_PROXY_RE.match(path):
+        return match.group(1)
+
     return None
 
 
@@ -94,9 +152,6 @@ def _get_gateway_validator(
 
     Validates that the user has USE permission on the target gateway endpoint.
     """
-
-    if path == _MLFLOW_MODELS_PATH:
-        return _get_require_authentication_validator()
 
     async def validator(username: str, request: Request) -> bool:
         body: dict[str, Any] | None = None
@@ -148,6 +203,188 @@ def _get_require_authentication_validator() -> Callable[[str, Request], Awaitabl
     return validator
 
 
+def _job_id_from_path(path: str) -> str | None:
+    """Return the job id a job API path addresses, or None for the submit and search routes.
+
+    ``GET /jobs/{job_id}`` and ``PATCH /jobs/cancel/{job_id}`` carry a job id. ``POST /jobs/``
+    (submit) and ``POST /jobs/search`` do not. Any other path under the prefix is treated as
+    addressing a job, so it goes through the ownership check and fails closed.
+
+    Parameters:
+        path: Routed request path, starting with the job API prefix.
+
+    Returns:
+        The job id, or None when the path addresses no single job.
+    """
+    tail = path[len(_JOBS_PREFIX) :].strip("/")
+    if not tail or tail == "search":
+        return None
+    if tail.startswith("cancel/"):
+        return tail[len("cancel/") :]
+    return tail
+
+
+def _job_creator(job_id: str) -> str | None:
+    """Return the username recorded as the creator of a job, or None if it cannot be resolved.
+
+    Parameters:
+        job_id: The job id.
+
+    Returns:
+        The creator's username; None if the job does not exist, has no recorded creator, or the
+        lookup fails.
+    """
+    try:
+        from mlflow.server.jobs import get_job
+
+        creator = getattr(get_job(job_id), "creator", None)
+    except Exception:
+        logger.debug("Could not resolve job creator for authorization")
+        return None
+    return creator if isinstance(creator, str) and creator else None
+
+
+def _is_job_search(path: str, request: Request) -> bool:
+    """True when the request is a job search, whose response is narrowed to the caller's jobs."""
+    return request.method == "POST" and path.rstrip("/") == _JOBS_SEARCH_PATH
+
+
+def _get_job_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
+    """Return a validator for MLflow's FastAPI job API.
+
+    Jobs carry no experiment scope on this API, so the recorded creator is the boundary, as in
+    MLflow's own auth plugin: fetching or cancelling a job by id requires being its creator
+    (admins never reach the validator). A job that does not exist or has no recorded creator is
+    denied. Searching jobs needs only authentication; the results are narrowed to the caller's
+    own jobs after the handler runs. Submitting a job (``POST`` on the prefix) is authorized
+    against the resources its params name (see ``validators.job_submission``). Any other method
+    on the prefix is refused.
+    """
+    job_id = _job_id_from_path(path)
+
+    async def validator(username: str, request: Request) -> bool:
+        if job_id is None:
+            if path[len(_JOBS_PREFIX) :].strip("/") == "search":
+                return _is_job_search(path, request)
+            if request.method != "POST":
+                return False
+            try:
+                payload = await request.json()
+            except Exception:
+                return False
+            return can_submit_job(payload, username)
+        creator = _job_creator(job_id)
+        return creator is not None and creator == username
+
+    return validator
+
+
+def _filter_job_search_response(username: str, body: bytes) -> bytes:
+    """Keep only the jobs created by ``username`` in a job search response body.
+
+    The creator is taken from each job's ``creator`` field when MLflow includes it, otherwise
+    looked up in the job store. A job whose creator cannot be resolved is dropped.
+
+    Parameters:
+        username: The caller.
+        body: The JSON body returned by the search handler.
+
+    Returns:
+        The filtered JSON body.
+
+    Raises:
+        ValueError: If the body is not a job search response.
+    """
+    data = json.loads(body)
+    jobs = data.get("jobs") if isinstance(data, dict) else None
+    if not isinstance(jobs, list):
+        raise ValueError("unexpected job search response")
+    kept = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        if "creator" in job:
+            creator = job.get("creator")
+        else:
+            job_id = job.get("job_id")
+            creator = _job_creator(str(job_id)) if job_id else None
+        if creator is not None and creator == username:
+            kept.append(job)
+    data["jobs"] = kept
+    return json.dumps(data).encode()
+
+
+async def _filtered_job_search_response(username: str, response: Response) -> Response:
+    """Buffer a job search response and return it narrowed to the caller's jobs.
+
+    Non-2xx responses carry no job list and are returned unchanged. If the body cannot be
+    filtered, an error is returned instead of the unfiltered list.
+    """
+    if not 200 <= response.status_code < 300:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    try:
+        filtered = _filter_job_search_response(username, body)
+    except Exception:
+        logger.error("Failed to filter job search response")
+        return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
+    headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
+    return Response(content=filtered, status_code=response.status_code, headers=headers, media_type=response.media_type)
+
+
+def _is_mcp_server_path(path: str) -> bool:
+    """Whether ``path`` is on the MCP server registry, with or without MLflow's static prefix.
+
+    ``app.py`` mounts the registry at ``get_mcp_server_api_route_prefixes()``, which puts MLflow's
+    static prefix (``--static-prefix``) in front of both paths. Matching only the bare paths would
+    let a prefixed deployment's registry skip this validator — reads and writes alike — so the
+    check asks MLflow, which reads the prefix the same way it mounts the routes. The bare paths
+    are kept as well, so the match can only ever be wider, never narrower.
+    """
+    if path.startswith(_MCP_SERVER_PREFIXES):
+        return True
+    try:
+        from mlflow.server.mcp_server_api import is_mcp_server_api_path
+    except ImportError:
+        return False
+    return is_mcp_server_api_path(path)
+
+
+def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
+    """Return a validator for the MCP server registry routes.
+
+    Mutating the registry is admin-only. Admins never reach this validator (the middleware
+    short-circuits on ``is_admin``), so denying every write method here is what makes mutation
+    admin-only.
+
+    Reading depends on workspaces. MLflow keeps a registry per workspace, and serves the one the
+    request names — so with ``MLFLOW_ENABLE_WORKSPACES`` on, a read requires at least READ on that
+    workspace, the same boundary every other workspace-scoped resource has. A request that names
+    no workspace is served from the default workspace and is judged against it. With workspaces
+    off there is one registry and no tenant boundary to enforce, and reads stay open to any
+    authenticated user.
+    """
+
+    async def validator(username: str, request: Request) -> bool:
+        if request.method not in ("GET", "HEAD"):
+            return False
+        if not config.MLFLOW_ENABLE_WORKSPACES:
+            return True
+
+        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        # AuthMiddleware normalised the workspace header the way MLflow does; no header means
+        # MLflow serves the default workspace, so that is the one that must be readable.
+        workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
+        permission = get_workspace_permission_cached(username, workspace)
+        return permission is not None and permission.can_read
+
+    return validator
+
+
 # ---------------------------------------------------------------------------
 # Route → validator dispatcher
 # ---------------------------------------------------------------------------
@@ -167,57 +404,51 @@ def _find_fastapi_validator(
     if path.startswith("/v1/traces"):
         return _get_otel_validator(path)
 
-    if path.startswith("/ajax-api/3.0/jobs"):
-        return _get_require_authentication_validator()
+    if path.startswith(_JOBS_PREFIX):
+        return _get_job_validator(path)
 
     if path.startswith("/ajax-api/3.0/mlflow/assistant"):
         return _get_require_authentication_validator()
 
+    if _is_mcp_server_path(path):
+        return _get_mcp_server_registry_validator()
+
     return None
 
 
-async def _filter_gateway_models_response(response, username: str):
-    """Keep only models backed by gateway endpoints the user can USE."""
-    if response.status_code != 200:
-        return response
+# ---------------------------------------------------------------------------
+# Which application serves a request
+# ---------------------------------------------------------------------------
 
-    try:
-        chunks = []
-        async for chunk in response.body_iterator:
-            chunks.append(chunk.encode() if isinstance(chunk, str) else bytes(chunk))
 
-        data = json.loads(b"".join(chunks))
-        models = data.get("data")
-        if not isinstance(models, list):
-            raise ValueError("Models response does not contain a data list")
+def _dispatches_to_flask_mount(request: Request) -> bool:
+    """Return True when the router will hand this request to the Flask WSGI mount.
 
-        visible_models = []
-        for model in models:
-            endpoint_name = model.get("id") if isinstance(model, dict) else None
-            if not isinstance(endpoint_name, str):
-                continue
-            try:
-                if can_use_gateway_endpoint(endpoint_name, username):
-                    visible_models.append(model)
-            except Exception as e:
-                logger.error(
-                    "Gateway models permission check failed for endpoint %s: %s",
-                    endpoint_name,
-                    type(e).__name__,
-                )
+    Walks the application's routes in order, as the router does, and reports whether the first
+    full match is the mount that wraps MLflow's Flask app. That mount authorizes every request
+    itself (``before_request_hook`` denies without an ``AuthContext``); anything else — a FastAPI
+    route, another mount, or no match at all — is the responsibility of this middleware.
 
-        data["data"] = visible_models
-    except Exception as e:
-        logger.error("Gateway models response filtering failed: %s", type(e).__name__)
-        return PlainTextResponse("Internal server error", status_code=500)
+    Parameters:
+        request: Incoming request; ``request.scope["app"]`` is the application being served.
 
-    filtered_response = JSONResponse(
-        content=data,
-        status_code=response.status_code,
-        background=response.background,
+    Returns:
+        True only when the request will be served by the Flask mount.
+    """
+    router = getattr(request.scope.get("app"), "router", None)
+    for route in getattr(router, "routes", ()):
+        match, _ = route.matches(request.scope)
+        if match is Match.FULL:
+            return isinstance(route, Mount) and isinstance(route.app, AuthAwareWSGIMiddleware)
+    return False
+
+
+def _authentication_required() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Authentication required"},
+        headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
     )
-    filtered_response.raw_headers.extend((key, value) for key, value in response.raw_headers if key.lower() not in {b"content-length", b"content-type"})
-    return filtered_response
 
 
 # ---------------------------------------------------------------------------
@@ -238,26 +469,37 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def fastapi_permission_middleware(request: Request, call_next):
-        path = request.url.path
+        # Match validators on the path the router dispatches, never the raw request path.
+        path = routed_path(request.scope)
+        username = getattr(request.state, "username", None)
 
         # Find validator for this route — returns None for Flask-handled routes
         validator = _find_fastapi_validator(path)
         if validator is None:
+            # Fail closed: AuthMiddleware only lets a request through without a user on an
+            # unprotected route. Anything else served outside the Flask mount (which authorizes
+            # on its own) must still carry an authenticated user, whether or not a validator
+            # has been written for it yet.
+            if not username and not is_unprotected_route(path) and not _dispatches_to_flask_mount(request):
+                return _authentication_required()
             return await call_next(request)
 
         # Check authentication context (already set by AuthMiddleware)
-        username = getattr(request.state, "username", None)
         if not username:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authentication required"},
-                headers={"WWW-Authenticate": 'Basic realm="mlflow"'},
-            )
+            return _authentication_required()
 
-        # Admins have full access
+        # Admins have full access — but their credentials must not reach a provider either.
         is_admin = getattr(request.state, "is_admin", False)
         if is_admin:
+            if path.startswith(_GATEWAY_PREFIX):
+                _strip_client_credentials(request, path)
             return await call_next(request)
+
+        # Bridge AuthContext into ContextVar so downstream permission code
+        # (e.g. _apply_workspace_fallback) can resolve the workspace even
+        # though these routes never enter Flask
+        auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+        auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
 
         # Run the validator
         try:
@@ -272,8 +514,13 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
                 "Permission denied",
                 status_code=403,
             )
+        finally:
+            if auth_context_token is not None:
+                clear_auth_context(auth_context_token)
 
+        if path.startswith(_GATEWAY_PREFIX):
+            _strip_client_credentials(request, path)
         response = await call_next(request)
-        if request.method == "GET" and path == _MLFLOW_MODELS_PATH:
-            return await _filter_gateway_models_response(response, username)
+        if _is_job_search(path, request):
+            return await _filtered_job_search_response(username, response)
         return response

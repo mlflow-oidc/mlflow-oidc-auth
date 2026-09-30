@@ -13,7 +13,6 @@ Requires:
 
 import json
 import os
-from functools import lru_cache
 from typing import Any
 
 from mlflow_oidc_auth.config_providers.base import ConfigProvider, SecretLevel, get_secret_level

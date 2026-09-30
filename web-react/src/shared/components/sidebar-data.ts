@@ -12,6 +12,8 @@ import {
   faKey,
   faHexagonNodesBolt,
   faBuilding,
+  faPlug,
+  faSitemap,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -100,7 +102,22 @@ export const getSidebarData = (
         isInternalLink: true,
         icon: faWrench,
       },
+      {
+        label: "SCIM",
+        href: "/scim",
+        isInternalLink: true,
+        icon: faPlug,
+      },
     ];
+
+    if (workspacesEnabled) {
+      adminLinks.push({
+        label: "Workspace rules",
+        href: "/workspace-rules",
+        isInternalLink: true,
+        icon: faSitemap,
+      });
+    }
 
     sidebarContent = [...sidebarContent, ...adminLinks];
   }

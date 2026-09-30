@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import time
 import uuid
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from .users import get_mlflow_users
@@ -190,7 +190,7 @@ def _create_prompt(client: httpx.Client, prompt_name: str, prompt_text: str) -> 
         json={
             "name": prompt_name,
             "description": "Initial prompt version",
-            "source": "test-source",
+            "source": "dummy-source",
             "tags": [
                 {"key": "mlflow.prompt.is_prompt", "value": "true"},
                 {"key": "mlflow.prompt.text", "value": prompt_text},
@@ -207,7 +207,7 @@ def _create_prompt_version(client: httpx.Client, prompt_name: str, prompt_text: 
     payload = {
         "name": prompt_name,
         "description": "Updated prompt version",
-        "source": "test-source-v2",
+        "source": "dummy-source",
         "tags": [
             {"key": "mlflow.prompt.is_prompt", "value": "true"},
             {"key": "mlflow.prompt.text", "value": prompt_text},
@@ -309,7 +309,7 @@ def test_user_registers_scorers_at_experiment_level(
         assert exp_success, f"Failed to create experiment: {experiment_id}"
 
     # Use the utility function for scorer registration
-    cookies = pytest.importorskip("httpx").Cookies()
+    pytest.importorskip("httpx2")
     # We need the cookies from the client - use user_cookies_factory instead
     from .utils import register_sample_scorers
 

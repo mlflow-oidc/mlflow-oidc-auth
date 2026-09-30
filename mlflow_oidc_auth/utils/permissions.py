@@ -6,7 +6,8 @@ The PERMISSION_REGISTRY maps resource types to builder functions that create
 source configurations, and resolve_permission() is the single entry point.
 
 A pluggable cache backend is used to avoid repeated DB lookups on every request.
-Cache entries are keyed by ``resource_type:resource_id:username`` and expire
+Cache entries are keyed by ``resource_type:resource_id:username`` (plus every extra
+resource-identifying kwarg, e.g. the scorer name, for composite ids) and expire
 after PERMISSION_CACHE_TTL_SECONDS (default 30). The backend is selected via
 ``CACHE_BACKEND`` config (``"local"`` or ``"redis"``).
 
@@ -19,6 +20,7 @@ resolve_permission() and remain backward-compatible.
 
 import re
 from typing import Callable, Dict
+from urllib.parse import quote
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -28,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -78,30 +80,44 @@ def _get_cache_workspace() -> str | None:
     return get_request_workspace() or _NO_WORKSPACE_CACHE_MARKER
 
 
-def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None) -> str:
+def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **qualifiers: str) -> str:
     """Build a string cache key from the permission lookup tuple.
 
     The workspace is part of the key whenever workspaces are enabled: the same
     resource id denotes different entities in different workspaces, and a result
     may itself be workspace-derived, so a workspace-blind key would serve one
     tenant's decision to another for the lifetime of the entry.
+
+    ``qualifiers`` are the extra resource-identifying kwargs a registry builder takes
+    when the id is composite — a scorer is ``(experiment_id, scorer_name)``. They MUST
+    be part of the key: keyed on the experiment id alone, the decision for one scorer
+    was served for every other scorer in the same experiment until the entry expired.
+    Composite keys quote every component, so a ``:`` inside an id or a name cannot make
+    two different lookups collide.
     """
+    if qualifiers:
+        parts = [quote(str(p), safe="") for p in (resource_type, resource_id, username)]
+        parts += [f"{quote(k, safe='')}={quote(str(v), safe='')}" for k, v in sorted(qualifiers.items())]
+        key = ":".join(parts)
+        return f"{quote(workspace, safe='')}:{key}" if workspace is not None else key
     if workspace is not None:
         return f"{workspace}:{resource_type}:{resource_id}:{username}"
     return f"{resource_type}:{resource_id}:{username}"
 
 
-def invalidate_permission_cache(resource_type: str, resource_id: str, username: str, workspace: str | None = None) -> None:
+def invalidate_permission_cache(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **qualifiers: str) -> None:
     """Remove a specific permission entry from cache.
 
     Call after permission CUD operations for a specific user+resource. When
     workspaces are enabled, pass the workspace the entry was cached under;
-    omitting it falls back to the workspace of the current request.
+    omitting it falls back to the workspace of the current request. For a composite
+    resource pass the same qualifiers ``resolve_permission`` was given (e.g.
+    ``scorer_name=...``), or the entry is not found.
     """
     cache = _get_permission_cache()
     if workspace is None:
         workspace = _get_cache_workspace()
-    cache.delete(_make_cache_key(resource_type, resource_id, username, workspace))
+    cache.delete(_make_cache_key(resource_type, resource_id, username, workspace, **qualifiers))
 
 
 def flush_permission_cache() -> None:
@@ -123,6 +139,20 @@ SCORER = "scorer"
 GATEWAY_ENDPOINT = "gateway_endpoint"
 GATEWAY_SECRET = "gateway_secret"
 GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
+
+# The same names as literals, for log messages. CodeQL treats anything derived from a
+# constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
+# the matching literal here rather than by echoing the value it was given. Kept in step
+# with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+_RESOURCE_TYPE_LOG_NAMES = (
+    "experiment",
+    "registered_model",
+    "prompt",
+    "scorer",
+    "gateway_endpoint",
+    "gateway_secret",
+    "gateway_model_definition",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -368,10 +398,10 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     GRANTS, because then access is being handed out by configuration rather than by an
     explicit permission record, and nothing in the system says who intended it.
 
-    The shipped default is ``MANAGE``, so on a fresh install this is the granting case for
-    every resource, which is exactly the exposure operators should be able to see before
-    the default changes (issue #293). Only the granting case warns; both cases are counted
-    and logged at debug.
+    The default is ``NO_PERMISSIONS`` (since v7.6.0, issue #293), so a granting fallback only
+    happens where an operator has set a permissive ``DEFAULT_MLFLOW_PERMISSION`` — typically
+    to keep pre-7.6 behaviour while migrating. That is the exposure operators should be able
+    to see. Only the granting case warns; both cases are counted and logged at debug.
 
     Warnings are throttled by occurrence count rather than suppressed, so a long-running
     process keeps reporting at a decreasing rate instead of going quiet after startup.
@@ -391,7 +421,13 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
     if len(samples) < _FALLBACK_SAMPLE_LIMIT and resource_id not in samples:
         samples.append(resource_id)
 
-    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", resource_type, permission.name, username, count)
+    # The level and the resource type are logged by fixed names, not read off the arguments:
+    # for a gateway secret both flow from secret-named code, and static analysis cannot tell
+    # that only a level and a type name, never the secret, reach the log.
+    level = next((name for name, known in ALL_PERMISSIONS.items() if known == permission), "UNKNOWN")
+    kind = next((name for name in _RESOURCE_TYPE_LOG_NAMES if name == resource_type), "resource")
+
+    logger.debug("Permission fallback: %s granted %s to %s (occurrence %d)", kind, level, username, count)
 
     if not permission.can_read:
         # A fallback that grants nothing is the safe, expected shape.
@@ -399,11 +435,11 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
 
     if count in _FALLBACK_WARN_AT or count % _FALLBACK_WARN_EVERY == 0:
         logger.warning(
-            f"DEFAULT_MLFLOW_PERMISSION granted {permission.name} on a {resource_type} to {username} "
-            f"because no explicit permission exists ({count} such grants for {resource_type} so far). "
+            f"DEFAULT_MLFLOW_PERMISSION granted {level} on a {kind} to {username} "
+            f"because no explicit permission exists ({count} such grants for {kind} so far). "
             "Access is coming from configuration rather than a permission record. "
             "Call get_permission_fallback_samples() for the affected resource ids, or enable DEBUG logging. "
-            "See issue #293: this default is changing to NO_PERMISSIONS in a future major version."
+            "The shipped default is NO_PERMISSIONS (issue #293); see docs/permissions.md 'Migrating to deny-by-default'."
         )
 
 
@@ -411,10 +447,13 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     """Single entry point for all permission resolution. Per D-01 (REFAC-01).
 
     Results are cached with a short TTL to avoid repeated DB lookups on
-    every request. The cache key is ``resource_type:resource_id:username``.
+    every request. The cache key is ``resource_type:resource_id:username`` plus
+    every kwarg, which the builders use to identify composite resources.
     """
     cache = _get_permission_cache()
-    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace())
+    # kwargs are what the registry builder needs to identify the resource beyond its id
+    # (scorer_name for a scorer), so they are part of the key.
+    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(), **kwargs)
 
     cached = cache.get(cache_key)
     if cached is not None:

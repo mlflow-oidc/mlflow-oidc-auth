@@ -2,6 +2,9 @@ import {
   createStaticApiFetcher,
   createDynamicApiFetcher,
 } from "./create-api-fetcher.ts";
+import { requestWithStatus } from "./api-utils";
+import { createPagedFetcher } from "./paged-list";
+import { STATIC_API_ENDPOINTS } from "../configs/api-endpoints";
 import type {
   EntityPermission,
   ExperimentPermission,
@@ -13,12 +16,38 @@ import type {
   ExperimentPatternPermission,
   ModelPatternPermission,
   PromptPatternPermission,
+  GroupDetails,
 } from "../../shared/types/entity";
 
 export const fetchAllGroups = createStaticApiFetcher<string[]>({
   endpointKey: "ALL_GROUPS",
   responseType: [] as string[],
 });
+
+export const fetchAllGroupDetails = createStaticApiFetcher<GroupDetails[]>({
+  endpointKey: "GROUPS_DETAILS",
+  responseType: [] as GroupDetails[],
+});
+
+/**
+ * Create a group up front, admin-only (issues #64, #201). Idempotent: creating a group that
+ * already exists (including one a directory already owns) succeeds without changing it.
+ *
+ * `status` is 201 when this call created the group and 200 when it already existed — the caller
+ * uses it rather than the response message to tell the two apart.
+ */
+export const createGroup = async (
+  groupName: string,
+): Promise<{ message: string; status: number }> => {
+  const { data, status } = await requestWithStatus<{ message: string }>(
+    STATIC_API_ENDPOINTS.ALL_GROUPS,
+    {
+      method: "POST",
+      body: JSON.stringify({ group_name: groupName }),
+    },
+  );
+  return { message: data.message, status };
+};
 
 export const fetchAllExperiments = createStaticApiFetcher<ExperimentListItem[]>(
   {
@@ -181,4 +210,44 @@ export const fetchGroupPromptPatternPermissions = createDynamicApiFetcher<
 >({
   endpointKey: "GROUP_PROMPT_PATTERN_PERMISSIONS",
   responseType: [] as PromptPatternPermission[],
+});
+
+// Paginated list fetchers for the list pages (server-side `limit`/`offset`/`search`).
+const asArray = <T>(body: T[] | undefined): T[] => body ?? [];
+
+export const fetchGroupsPage = createPagedFetcher<string[], string>(
+  STATIC_API_ENDPOINTS.ALL_GROUPS,
+  { extract: asArray, displayKey: (group) => group },
+);
+
+export const fetchGroupDetailsPage = createPagedFetcher<
+  GroupDetails[],
+  GroupDetails
+>(STATIC_API_ENDPOINTS.GROUPS_DETAILS, {
+  extract: asArray,
+  displayKey: (group) => group.group_name,
+});
+
+export const fetchExperimentsPage = createPagedFetcher<
+  ExperimentListItem[],
+  ExperimentListItem
+>(STATIC_API_ENDPOINTS.ALL_EXPERIMENTS, {
+  extract: asArray,
+  displayKey: (experiment) => experiment.name,
+});
+
+export const fetchModelsPage = createPagedFetcher<
+  ModelListItem[],
+  ModelListItem
+>(STATIC_API_ENDPOINTS.ALL_MODELS, {
+  extract: asArray,
+  displayKey: (model) => model.name,
+});
+
+export const fetchPromptsPage = createPagedFetcher<
+  PromptListItem[],
+  PromptListItem
+>(STATIC_API_ENDPOINTS.ALL_PROMPTS, {
+  extract: asArray,
+  displayKey: (prompt) => prompt.name,
 });

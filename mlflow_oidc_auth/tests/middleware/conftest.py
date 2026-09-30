@@ -35,8 +35,6 @@ def mock_store():
     admin_user = User(
         id_=1,
         username="admin@example.com",
-        password_hash="admin_hash",
-        password_expiration=None,
         is_admin=True,
         is_service_account=False,
         display_name="Admin User",
@@ -45,12 +43,21 @@ def mock_store():
     regular_user = User(
         id_=2,
         username="user@example.com",
-        password_hash="user_hash",
-        password_expiration=None,
         is_admin=False,
         is_service_account=False,
         display_name="Regular User",
     )
+
+    # Server-side sessions (#310): the auth path resolves a cookie's opaque session id to its
+    # user in one lookup, so the mock has to answer that as well as the profile queries.
+    from mlflow_oidc_auth.repository.auth_session import ResolvedSession
+
+    _sessions = {
+        "sid-user": ResolvedSession(username="user@example.com", is_admin=False, is_active=True),
+        "sid-admin": ResolvedSession(username="admin@example.com", is_admin=True, is_active=True),
+    }
+    store_mock.resolve_auth_session.side_effect = lambda session_id: _sessions.get(session_id)
+    store_mock.revoke_auth_session.return_value = True
 
     # Mock store methods
     store_mock.get_user.side_effect = lambda username: {

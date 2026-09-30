@@ -33,5 +33,5 @@ def test_populate_users_can_create_resources(
             cookies,
             url=base_url,
             commit_message="integration prompt creation",
-            source="integration-test",
+            source="dummy-source",
         ), f"Failed to create {prompt_name}"

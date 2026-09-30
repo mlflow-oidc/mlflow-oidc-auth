@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import patch as mock_patch
 
 from mlflow_oidc_auth.graphql.patch import (

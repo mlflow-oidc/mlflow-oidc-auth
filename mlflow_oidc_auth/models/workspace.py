@@ -6,6 +6,7 @@ and the workspace CRUD router for workspace lifecycle management.
 """
 
 import re
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -44,6 +45,7 @@ class WorkspaceGroupPermissionResponse(BaseModel):
     workspace: str = Field(..., description="Workspace name")
     group_name: str = Field(..., description="Group name")
     permission: str = Field(..., description="Permission level")
+    rule_id: Optional[int] = Field(None, description="The workspace group rule that created this grant; null for a manual grant")
 
 
 class WorkspaceRegexPermissionRequest(BaseModel):

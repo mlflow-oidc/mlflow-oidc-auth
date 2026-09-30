@@ -18,6 +18,12 @@ def _get_alembic_config(url: str) -> Config:
     alembic_cfg.set_main_option("script_location", str(alembic_dir))
     url = url.replace("%", "%%")  # Same as here: https://github.com/mlflow/mlflow/issues/1487
     alembic_cfg.set_main_option("sqlalchemy.url", url)
+    # Every caller of this helper is running Alembic *inside* an already-running process, so
+    # env.py must not apply the .ini's logging sections: fileConfig replaces the root handlers
+    # and, by default, disables every logger that already exists — which silenced the audit
+    # trail for the life of the process (issue #342). The .ini's logging config exists for the
+    # `alembic` CLI, which does not come through here.
+    alembic_cfg.attributes["configure_logging"] = False
     return alembic_cfg
 
 

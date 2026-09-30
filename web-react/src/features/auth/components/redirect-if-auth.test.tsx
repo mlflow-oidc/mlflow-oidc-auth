@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { vi, beforeEach } from "vitest";
 import RedirectIfAuth from "./redirect-if-auth";
 
 import type { UseAuthResult } from "../../../core/hooks/use-auth";

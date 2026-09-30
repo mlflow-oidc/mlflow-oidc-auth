@@ -8,7 +8,7 @@ scenarios, error responses, and security configuration settings.
 
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 from mlflow_oidc_auth.config import AppConfig, get_bool_env_variable

@@ -68,6 +68,18 @@ class TestFallbackRecording:
         # The resource id is deliberately absent — see TestResourceIdsStayOutOfLogs.
         assert "12" not in message.replace("#293", "")
 
+    def test_a_gateway_secret_fallback_names_the_level(self, captured_logger):
+        """The level is logged from the fixed permission names, so a secret-scoped value never is."""
+        P.record_permission_fallback(P.GATEWAY_SECRET, "openai-prod-key", "alice", get_permission("READ"))
+
+        message = captured_logger.warning.call_args.args[0]
+        assert "DEFAULT_MLFLOW_PERMISSION granted READ on a gateway_secret" in message
+        assert "openai-prod-key" not in message
+
+    def test_log_names_cover_every_resource_type(self):
+        """A type missing from the literal list would be logged as a generic 'resource'."""
+        assert set(P._RESOURCE_TYPE_LOG_NAMES) == set(P.PERMISSION_REGISTRY)
+
     def test_a_denying_fallback_never_warns(self, captured_logger):
         """No access was handed out, so there is nothing for an operator to act on."""
         for i in range(50):
