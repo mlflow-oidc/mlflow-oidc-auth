@@ -229,5 +229,6 @@ class TestList:
         body = admin.get(RULES).json()
 
         assert [(r["id"], r["name"], r["mode"], r["created_by"]) for r in body["rules"]] == [(1, "tenants", "enforce", ADMIN), (2, "ops", "report", ADMIN)]
+        assert all(r["created_at"].endswith(("Z", "+00:00")) and r["updated_at"].endswith(("Z", "+00:00")) for r in body["rules"]), "timestamps must carry UTC"
         assert body["max_permission"] == "USE"
         assert body["allowed_permissions"] == ["READ", "USE"]

@@ -1,9 +1,9 @@
 """Pydantic request/response models for workspace group rules (issue #418)."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WorkspaceRuleCreateRequest(BaseModel):
@@ -51,6 +51,12 @@ class WorkspaceRuleResponse(BaseModel):
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def _as_utc(cls, value: datetime) -> datetime:
+        """Stored naive in UTC; sent with its offset so a browser does not read it as local time."""
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 class WorkspaceRuleListResponse(BaseModel):
