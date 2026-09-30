@@ -49,6 +49,7 @@ These pages appear when `MLFLOW_ENABLE_WORKSPACES=true`:
 | Page | Path | Description |
 |------|------|-------------|
 | Workspaces | `/workspaces` | List workspaces. Click to manage user/group workspace permissions |
+| Workspace rules | `/workspace-rules` | Admin only. Rules that attach groups to workspaces by group name. See [Workspace rules](#workspace-rules) |
 
 ### Admin Tools
 
@@ -172,6 +173,55 @@ in [SCIM Provisioning](scim):
   the SCIM id), status, outcome and error. Failed requests are highlighted. Filter by outcome, and
   **Load more** pages further back, as far as `SCIM_ACTIVITY_RETENTION_DAYS` keeps. See
   [Provisioning status and activity](scim#provisioning-status-and-activity) for what is recorded.
+
+## Workspace rules
+
+The **Workspace rules** page (`/workspace-rules`) manages the rules described in
+[Workspaces → Group rules](workspaces#group-rules). It is shown only to administrators, and only
+when `MLFLOW_ENABLE_WORKSPACES=true`: the navigation entry is hidden otherwise, and the route sends a
+non-admin to the access-denied page. This is cosmetic — the server refuses every rule request from a
+non-admin and answers `404` while workspaces are off.
+
+- **Rules table**: name, pattern, permission, mode (a **Report** or **Enforce** badge), whether the
+  rule is enabled, and when it last changed. Rules are listed oldest first; when several match the
+  same group and workspace, the oldest wins.
+- **Create / edit**: name, group name pattern, permission, mode and enabled. The permission choices
+  stop at the server's ceiling (`WORKSPACE_RULES_MAX_PERMISSION`); an existing rule above a lowered
+  ceiling shows its permission marked as such, and saving the rule without touching it keeps it.
+  New rules start in **Report** mode.
+- **Rule builder**: next to the pattern, builds one by example — search for an existing group and
+  the workspace it should get, and it writes the pattern (and a name, if none is set yet). Choose
+  "Match every group with the same shape" to cover every group named like it, e.g. `team-acme-ds`
+  and `acme` give `^team-(?P<ws>[a-z0-9-]+)-ds$`; otherwise the pattern matches that one group.
+  The group's name must contain the workspace's name — a rule takes the workspace from the group
+  name — so for any other pair the builder says so: grant that group on the workspace's page
+  instead. The default workspace is not offered. The built pattern can still be edited and
+  previewed before saving.
+
+  | Group | Workspace | Every group of the same shape | Pattern written |
+  |---|---|---|---|
+  | `team-acme-ds` | `acme` | off | `^team-(?P<ws>acme)-ds$` — that group only |
+  | `team-acme-ds` | `acme` | on | `^team-(?P<ws>[a-z0-9-]+)-ds$` — `team-globex-ds`, … too |
+  | `partner:ml-acme` | `acme` | on | `^partner:ml-(?P<ws>[a-z0-9-]+)$` — the partner's `ml-*` groups |
+  | `acme` | `acme` | off | `^(?P<ws>acme)$` |
+  | `data-scientists` | `acme` | — | not built: grant the group on `acme`'s page instead |
+- **Preview**: lists each existing group the pattern matches, its target workspace, and what
+  enforcing the rule would do — grant, update, unchanged, remove, skip (with the reason, such as a
+  manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A new
+  rule is previewed as a new rule would rank; unsaved changes to an existing rule keep that rule's
+  precedence and its current grants. Preview is unavailable for an unsaved permission above the
+  ceiling, since the server would refuse it; a saved rule above a lowered ceiling can still be
+  previewed and shows its groups as skipped.
+- **Delete**: asks for confirmation, then deletes the rule and every workspace permission it
+  granted. Grants made by hand stay.
+
+A server error, such as a pattern without the `(?P<ws>...)` group, is shown in the dialog as the
+server worded it. If a rule is saved but its grants could not be updated (MLflow's workspace store
+was unavailable), an error message says so; open the rule and save it again to retry. Group names and patterns are always
+displayed as text.
+
+The grants a rule creates appear on the workspace's page like any other group permission. Editing
+one there turns it into a manual grant that no rule changes again.
 
 ## Workspace Picker
 

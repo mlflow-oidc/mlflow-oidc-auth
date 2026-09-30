@@ -12,6 +12,9 @@ export const STATIC_API_ENDPOINTS = {
 
   // Workspace management
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
+  // Workspace group rules (admin only)
+  WORKSPACE_RULES: "/api/3.0/mlflow/workspace-rules",
+  WORKSPACE_RULES_PREVIEW: "/api/3.0/mlflow/workspace-rules/preview",
 
   // User management
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
@@ -234,6 +237,12 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/users/${encodeURIComponent(username)}`,
   WORKSPACE_GROUP: (workspace: string, groupName: string) =>
     `/api/3.0/mlflow/permissions/workspaces/${encodeURIComponent(workspace)}/groups/${encodeURIComponent(groupName)}`,
+
+  // Workspace group rules (admin only)
+  WORKSPACE_RULE: (ruleId: number | string) =>
+    `/api/3.0/mlflow/workspace-rules/${encodeURIComponent(String(ruleId))}`,
+  WORKSPACE_RULE_PREVIEW: (ruleId: number | string) =>
+    `/api/3.0/mlflow/workspace-rules/${encodeURIComponent(String(ruleId))}/preview`,
 
   // Trash management
   RESTORE_EXPERIMENT: (experimentId: string) =>
