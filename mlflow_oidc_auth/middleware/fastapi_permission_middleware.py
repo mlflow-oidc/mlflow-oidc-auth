@@ -44,8 +44,15 @@ _ROUTES_NEEDING_BODY = frozenset(
         "/gateway/openai/v1/embeddings",
         "/gateway/openai/v1/responses",
         "/gateway/anthropic/v1/messages",
+        # MLflow 3.17+: TypeSafe System One passthrough (mlflow.server.gateway_api)
+        "/gateway/typesafe/v1/systemone",
     )
 )
+
+# MLflow 3.17+: OpenAI-compatible model discovery. Each listed model's ``id`` is a gateway endpoint
+# name; the list is narrowed to the endpoints the caller may USE (see
+# _filtered_gateway_models_response), as MLflow's own auth plugin does.
+_GATEWAY_MODELS_PATH = "/gateway/mlflow/v1/models"
 
 # Compiled patterns for Gemini routes that embed the endpoint name in the URL
 _GEMINI_GENERATE = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):generateContent$")
@@ -150,8 +157,11 @@ def _get_gateway_validator(
 ) -> Callable[[str, Request], Awaitable[bool]] | None:
     """Return an async validator for gateway invocation routes.
 
-    Validates that the user has USE permission on the target gateway endpoint.
+    Validates that the user has USE permission on the target gateway endpoint. Model discovery
+    names no endpoint: any authenticated user may list, and the response is filtered instead.
     """
+    if path == _GATEWAY_MODELS_PATH:
+        return _get_require_authentication_validator()
 
     async def validator(username: str, request: Request) -> bool:
         body: dict[str, Any] | None = None
@@ -330,6 +340,64 @@ async def _filtered_job_search_response(username: str, response: Response) -> Re
         return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
     headers = {k: v for k, v in response.headers.items() if k.lower() != "content-length"}
     return Response(content=filtered, status_code=response.status_code, headers=headers, media_type=response.media_type)
+
+
+def _is_gateway_models_list(path: str, request: Request) -> bool:
+    """True for model discovery, whose response is narrowed to the endpoints the caller may USE."""
+    return request.method == "GET" and path == _GATEWAY_MODELS_PATH
+
+
+def _filter_gateway_models_response(username: str, body: bytes) -> bytes:
+    """Keep only the models backed by gateway endpoints ``username`` may USE.
+
+    Each model's ``id`` is the endpoint name MLflow's chat and passthrough routes take in
+    ``model``. A model whose permission lookup fails is left out rather than shown.
+
+    Raises:
+        ValueError: The body is not a models list.
+    """
+    data = json.loads(body)
+    models = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        raise ValueError("models response carries no data list")
+    visible = []
+    for model in models:
+        endpoint_name = model.get("id") if isinstance(model, dict) else None
+        if not isinstance(endpoint_name, str) or not endpoint_name:
+            continue
+        try:
+            if can_use_gateway_endpoint(endpoint_name, username):
+                visible.append(model)
+        except Exception as e:
+            logger.error("Gateway model discovery: permission check failed: %s", type(e).__name__)
+    data["data"] = visible
+    return json.dumps(data).encode()
+
+
+async def _filtered_gateway_models_response(username: str, response: Response, auth_context: Any) -> Response:
+    """Buffer a model discovery response and return it narrowed to the caller's usable endpoints.
+
+    The caller's ``AuthContext`` is bridged while the permissions are resolved, as it is for the
+    validators: with workspaces enabled, an endpoint with no grant of its own falls back to the
+    caller's workspace permission, which cannot be found without it. Non-2xx responses carry no
+    list and are returned unchanged; a body that cannot be filtered is an error, never the
+    unfiltered list. Response headers are kept, repeated ones included.
+    """
+    if not 200 <= response.status_code < 300:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
+    try:
+        filtered = _filter_gateway_models_response(username, body)
+    except Exception as e:
+        logger.error("Failed to filter gateway model discovery response: %s", type(e).__name__)
+        return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
+    finally:
+        if token is not None:
+            clear_auth_context(token)
+    filtered_response = Response(content=filtered, status_code=response.status_code, media_type="application/json", background=response.background)
+    filtered_response.raw_headers.extend((k, v) for k, v in response.raw_headers if k.lower() not in (b"content-length", b"content-type"))
+    return filtered_response
 
 
 def _is_mcp_server_path(path: str) -> bool:
@@ -523,4 +591,6 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         response = await call_next(request)
         if _is_job_search(path, request):
             return await _filtered_job_search_response(username, response)
+        if _is_gateway_models_list(path, request):
+            return await _filtered_gateway_models_response(username, response, auth_context)
         return response

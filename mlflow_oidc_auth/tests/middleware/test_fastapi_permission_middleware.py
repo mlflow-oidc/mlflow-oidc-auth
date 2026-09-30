@@ -66,6 +66,11 @@ class TestExtractGatewayEndpointName:
         result = self._extract("/gateway/openai/v1/chat/completions", {"model": "gpt-4"})
         assert result == "gpt-4"
 
+    def test_typesafe_system_one(self):
+        """MLflow 3.17+ TypeSafe System One passthrough: endpoint in the body's ``model``."""
+        assert self._extract("/gateway/typesafe/v1/systemone", {"model": "typesafe-ep"}) == "typesafe-ep"
+        assert self._extract("/gateway/typesafe/v1/systemone", None) is None
+
     def test_embeddings_openai(self):
         """Test OpenAI embeddings passthrough."""
         result = self._extract("/gateway/openai/v1/embeddings", {"model": "text-embedding-ada"})
@@ -1180,3 +1185,149 @@ class TestGatewayCredentialStripping:
         _strip_client_credentials(request, path)
 
         assert request.scope["headers"] == kept
+
+
+# ---------------------------------------------------------------------------
+# Model discovery (MLflow 3.17+): listing narrowed to the endpoints the caller may USE
+# ---------------------------------------------------------------------------
+
+_MODELS = "/gateway/mlflow/v1/models"
+_CAN_USE = "mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint"
+
+
+class TestGatewayModelDiscovery:
+    """Mirrors MLflow's own ``_filter_list_gateway_models``: ``id`` is the endpoint name."""
+
+    LISTING = {
+        "object": "list",
+        "data": [
+            {"id": "allowed-endpoint", "object": "model", "created": 1, "owned_by": "mlflow"},
+            {"id": "denied-endpoint", "object": "model", "created": 2, "owned_by": "mlflow"},
+        ],
+    }
+
+    def _app(self, username="user@example.com", is_admin=False, workspace=None, body=None, status=200):
+        from starlette.responses import JSONResponse, Response
+
+        app = _create_app_with_auth(username=username, is_admin=is_admin, workspace=workspace)
+        listing = self.LISTING if body is None else body
+
+        @app.get(_MODELS)
+        async def list_models():
+            if isinstance(listing, bytes):
+                response = Response(content=listing, status_code=status, media_type="application/json")
+            else:
+                response = JSONResponse(listing, status_code=status)
+            response.raw_headers.extend([(b"x-model-metadata", b"first"), (b"x-model-metadata", b"second")])
+            return response
+
+        app.router.routes.insert(0, app.router.routes.pop())
+        return app
+
+    def test_models_route_requires_authentication(self):
+        assert self._find(_MODELS) is not None
+        response = TestClient(self._app(username=None)).get(_MODELS)
+        assert response.status_code == 401
+
+    @staticmethod
+    def _find(path):
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _find_fastapi_validator
+
+        return _find_fastapi_validator(path)
+
+    def test_admin_sees_every_endpoint_without_checks(self):
+        with patch(_CAN_USE) as can_use:
+            response = TestClient(self._app(username="admin@example.com", is_admin=True)).get(_MODELS)
+
+        assert response.status_code == 200
+        assert [m["id"] for m in response.json()["data"]] == ["allowed-endpoint", "denied-endpoint"]
+        can_use.assert_not_called()
+
+    def test_regular_user_sees_only_usable_endpoints_and_headers_are_kept(self):
+        with patch(_CAN_USE, side_effect=lambda endpoint, username: endpoint == "allowed-endpoint") as can_use:
+            response = TestClient(self._app()).get(_MODELS)
+
+        assert response.status_code == 200
+        assert response.json() == {"object": "list", "data": [self.LISTING["data"][0]]}
+        assert response.headers.get_list("x-model-metadata") == ["first", "second"]
+        assert int(response.headers["content-length"]) == len(response.content)
+        assert [c.args for c in can_use.call_args_list] == [("allowed-endpoint", "user@example.com"), ("denied-endpoint", "user@example.com")]
+
+    def test_a_failed_permission_lookup_hides_that_endpoint(self):
+        def check(endpoint, username):
+            if endpoint == "denied-endpoint":
+                raise RuntimeError("permission backend unavailable")
+            return True
+
+        with patch(_CAN_USE, side_effect=check):
+            response = TestClient(self._app()).get(_MODELS)
+
+        assert [m["id"] for m in response.json()["data"]] == ["allowed-endpoint"]
+
+    @pytest.mark.parametrize("body", [b"not json", b'{"object": "list"}', b'["not", "a", "listing"]'])
+    def test_a_body_that_cannot_be_filtered_is_500_never_the_unfiltered_list(self, body):
+        with patch(_CAN_USE, return_value=True):
+            response = TestClient(self._app(body=body)).get(_MODELS)
+
+        assert response.status_code == 500
+        assert "allowed-endpoint" not in response.text
+
+    def test_an_error_response_is_returned_unchanged(self):
+        with patch(_CAN_USE, return_value=True):
+            response = TestClient(self._app(body={"error_code": "TEMPORARILY_UNAVAILABLE"}, status=503)).get(_MODELS)
+
+        assert response.status_code == 503
+        assert response.json() == {"error_code": "TEMPORARILY_UNAVAILABLE"}
+
+    def test_the_callers_workspace_is_visible_while_filtering(self):
+        """With workspaces on, an endpoint with no grant falls back to the caller's workspace
+        permission — which needs the caller's AuthContext bridged during the filter."""
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+        seen = []
+
+        def check(endpoint, username):
+            seen.append(get_request_workspace())
+            return get_request_workspace() == "team-a"
+
+        with patch(_CAN_USE, side_effect=check):
+            response = TestClient(self._app(workspace="team-a")).get(_MODELS)
+
+        assert response.status_code == 200
+        assert [m["id"] for m in response.json()["data"]] == ["allowed-endpoint", "denied-endpoint"]
+        assert seen == ["team-a", "team-a"]
+
+    def test_workspace_fallback_end_to_end(self):
+        """The real resolution path: no endpoint grants, workspace MANAGE on team-a only."""
+        from contextlib import ExitStack
+
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        grants = {("user@example.com", "team-a"): MANAGE}
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", True))
+            stack.enter_context(patch.object(perms, "get_permission_from_store_or_default", return_value=PermissionResult(NO_PERMISSIONS, "fallback")))
+            stack.enter_context(patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", side_effect=lambda u, ws: grants.get((u, ws))))
+            perms._get_permission_cache().clear()
+            member = TestClient(self._app(workspace="team-a")).get(_MODELS)
+            perms._get_permission_cache().clear()
+            outsider = TestClient(self._app(workspace="team-b")).get(_MODELS)
+
+        assert [m["id"] for m in member.json()["data"]] == ["allowed-endpoint", "denied-endpoint"]
+        assert outsider.json()["data"] == []
+
+    def test_models_route_loses_plugin_credentials(self):
+        """Discovery forwards nothing, but it is a /gateway/ route: the credential strip applies."""
+        from starlette.responses import JSONResponse
+
+        app = _create_app_with_auth(username="admin@example.com", is_admin=True)
+
+        @app.get(_MODELS)
+        async def echo(request: Request):
+            return JSONResponse({"object": "list", "data": [], "headers": sorted(k.lower() for k in request.headers.keys())})
+
+        app.router.routes.insert(0, app.router.routes.pop())
+        received = TestClient(app).get(_MODELS, headers={"Cookie": "s=x", "Authorization": "Bearer y"}).json()["headers"]
+        assert "cookie" not in received and "authorization" not in received
