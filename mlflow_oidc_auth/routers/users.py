@@ -124,8 +124,11 @@ def _ensure_local_tokens_allowed(username: str) -> str:
         profile = None
     if profile is None:
         raise HTTPException(status_code=404, detail=f"User {username} not found")
-    if isinstance(profile.managed_by, str) and profile.managed_by.startswith("spiffe:"):
-        raise HTTPException(status_code=403, detail="SPIFFE workload identities cannot create local access tokens")
+    if isinstance(profile.managed_by, str) and profile.managed_by.startswith(("spiffe:", "workload:")):
+        raise HTTPException(
+            status_code=403,
+            detail="Workload identities cannot create local access tokens",
+        )
     return profile.username
 
 

@@ -61,6 +61,12 @@ def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
 #: person signing in, so it is labelled apart from an IdP user token and may not issue access
 #: tokens (issue #189).
 _WORKLOAD_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_workload_bearer", default=False)
+_WORKLOAD_OWNER_PREFIXES = ("spiffe:", "workload:")
+
+
+def _is_workload_managed(managed_by: object) -> bool:
+    """Whether an account may authenticate only with its external workload token."""
+    return isinstance(managed_by, str) and managed_by.startswith(_WORKLOAD_OWNER_PREFIXES)
 
 
 def _auth_method(request: Request, workload_bearer: bool = False) -> str:
@@ -437,6 +443,45 @@ class AuthMiddleware(BaseHTTPMiddleware):
         logger.debug("SPIFFE workload %s authenticated via bearer token", identity.username)
         return True, identity.username, ""
 
+    def _authenticate_oidc_workload(
+        self,
+        payload,
+        provider,
+        request: Optional[Request] = None,
+    ) -> Tuple[bool, Optional[str], str]:
+        """Authenticate a client-allowlisted non-interactive OIDC workload."""
+        from mlflow_oidc_auth.workload import (
+            WorkloadIdentityError,
+            parse_workload_identity,
+        )
+
+        try:
+            identity = parse_workload_identity(
+                payload,
+                provider.issuer,
+                provider.workload_client_id_claim,
+                provider.workload_client_id_allowlist,
+            )
+        except WorkloadIdentityError as exc:
+            actor = payload.get(provider.workload_client_id_claim)
+            if not isinstance(actor, str):
+                actor = "unknown-oidc-workload"
+            if _should_audit_denial(actor, "workload_identity_not_allowed"):
+                emit_audit_event(
+                    "auth.denied_workload_identity",
+                    actor=actor,
+                    resource_type="identity_provider",
+                    resource_id=provider.id,
+                    status="denied",
+                )
+            logger.warning("Rejecting workload token from provider '%s': %s", provider.id, exc)
+            return False, None, "Workload identity is not allowed"
+
+        if request is not None:
+            request.state.oidc_workload = (identity, provider)
+        logger.debug("OIDC workload %s authenticated via bearer token", identity.username)
+        return True, identity.username, ""
+
     async def _authenticate_bearer_token(self, auth_header: str, request: Optional[Request] = None) -> Tuple[bool, Optional[str], str]:
         """
         Authenticate using bearer token.
@@ -469,6 +514,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             if provider is not None and provider.type == "spiffe":
                 return self._authenticate_spiffe_workload(payload, provider, request)
+
+            if provider is not None and provider.type == "workload":
+                return self._authenticate_oidc_workload(payload, provider, request)
 
             # Extract username from configured fields. extract_username guarantees a
             # non-empty, normalized username whenever it returns no error.
@@ -674,9 +722,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if not user:
             return False, False, DENIAL_UNKNOWN_USER
-        if isinstance(user.managed_by, str) and user.managed_by.startswith("spiffe:") and not expected_owner:
-            # SPIFFE access is valid only while a fresh JWT-SVID passes the current allowlist.
-            # A local token or session has no SPIFFE context and must not become a durable bypass.
+        if _is_workload_managed(user.managed_by) and not expected_owner:
+            # Workload access is valid only while a fresh external token passes the current
+            # provider policy. A local token or session must not become a durable bypass.
             return False, False, DENIAL_IDENTITY_MISMATCH
         if expected_owner and (user.managed_by != expected_owner or not user.is_service_account):
             logger.warning("Workload identity %s collided with a local account not owned by %s", username, expected_owner)
@@ -709,6 +757,38 @@ class AuthMiddleware(BaseHTTPMiddleware):
             resource_type="user",
             resource_id=identity.username,
             detail={"provider": provider.id, "external_identity": identity.spiffe_id, "is_service_account": True},
+        )
+
+    @staticmethod
+    def _provision_oidc_workload(identity, provider) -> None:
+        """Provision a brokered OIDC workload without local credentials."""
+        owner = f"workload:{provider.id}"
+        try:
+            store.provision_workload_identity(
+                username=identity.username,
+                display_name=identity.client_id,
+                provider_id=provider.id,
+                subject=identity.fingerprint,
+                managed_by=owner,
+            )
+        except Exception as exc:
+            logger.debug(
+                "OIDC workload provisioning did not insert a row: %s",
+                type(exc).__name__,
+            )
+            return
+
+        emit_audit_event(
+            "user.provisioned",
+            actor=identity.client_id,
+            resource_type="user",
+            resource_id=identity.username,
+            detail={
+                "provider": provider.id,
+                "external_identity": identity.fingerprint,
+                "client_id": identity.client_id,
+                "is_service_account": True,
+            },
         )
 
     async def _handle_auth_redirect(self, request: Request) -> Response:
@@ -780,17 +860,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
             resolved = getattr(request.state, "resolved_session", None)
             if resolved is not None:
                 # Already read, in the same statement that validated the session.
-                if isinstance(resolved.managed_by, str) and resolved.managed_by.startswith("spiffe:"):
+                if _is_workload_managed(resolved.managed_by):
                     is_admin, is_active, denial_reason = False, False, DENIAL_IDENTITY_MISMATCH
                 else:
                     is_admin, is_active = resolved.is_admin, resolved.is_active
                     denial_reason = "" if is_active else DENIAL_INACTIVE
             else:
-                workload = getattr(request.state, "spiffe_workload", None)
-                expected_owner = f"spiffe:{workload[1].id}" if workload else None
+                spiffe_workload = getattr(request.state, "spiffe_workload", None)
+                oidc_workload = getattr(request.state, "oidc_workload", None)
+                workload = spiffe_workload or oidc_workload
+                expected_owner = None
+                if spiffe_workload:
+                    expected_owner = f"spiffe:{spiffe_workload[1].id}"
+                elif oidc_workload:
+                    expected_owner = f"workload:{oidc_workload[1].id}"
                 is_admin, is_active, denial_reason = self._get_user_auth_state(username, expected_owner)
                 if workload and denial_reason == DENIAL_UNKNOWN_USER:
-                    self._provision_spiffe_workload(*workload)
+                    if spiffe_workload:
+                        self._provision_spiffe_workload(*spiffe_workload)
+                    else:
+                        self._provision_oidc_workload(*oidc_workload)
                     is_admin, is_active, denial_reason = self._get_user_auth_state(username, expected_owner)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired

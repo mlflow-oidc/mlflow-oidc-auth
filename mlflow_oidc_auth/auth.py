@@ -341,7 +341,7 @@ def _claims_options_for(provider) -> dict | None:
         options["aud"] = {"essential": True, "value": provider.audience}
     if provider.issuer:
         options["iss"] = {"essential": True, "value": provider.issuer}
-    if provider.type == "spiffe":
+    if provider.type in ("spiffe", "workload"):
         options["sub"] = {"essential": True}
         options["exp"] = {"essential": True}
     return options or None
