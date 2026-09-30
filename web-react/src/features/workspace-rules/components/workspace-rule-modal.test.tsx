@@ -23,6 +23,24 @@ const mockCreate = vi.fn<Service["createWorkspaceRule"]>();
 const mockUpdate = vi.fn<Service["updateWorkspaceRule"]>();
 const mockPreview = vi.fn<Service["previewWorkspaceRule"]>();
 const mockPreviewUnsaved = vi.fn<Service["previewUnsavedWorkspaceRule"]>();
+vi.mock("./rule-builder-modal", () => ({
+  RuleBuilderModal: ({
+    isOpen,
+    onApply,
+  }: {
+    isOpen: boolean;
+    onApply: (pattern: string, name: string) => void;
+  }) =>
+    isOpen ? (
+      <button
+        type="button"
+        onClick={() => onApply("^team-(?P<ws>acme)-ds$", "team-acme-ds → acme")}
+      >
+        stub-apply
+      </button>
+    ) : null,
+}));
+
 vi.mock("../../../core/services/workspace-rule-service", () => ({
   createWorkspaceRule: (...args: Parameters<Service["createWorkspaceRule"]>) =>
     mockCreate(...args),
@@ -372,5 +390,28 @@ describe("WorkspaceRuleModal", () => {
         "error",
       ),
     );
+  });
+
+  it("fills the pattern, and an empty name, from the rule builder", () => {
+    renderModal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rule builder" }));
+    fireEvent.click(screen.getByRole("button", { name: "stub-apply" }));
+
+    expect(screen.getByLabelText("Group name pattern*")).toHaveValue(
+      "^team-(?P<ws>acme)-ds$",
+    );
+    expect(screen.getByLabelText("Name*")).toHaveValue("team-acme-ds → acme");
+    expect(screen.queryByRole("button", { name: "stub-apply" })).toBeNull();
+  });
+
+  it("keeps a name already typed when the rule builder fills the pattern", () => {
+    renderModal();
+    fill("Name", "acme tenant");
+
+    fireEvent.click(screen.getByRole("button", { name: "Rule builder" }));
+    fireEvent.click(screen.getByRole("button", { name: "stub-apply" }));
+
+    expect(screen.getByLabelText("Name*")).toHaveValue("acme tenant");
   });
 });

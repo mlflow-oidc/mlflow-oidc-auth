@@ -22,6 +22,7 @@ import type {
   WorkspaceRuleUpdateRequest,
 } from "../../../shared/types/entity";
 import { RulePreview } from "./rule-preview";
+import { RuleBuilderModal } from "./rule-builder-modal";
 
 interface WorkspaceRuleModalProps {
   isOpen: boolean;
@@ -135,6 +136,7 @@ const WorkspaceRuleForm: React.FC<
   const [nameError, setNameError] = useState<string | undefined>();
   const [serverError, setServerError] = useState<string | null>(null);
   const [preview, setPreview] = useState<WorkspaceRulePlan | null>(null);
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Only the newest preview may land: a slower, older one describes a pattern no longer in the form.
@@ -270,17 +272,35 @@ const WorkspaceRuleForm: React.FC<
         containerClassName="mb-2"
       />
 
-      <Input
-        label="Group name pattern"
-        id="workspace-rule-pattern"
-        value={form.pattern}
-        onChange={(e) => update("pattern", e.target.value)}
-        placeholder="^team-(?P<ws>[a-z0-9-]+)$"
-        className="font-mono"
-        maxLength={256}
-        aria-describedby="workspace-rule-pattern-help"
-        required
-        containerClassName="mb-1"
+      <div className="flex items-end gap-2 mb-1">
+        <Input
+          label="Group name pattern"
+          id="workspace-rule-pattern"
+          value={form.pattern}
+          onChange={(e) => update("pattern", e.target.value)}
+          placeholder="^team-(?P<ws>[a-z0-9-]+)$"
+          className="font-mono"
+          maxLength={256}
+          aria-describedby="workspace-rule-pattern-help"
+          required
+          containerClassName="flex-1"
+        />
+        <Button
+          variant="secondary"
+          onClick={() => setIsBuilderOpen(true)}
+          className="whitespace-nowrap h-[42px] px-3"
+        >
+          Rule builder
+        </Button>
+      </div>
+      <RuleBuilderModal
+        isOpen={isBuilderOpen}
+        onClose={() => setIsBuilderOpen(false)}
+        onApply={(pattern, suggestedName) => {
+          update("pattern", pattern);
+          if (!form.name.trim()) update("name", suggestedName);
+          setIsBuilderOpen(false);
+        }}
       />
       <p
         id="workspace-rule-pattern-help"

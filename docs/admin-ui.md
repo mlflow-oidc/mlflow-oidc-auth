@@ -189,6 +189,14 @@ non-admin and answers `404` while workspaces are off.
   stop at the server's ceiling (`WORKSPACE_RULES_MAX_PERMISSION`); an existing rule above a lowered
   ceiling shows its permission marked as such, and saving the rule without touching it keeps it.
   New rules start in **Report** mode.
+- **Rule builder**: next to the pattern, builds one by example — search for an existing group and
+  the workspace it should get, and it writes the pattern (and a name, if none is set yet). Choose
+  "Match every group with the same shape" to cover every group named like it, e.g. `team-acme-ds`
+  and `acme` give `^team-(?P<ws>[a-z0-9-]+)-ds$`; otherwise the pattern matches that one group.
+  The group's name must contain the workspace's name — a rule takes the workspace from the group
+  name — so for any other pair the builder says so: grant that group on the workspace's page
+  instead. The default workspace is not offered. The built pattern can still be edited and
+  previewed before saving.
 - **Preview**: lists each existing group the pattern matches, its target workspace, and what
   enforcing the rule would do — grant, update, unchanged, remove, skip (with the reason, such as a
   manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A new
