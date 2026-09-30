@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -51,9 +51,12 @@ def create_user(
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
 
-def populate_groups(group_names: list, written_by: Optional[str] = None) -> None:
-    """Create the missing groups. ``written_by`` owns the ones created (#323 review)."""
-    store.populate_groups(group_names=group_names, written_by=written_by)
+def populate_groups(group_names: list, written_by: Optional[str] = None) -> List[str]:
+    """Create the missing groups. ``written_by`` owns the ones created (#323 review).
+
+    Returns the names this call created — the groups that arrived, for workspace group rules (#418).
+    """
+    return store.populate_groups(group_names=group_names, written_by=written_by)
 
 
 def update_user(username: str, group_names: list, written_by: Optional[str] = None, admin_override: bool = False) -> None:

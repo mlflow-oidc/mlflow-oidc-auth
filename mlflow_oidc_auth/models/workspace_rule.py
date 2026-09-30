@@ -1,0 +1,80 @@
+"""Pydantic request/response models for workspace group rules (issue #418)."""
+
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class WorkspaceRuleCreateRequest(BaseModel):
+    """Create a rule. ``mode`` defaults to ``report``: a new rule says what it would do before it does it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1, max_length=255, description="Unique label")
+    pattern: str = Field(..., description="Python regex, matched with re.fullmatch against the local group name; must contain (?P<ws>...)")
+    permission: str = Field(..., description="READ, USE, EDIT or MANAGE, at most WORKSPACE_RULES_MAX_PERMISSION")
+    mode: str = Field("report", description="report (write nothing) or enforce")
+    enabled: bool = Field(True, description="A disabled rule holds no grants")
+
+
+class WorkspaceRuleUpdateRequest(BaseModel):
+    """Change a rule. Omitted fields keep their value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    pattern: Optional[str] = None
+    permission: Optional[str] = None
+    mode: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class WorkspaceRulePreviewRequest(BaseModel):
+    """A rule that is not saved yet, to preview before creating it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pattern: str
+    permission: str
+
+
+class WorkspaceRuleResponse(BaseModel):
+    """One rule."""
+
+    id: int
+    name: str
+    pattern: str
+    permission: str
+    mode: str
+    enabled: bool
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspaceRuleListResponse(BaseModel):
+    """Every rule, lowest id (highest precedence) first, and the ceiling that caps their permission."""
+
+    rules: List[WorkspaceRuleResponse]
+    max_permission: str = Field(..., description="WORKSPACE_RULES_MAX_PERMISSION")
+    allowed_permissions: List[str] = Field(..., description="The permissions a rule may grant under the ceiling, lowest first")
+
+
+class WorkspaceRuleChange(BaseModel):
+    """One line of a plan. See :class:`mlflow_oidc_auth.entities.workspace_rule.RuleGrantChange`."""
+
+    action: str = Field(..., description="grant, update, keep, remove, skip or shadowed")
+    group: str
+    workspace: str
+    permission: Optional[str] = None
+    reason: Optional[str] = None
+    previous: Optional[str] = None
+    applied: bool = Field(..., description="Whether this was written; false for a preview and for a report-mode rule")
+
+
+class WorkspaceRulePlanResponse(BaseModel):
+    """What a rule did, or would do."""
+
+    rule: Optional[WorkspaceRuleResponse] = None
+    changes: List[WorkspaceRuleChange]

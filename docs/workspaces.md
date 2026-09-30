@@ -220,6 +220,96 @@ Permission: READ
 
 Both user-level and group-level workspace regex permissions are supported through the `/api/3.0/mlflow/permissions/workspaces/regex/` endpoints. These are admin-only operations.
 
+## Group rules
+
+A group rule attaches groups to workspaces by the group's **name**, so onboarding a tenant is
+"create the group in the identity provider" rather than "create the group, then attach it to its
+workspace by hand". A rule grants a workspace group permission — the existing tenant boundary — and
+never touches individual experiments or models.
+
+```
+Name:        tenants
+Pattern:     ^team-(?P<ws>[a-z0-9-]+)-ds$
+Permission:  EDIT
+Mode:        enforce
+```
+
+With this rule, the group `team-acme-ds` gets `EDIT` on the workspace `acme`, and
+`team-globex-ds` gets `EDIT` on `globex`.
+
+### How a rule matches
+
+- `pattern` is a Python regular expression matched with `re.fullmatch` — the **whole** group name
+  must match, never a part of it. It must contain the named group `(?P<ws>...)`, whose match is the
+  workspace name, and be at most 256 characters.
+- It is matched against the **local** group name. A group from a provider other than `default`
+  carries the provider's prefix — a partner provider's `team-acme-ds` is stored as
+  `partner:team-acme-ds` — so a rule written for your own groups never matches a partner's. To
+  cover a partner, write a rule for its namespace: `^partner:team-(?P<ws>[a-z0-9-]+)-ds$`.
+- The workspace must already exist. A group whose workspace does not exist is skipped and reported;
+  rules never create workspaces.
+
+### What a rule may grant
+
+- `READ`, `USE` or `EDIT` by default. The ceiling is `WORKSPACE_RULES_MAX_PERMISSION`; `MANAGE`
+  is possible only when an operator raises it to `MANAGE`, and the server warns at startup when it
+  is. The ceiling is checked when a rule is saved **and** when it is applied, so lowering it stops
+  an existing rule above it.
+- `NO_PERMISSIONS` is not a rule permission, and a rule never makes anyone an administrator.
+
+### Who owns a grant
+
+Every grant a rule creates records the rule (`rule_id`); a grant made by hand has none. A rule only
+ever creates, changes or removes its **own** grants:
+
+- If a manual grant already exists for the same group and workspace, the rule leaves it alone and
+  reports `skip: manual grant` — whether the manual grant is higher or lower than the rule's.
+- Editing a rule's grant through the workspace-permission API makes it a manual grant: no rule
+  changes or removes it again. `GET /api/3.0/mlflow/permissions/workspaces/{workspace}/groups`
+  shows each grant's `rule_id` (`null` for manual).
+- Deleting a rule's grant by hand does not stop the rule: the next backfill grants it again. To stop
+  a rule granting one group, narrow the pattern, or give the group a manual grant.
+
+When several rules match the same group and workspace, the rule with the **lowest id** wins and the
+others report `shadowed`. Only enabled `enforce` rules compete; a `report` rule never shadows one.
+Deleting or disabling the winner removes its grants and does not hand them to the next rule; save
+that rule again (for example, `PATCH` it with `{"enabled": true}`) to backfill it.
+
+### When rules run
+
+| Event | What happens |
+|---|---|
+| A group arrives — SCIM `POST /Groups`, admin `POST .../permissions/groups`, or a login that creates groups | Every enabled `enforce` rule is applied to the groups that arrived, and only those. |
+| A rule is created, updated or enabled | The rule is backfilled over every existing group: it grants what it matches and removes the grants it holds that it no longer matches. |
+| A rule is deleted, disabled or switched to `report` | Only that rule's grants are removed. |
+
+Groups created by bearer-token auto-provisioning are not matched on arrival; the next backfill picks
+them up. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
+the login or the SCIM request that brought the group.
+
+### Report mode
+
+A new rule defaults to `mode: report`: it writes nothing, and its create, update and preview
+responses list what enforcing it would grant, update, keep, skip or remove. Switch it to `enforce`
+once the list is what you expect. `POST /api/3.0/mlflow/workspace-rules/preview` shows the same for
+a rule that is not saved yet.
+
+### Audit
+
+| Event | When |
+|---|---|
+| `workspace_rule.create` / `.update` / `.delete` | An administrator changes a rule |
+| `permission.provisioned` | A rule created or changed a grant; `detail` holds `rule_id`, `workspace`, `group`, `permission` (and `previous` for a change) |
+| `permission.deprovisioned` | A rule removed one of its grants |
+| `workspace_rule.skipped` | An enforcing rule left a group alone; `detail.reason` says why (`manual grant`, `workspace does not exist`, `held by rule N`, a shadowing rule, the ceiling) |
+| `workspace_rule.failed` | A rule could not run for groups that arrived |
+
+The actor is the administrator for rule changes and backfills, and the source that brought the
+group for arrivals (`scim`, `oidc:<provider>`, `saml:<provider>`, or the admin's username).
+
+Everything here is inert, and the API answers `404`, unless `MLFLOW_ENABLE_WORKSPACES=true`. Rule
+management is admin-only.
+
 ## API Reference
 
 ### Workspace CRUD (MLflow Native)
@@ -259,6 +349,18 @@ Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin
 | GET | `/api/3.0/mlflow/permissions/workspaces/regex/group` | List group regex permissions |
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/regex/group/{id}` | Update group regex permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/regex/group/{id}` | Delete group regex permission |
+
+### Workspace Group Rules (Admin Only)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/3.0/mlflow/workspace-rules` | List rules and the permission ceiling |
+| POST | `/api/3.0/mlflow/workspace-rules` | Create a rule and backfill it |
+| POST | `/api/3.0/mlflow/workspace-rules/preview` | Preview an unsaved rule |
+| GET | `/api/3.0/mlflow/workspace-rules/{id}` | Get a rule |
+| PATCH | `/api/3.0/mlflow/workspace-rules/{id}` | Update a rule and reconcile its grants |
+| DELETE | `/api/3.0/mlflow/workspace-rules/{id}` | Delete a rule and its grants |
+| GET | `/api/3.0/mlflow/workspace-rules/{id}/preview` | Preview a rule against current groups |
 
 See the full [API Reference](api-reference) for request/response schemas.
 

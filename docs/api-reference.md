@@ -575,6 +575,51 @@ Base path: `/api/3.0/mlflow/permissions/workspaces/regex`
 | PATCH | `.../regex/group/{id}` | Update group regex workspace permission |
 | DELETE | `.../regex/group/{id}` | Delete group regex workspace permission |
 
+### Workspace Group Rules (Admin Only)
+
+Base path: `/api/3.0/mlflow/workspace-rules` (and its `/ajax-api` twin). Rules attach groups to
+workspaces by group name; see [Workspaces → Group rules](workspaces#group-rules). Every endpoint
+returns `403` to a non-admin and `404` to everyone while `MLFLOW_ENABLE_WORKSPACES` is off.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/` | List rules, lowest id first, with `max_permission` and `allowed_permissions` |
+| POST | `/` | Create a rule (`201`); an `enforce` rule is backfilled now |
+| POST | `/preview` | What an unsaved `{pattern, permission}` would do if enforced; writes nothing |
+| GET | `/{id}` | Get a rule |
+| PATCH | `/{id}` | Update a rule; reconciles its grants (see below) |
+| DELETE | `/{id}` | Delete a rule and every grant it created |
+| GET | `/{id}/preview` | What enforcing the rule now would do; writes nothing |
+
+Create body (`PATCH` takes any subset):
+
+```json
+{"name": "tenants", "pattern": "^team-(?P<ws>[a-z0-9-]+)$", "permission": "EDIT", "mode": "report", "enabled": true}
+```
+
+`mode` defaults to `report`, `enabled` to `true`. `400` when the pattern does not compile, lacks
+`(?P<ws>...)` or is longer than 256 characters, when `permission` is not `READ`/`USE`/`EDIT`/`MANAGE`
+or is above `WORKSPACE_RULES_MAX_PERMISSION`, or when `mode` is neither `report` nor `enforce`.
+`409` for a duplicate name.
+
+Create, update, delete and both previews return the rule (null after a delete) and its plan:
+
+```json
+{
+  "rule": {"id": 1, "name": "tenants", "pattern": "...", "permission": "EDIT", "mode": "enforce", "enabled": true,
+           "created_by": "admin@example.com", "created_at": "...", "updated_at": "..."},
+  "changes": [
+    {"action": "grant", "group": "team-acme", "workspace": "acme", "permission": "EDIT", "reason": null, "previous": null, "applied": true},
+    {"action": "skip", "group": "team-beta", "workspace": "beta", "permission": "EDIT", "reason": "manual grant", "previous": null, "applied": false}
+  ]
+}
+```
+
+`action` is `grant`, `update`, `keep`, `remove`, `skip` or `shadowed`; `applied` says whether it was
+written (always `false` for a preview and a `report`-mode rule). A `PATCH` that leaves the rule
+enabled and enforcing backfills it; one that disables it or switches it to `report` removes its
+grants in the same transaction.
+
 ---
 
 ## SCIM

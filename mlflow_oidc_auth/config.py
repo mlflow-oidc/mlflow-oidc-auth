@@ -231,6 +231,10 @@ class AppConfig:
         # Workspace cache settings
         self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
         self.WORKSPACE_CACHE_TTL_SECONDS = config_manager.get_int("WORKSPACE_CACHE_TTL_SECONDS", default=300)
+        # The highest permission a workspace group rule may grant (issue #418). MANAGE is reachable
+        # only by raising this, and is warned about at startup. Normalised by
+        # _resolve_workspace_rules_max_permission below.
+        self.WORKSPACE_RULES_MAX_PERMISSION = config_manager.get("WORKSPACE_RULES_MAX_PERMISSION", "EDIT")
 
         # Proxy trust settings
         self.TRUSTED_PROXIES = config_manager.get_list("TRUSTED_PROXIES", default=[])
@@ -296,6 +300,7 @@ class AppConfig:
         self.AUTH_PROVIDERS = build_provider_registry(config_manager, self)
 
         # Run last: these read settings loaded above.
+        self._resolve_workspace_rules_max_permission()
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
         self._warn_if_username_field_unusable()
@@ -479,6 +484,25 @@ class AppConfig:
             logger.warning("OIDC_USERNAME_FIELD is empty; no OIDC login or bearer-token authentication will be able to resolve a username.")
         if not self._has_usable_entry(self.OIDC_DISPLAY_NAME_FIELD):
             logger.warning("OIDC_DISPLAY_NAME_FIELD is empty; no OIDC login will be able to resolve a display name.")
+
+    def _resolve_workspace_rules_max_permission(self) -> None:
+        """Normalise WORKSPACE_RULES_MAX_PERMISSION, and warn when it lets rules grant MANAGE.
+
+        MANAGE on a workspace is enough to update or delete it and to grant MANAGE onward, so a rule
+        at that level hands the directory — whoever can create a matching group name — control of a
+        tenant. An unrecognised value (NO_PERMISSIONS included) is treated as READ rather than the
+        default: a typo in a ceiling must not raise it.
+        """
+        value = str(self.WORKSPACE_RULES_MAX_PERMISSION or "").strip().upper()
+        if value not in ("READ", "USE", "EDIT", "MANAGE"):
+            logger.warning("WORKSPACE_RULES_MAX_PERMISSION must be READ, USE, EDIT or MANAGE; treating the unrecognised value as READ.")
+            value = "READ"
+        self.WORKSPACE_RULES_MAX_PERMISSION = value
+        if value == "MANAGE":
+            logger.warning(
+                "WORKSPACE_RULES_MAX_PERMISSION=MANAGE lets workspace group rules grant MANAGE, which can update or delete a workspace "
+                "and grant MANAGE onward. Anyone who can create a group whose name matches such a rule gains that. Prefer EDIT."
+            )
 
     def _warn_if_group_name_unusable(self) -> None:
         """Warn at startup when OIDC_GROUP_NAME or OIDC_ADMIN_GROUP_NAME is unusable.

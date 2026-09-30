@@ -59,7 +59,7 @@ class TestWorkspaceGroupPermission:
         assert perm.group_name is None
 
     def test_to_json(self):
-        """to_json() returns dict with workspace, group_id, permission, group_name keys."""
+        """to_json() returns dict with workspace, group_id, permission, group_name and rule_id keys."""
         perm = WorkspaceGroupPermission(workspace="ws1", group_id=10, permission="EDIT", group_name="ml-team")
         result = perm.to_json()
         assert result == {
@@ -67,7 +67,14 @@ class TestWorkspaceGroupPermission:
             "group_id": 10,
             "permission": "EDIT",
             "group_name": "ml-team",
+            "rule_id": None,
         }
+
+    def test_to_json_with_rule_id(self):
+        """A grant created by a workspace group rule carries the rule's id (#418)."""
+        perm = WorkspaceGroupPermission(workspace="ws1", group_id=10, permission="EDIT", group_name="team-ws1", rule_id=3)
+        assert perm.rule_id == 3
+        assert perm.to_json()["rule_id"] == 3
 
     def test_to_json_without_group_name(self):
         """to_json() includes None group_name."""

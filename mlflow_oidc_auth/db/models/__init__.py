@@ -45,6 +45,7 @@ from mlflow_oidc_auth.db.models.workspace import (
     SqlWorkspacePermission,
     SqlWorkspaceRegexPermission,
 )
+from mlflow_oidc_auth.db.models.workspace_rule import SqlWorkspaceGroupRule
 
 __all__ = [
     "SqlUser",
@@ -85,4 +86,5 @@ __all__ = [
     "SqlWorkspaceGroupPermission",
     "SqlWorkspaceRegexPermission",
     "SqlWorkspaceGroupRegexPermission",
+    "SqlWorkspaceGroupRule",
 ]
