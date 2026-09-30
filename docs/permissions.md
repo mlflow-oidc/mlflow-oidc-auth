@@ -322,6 +322,20 @@ case-insensitively) as its name, on create or on rename, because user queues are
 their user. This applies to administrators too. A request that breaks the rule gets `400`; a
 non-admin without the permission for the operation gets `403` first.
 
+## AI Gateway invocations
+
+MLflow serves these routes from FastAPI, not Flask. Each requires `USE` on the gateway endpoint it
+calls; administrators are not checked.
+
+| Route | Endpoint taken from |
+|---|---|
+| `POST /gateway/{endpoint}/mlflow/invocations` | the path |
+| `POST /gateway/mlflow/v1/chat/completions`, `/gateway/openai/v1/chat/completions`, `/gateway/openai/v1/embeddings`, `/gateway/openai/v1/responses`, `/gateway/anthropic/v1/messages` | `model` in the request body |
+| `POST /gateway/gemini/v1beta/models/{endpoint}:generateContent`, `:streamGenerateContent` | the path |
+| `POST /gateway/proxy/{endpoint}/{provider-path}` | the path — the body is forwarded to the provider unread |
+
+Any other gateway route is refused to non-administrators.
+
 ## AI Gateway credentials
 
 MLflow's AI gateway copies the caller's request headers onto the request it sends to an endpoint's

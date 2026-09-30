@@ -38,6 +38,24 @@ class TestExtractGatewayEndpointName:
         """Test invocations pattern with wrong suffix."""
         assert self._extract("/gateway/my-endpoint/mlflow/other") is None
 
+    def test_raw_proxy_route(self):
+        """``/gateway/proxy/{endpoint_name}/{path}``: the endpoint is the segment after /proxy/."""
+        assert self._extract("/gateway/proxy/my-endpoint/v1/chat/completions") == "my-endpoint"
+        assert self._extract("/gateway/proxy/my-endpoint/v1/embeddings", {"model": "someone-else"}) == "my-endpoint"
+
+    def test_raw_proxy_route_provider_path_may_be_empty(self):
+        """Like MLflow's ``{path:path}``, the provider path may be empty — but the slash after the
+        endpoint is part of the route, and without an endpoint nothing is extracted."""
+        assert self._extract("/gateway/proxy/my-endpoint/") == "my-endpoint"
+        assert self._extract("/gateway/proxy/my-endpoint") is None
+        assert self._extract("/gateway/proxy/") is None
+        assert self._extract("/gateway/proxy//v1/chat") is None
+
+    def test_an_endpoint_named_proxy_is_resolved_like_the_router(self):
+        """MLflow registers the invocations route before the raw proxy, so it serves this path as the
+        invocations of an endpoint named ``proxy``; authorization must judge that same endpoint."""
+        assert self._extract("/gateway/proxy/mlflow/invocations") == "proxy"
+
     def test_chat_completions_mlflow(self):
         """Test MLflow chat completions passthrough."""
         result = self._extract("/gateway/mlflow/v1/chat/completions", {"model": "my-model"})
@@ -178,6 +196,20 @@ class TestGatewayValidator:
         request = MagicMock(spec=Request)
         result = await validator("user@example.com", request)
         assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("allowed", [True, False])
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
+    async def test_raw_proxy_requires_use_on_the_endpoint_in_the_path(self, mock_can_use, allowed):
+        """The raw proxy is judged by the endpoint in its path, never by the body it forwards."""
+        mock_can_use.return_value = allowed
+        validator = self._get_gateway_validator("/gateway/proxy/my-endpoint/v1/chat/completions")
+        request = MagicMock(spec=Request)
+        request.json = AsyncMock(return_value={"model": "another-endpoint"})
+
+        assert await validator("user@example.com", request) is allowed
+        mock_can_use.assert_called_once_with("my-endpoint", "user@example.com")
+        request.json.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
@@ -956,9 +988,10 @@ class TestGatewayCredentialStripping:
         assert "authorization" not in received
         assert received["x-custom"] == "kept"
 
-    def test_the_raw_proxy_sees_neither_cookie_nor_authorization(self):
-        """Admins reach the raw proxy today; the route forwards every header it gets to the provider."""
-        received = self._received(True, "/gateway/proxy/{endpoint}/{rest:path}", "/gateway/proxy/my-endpoint/v1/chat/completions")
+    @pytest.mark.parametrize("is_admin", [False, True])
+    def test_the_raw_proxy_sees_neither_cookie_nor_authorization(self, is_admin):
+        """The raw proxy forwards every header it gets to the provider — for a permitted non-admin too."""
+        received = self._received(is_admin, "/gateway/proxy/{endpoint}/{rest:path}", "/gateway/proxy/my-endpoint/v1/chat/completions")
 
         assert "cookie" not in received
         assert "authorization" not in received

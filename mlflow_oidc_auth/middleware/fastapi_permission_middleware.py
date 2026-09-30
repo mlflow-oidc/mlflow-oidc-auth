@@ -53,6 +53,11 @@ _GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGene
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
 
+# Pattern: /gateway/proxy/{endpoint_name}/{path:path} — MLflow's raw provider passthrough
+# (mlflow.server.gateway_api.raw_proxy). The endpoint is the first segment after /proxy/; the rest
+# is the provider path, which — like Starlette's ``{path:path}`` — may be empty.
+_RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.*$")
+
 # MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
 _JOBS_PREFIX = "/ajax-api/3.0/jobs"
 _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
@@ -108,6 +113,7 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     - ``/gateway/{endpoint_name}/mlflow/invocations``
     - Passthrough routes (endpoint in request body as ``model``)
     - Gemini routes (endpoint in URL path segment)
+    - ``/gateway/proxy/{endpoint_name}/{path}`` (raw provider passthrough)
     """
     # Pattern 1: /gateway/{endpoint_name}/mlflow/invocations
     if match := _INVOCATIONS_RE.match(path):
@@ -123,6 +129,10 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     if match := _GEMINI_GENERATE.match(path):
         return match.group(1)
     if match := _GEMINI_STREAM.match(path):
+        return match.group(1)
+
+    # Pattern 9: raw provider passthrough, endpoint in the first path segment after /proxy/
+    if match := _RAW_PROXY_RE.match(path):
         return match.group(1)
 
     return None
