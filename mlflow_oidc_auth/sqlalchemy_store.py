@@ -1,6 +1,6 @@
 import functools
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import sqlalchemy
 from mlflow.store.db.utils import (
@@ -34,6 +34,7 @@ from mlflow_oidc_auth.entities.gateway_model_definition import (
     GatewayModelDefinitionGroupRegexPermission,
 )
 from mlflow_oidc_auth.entities.gateway_secret import GatewaySecretGroupRegexPermission
+from mlflow_oidc_auth.entities.workspace_rule import RuleGrantChange, WorkspaceGroupRule
 from mlflow_oidc_auth.repository import (
     ExperimentPermissionGroupRegexRepository,
     ExperimentPermissionGroupRepository,
@@ -76,6 +77,7 @@ from mlflow_oidc_auth.repository.workspace_regex_permission import (
 from mlflow_oidc_auth.repository.workspace_group_regex_permission import (
     WorkspaceGroupRegexPermissionRepository,
 )
+from mlflow_oidc_auth.repository.workspace_rule import WorkspaceGroupRuleRepository
 
 
 class SqlAlchemyStore:
@@ -132,6 +134,7 @@ class SqlAlchemyStore:
         self.workspace_group_permission_repo = WorkspaceGroupPermissionRepository(self.ManagedSessionMaker)
         self.workspace_regex_permission_repo = WorkspaceRegexPermissionRepository(self.ManagedSessionMaker)
         self.workspace_group_regex_permission_repo = WorkspaceGroupRegexPermissionRepository(self.ManagedSessionMaker)
+        self.workspace_group_rule_repo = WorkspaceGroupRuleRepository(self.ManagedSessionMaker)
 
     @staticmethod
     def _create_engine(db_uri):
@@ -1137,6 +1140,51 @@ class SqlAlchemyStore:
         group_count = self.workspace_group_permission_repo.delete_all_for_workspace(workspace)
         return user_count + group_count
 
+    # -- Workspace group rules (issue #418) --
+    # The engine in mlflow_oidc_auth/workspace_rules.py decides; these store and apply. Grants a
+    # rule writes go through reconcile / update / delete below, which invalidate both caches for
+    # the groups whose grants changed.
+
+    def create_workspace_group_rule(self, **fields) -> WorkspaceGroupRule:
+        """Create a rule. See :meth:`WorkspaceGroupRuleRepository.create`."""
+        return self.workspace_group_rule_repo.create(**fields)
+
+    def get_workspace_group_rule(self, rule_id: int) -> WorkspaceGroupRule:
+        """One rule; ``RESOURCE_DOES_NOT_EXIST`` for an unknown id."""
+        return self.workspace_group_rule_repo.get(rule_id)
+
+    def list_workspace_group_rules(self, *, enabled_only: bool = False) -> List[WorkspaceGroupRule]:
+        """Every rule, lowest id (highest precedence) first."""
+        return self.workspace_group_rule_repo.list(enabled_only=enabled_only)
+
+    def update_workspace_group_rule(self, rule_id: int, fields: dict, *, clear_grants: bool = False) -> Tuple[WorkspaceGroupRule, List[RuleGrantChange]]:
+        """Change a rule, optionally deleting its grants in the same transaction."""
+        rule, removed = self.workspace_group_rule_repo.update(rule_id, fields, clear_grants=clear_grants)
+        _invalidate_rule_changes(removed)
+        return rule, removed
+
+    def clear_workspace_group_rule_grants(self, rule_id: int) -> List[RuleGrantChange]:
+        """Delete every grant a rule holds; the rule stays. Returns the grants removed."""
+        removed = self.workspace_group_rule_repo.clear_grants(rule_id)
+        _invalidate_rule_changes(removed)
+        return removed
+
+    def delete_workspace_group_rule(self, rule_id: int) -> List[RuleGrantChange]:
+        """Delete a rule and its grants in one transaction; returns the grants removed."""
+        removed = self.workspace_group_rule_repo.delete(rule_id)
+        _invalidate_rule_changes(removed)
+        return removed
+
+    def list_rule_eligible_group_names(self, names=None) -> List[str]:
+        """Group names a workspace group rule may match. See :meth:`WorkspaceGroupRuleRepository.eligible_group_names`."""
+        return self.workspace_group_rule_repo.eligible_group_names(names)
+
+    def reconcile_workspace_group_rule(self, rule_id: int, desired: dict, **kwargs) -> List[RuleGrantChange]:
+        """Make a rule's grants match ``desired``. See :meth:`WorkspaceGroupRuleRepository.reconcile`."""
+        changes = self.workspace_group_rule_repo.reconcile(rule_id, desired, **kwargs)
+        _invalidate_rule_changes(changes)
+        return changes
+
     # -- Workspace regex permissions (user-scoped) --
 
     def create_workspace_regex_permission(self, regex: str, priority: int, permission: str, username: str) -> WorkspaceRegexPermission:
@@ -1696,6 +1744,45 @@ _WORKSPACE_USER_CUD_METHODS = [
     "update_workspace_permission",
     "delete_workspace_permission",
 ]
+
+
+_RULE_TARGETED_INVALIDATION_LIMIT = 100
+
+
+def _invalidate_rule_changes(changes) -> None:
+    """Drop cached decisions a rule's grant writes made stale (issue #418).
+
+    The rule writes bypass the ``*_workspace_group_permission`` wrappers below, so they invalidate
+    the same two caches here: the permission cache (workspace grants feed resource resolution) and
+    each changed group's members' workspace-cache entry. Failures are logged, never raised — the
+    write already committed.
+    """
+    written = {(c.workspace, c.group) for c in changes if c.applied}
+    if not written:
+        return
+    from mlflow_oidc_auth.logger import get_logger
+
+    # Two independent attempts: a failure flushing one cache must not leave the other stale.
+    try:
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
+    except Exception:
+        get_logger().warning("Permission cache flush failed after a workspace group rule write; entries expire via TTL")
+    try:
+        from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache, invalidate_group_workspace_permission
+
+        # Targeted invalidation costs a member lookup per pair; past a backfill's worth, one flush is cheaper.
+        if len(written) > _RULE_TARGETED_INVALIDATION_LIMIT:
+            flush_workspace_cache()
+            return
+        try:
+            for workspace, group_name in sorted(written):
+                invalidate_group_workspace_permission(group_name=group_name, workspace=workspace)
+        except Exception:
+            flush_workspace_cache()
+    except Exception:
+        get_logger().warning("Workspace cache invalidation failed after a workspace group rule write; entries expire via TTL")
 
 
 def _wrap_with_cache_flush(method):

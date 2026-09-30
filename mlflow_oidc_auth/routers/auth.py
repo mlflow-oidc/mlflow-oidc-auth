@@ -1355,11 +1355,17 @@ def _provision_login(
         is_new_user=outcome.create,
     )
     if groups is not None:
-        user_module.populate_groups(group_names=groups, written_by=f"{method}:{provider.id}")
+        arrived = user_module.populate_groups(group_names=groups, written_by=f"{method}:{provider.id}")
         # Attributed to the provider (#360): the memberships this creates are owned by it, and an
         # authoritative sync removes only what the guard lets it — its own rows and unowned
         # ``manual`` ones everywhere, another source's only outside ``enforce``.
         user_module.update_user(username=username, group_names=groups, written_by=f"{method}:{provider.id}")
+        # Groups this login created get their workspace group rules (#418). Never raises: a rule
+        # failure is logged and audited, and the login goes on.
+        if arrived:
+            from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
+
+            apply_rules_for_groups(arrived, source=f"{method}:{provider.id}")
 
     # Workspace detection (per D-07, D-08, WSOIDC-01/02/03)
     # Layered approach: plugin first, JWT claim fallback, then auto-assign

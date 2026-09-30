@@ -42,6 +42,7 @@ from mlflow_oidc_auth.routers.workspace_permissions import workspace_permissions
 from mlflow_oidc_auth.routers.workspace_regex_permissions import (
     workspace_regex_permissions_router,
 )
+from mlflow_oidc_auth.routers.workspace_rules import workspace_rules_router
 
 __all__ = [
     "ajax_alias_router",
@@ -66,6 +67,7 @@ __all__ = [
     "webhook_router",
     "workspace_permissions_router",
     "workspace_regex_permissions_router",
+    "workspace_rules_router",
 ]
 
 
@@ -196,4 +198,6 @@ def get_all_routers() -> List[APIRouter]:
         user_permissions_router,
         users_router,
         webhook_router,
+        # Always registered: it answers 404 itself while MLFLOW_ENABLE_WORKSPACES is off (#418).
+        workspace_rules_router,
     ]

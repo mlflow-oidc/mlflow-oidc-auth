@@ -84,6 +84,7 @@ async def list_workspace_groups(
             workspace=p.workspace,
             group_name=p.group_name or str(p.group_id),
             permission=p.permission,
+            rule_id=p.rule_id,
         )
         for p in perms
     ]

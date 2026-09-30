@@ -40,6 +40,7 @@ from mlflow_oidc_auth.models import (
 )
 from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
     effective_prompt_permission,
@@ -240,6 +241,8 @@ async def create_group(
             resource_type="group",
             resource_id=group_name,
         )
+        # Workspace group rules for the new group (#418). Never raises.
+        apply_rules_for_groups([group_name], source=admin_username)
         response.status_code = 201
         return StatusMessageResponse(message=f"Group {group_name} successfully created")
 

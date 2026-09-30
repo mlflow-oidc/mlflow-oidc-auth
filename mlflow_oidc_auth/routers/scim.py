@@ -71,6 +71,7 @@ from mlflow_oidc_auth.ownership import MANUAL
 from mlflow_oidc_auth.repository.group import UnknownMember
 from mlflow_oidc_auth.repository.scim_activity import MAX_PAGE_SIZE as MAX_ACTIVITY_PAGE_SIZE, OUTCOMES, outcome_for
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
@@ -1146,6 +1147,9 @@ async def scim_create_group(request: Request) -> JSONResponse:
         resource_id=name,
         detail={"source": SCIM_SOURCE, "external_id": external_id, "members": [m["username"] for m in detail["members"]]},
     )
+    # Workspace group rules for the new group (#418). Never raises: the directory's request succeeds
+    # whatever a rule does.
+    apply_rules_for_groups([name], source=SCIM_SOURCE)
     resource = _to_scim_group(detail, request)
     return scim_response(resource, status_code=201, headers={"Location": resource["meta"]["location"]})
 
