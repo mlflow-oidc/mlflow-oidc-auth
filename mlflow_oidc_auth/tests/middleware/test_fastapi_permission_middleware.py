@@ -907,3 +907,56 @@ class TestJobSearchFiltering:
 
         with pytest.raises(ValueError):
             _filter_job_search_response("alice@example.com", b'{"unexpected": true}')
+
+
+# ---------------------------------------------------------------------------
+# Gateway routes never see this plugin's credentials
+# ---------------------------------------------------------------------------
+
+
+class TestGatewayCredentialStripping:
+    """MLflow's gateway copies the caller's headers onto the request it sends to the provider, so
+    the session cookie and the Authorization header must be gone before the route handler runs."""
+
+    @staticmethod
+    def _app(is_admin):
+        app = _create_app_with_auth(username="user@example.com", is_admin=is_admin)
+
+        @app.post("/gateway/{endpoint_name}/mlflow/invocations")
+        async def gateway_echo(endpoint_name: str, request: Request):
+            return {"headers": {k.lower(): v for k, v in request.headers.items()}}
+
+        app.router.routes.insert(0, app.router.routes.pop())
+        return app
+
+    SENT = {
+        "Cookie": "mlflow_oidc_session=not-a-real-session",
+        "Authorization": "Bearer not-a-real-token",
+        "X-Custom": "kept",
+    }
+
+    @pytest.mark.parametrize("is_admin", [False, True])
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=True)
+    def test_cookie_and_authorization_never_reach_the_gateway_handler(self, _can_use, is_admin):
+        response = TestClient(self._app(is_admin)).post("/gateway/my-endpoint/mlflow/invocations", headers=self.SENT, json={})
+
+        assert response.status_code == 200
+        received = response.json()["headers"]
+        assert "cookie" not in received
+        assert "authorization" not in received
+        assert received["x-custom"] == "kept"
+
+    def test_a_denied_request_is_refused_before_anything_is_forwarded(self):
+        with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=False):
+            response = TestClient(self._app(False)).post("/gateway/my-endpoint/mlflow/invocations", headers=self.SENT, json={})
+
+        assert response.status_code == 403
+
+    def test_the_strip_removes_every_credential_header_case_insensitively(self):
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _strip_client_credentials
+
+        request = MagicMock(spec=Request)
+        request.scope = {"headers": [(b"cookie", b"a"), (b"Authorization", b"b"), (b"authorization", b"c"), (b"x-other", b"d")]}
+        _strip_client_credentials(request)
+
+        assert request.scope["headers"] == [(b"x-other", b"d")]

@@ -62,6 +62,30 @@ _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
 _MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
 
 
+# Request headers that carry this plugin's credentials: the session cookie and the Basic/Bearer
+# ``Authorization`` header. MLflow's gateway forwards the caller's headers to the endpoint's
+# provider on its passthrough and proxy routes, stripping only its own ``X-MLflow-Authorization``,
+# so these are removed once the request is authenticated — see _strip_client_credentials.
+_CREDENTIAL_HEADERS = frozenset((b"cookie", b"authorization"))
+_GATEWAY_PREFIX = "/gateway/"
+
+
+def _strip_client_credentials(request: Request) -> None:
+    """Remove this plugin's credentials from a gateway request before MLflow handles it.
+
+    MLflow's AI gateway copies the caller's headers onto the request it sends to a third-party
+    provider (``dict(request.headers)`` on the passthrough and proxy routes, merged under the
+    provider's own headers). The session cookie would then reach every provider, and the caller's
+    IdP token or access token would reach any provider that puts its API key in a header of its own
+    (``api-key``, ``x-api-key``, ``x-goog-api-key``). Authentication and authorization have already
+    run by the time this is called, and MLflow's gateway authenticates to providers with the
+    endpoint's stored secret, never the caller's headers — so nothing downstream needs them.
+
+    Mutates ``request.scope["headers"]``, which the route handler reads.
+    """
+    request.scope["headers"] = [(name, value) for name, value in request.scope.get("headers", []) if name.lower() not in _CREDENTIAL_HEADERS]
+
+
 # ---------------------------------------------------------------------------
 # Endpoint-name extraction (mirrors upstream _extract_gateway_endpoint_name)
 # ---------------------------------------------------------------------------
@@ -405,9 +429,11 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if not username:
             return _authentication_required()
 
-        # Admins have full access
+        # Admins have full access — but their credentials must not reach a provider either.
         is_admin = getattr(request.state, "is_admin", False)
         if is_admin:
+            if path.startswith(_GATEWAY_PREFIX):
+                _strip_client_credentials(request)
             return await call_next(request)
 
         # Bridge AuthContext into ContextVar so downstream permission code
@@ -433,6 +459,8 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             if auth_context_token is not None:
                 clear_auth_context(auth_context_token)
 
+        if path.startswith(_GATEWAY_PREFIX):
+            _strip_client_credentials(request)
         response = await call_next(request)
         if _is_job_search(path, request):
             return await _filtered_job_search_response(username, response)
