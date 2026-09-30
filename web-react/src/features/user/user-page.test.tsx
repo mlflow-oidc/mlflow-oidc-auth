@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UserPage } from "./user-page";
 import * as useCurrentUserModule from "../../core/hooks/use-current-user";
 import React from "react";
+import { workspaceScopeWrapper } from "../../tests/workspace-scope-wrapper";
 
 const mockUseUser = vi.fn();
 const mockUseParams = vi.fn(() => ({ tab: "info" }));
@@ -24,7 +25,10 @@ vi.mock("react-router", () => ({
   ),
 }));
 
-vi.mock("../../shared/context/use-runtime-config", () => ({
+vi.mock("../../shared/context/use-runtime-config", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../shared/context/use-runtime-config")
+  >()),
   useRuntimeConfig: () => ({ gen_ai_gateway_enabled: true }),
 }));
 
@@ -67,7 +71,11 @@ vi.mock("../../core/hooks/use-user-gateway-model-permissions", () => ({
 }));
 
 vi.mock("../../core/hooks/use-search", () => ({
-  useSearch: () => ({ handleClearSearch: vi.fn(), submittedTerm: "" }),
+  useSearch: () => ({
+    handleClearSearch: vi.fn(),
+    submittedTerm: "",
+    searchTerm: "",
+  }),
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
@@ -142,6 +150,23 @@ describe("UserPage", () => {
     );
     expect(screen.getByTestId("tokens-panel")).toHaveTextContent("self");
     expect(screen.queryByText("Details for testuser")).not.toBeInTheDocument();
+    mockUseParams.mockReturnValue({ tab: "info" });
+  });
+
+  it("names the workspace of the signed-in user's model grants, read-only", () => {
+    mockUseParams.mockReturnValue({ tab: "models" });
+    render(<UserPage />, { wrapper: workspaceScopeWrapper(true, null) });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "These are the default workspace's grants",
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent(/change/);
+    mockUseParams.mockReturnValue({ tab: "info" });
+  });
+
+  it("shows no workspace notice on the experiments tab", () => {
+    mockUseParams.mockReturnValue({ tab: "experiments" });
+    render(<UserPage />, { wrapper: workspaceScopeWrapper(true, "team-a") });
+    expect(screen.queryByRole("status")).toBeNull();
     mockUseParams.mockReturnValue({ tab: "info" });
   });
 });

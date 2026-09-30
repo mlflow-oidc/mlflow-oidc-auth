@@ -22,10 +22,8 @@ import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
 import { IconButton } from "../../../shared/components/icon-button";
-import {
-  CHOOSE_WORKSPACE_TITLE,
-  GrantWorkspaceNotice,
-} from "./grant-workspace-notice";
+import { GrantWorkspaceNotice } from "./grant-workspace-notice";
+import { grantControlTitle } from "../hooks/use-grant-workspace-scope";
 import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import type {
@@ -320,21 +318,16 @@ export const NormalPermissionsView = ({
           <div className="flex space-x-2">
             <IconButton
               icon={editIcon}
-              title={
-                !scope.canChange
-                  ? CHOOSE_WORKSPACE_TITLE
-                  : isCreate
-                    ? "Add permission"
-                    : "Edit permission"
-              }
+              title={grantControlTitle(
+                scope,
+                isCreate ? "Add permission" : "Edit permission",
+              )}
               onClick={() => handleEditClick(item)}
               disabled={!scope.canChange}
             />
             <IconButton
               icon={faTrash}
-              title={
-                scope.canChange ? "Remove permission" : CHOOSE_WORKSPACE_TITLE
-              }
+              title={grantControlTitle(scope, "Remove permission")}
               onClick={() => {
                 void handleRemovePermission(item);
               }}
@@ -376,7 +369,7 @@ export const NormalPermissionsView = ({
                 variant="secondary"
                 onClick={() => setIsGrantModalOpen(true)}
                 disabled={!scope.canChange || availableEntities.length === 0}
-                title={scope.canChange ? undefined : CHOOSE_WORKSPACE_TITLE}
+                title={grantControlTitle(scope, undefined)}
                 icon={faPlus}
                 className="whitespace-nowrap h-8 mb-1 mt-2"
               >

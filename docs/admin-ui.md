@@ -232,9 +232,9 @@ When workspaces are enabled, a workspace selector appears in the UI header. Swit
 - Persists the selected workspace in local storage
 - Selects which workspace's grants the model, prompt and AI Gateway permission pages show and change.
   Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources)),
-  and each of those pages — and the matching tabs of a user or group — names the workspace. With
-  **All Workspaces** selected they show the `default` workspace's grants read-only: choose a
-  workspace to add, change or remove one. Experiment grants are unaffected.
+  and each of those pages — the matching tabs of a user or group, and your own User Page — names
+  the workspace. With **All Workspaces** selected they show the `default` workspace's grants
+  read-only: choose a workspace to add, change or remove one. Experiment grants are unaffected.
 - The "Add New Regex Rule" dialog notes that a pattern matches resource names in every workspace.
 
 ## Search and Filtering

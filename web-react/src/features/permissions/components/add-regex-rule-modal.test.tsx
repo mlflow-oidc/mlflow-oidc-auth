@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { AddRegexRuleModal } from "./add-regex-rule-modal";
+import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
 
 describe("AddRegexRuleModal", () => {
   it("renders when open", () => {
@@ -102,5 +103,33 @@ describe("AddRegexRuleModal", () => {
     await waitFor(() => {
       expect(handleSave).toHaveBeenCalledWith("^test_.*", "READ", 10);
     });
+  });
+
+  it("says a pattern matches every workspace when workspaces are enabled", () => {
+    render(
+      <AddRegexRuleModal
+        isOpen={true}
+        type="models"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+      { wrapper: workspaceScopeWrapper(true, "team-a") },
+    );
+    expect(
+      screen.getByText(/matches resource names in every workspace/),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing about workspaces when they are disabled", () => {
+    render(
+      <AddRegexRuleModal
+        isOpen={true}
+        type="models"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+      { wrapper: workspaceScopeWrapper(false, null) },
+    );
+    expect(screen.queryByText(/every workspace/)).toBeNull();
   });
 });

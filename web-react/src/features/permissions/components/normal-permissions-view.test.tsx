@@ -30,6 +30,8 @@ import type {
 } from "../../../shared/types/entity";
 import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 import { getRuntimeConfig } from "../../../shared/services/runtime-config";
+import { CHOOSE_WORKSPACE_TITLE } from "../hooks/use-grant-workspace-scope";
+import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/services/runtime-config", () => ({
@@ -482,5 +484,55 @@ describe("NormalPermissionsView", () => {
     );
 
     expect(defaultSearch.handleClearSearch).toHaveBeenCalled();
+  });
+
+  describe("workspace scope", () => {
+    it("names the workspace on a user's model grants and allows changes", () => {
+      render(
+        <NormalPermissionsView
+          type="models"
+          entityKind="user"
+          entityName="user1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, "team-a") },
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Grants shown here belong to workspace team-a",
+      );
+      expect(screen.getAllByTitle(/Remove permission/i)[0]).toBeEnabled();
+    });
+
+    it("with All Workspaces, blocks editing, removing and adding a group's grants", () => {
+      render(
+        <NormalPermissionsView
+          type="prompts"
+          entityKind="group"
+          entityName="group1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, null) },
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "These are the default workspace's grants",
+      );
+      expect(screen.getByText(/Add prompt/i).closest("button")).toBeDisabled();
+      const blocked = screen.getAllByTitle(CHOOSE_WORKSPACE_TITLE);
+      expect(blocked.length).toBeGreaterThan(1);
+      for (const control of blocked) {
+        expect(control).toBeDisabled();
+      }
+    });
+
+    it("leaves experiment grants unchanged under All Workspaces", () => {
+      render(
+        <NormalPermissionsView
+          type="experiments"
+          entityKind="user"
+          entityName="user1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, null) },
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryAllByTitle(CHOOSE_WORKSPACE_TITLE)).toHaveLength(0);
+    });
   });
 });

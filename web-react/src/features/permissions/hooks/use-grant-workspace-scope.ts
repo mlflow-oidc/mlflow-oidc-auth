@@ -45,3 +45,15 @@ export function useGrantWorkspaceScope(
     WORKSPACE_SCOPED_PERMISSION_TYPES.has(type);
   return { scoped, workspace, canChange: !scoped || workspace !== null };
 }
+
+/** The tooltip for a grant control that is disabled while "All Workspaces" is selected. */
+export const CHOOSE_WORKSPACE_TITLE =
+  "Choose a workspace in the header to change grants";
+
+/** A grant control's tooltip: `title`, or why the control is disabled when grants cannot change. */
+export function grantControlTitle(
+  scope: GrantWorkspaceScope,
+  title: string | undefined,
+): string | undefined {
+  return scope.canChange ? title : CHOOSE_WORKSPACE_TITLE;
+}
