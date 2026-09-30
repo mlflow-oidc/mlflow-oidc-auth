@@ -22,6 +22,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Match, Mount
 
 from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
@@ -289,15 +290,34 @@ async def _filtered_job_search_response(username: str, response: Response) -> Re
 def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
     """Return a validator for the MCP server registry routes.
 
-    The registry is a single catalog shared by every tenant, and there is no
-    per-server permission model for it yet. Reading it is open to any
-    authenticated user; mutating it is admin-only. Admins never reach this
-    validator (the middleware short-circuits on ``is_admin``), so denying
-    every write method here is what makes mutation admin-only.
+    Mutating the registry is admin-only. Admins never reach this validator (the middleware
+    short-circuits on ``is_admin``), so denying every write method here is what makes mutation
+    admin-only.
+
+    Reading depends on workspaces. MLflow keeps a registry per workspace, and serves the one the
+    request names — so with ``MLFLOW_ENABLE_WORKSPACES`` on, a read requires at least READ on that
+    workspace, the same boundary every other workspace-scoped resource has. A request that names
+    no workspace is served from the default workspace and is judged against it. With workspaces
+    off there is one registry and no tenant boundary to enforce, and reads stay open to any
+    authenticated user.
     """
 
     async def validator(username: str, request: Request) -> bool:
-        return request.method in ("GET", "HEAD")
+        if request.method not in ("GET", "HEAD"):
+            return False
+        if not config.MLFLOW_ENABLE_WORKSPACES:
+            return True
+
+        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        # AuthMiddleware normalised the workspace header the way MLflow does; no header means
+        # MLflow serves the default workspace, so that is the one that must be readable.
+        workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
+        permission = get_workspace_permission_cached(username, workspace)
+        return permission is not None and permission.can_read
 
     return validator
 
