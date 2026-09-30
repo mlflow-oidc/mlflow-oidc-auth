@@ -265,7 +265,7 @@ def _build_scorer_sources(experiment_id: str, username: str, **kwargs) -> Dict[s
 def _build_gateway_endpoint_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
     return {
         "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_endpoint_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_endpoint_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_endpoint_group_permission(gateway_name, user).permission,
         "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
             store.list_gateway_endpoint_regex_permissions(user),
             gateway_name,
@@ -282,7 +282,7 @@ def _build_gateway_endpoint_sources(gateway_name: str, username: str, **kwargs) 
 def _build_gateway_secret_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
     return {
         "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_secret_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_secret_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_secret_group_permission(gateway_name, user).permission,
         "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
             store.list_gateway_secret_regex_permissions(user),
             gateway_name,
@@ -299,7 +299,7 @@ def _build_gateway_secret_sources(gateway_name: str, username: str, **kwargs) ->
 def _build_gateway_model_definition_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
     return {
         "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_model_definition_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_groups_gateway_model_definition_permission(gateway_name, user).permission,
+        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_model_definition_group_permission(gateway_name, user).permission,
         "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
             store.list_gateway_model_definition_regex_permissions(user),
             gateway_name,

@@ -125,7 +125,7 @@ class TestAGrantStaysInItsWorkspace:
         with in_workspace("team-b"):
             assert resolve("churn", ALICE).permission.name == "NO_PERMISSIONS"
 
-    @pytest.mark.parametrize("kind", ["registered_model", "prompt"])
+    @pytest.mark.parametrize("kind", KINDS)
     def test_a_group_grant_does_not_reach_the_same_name_elsewhere(self, store, kind):
         _, grant_group, resolve, _ = _kinds(store)[kind]
         with in_workspace("team-a"):
@@ -404,3 +404,30 @@ class TestTheCachedDecisionStaysInItsWorkspace:
 
         assert first.status_code == 200, first.text
         assert second.status_code == 403, second.text
+
+
+class TestGatewayGroupGrantsCount:
+    """Group grants on gateway resources used to be looked up under the user's name as if it were a
+    group name, so they never counted. They now resolve like model and prompt group grants."""
+
+    @pytest.mark.parametrize("kind", ["gateway_endpoint", "gateway_secret", "gateway_model_definition"])
+    def test_a_group_grant_counts_with_workspaces_off(self, store, monkeypatch, kind):
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        _, grant_group, resolve, _ = _kinds(store)[kind]
+        grant_group("team", "chat", "USE")
+        _clear_cache()
+
+        assert resolve("chat", ALICE).permission.name == "USE"
+        assert resolve("chat", VICTOR).permission.name == "NO_PERMISSIONS", "not a member of the group"
+
+    def test_the_strongest_of_several_group_grants_wins(self, store, monkeypatch):
+        from mlflow_oidc_auth.utils.permissions import effective_gateway_endpoint_permission
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        store.populate_groups(["ops"])
+        store.set_user_groups(ALICE, ["team", "ops"])
+        store.create_group_gateway_endpoint_permission("team", "chat", "READ")
+        store.create_group_gateway_endpoint_permission("ops", "chat", "MANAGE")
+        _clear_cache()
+
+        assert effective_gateway_endpoint_permission("chat", ALICE).permission.name == "MANAGE"

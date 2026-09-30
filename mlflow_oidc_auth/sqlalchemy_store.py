@@ -852,6 +852,14 @@ class SqlAlchemyStore:
     def get_user_groups_gateway_secret_permission(self, gateway_name: str, group_name: str):
         return self.gateway_secret_group_repo.get_group_permission_for_user(gateway_name, group_name)
 
+    def get_user_gateway_secret_group_permission(self, gateway_name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on the resource.
+
+        For permission resolution. ``get_user_groups_gateway_secret_permission`` takes a group
+        name and serves the group permission API.
+        """
+        return self.gateway_secret_group_repo.get_group_permission_for_user_resource(gateway_name, username)
+
     def update_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_secret_group_repo.update_group_permission(group_name, gateway_name, permission)
 
@@ -932,6 +940,14 @@ class SqlAlchemyStore:
     def get_user_groups_gateway_endpoint_permission(self, gateway_name: str, group_name: str):
         return self.gateway_endpoint_group_repo.get_group_permission_for_user(gateway_name, group_name)
 
+    def get_user_gateway_endpoint_group_permission(self, gateway_name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on the resource.
+
+        For permission resolution. ``get_user_groups_gateway_endpoint_permission`` takes a group
+        name and serves the group permission API.
+        """
+        return self.gateway_endpoint_group_repo.get_group_permission_for_user_resource(gateway_name, username)
+
     def update_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_endpoint_group_repo.update_group_permission(group_name, gateway_name, permission)
 
@@ -1000,6 +1016,14 @@ class SqlAlchemyStore:
 
     def get_user_groups_gateway_model_definition_permission(self, gateway_name: str, group_name: str):
         return self.gateway_model_definition_group_repo.get_group_permission_for_user(gateway_name, group_name)
+
+    def get_user_gateway_model_definition_group_permission(self, gateway_name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on the resource.
+
+        For permission resolution. ``get_user_groups_gateway_model_definition_permission`` takes a group
+        name and serves the group permission API.
+        """
+        return self.gateway_model_definition_group_repo.get_group_permission_for_user_resource(gateway_name, username)
 
     def update_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
         return self.gateway_model_definition_group_repo.update_group_permission(group_name, gateway_name, permission)
