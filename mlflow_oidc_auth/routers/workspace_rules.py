@@ -6,8 +6,8 @@ check, so a deployment without workspaces does not reveal that the API exists. S
 :mod:`mlflow_oidc_auth.workspace_rules` for what a rule does.
 """
 
-from dataclasses import asdict
-from typing import List
+from dataclasses import asdict, replace
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 
@@ -82,6 +82,37 @@ async def list_workspace_rules() -> WorkspaceRuleListResponse:
     )
 
 
+def _apply(rule: WorkspaceGroupRule, admin: str) -> Tuple[List[RuleGrantChange], Optional[str]]:
+    """Backfill a rule that was just saved. The save stands whatever happens here.
+
+    A failure — MLflow's workspace store unreachable, say — writes nothing further, is audited, and
+    is returned as the response's ``error`` rather than a 500 that would hide that the rule was
+    saved. Saving the rule again retries.
+    """
+    try:
+        return workspace_rules.backfill(rule, actor=admin), None
+    except Exception as exc:
+        logger.error("Workspace group rule %s was saved but its backfill failed: %s", rule.id, type(exc).__name__)
+        emit_audit_event(
+            "workspace_rule.failed",
+            admin,
+            resource_type="workspace_rule",
+            resource_id=str(rule.id),
+            detail={"operation": "backfill", "error": type(exc).__name__},
+            status="denied",
+        )
+        if isinstance(exc, workspace_rules.WorkspaceStoreUnavailable):
+            return [], "The rule was saved, but its grants were not updated: MLflow's workspace store is unavailable. Save the rule again to retry."
+        return [], "The rule was saved, but its grants were not updated. Save the rule again to retry."
+
+
+def _preview_or_503(fn, *args, **kwargs) -> List[RuleGrantChange]:
+    try:
+        return fn(*args, **kwargs)
+    except workspace_rules.WorkspaceStoreUnavailable:
+        raise HTTPException(status_code=503, detail="MLflow's workspace store is unavailable; try the preview again")
+
+
 @workspace_rules_router.post("", response_model=WorkspaceRulePlanResponse, status_code=201, summary="Create a workspace group rule")
 async def create_workspace_rule(body: WorkspaceRuleCreateRequest, admin: str = Depends(check_admin_permission)) -> WorkspaceRulePlanResponse:
     """Create a rule and backfill it over every existing group.
@@ -96,32 +127,37 @@ async def create_workspace_rule(body: WorkspaceRuleCreateRequest, admin: str = D
     except workspace_rules.RuleValidationError as exc:
         raise _bad_request(exc)
     rule = store.create_workspace_group_rule(
-        name=body.name.strip(), pattern=body.pattern, permission=body.permission, mode=body.mode, enabled=body.enabled, created_by=admin
+        name=body.name, pattern=body.pattern, permission=body.permission, mode=body.mode, enabled=body.enabled, created_by=admin
     )
     emit_audit_event("workspace_rule.create", admin, resource_type="workspace_rule", resource_id=str(rule.id), detail=_rule_audit_detail(rule))
-    changes = workspace_rules.backfill(rule, actor=admin) if rule.enabled else []
-    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(changes))
+    changes, error = _apply(rule, admin) if rule.enabled else ([], None)
+    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(changes), error=error)
 
 
 @workspace_rules_router.post(PREVIEW, response_model=WorkspaceRulePlanResponse, summary="Preview an unsaved workspace group rule")
 async def preview_unsaved_workspace_rule(body: WorkspaceRulePreviewRequest) -> WorkspaceRulePlanResponse:
-    """What a rule with this pattern and permission would do if it were created now and enforced. Writes nothing.
+    """What a rule with this pattern and permission would do if it were saved now and enforced. Writes nothing.
 
-    It ranks after every existing rule, as a new rule would, so the preview shows where an existing
-    rule shadows it.
+    Without ``rule_id`` it ranks after every existing rule, as a new rule would, so the preview shows
+    where an existing rule shadows it. With ``rule_id`` it previews unsaved changes to that rule: its
+    precedence and the grants it already holds are kept.
     """
     try:
         workspace_rules.validate_pattern(body.pattern)
         workspace_rules.validate_permission(body.permission)
     except workspace_rules.RuleValidationError as exc:
         raise _bad_request(exc)
-    changes = workspace_rules.preview_unsaved(body.pattern, body.permission)
+    changes = _preview_or_503(workspace_rules.preview_unsaved, body.pattern, body.permission, rule_id=body.rule_id)
     return WorkspaceRulePlanResponse(rule=None, changes=_changes(changes))
 
 
 @workspace_rules_router.get(RULE, response_model=WorkspaceRuleResponse, summary="Get a workspace group rule")
 async def get_workspace_rule(rule_id: int = Path(..., description="The rule id")) -> WorkspaceRuleResponse:
     return _rule_response(store.get_workspace_group_rule(rule_id))
+
+
+# The fields that decide what a rule grants. A change to anything else (its name) touches no grant.
+_GRANT_FIELDS = ("pattern", "permission", "mode", "enabled")
 
 
 @workspace_rules_router.patch(RULE, response_model=WorkspaceRulePlanResponse, summary="Update a workspace group rule")
@@ -134,8 +170,10 @@ async def update_workspace_rule(
 
     A rule that is still enabled and enforcing is backfilled — it grants what it now matches and
     removes what it no longer does. A rule that is disabled or switched to ``report`` has every
-    grant it held removed, in the same transaction as the change.
+    grant it held removed, in the same transaction as the change, and a rule it shadowed takes those
+    groups over. A change that only renames the rule touches no grant.
     """
+    before = store.get_workspace_group_rule(rule_id)
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     try:
         if "pattern" in fields:
@@ -146,12 +184,11 @@ async def update_workspace_rule(
             workspace_rules.validate_mode(fields["mode"])
     except workspace_rules.RuleValidationError as exc:
         raise _bad_request(exc)
-    if "name" in fields:
-        fields["name"] = fields["name"].strip()
 
-    before = store.get_workspace_group_rule(rule_id)
-    enforcing = workspace_rules.is_enforcing(WorkspaceGroupRule(**{**asdict(before), **{k: v for k, v in fields.items() if k in ("mode", "enabled")}}))
-    rule, removed = store.update_workspace_group_rule(rule_id, fields, clear_grants=not enforcing)
+    after = replace(before, **fields)
+    grants_change = any(getattr(before, f) != getattr(after, f) for f in _GRANT_FIELDS)
+    enforcing = workspace_rules.is_enforcing(after)
+    rule, removed = store.update_workspace_group_rule(rule_id, fields, clear_grants=grants_change and not enforcing)
     emit_audit_event(
         "workspace_rule.update",
         admin,
@@ -160,22 +197,33 @@ async def update_workspace_rule(
         detail={"before": _rule_audit_detail(before), "after": _rule_audit_detail(rule)},
     )
     workspace_rules.audit_removed(rule, removed, actor=admin)
-    changes = removed + (workspace_rules.backfill(rule, actor=admin) if rule.enabled else [])
-    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(changes))
+    changes: List[RuleGrantChange] = list(removed)
+    error = None
+    if removed:
+        changes += workspace_rules.reapply_after_removal(removed, actor=admin)
+    if grants_change and rule.enabled:
+        applied, error = _apply(rule, admin)
+        changes += applied
+    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(changes), error=error)
 
 
 @workspace_rules_router.delete(RULE, response_model=WorkspaceRulePlanResponse, summary="Delete a workspace group rule")
 async def delete_workspace_rule(rule_id: int = Path(..., description="The rule id"), admin: str = Depends(check_admin_permission)) -> WorkspaceRulePlanResponse:
-    """Delete a rule and every grant it created — and nothing else. Manual grants stay."""
+    """Delete a rule and every grant it created — and nothing else. Manual grants stay.
+
+    A rule the deleted one shadowed then takes those groups over; its grants are in ``changes``
+    with their own ``rule_id``.
+    """
     rule = store.get_workspace_group_rule(rule_id)
     removed = store.delete_workspace_group_rule(rule_id)
     emit_audit_event("workspace_rule.delete", admin, resource_type="workspace_rule", resource_id=str(rule.id), detail=_rule_audit_detail(rule))
     workspace_rules.audit_removed(rule, removed, actor=admin)
-    return WorkspaceRulePlanResponse(rule=None, changes=_changes(removed))
+    changes = removed + workspace_rules.reapply_after_removal(removed, actor=admin)
+    return WorkspaceRulePlanResponse(rule=None, changes=_changes(changes))
 
 
 @workspace_rules_router.get(RULE_PREVIEW, response_model=WorkspaceRulePlanResponse, summary="Preview a workspace group rule")
 async def preview_workspace_rule(rule_id: int = Path(..., description="The rule id")) -> WorkspaceRulePlanResponse:
     """What enforcing the rule now would grant, update, keep, skip or remove, over every current group. Writes nothing."""
     rule = store.get_workspace_group_rule(rule_id)
-    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(workspace_rules.preview(rule)))
+    return WorkspaceRulePlanResponse(rule=_rule_response(rule), changes=_changes(_preview_or_503(workspace_rules.preview, rule)))

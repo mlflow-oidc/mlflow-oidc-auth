@@ -1746,6 +1746,9 @@ _WORKSPACE_USER_CUD_METHODS = [
 ]
 
 
+_RULE_TARGETED_INVALIDATION_LIMIT = 100
+
+
 def _invalidate_rule_changes(changes) -> None:
     """Drop cached decisions a rule's grant writes made stale (issue #418).
 
@@ -1769,6 +1772,10 @@ def _invalidate_rule_changes(changes) -> None:
     try:
         from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache, invalidate_group_workspace_permission
 
+        # Targeted invalidation costs a member lookup per pair; past a backfill's worth, one flush is cheaper.
+        if len(written) > _RULE_TARGETED_INVALIDATION_LIMIT:
+            flush_workspace_cache()
+            return
         try:
             for workspace, group_name in sorted(written):
                 invalidate_group_workspace_permission(group_name=group_name, workspace=workspace)

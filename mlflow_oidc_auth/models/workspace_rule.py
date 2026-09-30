@@ -6,6 +6,15 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+def _clean_name(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        raise ValueError("name must not be blank")
+    return value
+
+
 class WorkspaceRuleCreateRequest(BaseModel):
     """Create a rule. ``mode`` defaults to ``report``: a new rule says what it would do before it does it."""
 
@@ -16,6 +25,8 @@ class WorkspaceRuleCreateRequest(BaseModel):
     permission: str = Field(..., description="READ, USE, EDIT or MANAGE, at most WORKSPACE_RULES_MAX_PERMISSION")
     mode: str = Field("report", description="report (write nothing) or enforce")
     enabled: bool = Field(True, description="A disabled rule holds no grants")
+
+    _name = field_validator("name")(classmethod(lambda cls, v: _clean_name(v)))
 
 
 class WorkspaceRuleUpdateRequest(BaseModel):
@@ -29,6 +40,8 @@ class WorkspaceRuleUpdateRequest(BaseModel):
     mode: Optional[str] = None
     enabled: Optional[bool] = None
 
+    _name = field_validator("name")(classmethod(lambda cls, v: _clean_name(v)))
+
 
 class WorkspaceRulePreviewRequest(BaseModel):
     """A rule that is not saved yet, to preview before creating it."""
@@ -37,6 +50,7 @@ class WorkspaceRulePreviewRequest(BaseModel):
 
     pattern: str
     permission: str
+    rule_id: Optional[int] = Field(None, description="An existing rule being edited: preview under its id and with the grants it holds")
 
 
 class WorkspaceRuleResponse(BaseModel):
@@ -46,6 +60,7 @@ class WorkspaceRuleResponse(BaseModel):
     name: str
     pattern: str
     permission: str
+    rule_id: Optional[int] = Field(None, description="An existing rule being edited: preview under its id and with the grants it holds")
     mode: str
     enabled: bool
     created_by: Optional[str] = None
@@ -77,6 +92,7 @@ class WorkspaceRuleChange(BaseModel):
     reason: Optional[str] = None
     previous: Optional[str] = None
     applied: bool = Field(..., description="Whether this was written; false for a preview and for a report-mode rule")
+    rule_id: Optional[int] = Field(None, description="The rule this line belongs to")
 
 
 class WorkspaceRulePlanResponse(BaseModel):
@@ -84,3 +100,4 @@ class WorkspaceRulePlanResponse(BaseModel):
 
     rule: Optional[WorkspaceRuleResponse] = None
     changes: List[WorkspaceRuleChange]
+    error: Optional[str] = Field(None, description="Set when the rule was saved but its grants could not be brought in line; save it again to retry")

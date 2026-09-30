@@ -585,7 +585,7 @@ returns `403` to a non-admin and `404` to everyone while `MLFLOW_ENABLE_WORKSPAC
 |--------|------|---------|
 | GET | `/` | List rules, lowest id first, with `max_permission` and `allowed_permissions` |
 | POST | `/` | Create a rule (`201`); an `enforce` rule is backfilled now |
-| POST | `/preview` | What an unsaved `{pattern, permission}` would do if enforced; writes nothing |
+| POST | `/preview` | What an unsaved `{pattern, permission}` would do if enforced; with `rule_id`, unsaved changes to that rule (keeping its precedence and grants). Writes nothing; `503` if MLflow's workspace store is unavailable |
 | GET | `/{id}` | Get a rule |
 | PATCH | `/{id}` | Update a rule; reconciles its grants (see below) |
 | DELETE | `/{id}` | Delete a rule and every grant it created |
@@ -600,7 +600,7 @@ Create body (`PATCH` takes any subset):
 `mode` defaults to `report`, `enabled` to `true`. `400` when the pattern does not compile, lacks
 `(?P<ws>...)` or is longer than 256 characters, when `permission` is not `READ`/`USE`/`EDIT`/`MANAGE`
 or is above `WORKSPACE_RULES_MAX_PERMISSION`, or when `mode` is neither `report` nor `enforce`.
-`409` for a duplicate name.
+`409` for a duplicate name, `422` for a blank one.
 
 Create, update, delete and both previews return the rule (null after a delete) and its plan:
 
@@ -609,16 +609,20 @@ Create, update, delete and both previews return the rule (null after a delete) a
   "rule": {"id": 1, "name": "tenants", "pattern": "...", "permission": "EDIT", "mode": "enforce", "enabled": true,
            "created_by": "admin@example.com", "created_at": "...", "updated_at": "..."},
   "changes": [
-    {"action": "grant", "group": "team-acme", "workspace": "acme", "permission": "EDIT", "reason": null, "previous": null, "applied": true},
-    {"action": "skip", "group": "team-beta", "workspace": "beta", "permission": "EDIT", "reason": "manual grant", "previous": null, "applied": false}
+    {"action": "grant", "group": "team-acme", "workspace": "acme", "permission": "EDIT", "reason": null, "previous": null, "applied": true, "rule_id": 1},
+    {"action": "skip", "group": "team-beta", "workspace": "beta", "permission": "EDIT", "reason": "manual grant", "previous": null, "applied": false, "rule_id": 1}
   ]
 }
 ```
 
 `action` is `grant`, `update`, `keep`, `remove`, `skip` or `shadowed`; `applied` says whether it was
-written (always `false` for a preview and a `report`-mode rule). A `PATCH` that leaves the rule
-enabled and enforcing backfills it; one that disables it or switches it to `report` removes its
-grants in the same transaction.
+written (always `false` for a preview and a `report`-mode rule); `rule_id` is the rule the line
+belongs to — a delete or disable also lists the grants a previously shadowed rule took over. A
+`PATCH` that leaves the rule enabled and enforcing backfills it; one that disables it or switches it
+to `report` removes its grants in the same transaction; one that only renames it changes no grant.
+When a rule is saved but its grants cannot be brought in line (MLflow's workspace store is
+unavailable), the save stands, nothing else is written, and the response carries `error`; saving
+it again retries.
 
 ---
 

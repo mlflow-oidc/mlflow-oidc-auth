@@ -51,6 +51,8 @@ class RuleGrantChange:
         previous: The permission before an ``update``; None otherwise.
         applied: Whether this was written. False for a preview and for every line of a
             ``report``-mode rule, and always False for ``keep``, ``skip`` and ``shadowed``.
+        rule_id: The rule this line belongs to. A response can carry another rule's lines — the
+            grants a rule takes over after the one it was shadowed by is removed.
     """
 
     action: str
@@ -60,3 +62,4 @@ class RuleGrantChange:
     reason: Optional[str] = None
     previous: Optional[str] = None
     applied: bool = False
+    rule_id: Optional[int] = None

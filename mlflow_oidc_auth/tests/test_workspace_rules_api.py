@@ -184,6 +184,16 @@ class TestValidation:
         assert admin.post(RULES, json={**VALID, "mode": "yolo"}).status_code == 400
         assert admin.post(RULES, json={**VALID, "is_admin": True}).status_code == 422
 
+    def test_blank_name_rejected(self, admin, store):
+        assert admin.post(RULES, json={**VALID, "name": "   "}).status_code == 422
+        assert store.list_workspace_group_rules() == []
+        rule_id = admin.post(RULES, json=VALID).json()["rule"]["id"]
+        assert admin.patch(f"{RULES}/{rule_id}", json={"name": " "}).status_code == 422
+        assert admin.post(RULES, json={**VALID, "name": "  ops  "}).json()["rule"]["name"] == "ops"
+
+    def test_unknown_rule_is_404_before_validation(self, admin):
+        assert admin.patch(f"{RULES}/999", json={"pattern": "no-ws-group"}).status_code == 404
+
     def test_duplicate_name_is_409(self, admin):
         assert admin.post(RULES, json=VALID).status_code == 201
         assert admin.post(RULES, json=VALID).status_code == 409
@@ -218,6 +228,20 @@ class TestPreview:
         [line] = admin.post(f"{RULES}/preview", json={"pattern": r"^team-(?P<ws>acme)$", "permission": "READ"}).json()["changes"]
 
         assert line["action"] == "shadowed" and line["reason"].startswith(f"rule {existing} ")
+
+
+class TestEditPreview:
+    def test_previewing_changes_to_a_saved_rule_keeps_its_id(self, admin, store):
+        """Previewing an edit must not rank the rule after itself: its own grants show as update."""
+        store.populate_groups(["team-acme"])
+        rule_id = admin.post(RULES, json=VALID).json()["rule"]["id"]
+
+        as_edit = admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "READ", "rule_id": rule_id}).json()["changes"]
+        as_new = admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "READ"}).json()["changes"]
+
+        assert [(c["action"], c["previous"], c["permission"], c["rule_id"]) for c in as_edit] == [("update", "EDIT", "READ", rule_id)]
+        assert [c["action"] for c in as_new] == ["shadowed"]
+        assert admin.post(f"{RULES}/preview", json={"pattern": VALID["pattern"], "permission": "READ", "rule_id": 999}).status_code == 404
 
 
 class TestList:

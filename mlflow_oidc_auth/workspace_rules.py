@@ -30,14 +30,18 @@ Several rules matching the same group and workspace: the lowest id wins and the 
 
 import re
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.workspace_rule import RuleGrantChange, WorkspaceGroupRule
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import get_permission
+from mlflow_oidc_auth.repository.workspace_rule import HELD_BY_RULE
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -145,17 +149,21 @@ def _match(rule: WorkspaceGroupRule, group_name: str) -> Optional[str]:
     return found.groupdict().get(WORKSPACE_GROUP) or None
 
 
+class WorkspaceStoreUnavailable(RuntimeError):
+    """MLflow's workspace store could not answer. Nothing is written while it cannot."""
+
+
 class _WorkspaceExists:
     """Memoised check that a workspace exists in MLflow's workspace store.
 
-    Any failure — an unknown workspace or a store that cannot be reached — reads as "does not
-    exist": deny by default, a rule never grants on a workspace it could not confirm.
+    A workspace the store reports missing is skipped. A store that cannot answer at all raises
+    :class:`WorkspaceStoreUnavailable` instead: treating an outage as "every workspace is missing"
+    would make a backfill remove every grant the rule holds.
     """
 
     def __init__(self):
         self._known: Dict[str, bool] = {}
         self._store = None
-        self._store_failed = False
 
     def __call__(self, name: str) -> bool:
         if name not in self._known:
@@ -163,21 +171,22 @@ class _WorkspaceExists:
         return self._known[name]
 
     def _check(self, name: str) -> bool:
-        if self._store is None and not self._store_failed:
+        if self._store is None:
             try:
                 from mlflow.server import handlers
 
                 self._store = handlers._get_workspace_store()
             except Exception as exc:
-                logger.warning("Workspace group rules cannot reach MLflow's workspace store: %s", exc)
-                self._store_failed = True
-        if self._store is None:
-            return False
+                raise WorkspaceStoreUnavailable(f"MLflow's workspace store cannot be reached: {type(exc).__name__}") from exc
         try:
             self._store.get_workspace(name)
             return True
-        except Exception:
-            return False
+        except MlflowException as exc:
+            if exc.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                return False
+            raise WorkspaceStoreUnavailable(f"MLflow's workspace store failed: {exc.error_code}") from exc
+        except Exception as exc:
+            raise WorkspaceStoreUnavailable(f"MLflow's workspace store failed: {type(exc).__name__}") from exc
 
 
 @dataclass
@@ -250,12 +259,17 @@ def _execute(plan: Plan, *, scope: Optional[Iterable[str]], dry_run: bool) -> Li
     changes = store.reconcile_workspace_group_rule(
         plan.rule.id, plan.desired, scope=None if scope is None else set(scope), retain=plan.retain, dry_run=dry_run, expected=plan.rule
     )
-    return sorted([*changes, *plan.items], key=lambda c: (c.workspace, c.group, c.action))
+    return _sorted([*changes, *(replace(c, rule_id=plan.rule.id) for c in plan.items)])
 
 
 def _audit(rule: WorkspaceGroupRule, changes: Iterable[RuleGrantChange], actor: str) -> None:
-    """One audit event per grant written or removed, and per line an enforcing rule skipped."""
+    """One audit event per grant written or removed, and per line an enforcing rule skipped.
+
+    Only ``rule``'s own lines: another rule's (a hand-over) are audited where they were written.
+    """
     for change in changes:
+        if change.rule_id is not None and change.rule_id != rule.id:
+            continue
         detail = {"rule_id": rule.id, "workspace": change.workspace, "group": change.group, "permission": change.permission}
         if change.applied and change.action in ("grant", "update"):
             if change.previous is not None:
@@ -273,56 +287,132 @@ def _audit(rule: WorkspaceGroupRule, changes: Iterable[RuleGrantChange], actor: 
             )
 
 
+def _enforcing_rules() -> List[WorkspaceGroupRule]:
+    """The rules that compete for grants: enabled and enforcing, lowest id first."""
+    return [r for r in store.list_workspace_group_rules(enabled_only=True) if r.mode == MODE_ENFORCE]
+
+
+def _sorted(changes: Iterable[RuleGrantChange]) -> List[RuleGrantChange]:
+    return sorted(changes, key=lambda c: (c.workspace, c.group, c.action))
+
+
 def preview(rule: WorkspaceGroupRule) -> List[RuleGrantChange]:
-    """What enforcing ``rule`` now would grant, update, keep, skip or remove, over every group. Writes nothing."""
+    """What enforcing ``rule`` now would grant, update, keep, skip or remove, over every group. Writes nothing.
+
+    Raises:
+        WorkspaceStoreUnavailable: MLflow's workspace store cannot answer.
+    """
     return _execute(evaluate(rule, store.list_rule_eligible_group_names()), scope=None, dry_run=True)
 
 
-def preview_unsaved(pattern: str, permission: str) -> List[RuleGrantChange]:
-    """What a rule with ``pattern`` and ``permission`` would do if created now and enforced. Writes nothing.
+def preview_unsaved(pattern: str, permission: str, *, rule_id: Optional[int] = None) -> List[RuleGrantChange]:
+    """What a rule with ``pattern`` and ``permission`` would do if saved now and enforced. Writes nothing.
 
-    It is given the id a new rule would outrank nothing with — one past every existing rule — so
-    any existing enforcing rule matching the same group and workspace shadows it, as it would once
-    saved.
+    Parameters:
+        pattern: The pattern to preview.
+        permission: The permission to preview.
+        rule_id: An existing rule being edited. The preview keeps its id — its precedence, and the
+            grants it already holds, which show as ``keep`` / ``update`` / ``remove``. Without it,
+            the draft gets the id a new rule would — one past every existing rule — so any existing
+            enforcing rule matching the same group and workspace shadows it, as it would once saved.
+
+    Raises:
+        MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown ``rule_id``.
+        WorkspaceStoreUnavailable: MLflow's workspace store cannot answer.
     """
     rules = store.list_workspace_group_rules()
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    draft = WorkspaceGroupRule(
-        id=max((r.id for r in rules), default=0) + 1,
-        name="(unsaved)",
-        pattern=pattern,
-        permission=permission,
-        mode=MODE_ENFORCE,
-        enabled=True,
-        created_by=None,
-        created_at=now,
-        updated_at=now,
-    )
-    competitors = [r for r in rules if is_enforcing(r)]
+    if rule_id is not None:
+        base = store.get_workspace_group_rule(rule_id)
+        draft = replace(base, pattern=pattern, permission=permission, mode=MODE_ENFORCE, enabled=True)
+    else:
+        draft = WorkspaceGroupRule(
+            id=max((r.id for r in rules), default=0) + 1,
+            name="(unsaved)",
+            pattern=pattern,
+            permission=permission,
+            mode=MODE_ENFORCE,
+            enabled=True,
+            created_by=None,
+            created_at=now,
+            updated_at=now,
+        )
+    competitors = [r for r in rules if is_enforcing(r) and r.id != draft.id]
     return _execute(evaluate(draft, store.list_rule_eligible_group_names(), competitors=competitors), scope=None, dry_run=True)
+
+
+def _take_over_held(
+    rule: WorkspaceGroupRule,
+    changes: List[RuleGrantChange],
+    competitors: Sequence[WorkspaceGroupRule],
+    exists: Callable[[str], bool],
+    actor: str,
+) -> List[RuleGrantChange]:
+    """Let ``rule`` win the pairs a higher-id rule still holds — lowest id wins (decision 4).
+
+    Such a pair appears when the winner was disabled or in ``report`` when the loser granted it. No
+    rule ever writes another's row: the loser releases its own grants where ``rule`` now shadows it,
+    then ``rule`` grants its own. Returns ``changes`` with the ``held by`` lines replaced by the result.
+    """
+    held: Dict[int, Set[str]] = {}
+    for change in changes:
+        if change.action == "skip" and change.reason and change.reason.startswith(HELD_BY_RULE):
+            holder_id = int(change.reason[len(HELD_BY_RULE) :])
+            if holder_id > rule.id:
+                held.setdefault(holder_id, set()).add(change.group)
+    by_id = {r.id: r for r in competitors}
+    released: Set[str] = set()
+    handed_over: List[RuleGrantChange] = []
+    for holder_id, groups in held.items():
+        holder = by_id.get(holder_id)
+        if holder is None:
+            continue
+        plan = evaluate(holder, groups, competitors=competitors, workspace_exists=exists)
+        plan.retain = set()
+        holder_writes = [c for c in _execute(plan, scope=groups, dry_run=False) if c.applied]
+        _audit(holder, holder_writes, actor)
+        handed_over.extend(holder_writes)
+        released |= groups
+    if not released:
+        return changes
+    retried = _execute(evaluate(rule, released, competitors=competitors, workspace_exists=exists), scope=released, dry_run=False)
+    # The holder's lines carry its own rule_id; the caller audits only ``rule``'s, so they are not audited twice.
+    return _sorted([*(c for c in changes if c.group not in released), *retried, *handed_over])
 
 
 def backfill(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
     """Reconcile ``rule`` against every existing group — on rule create, update or enable.
 
     An enforcing rule writes, in one transaction, and removes the grants it holds that it no longer
-    wants (a narrowed pattern, say). A report-mode or disabled rule writes nothing: the result is its
-    preview, every line ``applied=False``.
+    wants (a narrowed pattern, say); where a higher-id rule holds a pair it wins, that rule releases
+    it first. A report-mode or disabled rule writes nothing: the result is its preview, every line
+    ``applied=False``.
+
+    Raises:
+        WorkspaceStoreUnavailable: MLflow's workspace store cannot answer; nothing was written.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return []
     if not is_enforcing(rule):
         return preview(rule)
-    changes = _execute(evaluate(rule, store.list_rule_eligible_group_names()), scope=None, dry_run=False)
+    competitors = _enforcing_rules()
+    exists = _WorkspaceExists()
+    plan = evaluate(rule, store.list_rule_eligible_group_names(), competitors=competitors, workspace_exists=exists)
+    changes = _execute(plan, scope=None, dry_run=False)
+    changes = _take_over_held(rule, changes, competitors, exists, actor)
     _audit(rule, changes, actor)
     return changes
 
 
 def remove(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
-    """Remove every grant ``rule`` holds and nothing else — on disable or a switch to ``report``."""
+    """Remove every grant ``rule`` holds and nothing else — on disable or a switch to ``report``.
+
+    The other enforcing rules are then applied to the groups that lost a grant, so a rule ``rule``
+    shadowed takes over. Returns the removals followed by what they caused.
+    """
     removed = store.clear_workspace_group_rule_grants(rule.id)
     _audit(rule, removed, actor)
-    return removed
+    return removed + reapply_after_removal(removed, actor=actor)
 
 
 def audit_removed(rule: WorkspaceGroupRule, removed: Iterable[RuleGrantChange], *, actor: str) -> None:
@@ -330,16 +420,29 @@ def audit_removed(rule: WorkspaceGroupRule, removed: Iterable[RuleGrantChange], 
     _audit(rule, removed, actor)
 
 
-def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[RuleGrantChange]:
-    """Apply every enforcing rule to groups that just arrived. Never raises.
+def reapply_after_removal(removed: Iterable[RuleGrantChange], *, actor: str) -> List[RuleGrantChange]:
+    """Apply the enforcing rules to the groups whose rule grant was just removed. Never raises.
 
-    Called after the group writes at the three places groups arrive: SCIM create, the admin
-    create-group endpoint, and a login that created groups. A failure is logged and audited and
-    swallowed — it must never fail the login or the SCIM request that brought the group. Each rule
-    runs in its own transaction, so one failing rule does not stop the others.
+    A rule the removed one shadowed wins those pairs now; without this it would stay without a
+    grant until something happened to touch it.
+    """
+    groups = {c.group for c in removed if c.applied and c.action == "remove"}
+    if not groups:
+        return []
+    return [c for c in apply_rules_for_groups(groups, source=actor) if c.applied]
+
+
+def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[RuleGrantChange]:
+    """Apply every enforcing rule to the given groups. Never raises.
+
+    Called after the group writes at the three places groups arrive — SCIM create, the admin
+    create-group endpoint, and a login that created groups — and after a rule's grants are removed.
+    A failure is logged and audited and swallowed: it must never fail the login or the SCIM request
+    that brought the group. Each rule runs in its own transaction, so one failing rule does not stop
+    the others. A workspace store that cannot answer fails the rule — nothing is written.
 
     Parameters:
-        group_names: The local names of the groups that arrived.
+        group_names: Local group names.
         source: Who brought them — ``scim``, ``oidc:<id>``, ``saml:<id>`` or the admin's username.
             Recorded as the actor of the audit events.
 
@@ -350,7 +453,7 @@ def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[R
     if not config.MLFLOW_ENABLE_WORKSPACES or not names:
         return []
     try:
-        rules = [r for r in store.list_workspace_group_rules(enabled_only=True) if r.mode == MODE_ENFORCE]
+        rules = _enforcing_rules()
         if rules:
             names = store.list_rule_eligible_group_names(names)
     except Exception as exc:
@@ -367,6 +470,7 @@ def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[R
             if not plan.desired and not plan.items:
                 continue
             rule_changes = _execute(plan, scope=names, dry_run=False)
+            rule_changes = _take_over_held(rule, rule_changes, rules, exists, source)
             _audit(rule, rule_changes, source)
             changes.extend(rule_changes)
         except Exception as exc:
@@ -380,29 +484,31 @@ def enforce_ceiling() -> List[RuleGrantChange]:
     Run at startup with workspaces enabled. The ceiling is checked whenever a rule is applied, but a
     rule that already granted MANAGE keeps those grants until something applies it again — so after
     an operator lowers the ceiling and restarts, this is what makes the lower ceiling true. The rule
-    itself stays and reports ``skip`` until its permission is lowered.
+    itself stays and reports ``skip`` until its permission is lowered. Each rule is handled on its
+    own, so one failure does not stop the rest.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return []
-    removed: List[RuleGrantChange] = []
     try:
-        for rule in store.list_workspace_group_rules():
-            if _within_ceiling(rule):
-                continue
-            rule_removed = store.clear_workspace_group_rule_grants(rule.id)
-            if rule_removed:
-                logger.warning(
-                    "Removed %d grant(s) of workspace group rule %s: its permission %s is above WORKSPACE_RULES_MAX_PERMISSION=%s",
-                    len(rule_removed),
-                    rule.id,
-                    rule.permission,
-                    max_permission(),
-                )
-                _audit(rule, rule_removed, CEILING_ACTOR)
-                removed.extend(rule_removed)
+        rules = store.list_workspace_group_rules()
     except Exception as exc:
-        logger.error("Could not apply WORKSPACE_RULES_MAX_PERMISSION to existing workspace group rule grants: %s", exc)
-    return removed
+        logger.error("Could not read workspace group rules to apply WORKSPACE_RULES_MAX_PERMISSION: %s", type(exc).__name__)
+        return []
+    removed: List[RuleGrantChange] = []
+    for rule in rules:
+        if _within_ceiling(rule):
+            continue
+        try:
+            rule_removed = store.clear_workspace_group_rule_grants(rule.id)
+        except Exception as exc:
+            logger.error("Could not remove the grants of workspace group rule %s above the permission ceiling: %s", rule.id, type(exc).__name__)
+            continue
+        if rule_removed:
+            # The configured ceiling is deliberately not logged: configuration can come from a secret store.
+            logger.warning("Removed %d grant(s) of workspace group rule %s: its permission is above WORKSPACE_RULES_MAX_PERMISSION", len(rule_removed), rule.id)
+            _audit(rule, rule_removed, CEILING_ACTOR)
+            removed.extend(rule_removed)
+    return removed + reapply_after_removal(removed, actor=CEILING_ACTOR)
 
 
 def _report_failure(rule: Optional[WorkspaceGroupRule], group_names: List[str], source: str, exc: Exception) -> None:

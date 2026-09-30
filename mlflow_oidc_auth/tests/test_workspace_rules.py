@@ -200,15 +200,14 @@ class TestWhereGroupsArrive:
 
     def test_login_applies_rules_only_to_groups_it_created(self, client, store):
         store.populate_groups(["team-acme"])
-        rule_id = create_rule(client, mode="report")["rule"]["id"]
-        rule = client.patch(f"{RULES}/{rule_id}", json={"mode": "enforce"}).json()["rule"]
-        # The backfill above granted team-acme. A manual edit makes it the admin's; a later login
-        # that merely mentions the group must not re-apply the rule to it.
-        store.update_workspace_group_permission("acme", "team-acme", "READ")
+        rule_id = create_rule(client)["rule"]["id"]
+        # The backfill granted team-acme; the admin removes that grant by hand. A later login that
+        # merely mentions the existing group must not re-apply the rule to it.
+        store.delete_workspace_group_permission("acme", "team-acme")
 
         login(ALICE, ["mlflow-users", "team-acme", "team-gamma"])
 
-        assert grants(store) == {("acme", "team-acme"): ("READ", None), ("gamma", "team-gamma"): ("EDIT", rule["id"])}
+        assert grants(store) == {("gamma", "team-gamma"): ("EDIT", rule_id)}
 
     def test_admin_created_group_gets_permission(self, client, store):
         rule = create_rule(client, permission="USE")["rule"]
@@ -323,6 +322,7 @@ class TestBackfillAndModes:
                 "reason": "workspace does not exist",
                 "previous": None,
                 "applied": False,
+                "rule_id": body["rule"]["id"],
             }
         ]
         [event] = events(audit_events, "workspace_rule.skipped")
@@ -412,9 +412,25 @@ class TestOwnership:
         assert lines["team-acme"]["action"] == "shadowed" and lines["team-acme"]["reason"].startswith(f"rule {first} ")
         assert lines["squad-beta"]["action"] == "keep"
 
-        # Deleting the winner removes only its grant; the loser does not silently take it over.
-        client.delete(f"{RULES}/{first}")
-        assert grants(store) == {("beta", "squad-beta"): ("EDIT", second)}
+        # Deleting the winner removes its grant, and the rule it shadowed takes the group over.
+        body = client.delete(f"{RULES}/{first}").json()
+        assert grants(store) == {("acme", "team-acme"): ("EDIT", second), ("beta", "squad-beta"): ("EDIT", second)}
+        assert [(c["action"], c["group"], c["rule_id"]) for c in body["changes"]] == [("remove", "team-acme", first), ("grant", "team-acme", second)]
+
+    def test_a_lower_id_rule_enabled_later_takes_over_and_hands_back(self, client, store):
+        """Rule 1 was in report mode when rule 2 granted; enforcing rule 1 must win (decision 4),
+        and disabling it again must not leave the group with nothing."""
+        store.populate_groups(["team-acme"])
+        first = create_rule(client, name="first", permission="READ", mode="report")["rule"]["id"]
+        second = create_rule(client, name="second", permission="EDIT")["rule"]["id"]
+        assert grants(store) == {("acme", "team-acme"): ("EDIT", second)}
+
+        body = client.patch(f"{RULES}/{first}", json={"mode": "enforce"}).json()
+        assert grants(store) == {("acme", "team-acme"): ("READ", first)}
+        assert ("remove", second) in [(c["action"], c["rule_id"]) for c in body["changes"]]
+
+        client.patch(f"{RULES}/{first}", json={"enabled": False})
+        assert grants(store) == {("acme", "team-acme"): ("EDIT", second)}
 
 
 class TestHardening:
@@ -501,6 +517,79 @@ class TestHardening:
         client.patch(f"{RULES}/{rule_id}", json={"enabled": False})
 
         assert get_workspace_permission_cached(ALICE, "acme") is None
+
+
+class TestWorkspaceStoreOutage:
+    """An unreachable workspace store must never read as "every workspace is missing"."""
+
+    @pytest.fixture
+    def outage(self, monkeypatch):
+        from mlflow.server import handlers
+
+        def down(*args, **kwargs):
+            raise RuntimeError("workspace database unreachable")
+
+        return lambda: monkeypatch.setattr(handlers, "_get_workspace_store", down)
+
+    def test_a_backfill_during_an_outage_keeps_every_grant(self, client, store, outage, audit_events):
+        store.populate_groups(["team-acme", "team-beta"])
+        rule_id = create_rule(client)["rule"]["id"]
+        before = grants(store)
+        assert len(before) == 2
+        outage()
+
+        response = client.patch(f"{RULES}/{rule_id}", json={"permission": "READ"})
+
+        assert response.status_code == 200
+        assert "workspace store is unavailable" in response.json()["error"]
+        assert grants(store) == before, "an outage removed grants"
+        assert events(audit_events, "permission.deprovisioned") == []
+        assert events(audit_events, "workspace_rule.failed")[0]["detail"]["operation"] == "backfill"
+
+    def test_a_workspace_store_error_is_not_a_missing_workspace(self, client, store, mlflow_workspaces, monkeypatch):
+        from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
+
+        store.populate_groups(["team-acme"])
+        rule_id = create_rule(client)["rule"]["id"]
+
+        def broken(name):
+            raise MlflowException("database is locked", INTERNAL_ERROR)
+
+        monkeypatch.setattr(mlflow_workspaces, "get_workspace", broken)
+        client.patch(f"{RULES}/{rule_id}", json={"permission": "READ"})
+
+        assert grants(store) == {("acme", "team-acme"): ("EDIT", rule_id)}
+
+    def test_preview_during_an_outage_is_503(self, client, store, outage):
+        rule_id = create_rule(client, mode="report")["rule"]["id"]
+        store.populate_groups(["team-acme"])
+        outage()
+
+        assert client.get(f"{RULES}/{rule_id}/preview").status_code == 503
+
+    def test_arrival_during_an_outage_writes_nothing_and_does_not_fail(self, client, store, scim, outage, audit_events):
+        create_rule(client)
+        outage()
+
+        response = client.post(SCIM_GROUPS, headers=scim, json=group_body_minimal("team-acme"))
+
+        assert response.status_code == 201
+        assert grants(store) == {}
+        assert events(audit_events, "workspace_rule.failed")
+
+
+class TestRenameOnly:
+    def test_a_rename_touches_no_grant(self, client, store, audit_events):
+        store.populate_groups(["team-acme"])
+        rule_id = create_rule(client)["rule"]["id"]
+        store.delete_workspace_group_permission("acme", "team-acme")
+        audit_events.clear()
+
+        body = client.patch(f"{RULES}/{rule_id}", json={"name": "tenants-renamed"}).json()
+
+        assert body["rule"]["name"] == "tenants-renamed" and body["changes"] == []
+        assert grants(store) == {}, "a rename re-created a grant the admin removed"
+        assert [e["event"] for e in audit_events] == ["workspace_rule.update"]
 
 
 class TestAuditAndCache:

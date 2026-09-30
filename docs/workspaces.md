@@ -283,11 +283,10 @@ ever creates, changes or removes its **own** grants:
 
 When several rules match the same group and workspace, the rule with the **lowest id** wins and the
 others report `shadowed`. Only enabled `enforce` rules compete; a `report` rule never shadows one.
-A rule never takes over another rule's grant either: a lower-id rule that is enabled after a
-higher-id one already granted a group reports `skip: held by rule N`, and the existing grant stays
-until that rule is changed or removed. Deleting or disabling the winner removes its grants and does
-not hand them to the next rule; save that rule again (for example, `PATCH` it with
-`{"enabled": true}`) to backfill it.
+No rule ever writes another rule's grant: when a lower-id rule starts enforcing while a higher-id one
+holds a group it wins, the higher-id rule releases its grant and the winner grants its own. When
+the winner is deleted, disabled or switched to `report`, the rule it shadowed takes the group over
+the same way.
 
 ### When rules run
 
@@ -295,9 +294,13 @@ not hand them to the next rule; save that rule again (for example, `PATCH` it wi
 |---|---|
 | A group arrives — SCIM `POST /Groups`, admin `POST .../permissions/groups`, or a login that creates groups | Every enabled `enforce` rule is applied to the groups that arrived, and only those. |
 | A rule is created, updated or enabled | The rule is backfilled over every existing group: it grants what it matches and removes the grants it holds that it no longer matches. |
-| A rule is deleted, disabled or switched to `report` | Only that rule's grants are removed. |
+| A rule is deleted, disabled or switched to `report` | Only that rule's grants are removed; the other enforcing rules are then applied to the groups that lost one. |
+| A rule is only renamed | Nothing: no grant changes. |
 
-Groups that arrive any other way are picked up by the next backfill. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
+If MLflow's workspace store cannot be reached, a rule writes nothing — it never reads an outage as
+"the workspace does not exist", which would remove its grants. A rule saved during an outage is
+saved; its response carries an `error`, and saving it again retries. Groups that arrive any other
+way are picked up by the next backfill. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
 the login or the SCIM request that brought the group.
 
 ### Report mode
@@ -305,7 +308,7 @@ the login or the SCIM request that brought the group.
 A new rule defaults to `mode: report`: it writes nothing, and its create, update and preview
 responses list what enforcing it would grant, update, keep, skip or remove. Switch it to `enforce`
 once the list is what you expect. `POST /api/3.0/mlflow/workspace-rules/preview` shows the same for
-a rule that is not saved yet.
+a rule that is not saved yet, or — with `rule_id` — for unsaved changes to an existing rule.
 
 ### Audit
 

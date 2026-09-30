@@ -8,6 +8,7 @@ alone — including when it appears between the engine's decision and the write,
 per insert turns into a ``skip`` rather than a failed transaction.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Collection, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -30,6 +31,8 @@ _CHUNK = 500
 Pair = Tuple[str, str]  # (workspace, group_name)
 
 MANUAL_GRANT = "manual grant"
+# Reason prefix for a pair another rule holds; the engine parses the holder's id after it.
+HELD_BY_RULE = "held by rule "
 
 
 # Login sources that name a provider; see mlflow_oidc_auth.ownership.LOGIN_SOURCE_PREFIXES.
@@ -172,7 +175,7 @@ class WorkspaceGroupRuleRepository:
             .order_by(SqlWorkspaceGroupPermission.workspace, SqlGroup.group_name)
             .all()
         )
-        removed = [RuleGrantChange("remove", group_name, row.workspace, row.permission, applied=True) for row, group_name in rows]
+        removed = [RuleGrantChange("remove", group_name, row.workspace, row.permission, applied=True, rule_id=rule_id) for row, group_name in rows]
         session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.rule_id == rule_id).delete(synchronize_session=False)
         session.flush()
         return removed
@@ -290,7 +293,7 @@ class WorkspaceGroupRuleRepository:
                 elif row.rule_id is None:
                     changes.append(RuleGrantChange("skip", group, workspace, permission, reason=MANUAL_GRANT))
                 elif row.rule_id != rule_id:
-                    changes.append(RuleGrantChange("skip", group, workspace, permission, reason=f"held by rule {row.rule_id}"))
+                    changes.append(RuleGrantChange("skip", group, workspace, permission, reason=f"{HELD_BY_RULE}{row.rule_id}"))
                 elif row.permission == permission:
                     changes.append(RuleGrantChange("keep", group, workspace, permission))
                 else:
@@ -311,4 +314,4 @@ class WorkspaceGroupRuleRepository:
             if not dry_run:
                 session.flush()
 
-        return sorted(changes, key=lambda c: (c.workspace, c.group))
+        return sorted((replace(c, rule_id=rule_id) for c in changes), key=lambda c: (c.workspace, c.group))
