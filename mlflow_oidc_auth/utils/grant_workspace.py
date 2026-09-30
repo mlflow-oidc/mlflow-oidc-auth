@@ -7,9 +7,10 @@ a grant on ``churn`` in one workspace would apply to another workspace's ``churn
 
 The grant workspace is always the one MLflow serves the request from: the workspace the request
 names, or the default workspace when it names none. With ``MLFLOW_ENABLE_WORKSPACES`` off every
-resource lives in the default workspace, new grants record it, and lookups do not filter on the
-workspace at all — so a deployment that has never enabled workspaces behaves exactly as before,
-including for grants written before the column existed (``workspace IS NULL``).
+resource lives in the default workspace, new grants record it, and lookups match the default
+workspace's grants and grants written before the column existed (``workspace IS NULL``) — every
+grant a deployment that has never enabled workspaces has, so it behaves exactly as before. Grants
+recorded for another workspace, on a deployment that turns workspaces off again, do not count.
 
 With workspaces on, a lookup matches only grants recorded for the request's workspace. Grants from
 before the column existed carry no workspace and match nothing until
@@ -59,25 +60,37 @@ def current_grant_workspace() -> str:
 def grant_workspace_condition(column) -> ColumnElement:
     """A filter on a grant table's ``workspace`` column for the current request.
 
-    With workspaces disabled nothing is filtered, as before the column existed — except grants the
-    backfill marked unresolved. With workspaces enabled it matches only the request's grant
-    workspace, so a grant without a workspace matches nothing.
+    With workspaces disabled it matches the ``default`` workspace's grants and unassigned ones —
+    every grant a deployment that never enabled workspaces has. With workspaces enabled it matches
+    only the request's grant workspace, so a grant without a workspace matches nothing.
 
     Parameters:
         column: The grant model's ``workspace`` column.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
-        return or_(column.is_(None), column != UNRESOLVED_WORKSPACE)
+        return disabled_workspace_condition(column)
     return column == current_grant_workspace()
+
+
+def disabled_workspace_condition(column) -> ColumnElement:
+    """The grants that count while workspaces are disabled: ``default``'s and unassigned ones.
+
+    With workspaces disabled MLflow serves only the default workspace, so a grant recorded for
+    another workspace (on a deployment that had workspaces enabled before) must not count — it
+    would authorize ``default``'s same-named resource, and two grants for one name would make the
+    lookup ambiguous. Unassigned grants predate the column; on such a deployment every resource
+    was in ``default``, and the startup backfill assigns them ``default``.
+    """
+    return or_(column.is_(None), column == DEFAULT_WORKSPACE_NAME)
 
 
 def in_grant_workspace(grant) -> bool:
     """Whether an already-loaded grant entity belongs to the current request's grant workspace.
 
     For code that reads grants through a user's ORM relationships rather than a scoped query.
-    Always true with workspaces disabled.
+    With workspaces disabled, true for ``default``'s grants and unassigned ones.
     """
     workspace = getattr(grant, "workspace", None)
     if not config.MLFLOW_ENABLE_WORKSPACES:
-        return workspace != UNRESOLVED_WORKSPACE
+        return workspace is None or workspace == DEFAULT_WORKSPACE_NAME
     return workspace == current_grant_workspace()

@@ -183,6 +183,27 @@ def _effective(spec: _Spec) -> _Spec:
     return spec._replace(key_columns=("workspace",) + spec.key_columns, regex_key_index=spec.regex_key_index + 1)
 
 
+def _counts(spec: _Spec, model):
+    """A condition limiting ``model``'s grant rows to the ones that count in this run.
+
+    Only workspace-scoped kinds are limited. With workspaces enabled, a grant with no workspace or
+    one the backfill marked unresolved matches nothing, so it is neither a holder nor an orphan.
+    With them disabled, only the default workspace's grants and unassigned ones count — a grant
+    recorded for another workspace on a deployment that had workspaces enabled before must not
+    become a ``MANAGE`` on ``default``'s same-named resource.
+    """
+    from sqlalchemy import and_, true
+
+    from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE, disabled_workspace_condition
+
+    if not spec.workspace_scoped:
+        return true()
+    if getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
+        return and_(model.workspace.isnot(None), model.workspace != UNRESOLVED_WORKSPACE)
+    return disabled_workspace_condition(model.workspace)
+
+
 def _resource_id(keys: Tuple[str, ...]) -> str:
     # A grant from before workspaces were recorded has no workspace: rendered as an empty segment,
     # and turned back into NULL by the hand-over (see _transfer_in_session).
@@ -438,13 +459,15 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
     rows = (
         ctx.session.query(spec.user_model.user_id, *user_keys)
         .join(SqlUser, SqlUser.id == spec.user_model.user_id)
-        .filter(spec.user_model.permission == MANAGE, SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
+        .filter(spec.user_model.permission == MANAGE, SqlUser.active.is_(True), SqlUser.id != ctx.user_id, _counts(spec, spec.user_model))
         .all()
     )
     candidates |= {row[0] for row in rows if tuple(row[1:]) in mine}
     manage_groups = {
         row[0]
-        for row in ctx.session.query(spec.group_model.group_id, *group_keys).filter(spec.group_model.permission == MANAGE).all()
+        for row in ctx.session.query(spec.group_model.group_id, *group_keys)
+        .filter(spec.group_model.permission == MANAGE, _counts(spec, spec.group_model))
+        .all()
         if tuple(row[1:]) in mine
     } & managed
 
@@ -473,13 +496,19 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
         return []
 
     direct: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
-    for row in ctx.session.query(spec.user_model.user_id, spec.user_model.permission, *user_keys).filter(spec.user_model.user_id.in_(candidates)).all():
+    for row in (
+        ctx.session.query(spec.user_model.user_id, spec.user_model.permission, *user_keys)
+        .filter(spec.user_model.user_id.in_(candidates), _counts(spec, spec.user_model))
+        .all()
+    ):
         direct[row[0]][tuple(row[2:])] = row[1]
     group_grants: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
     candidate_groups = {g for u in candidates for g in memberships.get(u, ())}
     if candidate_groups:
         rows = (
-            ctx.session.query(spec.group_model.group_id, spec.group_model.permission, *group_keys).filter(spec.group_model.group_id.in_(candidate_groups)).all()
+            ctx.session.query(spec.group_model.group_id, spec.group_model.permission, *group_keys)
+            .filter(spec.group_model.group_id.in_(candidate_groups), _counts(spec, spec.group_model))
+            .all()
         )
         for row in rows:
             group_grants[row[0]][tuple(row[2:])] = row[1]
@@ -611,14 +640,19 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
             logger.warning("Skipping orphan check for %s: unexpected permission schema", spec.resource_type)
             continue
 
-        direct = {tuple(r) for r in session.query(*user_keys).filter(spec.user_model.user_id == user_id, spec.user_model.permission == MANAGE).all()}
+        direct = {
+            tuple(r)
+            for r in session.query(*user_keys)
+            .filter(spec.user_model.user_id == user_id, spec.user_model.permission == MANAGE, _counts(spec, spec.user_model))
+            .all()
+        }
         # Resources the departing user manages through one of their groups, with the group names.
         through_group: Dict[Tuple[str, ...], List[str]] = defaultdict(list)
         rows = (
             session.query(*group_keys, SqlGroup.group_name)
             .join(SqlUserGroup, SqlUserGroup.group_id == spec.group_model.group_id)
             .join(SqlGroup, SqlGroup.id == spec.group_model.group_id)
-            .filter(SqlUserGroup.user_id == user_id, spec.group_model.permission == MANAGE)
+            .filter(SqlUserGroup.user_id == user_id, spec.group_model.permission == MANAGE, _counts(spec, spec.group_model))
             .all()
         )
         for r in rows:
@@ -718,7 +752,7 @@ def _transfer_in_session(session, target_id: int, orphans: List[Tuple[str, str]]
         user_model, key_names = specs[resource_type].user_model, specs[resource_type].key_columns
         values = resource_id.split("/", len(key_names) - 1)
         criteria = {name: (None if name == "workspace" and value == "" else value) for name, value in zip(key_names, values)}
-        existing = session.query(user_model).filter_by(user_id=target_id, **criteria).one_or_none()
+        existing = session.query(user_model).filter_by(user_id=target_id, **criteria).filter(_counts(specs[resource_type], user_model)).one_or_none()
         if existing is None:
             if specs[resource_type].workspace_scoped and "workspace" not in criteria:
                 # Workspaces disabled: every resource lives in the default workspace.

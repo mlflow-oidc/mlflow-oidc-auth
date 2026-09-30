@@ -429,3 +429,40 @@ class TestGatewayGroupGrantsCount:
         _clear_cache()
 
         assert effective_gateway_endpoint_permission("chat", ALICE).permission.name == "MANAGE"
+
+
+class TestWorkspacesSwitchedOffAgain:
+    """A deployment that had workspaces enabled and turns them off again serves only default."""
+
+    def test_only_the_default_workspaces_grant_counts_and_nothing_is_ambiguous(self, store, monkeypatch):
+        with in_workspace("tenant-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        with in_workspace("default"):
+            store.create_registered_model_permission("churn", ALICE, "READ")
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        _clear_cache()
+
+        assert model_permission("churn") == "READ"
+        assert [(p.name, p.workspace) for p in store.list_registered_model_permissions(ALICE)] == [("churn", "default")]
+
+    def test_another_workspaces_grant_does_not_reach_default(self, store, monkeypatch):
+        with in_workspace("tenant-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        _clear_cache()
+
+        assert model_permission("churn") == "NO_PERMISSIONS"
+        store.create_registered_model_permission("churn", ALICE, "EDIT")  # no clash with tenant-a's row
+        _clear_cache()
+        assert model_permission("churn") == "EDIT"
+
+    def test_orphan_hand_over_ignores_other_workspaces_grants(self, store, monkeypatch):
+        from mlflow_oidc_auth.orphans import find_orphaned_resources
+
+        with in_workspace("tenant-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        with in_workspace("default"):
+            store.create_registered_model_permission("forecast", ALICE, "MANAGE")
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+
+        assert find_orphaned_resources(ALICE, store=store) == [("registered_model", "forecast")]

@@ -64,8 +64,11 @@ one of them — to a user or a group — therefore belongs to one workspace's re
 - Experiment and scorer grants are keyed by experiment id, which MLflow keeps unique across
   workspaces, so they need no workspace of their own.
 
-With workspaces disabled every resource lives in `default`, new grants record it, and nothing is
-filtered — behaviour is unchanged.
+With workspaces disabled every resource lives in `default`, new grants record it, and only the
+`default` workspace's grants (and grants from before this release) count — for a deployment that
+never enabled workspaces, that is every grant, so behaviour is unchanged. A deployment that turns
+workspaces off again keeps its other workspaces' grants, but they count only if workspaces are
+enabled again.
 
 #### Upgrading: existing grants
 
