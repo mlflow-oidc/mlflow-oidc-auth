@@ -38,6 +38,22 @@ class TestExtractGatewayEndpointName:
         """Test invocations pattern with wrong suffix."""
         assert self._extract("/gateway/my-endpoint/mlflow/other") is None
 
+    def test_raw_proxy_route(self):
+        """``/gateway/proxy/{endpoint_name}/{path}``: the endpoint is the segment after /proxy/."""
+        assert self._extract("/gateway/proxy/my-endpoint/v1/chat/completions") == "my-endpoint"
+        assert self._extract("/gateway/proxy/my-endpoint/v1/embeddings", {"model": "someone-else"}) == "my-endpoint"
+
+    def test_raw_proxy_route_without_a_provider_path(self):
+        """MLflow's route needs a provider path after the endpoint; without one nothing is extracted."""
+        assert self._extract("/gateway/proxy/my-endpoint/") is None
+        assert self._extract("/gateway/proxy/my-endpoint") is None
+        assert self._extract("/gateway/proxy/") is None
+
+    def test_an_endpoint_named_proxy_is_resolved_like_the_router(self):
+        """MLflow registers the invocations route before the raw proxy, so it serves this path as the
+        invocations of an endpoint named ``proxy``; authorization must judge that same endpoint."""
+        assert self._extract("/gateway/proxy/mlflow/invocations") == "proxy"
+
     def test_chat_completions_mlflow(self):
         """Test MLflow chat completions passthrough."""
         result = self._extract("/gateway/mlflow/v1/chat/completions", {"model": "my-model"})
@@ -178,6 +194,20 @@ class TestGatewayValidator:
         request = MagicMock(spec=Request)
         result = await validator("user@example.com", request)
         assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("allowed", [True, False])
+    @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
+    async def test_raw_proxy_requires_use_on_the_endpoint_in_the_path(self, mock_can_use, allowed):
+        """The raw proxy is judged by the endpoint in its path, never by the body it forwards."""
+        mock_can_use.return_value = allowed
+        validator = self._get_gateway_validator("/gateway/proxy/my-endpoint/v1/chat/completions")
+        request = MagicMock(spec=Request)
+        request.json = AsyncMock(return_value={"model": "another-endpoint"})
+
+        assert await validator("user@example.com", request) is allowed
+        mock_can_use.assert_called_once_with("my-endpoint", "user@example.com")
+        request.json.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint")
