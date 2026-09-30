@@ -20,6 +20,9 @@ from mlflow_oidc_auth.db.models.user import SqlGroup
 from mlflow_oidc_auth.db.models.workspace import SqlWorkspaceGroupPermission
 from mlflow_oidc_auth.db.models.workspace_rule import SqlWorkspaceGroupRule
 from mlflow_oidc_auth.entities.workspace_rule import RuleGrantChange, WorkspaceGroupRule
+from mlflow_oidc_auth.logger import get_logger
+
+logger = get_logger()
 
 # Keeps every IN (...) list well under SQLite's bound-parameter limit on large directories.
 _CHUNK = 500
@@ -27,6 +30,24 @@ _CHUNK = 500
 Pair = Tuple[str, str]  # (workspace, group_name)
 
 MANUAL_GRANT = "manual grant"
+
+
+# Login sources that name a provider; see mlflow_oidc_auth.ownership.LOGIN_SOURCE_PREFIXES.
+_PROVIDER_SOURCES = ("oidc:", "saml:")
+_DEFAULT_PROVIDER_ID = "default"
+
+
+def _namespaced_for_its_source(group_name: str, managed_by: Optional[str]) -> bool:
+    """False for a group a non-default provider created under a name without its ``<id>:`` prefix."""
+    if not managed_by or not managed_by.startswith(_PROVIDER_SOURCES):
+        return True
+    provider_id = managed_by.split(":", 1)[1]
+    return provider_id == _DEFAULT_PROVIDER_ID or group_name.startswith(f"{provider_id}:")
+
+
+def _semantics(rule: WorkspaceGroupRule) -> Tuple:
+    """The fields that decide what a rule grants."""
+    return (rule.pattern, rule.permission, rule.mode, rule.enabled)
 
 
 def _now() -> datetime:
@@ -133,6 +154,15 @@ class WorkspaceGroupRuleRepository:
             session.flush()
             return removed
 
+    def clear_grants(self, rule_id: int) -> List[RuleGrantChange]:
+        """Delete every grant a rule holds, leaving the rule itself untouched.
+
+        Returns:
+            One applied ``remove`` per deleted grant.
+        """
+        with self.ManagedSessionMaker(read_only=False) as session:
+            return self._delete_grants(session, rule_id)
+
     @staticmethod
     def _delete_grants(session, rule_id: int) -> List[RuleGrantChange]:
         rows = (
@@ -147,6 +177,31 @@ class WorkspaceGroupRuleRepository:
         session.flush()
         return removed
 
+    def eligible_group_names(self, names: Optional[Collection[str]] = None) -> List[str]:
+        """Group names a rule may match: every group, or those of ``names`` that exist, minus any
+        name a non-default provider chose outside its own namespace.
+
+        A group records the source that created it (``managed_by``). One created by a provider
+        other than ``default`` (``oidc:<id>`` / ``saml:<id>``) is eligible only under its
+        ``<id>:``-prefixed name: a rule must never trust a group name such a provider picked in
+        the deployment's own namespace, however the group came to exist.
+
+        Parameters:
+            names: Limit to these names; None means every group.
+
+        Returns:
+            Eligible names, sorted.
+        """
+        with self.ManagedSessionMaker() as session:
+            query = session.query(SqlGroup.group_name, SqlGroup.managed_by)
+            if names is None:
+                rows = query.all()
+            else:
+                rows = []
+                for chunk in _chunks(sorted(set(names))):
+                    rows.extend(query.filter(SqlGroup.group_name.in_(chunk)).all())
+        return sorted(name for name, managed_by in rows if _namespaced_for_its_source(name, managed_by))
+
     def reconcile(
         self,
         rule_id: int,
@@ -155,6 +210,7 @@ class WorkspaceGroupRuleRepository:
         scope: Optional[Collection[str]] = None,
         retain: Collection[Pair] = (),
         dry_run: bool = False,
+        expected: Optional[WorkspaceGroupRule] = None,
     ) -> List[RuleGrantChange]:
         """Make the rule's grants match ``desired``, in one transaction.
 
@@ -171,6 +227,11 @@ class WorkspaceGroupRuleRepository:
             retain: Pairs the rule owns but no longer wins (a lower-id rule matches too). Kept
                 rather than removed, so the grant does not vanish until the winner writes its own.
             dry_run: Compute the changes, write nothing.
+            expected: The rule as ``desired`` was computed from. For a write, the rule row is
+                locked and compared first: if it was deleted, disabled or otherwise changed since —
+                a concurrent PATCH or DELETE — nothing is written and the result is empty, so a
+                stale plan cannot re-create a grant a disable just removed. The PATCH that changed
+                it runs its own reconcile.
 
         Returns:
             The changes, sorted by workspace then group. ``applied`` is True on the ones written.
@@ -181,6 +242,11 @@ class WorkspaceGroupRuleRepository:
         wanted_groups = sorted({group for _, group in desired} | (scope_names or set()))
 
         with self.ManagedSessionMaker(read_only=dry_run) as session:
+            if not dry_run and expected is not None:
+                current = session.query(SqlWorkspaceGroupRule).filter(SqlWorkspaceGroupRule.id == rule_id).with_for_update().one_or_none()
+                if current is None or _semantics(current.to_mlflow_entity()) != _semantics(expected):
+                    logger.info("Workspace group rule %s changed while its grants were being computed; not writing a stale plan", rule_id)
+                    return []
             ids: Dict[str, int] = {}
             for chunk in _chunks(wanted_groups):
                 ids.update(dict(session.query(SqlGroup.group_name, SqlGroup.id).filter(SqlGroup.group_name.in_(chunk)).all()))

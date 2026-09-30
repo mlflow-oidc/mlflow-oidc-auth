@@ -246,15 +246,26 @@ With this rule, the group `team-acme-ds` gets `EDIT` on the workspace `acme`, an
   carries the provider's prefix — a partner provider's `team-acme-ds` is stored as
   `partner:team-acme-ds` — so a rule written for your own groups never matches a partner's. To
   cover a partner, write a rule for its namespace: `^partner:team-(?P<ws>[a-z0-9-]+)-ds$`.
+- A group created by a provider other than `default` is only ever matched under its prefixed name.
 - The workspace must already exist. A group whose workspace does not exist is skipped and reported;
   rules never create workspaces.
+- The shared `default` workspace is never granted by a rule, whatever the pattern matches. Grant it
+  by hand.
+
+Whoever can create a group whose name matches a rule gets the rule's permission — in your identity
+provider, that may be more people than you think. Keep patterns narrow (anchor the workspace part to
+the names you expect, e.g. `(?P<ws>acme|globex)`), and prefer a low permission. Patterns run on
+every login that creates a group; avoid nested quantifiers such as `(a+)+`, which can take very long
+on a long group name.
 
 ### What a rule may grant
 
 - `READ`, `USE` or `EDIT` by default. The ceiling is `WORKSPACE_RULES_MAX_PERMISSION`; `MANAGE`
   is possible only when an operator raises it to `MANAGE`, and the server warns at startup when it
-  is. The ceiling is checked when a rule is saved **and** when it is applied, so lowering it stops
-  an existing rule above it.
+  is. The ceiling is checked when a rule is saved **and** when it is applied. After lowering it,
+  restart the server: at startup, every grant held by a rule above the new ceiling is removed
+  (audited as `permission.deprovisioned` by `system:workspace-rules-ceiling`); the rule stays and
+  reports `skip` until you lower its permission.
 - `NO_PERMISSIONS` is not a rule permission, and a rule never makes anyone an administrator.
 
 ### Who owns a grant
@@ -272,8 +283,11 @@ ever creates, changes or removes its **own** grants:
 
 When several rules match the same group and workspace, the rule with the **lowest id** wins and the
 others report `shadowed`. Only enabled `enforce` rules compete; a `report` rule never shadows one.
-Deleting or disabling the winner removes its grants and does not hand them to the next rule; save
-that rule again (for example, `PATCH` it with `{"enabled": true}`) to backfill it.
+A rule never takes over another rule's grant either: a lower-id rule that is enabled after a
+higher-id one already granted a group reports `skip: held by rule N`, and the existing grant stays
+until that rule is changed or removed. Deleting or disabling the winner removes its grants and does
+not hand them to the next rule; save that rule again (for example, `PATCH` it with
+`{"enabled": true}`) to backfill it.
 
 ### When rules run
 
@@ -283,8 +297,7 @@ that rule again (for example, `PATCH` it with `{"enabled": true}`) to backfill i
 | A rule is created, updated or enabled | The rule is backfilled over every existing group: it grants what it matches and removes the grants it holds that it no longer matches. |
 | A rule is deleted, disabled or switched to `report` | Only that rule's grants are removed. |
 
-Groups created by bearer-token auto-provisioning are not matched on arrival; the next backfill picks
-them up. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
+Groups that arrive any other way are picked up by the next backfill. A rule failing on arrival is logged and audited (`workspace_rule.failed`) and never fails
 the login or the SCIM request that brought the group.
 
 ### Report mode
@@ -301,7 +314,7 @@ a rule that is not saved yet.
 | `workspace_rule.create` / `.update` / `.delete` | An administrator changes a rule |
 | `permission.provisioned` | A rule created or changed a grant; `detail` holds `rule_id`, `workspace`, `group`, `permission` (and `previous` for a change) |
 | `permission.deprovisioned` | A rule removed one of its grants |
-| `workspace_rule.skipped` | An enforcing rule left a group alone; `detail.reason` says why (`manual grant`, `workspace does not exist`, `held by rule N`, a shadowing rule, the ceiling) |
+| `workspace_rule.skipped` | An enforcing rule left a group alone; `detail.reason` says why (`manual grant`, `workspace does not exist`, `held by rule N`, a shadowing rule, the ceiling, the `default` workspace) |
 | `workspace_rule.failed` | A rule could not run for groups that arrived |
 
 The actor is the administrator for rule changes and backfills, and the source that brought the

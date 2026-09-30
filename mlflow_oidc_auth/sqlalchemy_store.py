@@ -1163,11 +1163,21 @@ class SqlAlchemyStore:
         _invalidate_rule_changes(removed)
         return rule, removed
 
+    def clear_workspace_group_rule_grants(self, rule_id: int) -> List[RuleGrantChange]:
+        """Delete every grant a rule holds; the rule stays. Returns the grants removed."""
+        removed = self.workspace_group_rule_repo.clear_grants(rule_id)
+        _invalidate_rule_changes(removed)
+        return removed
+
     def delete_workspace_group_rule(self, rule_id: int) -> List[RuleGrantChange]:
         """Delete a rule and its grants in one transaction; returns the grants removed."""
         removed = self.workspace_group_rule_repo.delete(rule_id)
         _invalidate_rule_changes(removed)
         return removed
+
+    def list_rule_eligible_group_names(self, names=None) -> List[str]:
+        """Group names a workspace group rule may match. See :meth:`WorkspaceGroupRuleRepository.eligible_group_names`."""
+        return self.workspace_group_rule_repo.eligible_group_names(names)
 
     def reconcile_workspace_group_rule(self, rule_id: int, desired: dict, **kwargs) -> List[RuleGrantChange]:
         """Make a rule's grants match ``desired``. See :meth:`WorkspaceGroupRuleRepository.reconcile`."""
@@ -1747,17 +1757,25 @@ def _invalidate_rule_changes(changes) -> None:
     written = {(c.workspace, c.group) for c in changes if c.applied}
     if not written:
         return
+    from mlflow_oidc_auth.logger import get_logger
+
+    # Two independent attempts: a failure flushing one cache must not leave the other stale.
     try:
         from mlflow_oidc_auth.utils.permissions import flush_permission_cache
-        from mlflow_oidc_auth.utils.workspace_cache import invalidate_group_workspace_permission
 
         flush_permission_cache()
-        for workspace, group_name in sorted(written):
-            invalidate_group_workspace_permission(group_name=group_name, workspace=workspace)
     except Exception:
-        from mlflow_oidc_auth.logger import get_logger
+        get_logger().warning("Permission cache flush failed after a workspace group rule write; entries expire via TTL")
+    try:
+        from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache, invalidate_group_workspace_permission
 
-        get_logger().warning("Cache invalidation failed after a workspace group rule write; entries expire via TTL")
+        try:
+            for workspace, group_name in sorted(written):
+                invalidate_group_workspace_permission(group_name=group_name, workspace=workspace)
+        except Exception:
+            flush_workspace_cache()
+    except Exception:
+        get_logger().warning("Workspace cache invalidation failed after a workspace group rule write; entries expire via TTL")
 
 
 def _wrap_with_cache_flush(method):

@@ -51,6 +51,13 @@ WORKSPACE_GROUP = "ws"
 
 REASON_MISSING_WORKSPACE = "workspace does not exist"
 REASON_ABOVE_CEILING = "permission above WORKSPACE_RULES_MAX_PERMISSION"
+REASON_DEFAULT_WORKSPACE = "the default workspace is never granted by a rule"
+CEILING_ACTOR = "system:workspace-rules-ceiling"
+
+# The shared workspace every deployment has (app.py seeds it). It holds resources from before
+# workspaces and from clients that send no workspace, so a group name — chosen by whoever can
+# create groups in the directory — must never be enough to get into it. Grant it by hand.
+DEFAULT_WORKSPACE = "default"
 
 Pair = Tuple[str, str]  # (workspace, group_name)
 
@@ -229,6 +236,8 @@ def evaluate(
             plan.items.append(RuleGrantChange("shadowed", group, workspace, rule.permission, reason=f"rule {winner.id} ({winner.name}) wins"))
         elif not within:
             plan.items.append(RuleGrantChange("skip", group, workspace, rule.permission, reason=REASON_ABOVE_CEILING))
+        elif workspace == DEFAULT_WORKSPACE:
+            plan.items.append(RuleGrantChange("skip", group, workspace, rule.permission, reason=REASON_DEFAULT_WORKSPACE))
         elif not exists(workspace):
             plan.items.append(RuleGrantChange("skip", group, workspace, rule.permission, reason=REASON_MISSING_WORKSPACE))
         else:
@@ -238,7 +247,9 @@ def evaluate(
 
 def _execute(plan: Plan, *, scope: Optional[Iterable[str]], dry_run: bool) -> List[RuleGrantChange]:
     """Run a plan against the store. Returns every line, sorted by workspace then group."""
-    changes = store.reconcile_workspace_group_rule(plan.rule.id, plan.desired, scope=None if scope is None else set(scope), retain=plan.retain, dry_run=dry_run)
+    changes = store.reconcile_workspace_group_rule(
+        plan.rule.id, plan.desired, scope=None if scope is None else set(scope), retain=plan.retain, dry_run=dry_run, expected=plan.rule
+    )
     return sorted([*changes, *plan.items], key=lambda c: (c.workspace, c.group, c.action))
 
 
@@ -264,7 +275,7 @@ def _audit(rule: WorkspaceGroupRule, changes: Iterable[RuleGrantChange], actor: 
 
 def preview(rule: WorkspaceGroupRule) -> List[RuleGrantChange]:
     """What enforcing ``rule`` now would grant, update, keep, skip or remove, over every group. Writes nothing."""
-    return _execute(evaluate(rule, store.get_groups()), scope=None, dry_run=True)
+    return _execute(evaluate(rule, store.list_rule_eligible_group_names()), scope=None, dry_run=True)
 
 
 def preview_unsaved(pattern: str, permission: str) -> List[RuleGrantChange]:
@@ -288,7 +299,7 @@ def preview_unsaved(pattern: str, permission: str) -> List[RuleGrantChange]:
         updated_at=now,
     )
     competitors = [r for r in rules if is_enforcing(r)]
-    return _execute(evaluate(draft, store.get_groups(), competitors=competitors), scope=None, dry_run=True)
+    return _execute(evaluate(draft, store.list_rule_eligible_group_names(), competitors=competitors), scope=None, dry_run=True)
 
 
 def backfill(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
@@ -302,14 +313,14 @@ def backfill(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
         return []
     if not is_enforcing(rule):
         return preview(rule)
-    changes = _execute(evaluate(rule, store.get_groups()), scope=None, dry_run=False)
+    changes = _execute(evaluate(rule, store.list_rule_eligible_group_names()), scope=None, dry_run=False)
     _audit(rule, changes, actor)
     return changes
 
 
 def remove(rule: WorkspaceGroupRule, *, actor: str) -> List[RuleGrantChange]:
     """Remove every grant ``rule`` holds and nothing else — on disable or a switch to ``report``."""
-    _, removed = store.update_workspace_group_rule(rule.id, {}, clear_grants=True)
+    removed = store.clear_workspace_group_rule_grants(rule.id)
     _audit(rule, removed, actor)
     return removed
 
@@ -340,10 +351,12 @@ def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[R
         return []
     try:
         rules = [r for r in store.list_workspace_group_rules(enabled_only=True) if r.mode == MODE_ENFORCE]
+        if rules:
+            names = store.list_rule_eligible_group_names(names)
     except Exception as exc:
         _report_failure(None, names, source, exc)
         return []
-    if not rules:
+    if not rules or not names:
         return []
 
     exists = _WorkspaceExists()
@@ -359,6 +372,37 @@ def apply_rules_for_groups(group_names: Iterable[str], *, source: str) -> List[R
         except Exception as exc:
             _report_failure(rule, names, source, exc)
     return changes
+
+
+def enforce_ceiling() -> List[RuleGrantChange]:
+    """Remove every grant held by a rule above ``WORKSPACE_RULES_MAX_PERMISSION``. Never raises.
+
+    Run at startup with workspaces enabled. The ceiling is checked whenever a rule is applied, but a
+    rule that already granted MANAGE keeps those grants until something applies it again — so after
+    an operator lowers the ceiling and restarts, this is what makes the lower ceiling true. The rule
+    itself stays and reports ``skip`` until its permission is lowered.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return []
+    removed: List[RuleGrantChange] = []
+    try:
+        for rule in store.list_workspace_group_rules():
+            if _within_ceiling(rule):
+                continue
+            rule_removed = store.clear_workspace_group_rule_grants(rule.id)
+            if rule_removed:
+                logger.warning(
+                    "Removed %d grant(s) of workspace group rule %s: its permission %s is above WORKSPACE_RULES_MAX_PERMISSION=%s",
+                    len(rule_removed),
+                    rule.id,
+                    rule.permission,
+                    max_permission(),
+                )
+                _audit(rule, rule_removed, CEILING_ACTOR)
+                removed.extend(rule_removed)
+    except Exception as exc:
+        logger.error("Could not apply WORKSPACE_RULES_MAX_PERMISSION to existing workspace group rule grants: %s", exc)
+    return removed
 
 
 def _report_failure(rule: Optional[WorkspaceGroupRule], group_names: List[str], source: str, exc: Exception) -> None:

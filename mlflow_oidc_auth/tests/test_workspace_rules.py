@@ -417,6 +417,92 @@ class TestOwnership:
         assert grants(store) == {("beta", "squad-beta"): ("EDIT", second)}
 
 
+class TestHardening:
+    """Regressions from the security review of #418."""
+
+    def test_unprefixed_group_from_a_non_default_provider_is_never_matched(self, client, store):
+        """However a partner provider's group came to exist, a name it chose outside its own
+        ``<id>:`` namespace is not something a rule may trust."""
+        store.populate_groups(["team-acme"], written_by="oidc:partner")
+        store.populate_groups(["team-beta"], written_by="scim")
+        store.populate_groups(["partner:team-gamma"], written_by="oidc:partner")
+        tenants = create_rule(client)
+        partner = create_rule(client, name="partner", pattern=r"^partner:team-(?P<ws>[a-z]+)$", permission="READ")
+
+        assert grants(store) == {("beta", "team-beta"): ("EDIT", tenants["rule"]["id"]), ("gamma", "partner:team-gamma"): ("READ", partner["rule"]["id"])}
+        assert "team-acme" not in {c["group"] for c in tenants["changes"]}
+
+        # Nor on arrival.
+        store.populate_groups(["team-delta"], written_by="saml:partner")
+        assert workspace_rules.apply_rules_for_groups(["team-delta"], source="saml:partner") == []
+
+    def test_the_default_workspace_is_never_granted(self, client, store):
+        store.populate_groups(["team-default"])
+
+        body = create_rule(client)
+
+        assert grants(store) == {}
+        assert [(c["action"], c["reason"]) for c in body["changes"]] == [("skip", "the default workspace is never granted by a rule")]
+
+    def test_lowering_the_ceiling_removes_existing_grants_at_startup(self, client, store, monkeypatch, audit_events):
+        monkeypatch.setattr(config, "WORKSPACE_RULES_MAX_PERMISSION", "MANAGE")
+        store.populate_groups(["team-acme", "ops-beta"])
+        manage = create_rule(client, name="managers", permission="MANAGE")["rule"]["id"]
+        ops = create_rule(client, name="ops", pattern=r"^ops-(?P<ws>.+)$", permission="READ")["rule"]["id"]
+        assert grants(store) == {("acme", "team-acme"): ("MANAGE", manage), ("beta", "ops-beta"): ("READ", ops)}
+
+        monkeypatch.setattr(config, "WORKSPACE_RULES_MAX_PERMISSION", "EDIT")
+        removed = workspace_rules.enforce_ceiling()
+
+        assert [(c.group, c.action) for c in removed] == [("team-acme", "remove")]
+        assert grants(store) == {("beta", "ops-beta"): ("READ", ops)}
+        [event] = events(audit_events, "permission.deprovisioned")
+        assert event["actor"] == workspace_rules.CEILING_ACTOR and event["detail"]["rule_id"] == manage
+        assert store.get_workspace_group_rule(manage).permission == "MANAGE", "the rule itself stays"
+
+    def test_a_stale_plan_does_not_recreate_a_grant_a_disable_removed(self, client, store):
+        """The race: a login evaluates an enabled rule, an admin disables it, then the login writes."""
+        rule_id = create_rule(client)["rule"]["id"]
+        store.populate_groups(["team-acme"])
+        stale = store.get_workspace_group_rule(rule_id)
+        plan = workspace_rules.evaluate(stale, ["team-acme"], competitors=[stale])
+
+        client.patch(f"{RULES}/{rule_id}", json={"enabled": False})
+        changes = store.reconcile_workspace_group_rule(rule_id, plan.desired, scope={"team-acme"}, retain=plan.retain, expected=stale)
+
+        assert changes == []
+        assert grants(store) == {}
+
+    def test_a_grant_cannot_point_at_a_deleted_rule(self, client, store):
+        rule_id = create_rule(client)["rule"]["id"]
+        store.populate_groups(["team-acme"])
+        stale = store.get_workspace_group_rule(rule_id)
+        plan = workspace_rules.evaluate(stale, ["team-acme"], competitors=[stale])
+
+        client.delete(f"{RULES}/{rule_id}")
+
+        assert store.reconcile_workspace_group_rule(rule_id, plan.desired, scope={"team-acme"}, expected=stale) == []
+        assert grants(store) == {}
+
+    def test_workspace_cache_is_invalidated_even_if_the_permission_cache_flush_fails(self, client, store, monkeypatch):
+        from mlflow_oidc_auth.utils import permissions
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        store.create_user(ALICE, "Alice")
+        store.populate_groups(["team-acme"])
+        store.set_user_groups(ALICE, ["team-acme"])
+        rule_id = create_rule(client, permission="READ")["rule"]["id"]
+        assert get_workspace_permission_cached(ALICE, "acme").name == "READ"
+
+        def broken():
+            raise RuntimeError("cache backend down")
+
+        monkeypatch.setattr(permissions, "flush_permission_cache", broken)
+        client.patch(f"{RULES}/{rule_id}", json={"enabled": False})
+
+        assert get_workspace_permission_cached(ALICE, "acme") is None
+
+
 class TestAuditAndCache:
     def test_every_grant_and_revoke_is_audited(self, client, store, audit_events):
         store.populate_groups(["team-acme", "team-beta"])

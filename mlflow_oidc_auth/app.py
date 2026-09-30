@@ -286,6 +286,10 @@ def create_app() -> FastAPI:
     # Seed default workspace and register workspace routers when workspaces are enabled (WSFND-04)
     if config.MLFLOW_ENABLE_WORKSPACES:
         _seed_default_workspace()
+        # A lowered WORKSPACE_RULES_MAX_PERMISSION takes effect on grants rules already made (#418).
+        from mlflow_oidc_auth.workspace_rules import enforce_ceiling
+
+        enforce_ceiling()
         # Register all workspace routers only when workspaces are enabled
         from mlflow_oidc_auth.routers.workspace_permissions import (
             workspace_permissions_router,
