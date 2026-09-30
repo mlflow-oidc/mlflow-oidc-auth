@@ -9,10 +9,14 @@ MLflow's stores are available. It is idempotent: once every grant has a workspac
 With workspaces disabled every resource lives in the default workspace, so every legacy grant gets
 ``default``. With workspaces enabled each grant's name is looked up in MLflow:
 
-* the name exists in exactly one workspace → the grant is assigned to it;
-* it exists in several → the grant is kept, once per workspace, only where the grantee already has
-  at least ``READ`` on that workspace — the users who could reach the resource before, and no one
-  else. If there is no such workspace it is left unassigned and reported;
+* the grant is kept, once per workspace holding the name, only where the grantee already has at
+  least ``READ`` on that workspace. A name-only grant reached every workspace's resource of that
+  name, including ones created later by another tenant, so the grant alone is no evidence of which
+  one it was meant for;
+* the ``default`` workspace is the exception: it holds the resources from before workspaces were
+  enabled, which those grants were made for, so a grant on a name found there is kept there even
+  when the grantee has no workspace permission of its own;
+* no such workspace → left unassigned and reported;
 * it exists nowhere (the resource was deleted) → left unassigned and reported.
 
 An unassigned grant matches nothing while workspaces are enabled, so nothing is widened; an
@@ -185,12 +189,9 @@ def _backfill(store) -> BackfillReport:
                     targets = [DEFAULT_WORKSPACE_NAME]
                 else:
                     candidates = sorted(resources[kind].get(name, set()))
-                    if len(candidates) == 1:
-                        targets = candidates
-                    else:
-                        targets = [ws for ws in candidates if can_reach(principal_col, principal_id, ws)]
+                    targets = [ws for ws in candidates if ws == DEFAULT_WORKSPACE_NAME or can_reach(principal_col, principal_id, ws)]
                     if not targets:
-                        reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspaces, grantee reaches none"
+                        reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspace(s), grantee reaches none"
                         report.unresolved[table].append(f"{name} ({reason})")
                         continue
                 _place(session, model, row, resource_col, principal_col, targets, report, table)

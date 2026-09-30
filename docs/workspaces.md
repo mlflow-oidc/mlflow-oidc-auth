@@ -75,13 +75,22 @@ start, before the server takes requests:
 | Workspaces | What happens to an existing grant |
 |---|---|
 | Disabled | It is assigned `default`. |
-| Enabled, the name exists in one workspace | It is assigned that workspace. |
-| Enabled, the name exists in several | It is kept once in each of those workspaces where the grantee already has at least `READ`, and nowhere else. |
+| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ`. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there even without a workspace permission. |
 | Enabled, no such workspace, or the resource no longer exists | It stays unassigned, **matches nothing**, and is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
 
-Where a grant for the same workspace, resource and principal already exists, the existing one is
-kept. Downgrading keeps one grant per resource and principal (the `default` workspace's when there
-is one) and logs how many were removed.
+An old grant reached every workspace's resource of its name — including ones another tenant created
+later — so a workspace's resource keeps it only where the grantee could already reach that
+workspace. Where a grant for the same workspace, resource and principal already exists, the
+existing one is kept.
+
+Deleting a workspace now also removes the grants on its models, prompts and gateway resources, so a
+workspace created later under the same name starts without them.
+
+**Upgrade all replicas together.** While a replica on an older release writes grants, it writes them
+without a workspace; a request touching such a grant can fail until the next restart assigns it.
+
+**Downgrading** keeps only the `default` workspace's grants — a grant recorded for another workspace
+would otherwise apply to every workspace's resource of that name — and logs how many were removed.
 
 ## Workspace Permissions
 

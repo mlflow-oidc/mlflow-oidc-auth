@@ -275,3 +275,132 @@ class TestWhoHasAccessLists:
             assert store.registered_model_group_repo.list_groups_for_model("churn") == []
         with in_workspace("team-a"):
             assert store.registered_model_group_repo.list_groups_for_model("churn") == [("team", "EDIT")]
+
+
+# ---------------------------------------------------------------------------
+# Through HTTP: the permission API routes carry no AuthContext bridge, so the grant workspace
+# comes from MLflow's resolved request workspace (WorkspaceContextMiddleware).
+# ---------------------------------------------------------------------------
+
+ADMIN = "admin@example.com"
+ADMIN_PASSWORD = "scoped-grants-admin"  # not a credential: only ever seeded into a tmp_path database
+ALICE_PASSWORD = "scoped-grants-alice"  # likewise
+USERS_API = "/api/2.0/mlflow/permissions/users"
+MODELS_API = "/api/2.0/mlflow/permissions/registered-models"
+
+
+@pytest.fixture
+def api(store, monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from starlette.middleware.sessions import SessionMiddleware
+
+    from mlflow_oidc_auth.exceptions import register_exception_handlers
+    from mlflow_oidc_auth.middleware import AuthMiddleware
+    from mlflow_oidc_auth.middleware.workspace_context_middleware import WorkspaceContextMiddleware
+    from mlflow_oidc_auth.routers.registered_model_permissions import registered_model_permissions_router
+    from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
+    from mlflow_oidc_auth.tests.scim.conftest import basic
+    from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
+    store.create_user(ADMIN, "Admin", is_admin=True)
+    set_known_token(store, ADMIN, ADMIN_PASSWORD)
+    set_known_token(store, ALICE, ALICE_PASSWORD)
+    # MLflow resolves the header to a workspace (default when absent); no workspace store here.
+    monkeypatch.setattr(
+        "mlflow.server.workspace_helpers.resolve_workspace_for_request_if_enabled",
+        lambda path, header: SimpleNamespace(name=(header or "").strip() or "default"),
+    )
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(user_permissions_router)
+    app.include_router(registered_model_permissions_router)
+    app.add_middleware(AuthMiddleware)
+    app.add_middleware(WorkspaceContextMiddleware)
+    app.add_middleware(SessionMiddleware, secret_key="test-secret-not-a-credential")
+    return SimpleNamespace(
+        admin=TestClient(app, headers=basic(ADMIN, ADMIN_PASSWORD)),
+        alice=TestClient(app, headers=basic(ALICE, ALICE_PASSWORD)),
+    )
+
+
+def _rows(store):
+    from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission, SqlUser
+
+    with store.ManagedSessionMaker() as session:
+        rows = session.query(
+            SqlUser.username, SqlRegisteredModelPermission.name, SqlRegisteredModelPermission.workspace, SqlRegisteredModelPermission.permission
+        )
+        return sorted(rows.join(SqlUser, SqlUser.id == SqlRegisteredModelPermission.user_id).all())
+
+
+class TestThePermissionApiUsesTheRequestsWorkspace:
+    def test_a_grant_is_written_in_the_workspace_the_request_names(self, api, store):
+        response = api.admin.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+        assert response.status_code == 201, response.text
+
+        assert _rows(store) == [(VICTOR, "churn", "team-b", "READ")]
+
+    def test_listing_changing_and_revoking_stay_in_the_requests_workspace(self, api, store):
+        for workspace, permission in (("team-a", "MANAGE"), ("team-b", "READ")):
+            api.admin.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": permission}, headers={"X-MLFLOW-WORKSPACE": workspace})
+
+        users_b = api.admin.get(f"{MODELS_API}/churn/users", headers={"X-MLFLOW-WORKSPACE": "team-b"}).json()
+        assert [(u["name"], u["permission"]) for u in users_b] == [(VICTOR, "READ")]
+
+        api.admin.patch(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "EDIT"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+        assert api.admin.delete(f"{USERS_API}/{VICTOR}/registered-models/churn", headers={"X-MLFLOW-WORKSPACE": "team-a"}).status_code == 200
+        assert _rows(store) == [(VICTOR, "churn", "team-b", "EDIT")]
+
+    def test_no_header_is_the_default_workspace(self, api, store):
+        api.admin.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"})
+        assert _rows(store) == [(VICTOR, "churn", "default", "READ")]
+
+    def test_managing_a_model_in_one_workspace_gives_no_say_over_its_namesake(self, api, store):
+        """Alice manages team-a's churn: she may grant on it, but not on team-b's — even though the
+        manage check runs on a route without an AuthContext, and its decision is cached."""
+        with in_workspace("team-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        _clear_cache()
+
+        allowed = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-a"})
+        denied = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert allowed.status_code == 201, allowed.text
+        assert denied.status_code == 403, denied.text
+        assert _rows(store) == [(ALICE, "churn", "team-a", "MANAGE"), (VICTOR, "churn", "team-a", "READ")]
+
+
+class TestWorkspaceDeletion:
+    def test_deleting_a_workspace_removes_its_resource_grants(self, store):
+        with in_workspace("team-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+            store.create_group_gateway_endpoint_permission("team", "chat", "USE")
+        with in_workspace("team-b"):
+            store.create_registered_model_permission("churn", ALICE, "READ")
+
+        store.wipe_workspace_permissions("team-a")
+
+        _clear_cache()
+        with in_workspace("team-a"):
+            assert model_permission("churn") == "NO_PERMISSIONS"
+            assert store.list_group_gateway_endpoint_permissions("team") == []
+        _clear_cache()
+        with in_workspace("team-b"):
+            assert model_permission("churn") == "READ"
+
+
+class TestTheCachedDecisionStaysInItsWorkspace:
+    def test_a_cached_manage_decision_is_not_served_for_the_namesake(self, api, store):
+        """Reads flush nothing: a decision cached for team-a's churn must not answer for team-b's."""
+        with in_workspace("team-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        _clear_cache()
+
+        first = api.alice.get(f"{MODELS_API}/churn/users", headers={"X-MLFLOW-WORKSPACE": "team-a"})
+        second = api.alice.get(f"{MODELS_API}/churn/users", headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert first.status_code == 200, first.text
+        assert second.status_code == 403, second.text

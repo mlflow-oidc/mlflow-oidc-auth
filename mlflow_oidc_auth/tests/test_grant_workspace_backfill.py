@@ -101,12 +101,31 @@ class TestWorkspacesEnabled:
     def workspaces_on(self, monkeypatch):
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
 
-    def test_a_name_in_one_workspace_is_assigned_to_it(self, store):
+    def test_a_name_in_one_workspace_is_assigned_to_it_when_the_grantee_reaches_it(self, store):
+        store.create_workspace_permission("team-a", ALICE, "READ")
         legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
         with resources(registered_model={"churn": {"team-a"}}):
             grant_workspace_backfill.backfill_grant_workspaces(store)
 
         assert rows(store, "SqlRegisteredModelPermission") == [("churn", "team-a", "EDIT")]
+
+    def test_a_name_in_one_workspace_the_grantee_cannot_reach_is_not_assigned(self, store):
+        """The old name-only grant also reached a same-named resource another tenant created later:
+        being the only workspace with the name is no evidence the grant was meant for it."""
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
+        with resources(registered_model={"churn": {"team-b"}}):
+            report = grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", None, "MANAGE")]
+        assert report.unresolved_count == 1
+
+    def test_the_default_workspace_keeps_grants_made_before_workspaces(self, store):
+        """Resources from before workspaces live in default; their grants stay there."""
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
+        with resources(registered_model={"churn": {"default", "team-b"}}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", "default", "EDIT")]
 
     def test_a_name_in_several_workspaces_goes_only_where_the_grantee_reaches(self, store):
         store.create_workspace_permission("team-a", ALICE, "READ")
@@ -138,6 +157,7 @@ class TestWorkspacesEnabled:
         assert event["resource_type"] == "registered_model_permissions" and event["detail"]["count"] == 1
 
     def test_an_explicit_grant_wins_over_the_legacy_row(self, store):
+        store.create_workspace_permission("team-a", ALICE, "READ")
         from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
         from mlflow_oidc_auth.entities.auth_context import AuthContext
 

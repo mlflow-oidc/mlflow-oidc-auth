@@ -1126,19 +1126,29 @@ class SqlAlchemyStore:
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
 
     def wipe_workspace_permissions(self, workspace: str) -> int:
-        """Delete all user and group permissions for a workspace.
+        """Delete every permission recorded for a workspace.
 
-        Used for cascade-delete when a workspace is removed.
+        Used for cascade-delete when a workspace is removed: the user and group workspace grants,
+        and the grants on the workspace's registered models, prompts and gateway resources — which
+        would otherwise come back to life on a same-named resource in a workspace later created
+        under the same name.
 
         Parameters:
             workspace: The workspace name.
 
         Returns:
-            Total number of permission rows deleted (user + group).
+            Total number of permission rows deleted.
         """
         user_count = self.workspace_permission_repo.delete_all_for_workspace(workspace)
         group_count = self.workspace_group_permission_repo.delete_all_for_workspace(workspace)
-        return user_count + group_count
+        return user_count + group_count + self._wipe_workspace_resource_grants(workspace)
+
+    def _wipe_workspace_resource_grants(self, workspace: str) -> int:
+        """Delete the grants recorded for ``workspace`` in every workspace-scoped grant table."""
+        from mlflow_oidc_auth.grant_workspace_backfill import _grant_tables
+
+        with self.ManagedSessionMaker(read_only=False) as session:
+            return sum(session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model, *_ in _grant_tables())
 
     # -- Workspace group rules (issue #418) --
     # The engine in mlflow_oidc_auth/workspace_rules.py decides; these store and apply. Grants a

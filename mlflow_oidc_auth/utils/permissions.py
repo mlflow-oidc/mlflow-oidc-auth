@@ -74,10 +74,14 @@ def _get_cache_workspace() -> str | None:
         return None
 
     from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
     # None also covers resolution outside a Flask request context, which likewise skips
-    # the workspace branch below and so belongs in the same bucket.
-    return get_request_workspace() or _NO_WORKSPACE_CACHE_MARKER
+    # the workspace branch below and so belongs in the same bucket. Grants on name-keyed
+    # resources are still read in a workspace there (MLflow's resolved one, see
+    # utils/grant_workspace.py), so that workspace is part of the key: a decision for one
+    # workspace's "churn" must never be served for another's.
+    return get_request_workspace() or f"{_NO_WORKSPACE_CACHE_MARKER}:{current_grant_workspace()}"
 
 
 def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **qualifiers: str) -> str:

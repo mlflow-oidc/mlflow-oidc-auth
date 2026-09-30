@@ -26,14 +26,28 @@ from mlflow_oidc_auth.config import config
 def current_grant_workspace() -> str:
     """The workspace grants are read and written in for the current request.
 
+    The request's ``AuthContext`` names it where one is available — Flask routes, and the FastAPI
+    routes the permission middleware bridges. Elsewhere (this plugin's own permission API routes)
+    it is the workspace MLflow resolved for the request, which ``WorkspaceContextMiddleware`` sets
+    for every request from the same header. Both treat a missing header as the default workspace.
+
     Returns:
         The request's workspace, or ``default`` when it names none or workspaces are disabled.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return DEFAULT_WORKSPACE_NAME
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_auth_context
 
-    return get_request_workspace() or DEFAULT_WORKSPACE_NAME
+    try:
+        return get_auth_context().workspace or DEFAULT_WORKSPACE_NAME
+    except Exception:
+        pass
+    from mlflow.utils.workspace_context import get_request_workspace as mlflow_request_workspace
+    from mlflow.utils.workspace_context import is_request_workspace_resolved
+
+    if is_request_workspace_resolved():
+        return mlflow_request_workspace() or DEFAULT_WORKSPACE_NAME
+    return DEFAULT_WORKSPACE_NAME
 
 
 def grant_workspace_condition(column) -> ColumnElement:

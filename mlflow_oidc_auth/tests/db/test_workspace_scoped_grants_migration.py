@@ -36,7 +36,10 @@ TABLES = {
 def _seed(engine) -> None:
     """A user, a group and one grant per table, as they exist at the previous revision."""
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) VALUES ('u', 'u', :f, :f, :t, 'manual')"), {"f": False, "t": True})
+        conn.execute(
+            text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) VALUES ('u', 'u', :f, :f, :t, 'manual')"),
+            {"f": False, "t": True},
+        )
         conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('g', 'manual')"))
         for table, (resource, principal) in TABLES.items():
             source = "users" if principal == "user_id" else "groups"
@@ -103,6 +106,22 @@ class TestDowngrade:
         for table, (resource, principal) in TABLES.items():
             assert "workspace" not in {c["name"] for c in inspector.get_columns(table)}, table
             assert (resource, principal) in {tuple(u["column_names"]) for u in inspector.get_unique_constraints(table)}, table
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT name, permission FROM registered_model_permissions")).fetchall() == [("churn", "READ")]
+
+    def test_never_widens_a_non_default_grant_and_drops_unassigned_duplicates(self, engine):
+        _upgrade(engine, REVISION)
+        _seed(engine)  # an unassigned grant per table
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO registered_model_permissions (name, user_id, permission, workspace) SELECT 'churn', id, 'READ', 'default' FROM users")
+            )
+            conn.execute(
+                text("INSERT INTO registered_model_permissions (name, user_id, permission, workspace) SELECT 'only-b', id, 'MANAGE', 'team-b' FROM users")
+            )
+
+        _downgrade(engine, PREVIOUS_REVISION)
+
         with engine.connect() as conn:
             assert conn.execute(text("SELECT name, permission FROM registered_model_permissions")).fetchall() == [("churn", "READ")]
 

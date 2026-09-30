@@ -15,10 +15,11 @@ application assigns one at startup (``mlflow_oidc_auth.grant_workspace_backfill`
 stores are available. Until then, with workspaces enabled, such a grant matches nothing; with
 workspaces disabled nothing is filtered, so a deployment that never enabled workspaces is unaffected.
 
-Downgrade drops the column and restores the name-only unique constraints. Grants that differ only
-by workspace cannot coexist under them, so for each ``(resource, principal)`` one is kept — the
-``default`` workspace's when there is one, otherwise the oldest — and the rest are deleted and
-counted in the log. The downgrade never refuses.
+Downgrade drops the column and restores the name-only unique constraints, under which a grant
+applies to every workspace's resource of that name. So that a downgrade never widens access, only
+grants of the ``default`` workspace (and unassigned ones) are kept; grants recorded for any other
+workspace are deleted and counted in the log. A deployment that never enabled workspaces has only
+``default`` grants and loses nothing. The downgrade never refuses.
 
 ``batch_alter_table`` because SQLite cannot change a table's constraints in place: it rebuilds the
 table from the reflected schema; on PostgreSQL these are plain ALTERs.
@@ -67,20 +68,17 @@ def upgrade() -> None:
 
 
 def _collapse(connection, table: str, resource: str, principal: str) -> int:
-    """Delete all but one grant per (resource, principal); returns how many were deleted."""
+    """Leave at most one grant per (resource, principal), never one from a non-default workspace.
+
+    Deletes every grant recorded for a workspace other than ``default``, then any unassigned grant
+    that duplicates a ``default`` one. Returns how many rows were deleted.
+    """
     t = sa.table(table, sa.column("id", sa.Integer), sa.column(resource, sa.String), sa.column(principal, sa.Integer), sa.column("workspace", sa.String))
-    rows = connection.execute(sa.select(t.c.id, t.c[resource], t.c[principal], t.c.workspace).order_by(t.c.id)).fetchall()
-    keep = {}
-    for row_id, name, who, workspace in rows:
-        key = (name, who)
-        current = keep.get(key)
-        if current is None or (workspace == DEFAULT_WORKSPACE and current[1] != DEFAULT_WORKSPACE):
-            keep[key] = (row_id, workspace)
-    kept = {row_id for row_id, _ in keep.values()}
-    extra = [row[0] for row in rows if row[0] not in kept]
-    for start in range(0, len(extra), 500):
-        connection.execute(t.delete().where(t.c.id.in_(extra[start : start + 500])))
-    return len(extra)
+    removed = connection.execute(t.delete().where(t.c.workspace.isnot(None), t.c.workspace != DEFAULT_WORKSPACE)).rowcount or 0
+    kept = sa.alias(t, "kept")
+    duplicate = sa.exists().where(kept.c[resource] == t.c[resource], kept.c[principal] == t.c[principal], kept.c.workspace == DEFAULT_WORKSPACE)
+    removed += connection.execute(t.delete().where(t.c.workspace.is_(None), duplicate)).rowcount or 0
+    return removed
 
 
 def downgrade() -> None:
@@ -93,4 +91,4 @@ def downgrade() -> None:
             batch_op.drop_column("workspace")
             batch_op.create_unique_constraint(old_unique, [resource, principal])
     if removed:
-        logger.warning("workspace-scoped grants downgrade: removed %d grant(s) that differed only by workspace", removed)
+        logger.warning("workspace-scoped grants downgrade: removed %d grant(s) recorded for a workspace other than default", removed)
