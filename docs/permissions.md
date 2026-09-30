@@ -330,9 +330,16 @@ calls; administrators are not checked.
 | Route | Endpoint taken from |
 |---|---|
 | `POST /gateway/{endpoint}/mlflow/invocations` | the path |
-| `POST /gateway/mlflow/v1/chat/completions`, `/gateway/openai/v1/chat/completions`, `/gateway/openai/v1/embeddings`, `/gateway/openai/v1/responses`, `/gateway/anthropic/v1/messages` | `model` in the request body |
+| `POST /gateway/mlflow/v1/chat/completions`, `/gateway/openai/v1/chat/completions`, `/gateway/openai/v1/embeddings`, `/gateway/openai/v1/responses`, `/gateway/anthropic/v1/messages`, `/gateway/typesafe/v1/systemone` (MLflow 3.17+) | `model` in the request body |
 | `POST /gateway/gemini/v1beta/models/{endpoint}:generateContent`, `:streamGenerateContent` | the path |
 | `POST /gateway/proxy/{endpoint}/{provider-path}` | the path — the body is forwarded to the provider unread |
+
+`GET /gateway/mlflow/v1/models` (MLflow 3.17+), OpenAI-compatible model discovery, names no
+endpoint: any authenticated user may call it, and the list is narrowed to the endpoints the caller
+may `USE` — each model's `id` is the endpoint name the routes above take in `model`. With
+workspaces enabled, an endpoint with no grant of its own counts through the caller's permission on
+the request's workspace. A model whose permission lookup fails is left out; a response that cannot
+be filtered is an error, never the full list. Administrators see every endpoint.
 
 Any other gateway route is refused to non-administrators.
 
