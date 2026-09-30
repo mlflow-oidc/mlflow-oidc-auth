@@ -322,6 +322,41 @@ case-insensitively) as its name, on create or on rename, because user queues are
 their user. This applies to administrators too. A request that breaks the rule gets `400`; a
 non-admin without the permission for the operation gets `403` first.
 
+## AI Gateway invocations
+
+MLflow serves these routes from FastAPI, not Flask. Each requires `USE` on the gateway endpoint it
+calls; administrators are not checked.
+
+| Route | Endpoint taken from |
+|---|---|
+| `POST /gateway/{endpoint}/mlflow/invocations` | the path |
+| `POST /gateway/mlflow/v1/chat/completions`, `/gateway/openai/v1/chat/completions`, `/gateway/openai/v1/embeddings`, `/gateway/openai/v1/responses`, `/gateway/anthropic/v1/messages` | `model` in the request body |
+| `POST /gateway/gemini/v1beta/models/{endpoint}:generateContent`, `:streamGenerateContent` | the path |
+| `POST /gateway/proxy/{endpoint}/{provider-path}` | the path — the body is forwarded to the provider unread |
+
+Any other gateway route is refused to non-administrators.
+
+## AI Gateway credentials
+
+MLflow's AI gateway copies the caller's request headers onto the request it sends to an endpoint's
+provider on its passthrough routes (`/gateway/openai/v1/…`, `/gateway/anthropic/v1/messages`,
+`/gateway/gemini/…`) and on the raw proxy (`/gateway/proxy/…`). So that this plugin's credentials
+never reach a provider, every `/gateway/` request loses them once it is authorized — for
+administrators too:
+
+| Route | Session cookie | `Authorization` |
+|---|---|---|
+| `/gateway/{endpoint}/mlflow/invocations`, `/gateway/mlflow/v1/chat/completions` | removed | kept — these routes never forward headers, and a sanitize guardrail needs it |
+| every other `/gateway/` route | removed | removed |
+
+MLflow authenticates to providers with the secret stored on the endpoint, so nothing is lost for
+ordinary use. One limitation: a **sanitize** guardrail makes MLflow call back into its own
+invocations route with the caller's `Authorization`; on a passthrough or proxy route that header is
+gone, so such a guardrail rejects the request. Use the invocations or MLflow chat route for
+endpoints with sanitize guardrails. A client that sends its own provider key in `Authorization`
+(some CLI tools do) cannot use that key through this plugin, which reads `Authorization` as its own
+credential.
+
 ## Job API
 
 MLflow's FastAPI job API (`/ajax-api/3.0/jobs/…`) records the user who submitted a job as its

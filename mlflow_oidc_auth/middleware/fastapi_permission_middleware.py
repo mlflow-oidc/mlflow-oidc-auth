@@ -54,6 +54,11 @@ _GEMINI_STREAM = re.compile(r"^/gateway/gemini/v1beta/models/([^/:]+):streamGene
 # Pattern: /gateway/{endpoint_name}/mlflow/invocations
 _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
 
+# Pattern: /gateway/proxy/{endpoint_name}/{path:path} — MLflow's raw provider passthrough
+# (mlflow.server.gateway_api.raw_proxy). The endpoint is the first segment after /proxy/; the rest
+# is the provider path, which — like Starlette's ``{path:path}`` — may be empty.
+_RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.*$")
+
 # MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
 _JOBS_PREFIX = "/ajax-api/3.0/jobs"
 _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
@@ -62,6 +67,40 @@ _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
 # (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes), each behind MLflow's static
 # prefix when one is configured. See _is_mcp_server_path.
 _MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
+
+
+# This plugin's credentials: the session cookie and the Basic/Bearer ``Authorization`` header.
+# MLflow's gateway forwards the caller's headers to the endpoint's provider on its passthrough and
+# proxy routes, stripping only its own ``X-MLflow-Authorization`` — see _strip_client_credentials.
+_GATEWAY_PREFIX = "/gateway/"
+
+# The gateway routes that never forward the caller's headers to a provider: MLflow's typed
+# invocations and chat-completions handlers call the provider's own chat/embeddings methods, which
+# send only the provider's headers. ``Authorization`` is kept on these, because a "sanitize"
+# guardrail makes MLflow call back into its own invocations route with the caller's Authorization.
+_TYPED_GATEWAY_ROUTE = re.compile(r"^/gateway/(?:[^/]+/mlflow/invocations|mlflow/v1/chat/completions)$")
+
+
+def _strip_client_credentials(request: Request, path: str) -> None:
+    """Remove this plugin's credentials from a gateway request before MLflow handles it.
+
+    MLflow's AI gateway copies the caller's headers onto the request it sends to a third-party
+    provider (``dict(request.headers)`` on the passthrough and proxy routes, merged under the
+    provider's own headers). The session cookie would then reach every provider, and the caller's
+    IdP token or access token would reach any provider that puts its API key in a header of its own
+    (``api-key``, ``x-api-key``, ``x-goog-api-key``). Authentication and authorization have already
+    run when this is called.
+
+    The cookie is removed on every gateway route: nothing downstream reads it. ``Authorization`` is
+    removed everywhere except the typed routes that never forward headers (``_TYPED_GATEWAY_ROUTE``)
+    — including on any gateway route MLflow adds later, so an unknown route is the safe case. The
+    one thing that costs: a sanitize guardrail on a passthrough or proxy route cannot call back into
+    MLflow with the caller's token, so it fails closed.
+
+    Mutates ``request.scope["headers"]``, which the route handler reads.
+    """
+    drop = {b"cookie"} if _TYPED_GATEWAY_ROUTE.match(path) else {b"cookie", b"authorization"}
+    request.scope["headers"] = [(name, value) for name, value in request.scope.get("headers", []) if name.lower() not in drop]
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +115,7 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     - ``/gateway/{endpoint_name}/mlflow/invocations``
     - Passthrough routes (endpoint in request body as ``model``)
     - Gemini routes (endpoint in URL path segment)
+    - ``/gateway/proxy/{endpoint_name}/{path}`` (raw provider passthrough)
     """
     # Pattern 1: /gateway/{endpoint_name}/mlflow/invocations
     if match := _INVOCATIONS_RE.match(path):
@@ -91,6 +131,10 @@ def _extract_gateway_endpoint_name(path: str, body: dict[str, Any] | None) -> st
     if match := _GEMINI_GENERATE.match(path):
         return match.group(1)
     if match := _GEMINI_STREAM.match(path):
+        return match.group(1)
+
+    # Pattern 9: raw provider passthrough, endpoint in the first path segment after /proxy/
+    if match := _RAW_PROXY_RE.match(path):
         return match.group(1)
 
     return None
@@ -444,9 +488,11 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if not username:
             return _authentication_required()
 
-        # Admins have full access
+        # Admins have full access — but their credentials must not reach a provider either.
         is_admin = getattr(request.state, "is_admin", False)
         if is_admin:
+            if path.startswith(_GATEWAY_PREFIX):
+                _strip_client_credentials(request, path)
             return await call_next(request)
 
         # Bridge AuthContext into ContextVar so downstream permission code
@@ -472,6 +518,8 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             if auth_context_token is not None:
                 clear_auth_context(auth_context_token)
 
+        if path.startswith(_GATEWAY_PREFIX):
+            _strip_client_credentials(request, path)
         response = await call_next(request)
         if _is_job_search(path, request):
             return await _filtered_job_search_response(username, response)
