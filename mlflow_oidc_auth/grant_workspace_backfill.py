@@ -30,13 +30,14 @@ Never raises: a failure is logged, and the unassigned grants stay inert until th
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set
 
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+from sqlalchemy.exc import IntegrityError
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE
+from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE, workspace_scoped_grant_tables
 
 logger = get_logger()
 
@@ -53,31 +54,6 @@ class BackfillReport:
     @property
     def unresolved_count(self) -> int:
         return sum(len(v) for v in self.unresolved.values())
-
-
-def _grant_tables():
-    """``(model, resource column, principal column, resource kind)`` for every workspace-scoped grant table."""
-    from mlflow_oidc_auth.db.models import (
-        SqlGatewayEndpointGroupPermission,
-        SqlGatewayEndpointPermission,
-        SqlGatewayModelDefinitionGroupPermission,
-        SqlGatewayModelDefinitionPermission,
-        SqlGatewaySecretGroupPermission,
-        SqlGatewaySecretPermission,
-        SqlRegisteredModelGroupPermission,
-        SqlRegisteredModelPermission,
-    )
-
-    return (
-        (SqlRegisteredModelPermission, "name", "user_id", "registered_model"),
-        (SqlRegisteredModelGroupPermission, "name", "group_id", "registered_model"),
-        (SqlGatewayEndpointPermission, "endpoint_id", "user_id", "gateway_endpoint"),
-        (SqlGatewayEndpointGroupPermission, "endpoint_id", "group_id", "gateway_endpoint"),
-        (SqlGatewaySecretPermission, "secret_id", "user_id", "gateway_secret"),
-        (SqlGatewaySecretGroupPermission, "secret_id", "group_id", "gateway_secret"),
-        (SqlGatewayModelDefinitionPermission, "model_definition_id", "user_id", "gateway_model_definition"),
-        (SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
-    )
 
 
 def _mlflow_resource_workspaces() -> Optional[Dict[str, Dict[str, Set[str]]]]:
@@ -163,6 +139,11 @@ def backfill_grant_workspaces(store=None) -> Optional[BackfillReport]:
 
             store = store_singleton
         return _backfill(store)
+    except IntegrityError:
+        # Several workers starting at once each run the backfill; the one that loses the race on
+        # the unique constraint rolls back, and the grants are placed by the winner.
+        logger.info("Grant workspace backfill: another process placed the same grants first; nothing changed here")
+        return None
     except Exception:
         logger.exception("Grant workspace backfill failed; legacy grants stay unassigned until the next start")
         return None
@@ -170,7 +151,7 @@ def backfill_grant_workspaces(store=None) -> Optional[BackfillReport]:
 
 def _backfill(store) -> BackfillReport:
     report = BackfillReport()
-    tables = _grant_tables()
+    tables = workspace_scoped_grant_tables()
     with store.ManagedSessionMaker() as session:
         pending = any(session.query(model.id).filter(model.workspace.is_(None)).first() is not None for model, *_ in tables)
     if not pending:

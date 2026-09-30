@@ -94,3 +94,33 @@ def in_grant_workspace(grant) -> bool:
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return workspace is None or workspace == DEFAULT_WORKSPACE_NAME
     return workspace == current_grant_workspace()
+
+
+def workspace_scoped_grant_tables():
+    """Every grant table whose grants belong to one workspace.
+
+    Returns:
+        ``(model, resource column, principal column, resource kind)`` per table; ``kind`` names the
+        MLflow resource type (prompts are registered models).
+    """
+    from mlflow_oidc_auth.db.models import (
+        SqlGatewayEndpointGroupPermission,
+        SqlGatewayEndpointPermission,
+        SqlGatewayModelDefinitionGroupPermission,
+        SqlGatewayModelDefinitionPermission,
+        SqlGatewaySecretGroupPermission,
+        SqlGatewaySecretPermission,
+        SqlRegisteredModelGroupPermission,
+        SqlRegisteredModelPermission,
+    )
+
+    return (
+        (SqlRegisteredModelPermission, "name", "user_id", "registered_model"),
+        (SqlRegisteredModelGroupPermission, "name", "group_id", "registered_model"),
+        (SqlGatewayEndpointPermission, "endpoint_id", "user_id", "gateway_endpoint"),
+        (SqlGatewayEndpointGroupPermission, "endpoint_id", "group_id", "gateway_endpoint"),
+        (SqlGatewaySecretPermission, "secret_id", "user_id", "gateway_secret"),
+        (SqlGatewaySecretGroupPermission, "secret_id", "group_id", "gateway_secret"),
+        (SqlGatewayModelDefinitionPermission, "model_definition_id", "user_id", "gateway_model_definition"),
+        (SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
+    )

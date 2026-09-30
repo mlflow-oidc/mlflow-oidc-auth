@@ -1169,10 +1169,12 @@ class SqlAlchemyStore:
 
     def _wipe_workspace_resource_grants(self, workspace: str) -> int:
         """Delete the grants recorded for ``workspace`` in every workspace-scoped grant table."""
-        from mlflow_oidc_auth.grant_workspace_backfill import _grant_tables
+        from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_grant_tables
 
         with self.ManagedSessionMaker(read_only=False) as session:
-            return sum(session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model, *_ in _grant_tables())
+            return sum(
+                session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model, *_ in workspace_scoped_grant_tables()
+            )
 
     # -- Workspace group rules (issue #418) --
     # The engine in mlflow_oidc_auth/workspace_rules.py decides; these store and apply. Grants a
