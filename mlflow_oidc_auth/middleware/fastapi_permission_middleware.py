@@ -59,7 +59,8 @@ _JOBS_PREFIX = "/ajax-api/3.0/jobs"
 _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
 
 # MCP server registry, mounted by MLflow under both the API and the UI prefix
-# (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes)
+# (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes), each behind MLflow's static
+# prefix when one is configured. See _is_mcp_server_path.
 _MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
 
 
@@ -287,6 +288,24 @@ async def _filtered_job_search_response(username: str, response: Response) -> Re
     return Response(content=filtered, status_code=response.status_code, headers=headers, media_type=response.media_type)
 
 
+def _is_mcp_server_path(path: str) -> bool:
+    """Whether ``path`` is on the MCP server registry, with or without MLflow's static prefix.
+
+    ``app.py`` mounts the registry at ``get_mcp_server_api_route_prefixes()``, which puts MLflow's
+    static prefix (``--static-prefix``) in front of both paths. Matching only the bare paths would
+    let a prefixed deployment's registry skip this validator — reads and writes alike — so the
+    check asks MLflow, which reads the prefix the same way it mounts the routes. The bare paths
+    are kept as well, so the match can only ever be wider, never narrower.
+    """
+    if path.startswith(_MCP_SERVER_PREFIXES):
+        return True
+    try:
+        from mlflow.server.mcp_server_api import is_mcp_server_api_path
+    except ImportError:
+        return False
+    return is_mcp_server_api_path(path)
+
+
 def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
     """Return a validator for the MCP server registry routes.
 
@@ -347,7 +366,7 @@ def _find_fastapi_validator(
     if path.startswith("/ajax-api/3.0/mlflow/assistant"):
         return _get_require_authentication_validator()
 
-    if path.startswith(_MCP_SERVER_PREFIXES):
+    if _is_mcp_server_path(path):
         return _get_mcp_server_registry_validator()
 
     return None

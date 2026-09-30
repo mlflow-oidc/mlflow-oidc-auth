@@ -125,6 +125,21 @@ class TestFindFastapiValidator:
         assert self._find("/ajax-api/3.0/mlflow/assistant") is not None
         assert self._find("/ajax-api/3.0/mlflow/assistant/chat") is not None
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/mlflow/api/3.0/mlflow/mcp-servers",
+            "/mlflow/api/3.0/mlflow/mcp-servers/com.example/server",
+            "/mlflow/ajax-api/3.0/mlflow/mcp-servers/endpoints",
+        ],
+    )
+    def test_mcp_server_registry_routes_behind_a_static_prefix_return_validator(self, path, monkeypatch):
+        """MLflow mounts the registry behind its static prefix; the validator must still apply there."""
+        from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+        monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
+        assert self._find(path) is not None
+
     def test_mcp_server_registry_routes_return_validator(self):
         """Test MCP server registry routes return a validator on both prefixes."""
         assert self._find("/api/3.0/mlflow/mcp-servers") is not None
@@ -435,6 +450,25 @@ class TestMCPServerRegistryEndToEnd:
             response = TestClient(self._app("user@example.com", False, "team-b")).get("/api/3.0/mlflow/mcp-servers")
 
         assert response.status_code == 403
+
+    def test_static_prefix_does_not_bypass_the_check(self, monkeypatch):
+        """With ``--static-prefix`` the registry is mounted under it: reads and writes are still judged."""
+        from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-b")
+
+        @app.api_route("/mlflow/api/3.0/mlflow/mcp-servers", methods=["GET", "POST"])
+        async def prefixed_mcp_servers():
+            return {"servers": []}
+
+        app.router.routes.insert(0, app.router.routes.pop())
+        client = TestClient(app)
+        with self._grants({("user@example.com", "team-a"): MANAGE}):
+            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers").status_code == 403
+            assert client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={}).status_code == 403
 
     def test_admin_reads_any_workspace(self):
         with self._grants({}):
