@@ -20,7 +20,11 @@ export const DeleteWorkspaceRuleModal = ({
   if (!rule) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Delete Workspace Rule">
+    <Modal
+      isOpen={isOpen}
+      onClose={isProcessing ? () => undefined : onClose}
+      title="Delete Workspace Rule"
+    >
       <div className="text-ui-text dark:text-ui-text-dark">
         <p className="mb-4">
           The following rule will be permanently deleted:{" "}

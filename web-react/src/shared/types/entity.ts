@@ -241,11 +241,15 @@ export type WorkspaceRuleChange = {
   previous: string | null;
   /** Whether it was written. Always false in a preview and for a report-mode rule. */
   applied: boolean;
+  /** The rule this line belongs to; a delete also lists grants another rule took over. */
+  rule_id: number | null;
 };
 
 export type WorkspaceRulePlan = {
   rule: WorkspaceRule | null;
   changes: WorkspaceRuleChange[];
+  /** Set when the rule was saved but its grants could not be updated; saving again retries. */
+  error?: string | null;
 };
 
 export type WorkspaceRuleCreateRequest = {

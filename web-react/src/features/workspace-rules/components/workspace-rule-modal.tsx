@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
 import { Select } from "../../../shared/components/select";
@@ -95,26 +95,38 @@ function summarize(
 
 export const WorkspaceRuleModal: React.FC<WorkspaceRuleModalProps> = (
   props,
-) => (
-  // Remounted on every open, so the form starts from the rule being edited.
-  <Modal
-    isOpen={props.isOpen}
-    onClose={props.onClose}
-    title={props.rule ? "Edit workspace rule" : "Create workspace rule"}
-    width="max-w-3xl"
-  >
-    {props.isOpen && (
-      <WorkspaceRuleForm key={props.rule?.id ?? "new"} {...props} />
-    )}
-  </Modal>
-);
+) => {
+  const [isBusy, setIsBusy] = useState(false);
+  const { onClose } = props;
+  return (
+    // Remounted on every open, so the form starts from the rule being edited. While a save is in
+    // flight, Escape, the close button and the backdrop do nothing: the result must land in view.
+    <Modal
+      isOpen={props.isOpen}
+      onClose={isBusy ? () => undefined : onClose}
+      title={props.rule ? "Edit workspace rule" : "Create workspace rule"}
+      width="max-w-3xl"
+    >
+      {props.isOpen && (
+        <WorkspaceRuleForm
+          key={props.rule?.id ?? "new"}
+          {...props}
+          onBusyChange={setIsBusy}
+        />
+      )}
+    </Modal>
+  );
+};
 
-const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
+const WorkspaceRuleForm: React.FC<
+  WorkspaceRuleModalProps & { onBusyChange: (busy: boolean) => void }
+> = ({
   onClose,
   onSuccess,
   rule,
   allowedPermissions,
   maxPermission,
+  onBusyChange,
 }) => {
   const { showToast } = useToast();
   const [form, setForm] = useState<WorkspaceRuleCreateRequest>(() =>
@@ -125,9 +137,13 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
   const [preview, setPreview] = useState<WorkspaceRulePlan | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Only the newest preview may land: a slower, older one describes a pattern no longer in the form.
+  const previewRequest = useRef(0);
 
   const aboveCeiling =
     rule !== null && !allowedPermissions.includes(rule.permission);
+  // The server refuses to preview or save a permission above its ceiling.
+  const permissionAllowed = allowedPermissions.includes(form.permission);
   const permissionOptions = [
     ...allowedPermissions.map((p) => ({ label: p, value: p })),
     ...(aboveCeiling && rule
@@ -147,10 +163,16 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
     setForm((prev) => ({ ...prev, [key]: value }));
     setServerError(null);
     // A preview describes the pattern and permission it was made for.
-    if (key === "pattern" || key === "permission") setPreview(null);
+    if (key === "pattern" || key === "permission") {
+      previewRequest.current += 1;
+      setPreview(null);
+      setIsPreviewing(false);
+    }
   };
 
   const handlePreview = async () => {
+    const request = ++previewRequest.current;
+    const isCurrent = () => request === previewRequest.current;
     setIsPreviewing(true);
     setServerError(null);
     try {
@@ -158,17 +180,22 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
         rule !== null &&
         form.pattern === rule.pattern &&
         form.permission === rule.permission;
+      // Changes to a saved rule are previewed under its own id, so it keeps its precedence and
+      // its existing grants show as unchanged or updated rather than as another rule's.
       const plan = unchanged
         ? await previewWorkspaceRule(rule.id)
         : await previewUnsavedWorkspaceRule({
             pattern: form.pattern,
             permission: form.permission,
+            ...(rule ? { rule_id: rule.id } : {}),
           });
-      setPreview(plan);
+      if (isCurrent()) setPreview(plan);
     } catch (err) {
-      setServerError(extractErrorMessage(err, "Failed to preview the rule"));
+      if (isCurrent()) {
+        setServerError(extractErrorMessage(err, "Failed to preview the rule"));
+      }
     } finally {
-      setIsPreviewing(false);
+      if (isCurrent()) setIsPreviewing(false);
     }
   };
 
@@ -180,6 +207,7 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
     }
     setNameError(undefined);
     setIsSubmitting(true);
+    onBusyChange(true);
     setServerError(null);
     try {
       if (rule) {
@@ -188,20 +216,13 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
           onClose();
           return;
         }
-        const plan = await updateWorkspaceRule(rule.id, changes);
-        showToast(
-          summarize("saved", form.name.trim(), plan.changes),
-          "success",
-        );
+        report(await updateWorkspaceRule(rule.id, changes), "saved");
       } else {
         const plan = await createWorkspaceRule({
           ...form,
           name: form.name.trim(),
         });
-        showToast(
-          summarize("created", form.name.trim(), plan.changes),
-          "success",
-        );
+        report(plan, "created");
       }
       onSuccess();
       onClose();
@@ -211,7 +232,17 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
       showToast(message, "error");
     } finally {
       setIsSubmitting(false);
+      onBusyChange(false);
     }
+  };
+
+  const report = (plan: WorkspaceRulePlan, verb: string) => {
+    if (plan.error) {
+      // Saved, but its grants were not updated: say so rather than a plain success.
+      showToast(`Rule "${form.name.trim()}" ${verb}. ${plan.error}`, "error");
+      return;
+    }
+    showToast(summarize(verb, form.name.trim(), plan.changes), "success");
   };
 
   return (
@@ -227,6 +258,7 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
         value={form.name}
         onChange={(e) => update("name", e.target.value)}
         error={nameError}
+        maxLength={255}
         required
         reserveErrorSpace
         containerClassName="mb-2"
@@ -239,10 +271,15 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
         onChange={(e) => update("pattern", e.target.value)}
         placeholder="^team-(?P<ws>[a-z0-9-]+)$"
         className="font-mono"
+        maxLength={256}
+        aria-describedby="workspace-rule-pattern-help"
         required
         containerClassName="mb-1"
       />
-      <p className="mb-3 text-xs text-ui-text-muted dark:text-ui-text-muted-dark">
+      <p
+        id="workspace-rule-pattern-help"
+        className="mb-3 text-xs text-ui-text-muted dark:text-ui-text-muted-dark"
+      >
         A Python regular expression that must match the whole group name. The
         named group <code>(?P&lt;ws&gt;…)</code> is the workspace. Groups from a
         provider other than the default one carry its prefix, e.g.{" "}
@@ -288,10 +325,15 @@ const WorkspaceRuleForm: React.FC<WorkspaceRuleModalProps> = ({
           type="button"
           variant="secondary"
           onClick={() => void handlePreview()}
-          disabled={isPreviewing || !form.pattern}
+          disabled={isPreviewing || !form.pattern || !permissionAllowed}
         >
           {isPreviewing ? "Previewing..." : "Preview"}
         </Button>
+        {!permissionAllowed && (
+          <p className="mt-1 text-xs text-ui-text-muted dark:text-ui-text-muted-dark">
+            Choose a permission within the ceiling to preview.
+          </p>
+        )}
         {preview && (
           <div className="mt-3">
             <RulePreview changes={preview.changes} caption={PREVIEW_CAPTION} />

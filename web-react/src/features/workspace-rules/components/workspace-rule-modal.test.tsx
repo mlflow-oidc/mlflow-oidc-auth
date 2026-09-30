@@ -60,6 +60,7 @@ const PLAN: WorkspaceRulePlan = {
       reason: null,
       previous: null,
       applied: false,
+      rule_id: 1,
     },
     {
       action: "skip",
@@ -69,6 +70,7 @@ const PLAN: WorkspaceRulePlan = {
       reason: "manual grant",
       previous: null,
       applied: false,
+      rule_id: 1,
     },
     {
       action: "shadowed",
@@ -78,6 +80,7 @@ const PLAN: WorkspaceRulePlan = {
       reason: "rule 1 (older) wins",
       previous: null,
       applied: false,
+      rule_id: 1,
     },
   ],
 };
@@ -246,6 +249,7 @@ describe("WorkspaceRuleModal", () => {
       expect(mockPreviewUnsaved).toHaveBeenCalledWith({
         pattern: RULE.pattern,
         permission: "USE",
+        rule_id: 7,
       }),
     );
   });
@@ -259,5 +263,89 @@ describe("WorkspaceRuleModal", () => {
 
     expect(screen.getByText("Name is required")).toBeInTheDocument();
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("ignores a preview that lands after the pattern changed", async () => {
+    let resolveSlow: (plan: WorkspaceRulePlan) => void = () => undefined;
+    mockPreviewUnsaved.mockImplementationOnce(
+      () =>
+        new Promise<WorkspaceRulePlan>((resolve) => {
+          resolveSlow = resolve;
+        }),
+    );
+    renderModal();
+
+    fill("Group name pattern", "^team-(?P<ws>.+)$");
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fill("Group name pattern", "^team-(?P<ws>acme)$");
+    resolveSlow(PLAN);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled(),
+    );
+    expect(screen.queryByRole("table", { name: "Rule preview" })).toBeNull();
+  });
+
+  it("shows the rule being edited, not the previous one", () => {
+    const { rerender } = render(
+      <WorkspaceRuleModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+        rule={RULE}
+        allowedPermissions={["READ", "USE", "EDIT"]}
+        maxPermission="EDIT"
+      />,
+    );
+    expect(screen.getByLabelText("Name*")).toHaveValue("tenants");
+
+    rerender(
+      <WorkspaceRuleModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onSuccess={vi.fn()}
+        rule={{ ...RULE, id: 8, name: "partners", pattern: "^p-(?P<ws>.+)$" }}
+        allowedPermissions={["READ", "USE", "EDIT"]}
+        maxPermission="EDIT"
+      />,
+    );
+    expect(screen.getByLabelText("Name*")).toHaveValue("partners");
+    expect(screen.getByLabelText("Group name pattern*")).toHaveValue(
+      "^p-(?P<ws>.+)$",
+    );
+  });
+
+  it("does not offer a preview the server would refuse for a permission above the ceiling", () => {
+    renderModal({
+      rule: { ...RULE, permission: "EDIT" },
+      allowedPermissions: ["READ"],
+      maxPermission: "READ",
+    });
+
+    expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
+    expect(
+      screen.getByText("Choose a permission within the ceiling to preview."),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when the rule was saved but its grants were not updated", async () => {
+    mockUpdate.mockResolvedValue({
+      rule: RULE,
+      changes: [],
+      error: "The rule was saved, but its grants were not updated.",
+    });
+    renderModal({ rule: RULE });
+
+    fireEvent.change(screen.getByLabelText("Mode"), {
+      target: { value: "enforce" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'Rule "tenants" saved. The rule was saved, but its grants were not updated.',
+        "error",
+      ),
+    );
   });
 });

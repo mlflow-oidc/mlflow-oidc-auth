@@ -45,10 +45,14 @@ export const previewWorkspaceRule = async (ruleId: number) =>
     {},
   );
 
-/** What a rule that is not saved yet would do if created now and enforced. Writes nothing. */
+/**
+ * What a rule that is not saved yet would do if saved now and enforced. Writes nothing.
+ * With `rule_id`, previews unsaved changes to that rule, keeping its precedence and grants.
+ */
 export const previewUnsavedWorkspaceRule = async (data: {
   pattern: string;
   permission: WorkspaceRulePermission;
+  rule_id?: number;
 }) =>
   request<WorkspaceRulePlan>(STATIC_API_ENDPOINTS.WORKSPACE_RULES_PREVIEW, {
     method: "POST",

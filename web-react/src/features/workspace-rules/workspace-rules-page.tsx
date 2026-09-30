@@ -56,7 +56,11 @@ function WorkspaceRulesList() {
     setIsDeleting(true);
     try {
       const plan = await deleteWorkspaceRule(deletingRule.id);
-      const removed = plan.changes.filter((c) => c.applied).length;
+      // A delete also lists grants a rule it shadowed took over; count only this rule's removals.
+      const removed = plan.changes.filter(
+        (c) =>
+          c.applied && c.action === "remove" && c.rule_id === deletingRule.id,
+      ).length;
       showToast(
         `Rule "${deletingRule.name}" deleted; ${removed} workspace permission(s) removed`,
         "success",

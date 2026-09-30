@@ -20,6 +20,7 @@ describe("RulePreview", () => {
             reason: null,
             previous: "READ",
             applied: false,
+            rule_id: 1,
           },
         ]}
       />,
@@ -41,6 +42,7 @@ describe("RulePreview", () => {
             reason: hostile,
             previous: null,
             applied: false,
+            rule_id: 1,
           },
         ]}
       />,

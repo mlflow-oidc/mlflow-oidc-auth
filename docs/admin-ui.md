@@ -191,14 +191,17 @@ non-admin and answers `404` while workspaces are off.
   New rules start in **Report** mode.
 - **Preview**: lists each existing group the pattern matches, its target workspace, and what
   enforcing the rule would do — grant, update, unchanged, remove, skip (with the reason, such as a
-  manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A saved
-  rule is previewed as saved; an unsaved rule or unsaved changes are previewed as a new rule would
-  be.
+  manual grant or a missing workspace) or shadowed (by an older rule). Nothing is written. A new
+  rule is previewed as a new rule would rank; unsaved changes to an existing rule keep that rule's
+  precedence and its current grants. Preview is unavailable while the chosen permission is above
+  the ceiling, since the server would refuse it.
 - **Delete**: asks for confirmation, then deletes the rule and every workspace permission it
   granted. Grants made by hand stay.
 
 A server error, such as a pattern without the `(?P<ws>...)` group, is shown in the dialog as the
-server worded it. Group names and patterns are always displayed as text.
+server worded it. If a rule is saved but its grants could not be updated (MLflow's workspace store
+was unavailable), the dialog says so; saving it again retries. Group names and patterns are always
+displayed as text.
 
 The grants a rule creates appear on the workspace's page like any other group permission. Editing
 one there turns it into a manual grant that no rule changes again.

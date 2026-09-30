@@ -172,6 +172,7 @@ describe("WorkspaceRulesPage", () => {
           reason: null,
           previous: null,
           applied: true,
+          rule_id: 1,
         },
       ],
     });
