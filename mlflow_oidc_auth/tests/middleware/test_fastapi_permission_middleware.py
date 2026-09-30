@@ -43,11 +43,13 @@ class TestExtractGatewayEndpointName:
         assert self._extract("/gateway/proxy/my-endpoint/v1/chat/completions") == "my-endpoint"
         assert self._extract("/gateway/proxy/my-endpoint/v1/embeddings", {"model": "someone-else"}) == "my-endpoint"
 
-    def test_raw_proxy_route_without_a_provider_path(self):
-        """MLflow's route needs a provider path after the endpoint; without one nothing is extracted."""
-        assert self._extract("/gateway/proxy/my-endpoint/") is None
+    def test_raw_proxy_route_provider_path_may_be_empty(self):
+        """Like MLflow's ``{path:path}``, the provider path may be empty — but the slash after the
+        endpoint is part of the route, and without an endpoint nothing is extracted."""
+        assert self._extract("/gateway/proxy/my-endpoint/") == "my-endpoint"
         assert self._extract("/gateway/proxy/my-endpoint") is None
         assert self._extract("/gateway/proxy/") is None
+        assert self._extract("/gateway/proxy//v1/chat") is None
 
     def test_an_endpoint_named_proxy_is_resolved_like_the_router(self):
         """MLflow registers the invocations route before the raw proxy, so it serves this path as the

@@ -55,8 +55,8 @@ _INVOCATIONS_RE = re.compile(r"^/gateway/([^/]+)/mlflow/invocations$")
 
 # Pattern: /gateway/proxy/{endpoint_name}/{path:path} — MLflow's raw provider passthrough
 # (mlflow.server.gateway_api.raw_proxy). The endpoint is the first segment after /proxy/; the rest
-# is the provider path, which must not be empty.
-_RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.+$")
+# is the provider path, which — like Starlette's ``{path:path}`` — may be empty.
+_RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.*$")
 
 # MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
 _JOBS_PREFIX = "/ajax-api/3.0/jobs"
