@@ -142,8 +142,14 @@ const WorkspaceRuleForm: React.FC<
 
   const aboveCeiling =
     rule !== null && !allowedPermissions.includes(rule.permission);
-  // The server refuses to preview or save a permission above its ceiling.
-  const permissionAllowed = allowedPermissions.includes(form.permission);
+  const unchangedGrants =
+    rule !== null &&
+    form.pattern === rule.pattern &&
+    form.permission === rule.permission;
+  // The server refuses to preview an unsaved permission above its ceiling. A saved rule as it
+  // stands can always be previewed: its lines then say it is above the ceiling.
+  const previewBlocked =
+    !allowedPermissions.includes(form.permission) && !unchangedGrants;
   const permissionOptions = [
     ...allowedPermissions.map((p) => ({ label: p, value: p })),
     ...(aboveCeiling && rule
@@ -325,11 +331,11 @@ const WorkspaceRuleForm: React.FC<
           type="button"
           variant="secondary"
           onClick={() => void handlePreview()}
-          disabled={isPreviewing || !form.pattern || !permissionAllowed}
+          disabled={isPreviewing || !form.pattern || previewBlocked}
         >
           {isPreviewing ? "Previewing..." : "Preview"}
         </Button>
-        {!permissionAllowed && (
+        {previewBlocked && (
           <p className="mt-1 text-xs text-ui-text-muted dark:text-ui-text-muted-dark">
             Choose a permission within the ceiling to preview.
           </p>

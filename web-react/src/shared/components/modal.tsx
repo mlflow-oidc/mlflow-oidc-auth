@@ -41,7 +41,12 @@ export const Modal: React.FC<ModalProps> = ({
           onClose();
         }
       }}
-      onCancel={onClose}
+      onCancel={(e) => {
+        // Escape: let the parent decide. Closing natively here would hide the dialog while the
+        // parent still thinks it is open — and a parent busy saving keeps it open on purpose.
+        e.preventDefault();
+        onClose();
+      }}
     >
       <div className="absolute top-1 right-1">
         <Button

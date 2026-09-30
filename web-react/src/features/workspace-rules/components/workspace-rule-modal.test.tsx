@@ -321,11 +321,36 @@ describe("WorkspaceRuleModal", () => {
       allowedPermissions: ["READ"],
       maxPermission: "READ",
     });
+    // As saved, the rule can still be previewed: the server answers with "above ceiling" lines.
+    expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
+
+    fill("Group name pattern", "^squad-(?P<ws>[a-z]+)$");
 
     expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
     expect(
       screen.getByText("Choose a permission within the ceiling to preview."),
     ).toBeInTheDocument();
+  });
+
+  it("stays open on Escape while a save is in flight", async () => {
+    let finish: (plan: WorkspaceRulePlan) => void = () => undefined;
+    mockUpdate.mockImplementationOnce(
+      () =>
+        new Promise<WorkspaceRulePlan>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { onClose } = renderModal({ rule: RULE });
+
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const cancel = new Event("cancel", { cancelable: true });
+    fireEvent(screen.getByRole("dialog"), cancel);
+
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    finish({ rule: RULE, changes: [] });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it("says so when the rule was saved but its grants were not updated", async () => {

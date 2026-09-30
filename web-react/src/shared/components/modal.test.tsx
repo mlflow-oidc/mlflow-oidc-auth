@@ -37,6 +37,18 @@ describe("Modal", () => {
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves closing on Escape to the parent", () => {
+    render(
+      <Modal isOpen={true} onClose={vi.fn()} title="Test Modal">
+        <div>Content</div>
+      </Modal>,
+    );
+
+    const cancel = new Event("cancel", { cancelable: true });
+    fireEvent(screen.getByRole("dialog"), cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+  });
+
   it("calls onClose when clicking backdrop", () => {
     const handleClose = vi.fn();
     render(
