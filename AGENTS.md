@@ -67,7 +67,7 @@ permission check.
 | Constraint | What it means in practice |
 |---|---|
 | **Plugin boundary** | This controls auth and authz only. MLflow core behavior cannot be changed — if a fix requires it, the answer is a workaround here or an upstream issue there. |
-| **MLflow floor `>=3.14.0`** | Declared in `pyproject.toml`. Workspace/organization features originated in 3.10; 3.14.0 is the supported floor. |
+| **MLflow floor `>=3.16.0`** | Declared in `pyproject.toml`. Workspace/organization features originated in 3.10; 3.16.0 is the supported floor (the MCP server registry needs 3.15+, the assistant routes and current job signatures 3.16). |
 | **Upstream workspace API is unstable** | The workspace RPCs this plugin proxies were recorded during the workspace milestone as `PUBLIC_UNDOCUMENTED` — not part of MLflow's committed public surface, so they can change in a minor release. Re-verify against the pinned MLflow before relying on one; treat a break there as expected, not exceptional. |
 | **Workspace lifecycle is not ours** | Workspace CRUD proxies to MLflow's `/api/3.0/mlflow/workspaces`. Never write to MLflow's store directly — that skips its validation and constraints. |
 | **Workspaces are opt-in** | `MLFLOW_ENABLE_WORKSPACES` defaults to false and gates all workspace behavior. An existing deployment that changes no configuration must be unaffected by anything you do here. |
