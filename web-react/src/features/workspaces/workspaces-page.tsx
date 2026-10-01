@@ -30,7 +30,8 @@ export default function WorkspacesPage() {
     handleSearchSubmit,
     handleClearSearch,
   } = useSearch();
-  const { allWorkspaces, memberCounts, isLoading, error, refresh } = useAllWorkspaces();
+  const { allWorkspaces, memberCounts, isLoading, error, refresh } =
+    useAllWorkspaces();
   const { currentUser } = useUser();
   const { showToast } = useToast();
 

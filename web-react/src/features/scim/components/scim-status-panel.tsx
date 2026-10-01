@@ -57,14 +57,20 @@ export function ScimStatusPanel({
 }: ScimStatusPanelProps) {
   if (isLoading && !status) {
     return (
-      <section aria-label="Provisioning status" className="mb-4 text-sm opacity-70">
+      <section
+        aria-label="Provisioning status"
+        className="mb-4 text-sm opacity-70"
+      >
         Loading provisioning status...
       </section>
     );
   }
   if (error) {
     return (
-      <section aria-label="Provisioning status" className="mb-4 flex items-center gap-3 text-sm">
+      <section
+        aria-label="Provisioning status"
+        className="mb-4 flex items-center gap-3 text-sm"
+      >
         <span className={dangerClass}>Failed to load provisioning status.</span>
         <Button variant="ghost" onClick={onRetry}>
           Retry
@@ -92,7 +98,8 @@ export function ScimStatusPanel({
         <span className="text-xs opacity-70">
           Healthy means a SCIM request succeeded in the last{" "}
           {windowLabel(status.healthy_window_seconds)}. Activity is kept for{" "}
-          {status.retention_days > 0 ? `${status.retention_days} days` : "ever"}.
+          {status.retention_days > 0 ? `${status.retention_days} days` : "ever"}
+          .
         </span>
       </div>
 
@@ -106,7 +113,10 @@ export function ScimStatusPanel({
           <dd className={status.last_error_at ? dangerClass : ""}>
             {formatDateTime(status.last_error_at)}
             {status.last_error && (
-              <span className="block text-xs break-words" data-testid="scim-last-error">
+              <span
+                className="block text-xs break-words"
+                data-testid="scim-last-error"
+              >
                 {status.last_error}
               </span>
             )}
@@ -138,7 +148,10 @@ export function ScimStatusPanel({
 
       {status.tokens.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left" aria-label="Status per token">
+          <table
+            className="w-full text-sm text-left"
+            aria-label="Status per token"
+          >
             <thead>
               <tr className="border-b border-ui-border dark:border-ui-border-dark">
                 <th className={headClass}>Token</th>
@@ -158,18 +171,30 @@ export function ScimStatusPanel({
                 >
                   <td className={cellClass}>
                     {token.name}
-                    {!token.active && <span className="ml-1 text-xs">(inactive)</span>}
+                    {!token.active && (
+                      <span className="ml-1 text-xs">(inactive)</span>
+                    )}
                   </td>
-                  <td className={cellClass}>{formatDateTime(token.last_used_at)}</td>
-                  <td className={cellClass}>{formatDateTime(token.last_success_at)}</td>
-                  <td className={`${cellClass} ${token.last_error_at ? dangerClass : ""}`}>
+                  <td className={cellClass}>
+                    {formatDateTime(token.last_used_at)}
+                  </td>
+                  <td className={cellClass}>
+                    {formatDateTime(token.last_success_at)}
+                  </td>
+                  <td
+                    className={`${cellClass} ${token.last_error_at ? dangerClass : ""}`}
+                  >
                     {formatDateTime(token.last_error_at)}
                     {token.last_error && (
-                      <span className="block text-xs break-words">{token.last_error}</span>
+                      <span className="block text-xs break-words">
+                        {token.last_error}
+                      </span>
                     )}
                   </td>
                   <td className={cellClass}>{token.requests_24h}</td>
-                  <td className={`${cellClass} ${token.errors_24h > 0 ? dangerClass : ""}`}>
+                  <td
+                    className={`${cellClass} ${token.errors_24h > 0 ? dangerClass : ""}`}
+                  >
                     {token.errors_24h}
                   </td>
                 </tr>

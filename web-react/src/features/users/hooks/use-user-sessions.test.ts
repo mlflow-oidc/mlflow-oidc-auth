@@ -35,7 +35,10 @@ describe("useUserSessions", () => {
       .mockResolvedValueOnce([session(1)]);
     const { result } = renderHook(() => useUserSessions("bob@example.com"));
     await waitFor(() => expect(result.current.sessions).toHaveLength(2));
-    expect(spy).toHaveBeenCalledWith("bob@example.com", expect.any(AbortSignal));
+    expect(spy).toHaveBeenCalledWith(
+      "bob@example.com",
+      expect.any(AbortSignal),
+    );
 
     act(() => result.current.refresh());
     await waitFor(() => expect(result.current.sessions).toHaveLength(1));
@@ -48,9 +51,12 @@ describe("useUserSessions", () => {
       .mockImplementationOnce(
         () => new Promise<UserSession[]>((resolve) => (resolveCarol = resolve)),
       );
-    const { result, rerender } = renderHook(({ user }: { user: string }) => useUserSessions(user), {
-      initialProps: { user: "bob@example.com" },
-    });
+    const { result, rerender } = renderHook(
+      ({ user }: { user: string }) => useUserSessions(user),
+      {
+        initialProps: { user: "bob@example.com" },
+      },
+    );
     await waitFor(() => expect(result.current.sessions).toHaveLength(1));
 
     rerender({ user: "carol@example.com" });

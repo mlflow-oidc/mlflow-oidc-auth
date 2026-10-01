@@ -20,7 +20,15 @@ interface BulkAssignResult {
   success: boolean;
 }
 
-export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, nameLabel, options }: BulkAssignModalProps) {
+export function BulkAssignModal({
+  isOpen,
+  onClose,
+  onGrant,
+  onSuccess,
+  title,
+  nameLabel,
+  options,
+}: BulkAssignModalProps) {
   const { showToast } = useToast();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [permission, setPermission] = useState<PermissionLevel>("READ");
@@ -28,7 +36,9 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
   const [results, setResults] = useState<BulkAssignResult[] | null>(null);
   const [filterText, setFilterText] = useState("");
 
-  const filteredOptions = options.filter((name) => name.toLowerCase().includes(filterText.toLowerCase()));
+  const filteredOptions = options.filter((name) =>
+    name.toLowerCase().includes(filterText.toLowerCase()),
+  );
 
   const handleToggle = (name: string) => {
     setSelected((prev) => {
@@ -95,18 +105,25 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
     onClose();
   };
 
-  const failedNames = results?.filter((r) => !r.success).map((r) => r.name) ?? [];
+  const failedNames =
+    results?.filter((r) => !r.success).map((r) => r.name) ?? [];
   const successCount = results?.filter((r) => r.success).length ?? 0;
-  const allFilteredSelected = filteredOptions.length > 0 && filteredOptions.every((o) => selected.has(o));
+  const allFilteredSelected =
+    filteredOptions.length > 0 && filteredOptions.every((o) => selected.has(o));
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={title} width="max-w-lg">
       <div key={isOpen ? "open" : "closed"}>
         <div className="mb-4">
-          <label className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">{nameLabel}*</label>
+          <label className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
+            {nameLabel}*
+          </label>
 
           {options.length === 0 ? (
-            <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60 py-4">All {nameLabel.toLowerCase()} already have permissions for this workspace.</p>
+            <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60 py-4">
+              All {nameLabel.toLowerCase()} already have permissions for this
+              workspace.
+            </p>
           ) : (
             <>
               <input
@@ -125,12 +142,16 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
                 >
                   {allFilteredSelected ? "Deselect all" : "Select all"}
                 </button>
-                <span className="text-xs text-ui-text dark:text-ui-text-dark opacity-60">{selected.size} selected</span>
+                <span className="text-xs text-ui-text dark:text-ui-text-dark opacity-60">
+                  {selected.size} selected
+                </span>
               </div>
 
               <div className="max-h-48 overflow-y-auto border rounded-md border-ui-border dark:border-ui-border-dark bg-ui-bg dark:bg-ui-bg-dark">
                 {filteredOptions.length === 0 ? (
-                  <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60 p-3">No matches found.</p>
+                  <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60 p-3">
+                    No matches found.
+                  </p>
                 ) : (
                   filteredOptions.map((name) => (
                     <label
@@ -143,7 +164,9 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
                         onChange={() => handleToggle(name)}
                         className="mr-2 rounded border-ui-border dark:border-ui-border-dark"
                       />
-                      <span className="text-sm text-ui-text dark:text-ui-text-dark truncate">{name}</span>
+                      <span className="text-sm text-ui-text dark:text-ui-text-dark truncate">
+                        {name}
+                      </span>
                     </label>
                   ))
                 )}
@@ -152,12 +175,27 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
           )}
         </div>
 
-        <PermissionLevelSelect id="bulk-permission-level" label="Permission" value={permission} onChange={(val) => setPermission(val)} required containerClassName="mb-4" />
+        <PermissionLevelSelect
+          id="bulk-permission-level"
+          label="Permission"
+          value={permission}
+          onChange={(val) => setPermission(val)}
+          required
+          containerClassName="mb-4"
+        />
 
         {results !== null && (
           <div className="mb-4 p-3 rounded-md bg-ui-bg dark:bg-ui-bg-dark border border-ui-border dark:border-ui-border-dark">
-            {successCount > 0 && <p className="text-sm text-green-600 dark:text-green-400">{successCount} assigned successfully</p>}
-            {failedNames.length > 0 && <p className="text-sm text-red-600 dark:text-red-400">{failedNames.length} failed: {failedNames.join(", ")}</p>}
+            {successCount > 0 && (
+              <p className="text-sm text-green-600 dark:text-green-400">
+                {successCount} assigned successfully
+              </p>
+            )}
+            {failedNames.length > 0 && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {failedNames.length} failed: {failedNames.join(", ")}
+              </p>
+            )}
           </div>
         )}
 
@@ -165,8 +203,16 @@ export function BulkAssignModal({ isOpen, onClose, onGrant, onSuccess, title, na
           <Button onClick={handleClose} variant="ghost" disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={() => void handleSubmit()} variant="primary" disabled={isSubmitting || selected.size === 0 || options.length === 0}>
-            {isSubmitting ? "Assigning..." : `Assign ${selected.size > 0 ? selected.size : ""} Selected`}
+          <Button
+            onClick={() => void handleSubmit()}
+            variant="primary"
+            disabled={
+              isSubmitting || selected.size === 0 || options.length === 0
+            }
+          >
+            {isSubmitting
+              ? "Assigning..."
+              : `Assign ${selected.size > 0 ? selected.size : ""} Selected`}
           </Button>
         </div>
       </div>

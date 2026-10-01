@@ -164,9 +164,7 @@ describe("ScimPage", () => {
     expect(mockRefresh).toHaveBeenCalled();
 
     // The plaintext appears exactly once on the page.
-    expect(
-      screen.getAllByDisplayValue("scim_plaintext_value"),
-    ).toHaveLength(1);
+    expect(screen.getAllByDisplayValue("scim_plaintext_value")).toHaveLength(1);
   });
 
   it("rotates a token after confirmation and refreshes the list", async () => {

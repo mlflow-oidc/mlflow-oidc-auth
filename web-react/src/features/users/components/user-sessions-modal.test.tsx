@@ -33,7 +33,9 @@ const sessions: UserSession[] = [
   },
 ];
 
-function mockSessions(overrides: Partial<ReturnType<typeof hookModule.useUserSessions>> = {}) {
+function mockSessions(
+  overrides: Partial<ReturnType<typeof hookModule.useUserSessions>> = {},
+) {
   vi.spyOn(hookModule, "useUserSessions").mockReturnValue({
     sessions,
     isLoading: false,
@@ -52,7 +54,9 @@ describe("UserSessionsModal", () => {
   });
 
   it("renders nothing without a user", () => {
-    const { container } = render(<UserSessionsModal username={null} onClose={vi.fn()} />);
+    const { container } = render(
+      <UserSessionsModal username={null} onClose={vi.fn()} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -70,11 +74,23 @@ describe("UserSessionsModal", () => {
 
     fireEvent.click(screen.getByLabelText("Revoke session abcd1234"));
     expect(service.revokeUserSession).not.toHaveBeenCalled();
-    expect(screen.getByRole("alertdialog", { hidden: true })).toHaveTextContent("Revoke session abcd1234… of bob@example.com?");
+    expect(screen.getByRole("alertdialog", { hidden: true })).toHaveTextContent(
+      "Revoke session abcd1234… of bob@example.com?",
+    );
 
     fireEvent.click(screen.getByText("Confirm revoke"));
-    await waitFor(() => expect(service.revokeUserSession).toHaveBeenCalledWith("bob@example.com", 11));
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith("Session abcd1234… revoked", "success"));
+    await waitFor(() =>
+      expect(service.revokeUserSession).toHaveBeenCalledWith(
+        "bob@example.com",
+        11,
+      ),
+    );
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Session abcd1234… revoked",
+        "success",
+      ),
+    );
     expect(mockRefresh).toHaveBeenCalled();
   });
 
@@ -82,7 +98,9 @@ describe("UserSessionsModal", () => {
     render(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("Revoke session abcd1234"));
     fireEvent.click(screen.getByText("Cancel"));
-    expect(screen.queryByRole("alertdialog", { hidden: true })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("alertdialog", { hidden: true }),
+    ).not.toBeInTheDocument();
     expect(service.revokeUserSession).not.toHaveBeenCalled();
   });
 
@@ -91,22 +109,37 @@ describe("UserSessionsModal", () => {
     render(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
 
     fireEvent.click(screen.getByText("Revoke all"));
-    expect(screen.getByRole("alertdialog", { hidden: true })).toHaveTextContent("Revoke all 2 sessions of bob@example.com?");
+    expect(screen.getByRole("alertdialog", { hidden: true })).toHaveTextContent(
+      "Revoke all 2 sessions of bob@example.com?",
+    );
     fireEvent.click(screen.getByText("Confirm revoke"));
 
-    await waitFor(() => expect(service.revokeAllUserSessions).toHaveBeenCalledWith("bob@example.com"));
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith("2 sessions of bob@example.com revoked", "success"));
+    await waitFor(() =>
+      expect(service.revokeAllUserSessions).toHaveBeenCalledWith(
+        "bob@example.com",
+      ),
+    );
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "2 sessions of bob@example.com revoked",
+        "success",
+      ),
+    );
     expect(mockRefresh).toHaveBeenCalled();
   });
 
   it("toasts an error and still refreshes when revocation fails", async () => {
-    vi.mocked(service.revokeUserSession).mockRejectedValue(new Error('HTTP 404: {"detail": "Session not found"}'));
+    vi.mocked(service.revokeUserSession).mockRejectedValue(
+      new Error('HTTP 404: {"detail": "Session not found"}'),
+    );
     render(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
 
     fireEvent.click(screen.getByLabelText("Revoke session efgh5678"));
     fireEvent.click(screen.getByText("Confirm revoke"));
 
-    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith("Session not found", "error"));
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith("Session not found", "error"),
+    );
     expect(mockRefresh).toHaveBeenCalled();
   });
 
@@ -114,16 +147,22 @@ describe("UserSessionsModal", () => {
     mockSessions({ sessions: [] });
     render(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
     expect(screen.getByText("No live sessions.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Revoke all", hidden: true })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Revoke all", hidden: true }),
+    ).toBeDisabled();
   });
 
   it("shows loading and error states", () => {
     mockSessions({ sessions: [], isLoading: true });
-    const { rerender } = render(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
+    const { rerender } = render(
+      <UserSessionsModal username="bob@example.com" onClose={vi.fn()} />,
+    );
     expect(screen.getByText("Loading sessions...")).toBeInTheDocument();
 
     mockSessions({ sessions: [], error: new Error("boom") });
-    rerender(<UserSessionsModal username="bob@example.com" onClose={vi.fn()} />);
+    rerender(
+      <UserSessionsModal username="bob@example.com" onClose={vi.fn()} />,
+    );
     expect(screen.getByText("Failed to load sessions")).toBeInTheDocument();
   });
 

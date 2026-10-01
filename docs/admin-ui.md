@@ -23,6 +23,7 @@ The sidebar organizes features into sections:
 | Experiments | `/experiments` | List experiments with permission summaries. Click an experiment to manage its user and group permissions |
 | Models | `/models` | List registered models with permission summaries |
 | Prompts | `/prompts` | List prompts with permission summaries |
+| MCP Servers | `/mcp-servers` | List the MCP servers of the selected workspace you can manage (all for an admin) and manage their user and group permissions. MLflow 3.15+; see [MCP Server Registry](permissions#mcp-server-registry) |
 
 ### AI Gateway
 
@@ -87,6 +88,7 @@ When you click a user or group, you see their permissions across all resource ty
 - **Models**: Direct and regex pattern permissions
 - **Prompts**: Direct and regex pattern permissions
 - **AI Gateway Endpoints/Secrets/Models**: Direct and regex pattern permissions
+- **MCP Servers**: Direct permissions only (there are no regex patterns for MCP servers)
 
 Regex pattern permissions are managed separately from direct permissions, with priority ordering.
 

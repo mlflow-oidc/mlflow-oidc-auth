@@ -5,7 +5,7 @@ import type { PermissionType } from "../../../shared/types/entity";
 
 /**
  * Resource types whose grants belong to one workspace. MLflow keeps registered models, prompts
- * and AI Gateway resources unique per workspace and name, so the server records each grant on
+ * AI Gateway resources and MCP servers unique per workspace and name, so the server records each grant on
  * them in the workspace the request names — the one selected in the workspace picker, or
  * `default` with "All Workspaces". Experiment grants are keyed by id and are not listed.
  */
@@ -16,6 +16,7 @@ export const WORKSPACE_SCOPED_PERMISSION_TYPES: ReadonlySet<PermissionType> =
     "ai-endpoints",
     "ai-secrets",
     "ai-models",
+    "mcp-servers",
   ]);
 
 export type GrantWorkspaceScope = {

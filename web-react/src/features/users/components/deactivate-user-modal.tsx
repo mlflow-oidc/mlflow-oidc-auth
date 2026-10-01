@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Modal } from "../../../shared/components/modal";
 import { Button } from "../../../shared/components/button";
 import { Switch } from "../../../shared/components/switch";
-import { describeManagedBy, isDirectoryManaged } from "../../../shared/utils/managed-by";
+import {
+  describeManagedBy,
+  isDirectoryManaged,
+} from "../../../shared/utils/managed-by";
 import type { UserDetails } from "../../../shared/types/user";
 
 interface DeactivateUserModalProps {
@@ -74,9 +77,10 @@ export const DeactivateUserModal = ({
         {directoryManaged && (
           <div className="mb-4 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-sm space-y-3">
             <p>
-              This account is managed by <span className="font-semibold">{label}</span>
-              . The directory owns this account, and a future sync may
-              overwrite this change unless you override the ownership guard.
+              This account is managed by{" "}
+              <span className="font-semibold">{label}</span>. The directory owns
+              this account, and a future sync may overwrite this change unless
+              you override the ownership guard.
             </p>
             <Switch
               checked={adminOverride}

@@ -44,17 +44,30 @@ const base: ScimProvisioningStatus = {
 
 describe("ScimStatusPanel", () => {
   it("shows healthy, the last error message and per-token status", () => {
-    render(<ScimStatusPanel status={base} isLoading={false} error={null} onRetry={vi.fn()} />);
+    render(
+      <ScimStatusPanel
+        status={base}
+        isLoading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />,
+    );
     expect(screen.getByTestId("scim-health")).toHaveTextContent("Healthy");
     expect(screen.getByTestId("scim-last-error")).toHaveTextContent(
       "uniqueness: User alice already exists",
     );
     expect(screen.getByText("(2 failed)")).toBeInTheDocument();
-    expect(screen.getByText(/succeeded in the last 24 hours/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/succeeded in the last 24 hours/),
+    ).toBeInTheDocument();
     const entra = screen.getByTestId("scim-token-status-1");
     expect(within(entra).getByText("entra")).toBeInTheDocument();
-    expect(within(entra).getByText("uniqueness: User alice already exists")).toBeInTheDocument();
-    expect(screen.getByTestId("scim-token-status-2")).toHaveTextContent("(inactive)");
+    expect(
+      within(entra).getByText("uniqueness: User alice already exists"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("scim-token-status-2")).toHaveTextContent(
+      "(inactive)",
+    );
   });
 
   it("shows unhealthy", () => {
@@ -97,12 +110,24 @@ describe("ScimStatusPanel", () => {
   it("renders loading and error states", () => {
     const onRetry = vi.fn();
     const { rerender } = render(
-      <ScimStatusPanel status={null} isLoading error={null} onRetry={onRetry} />,
+      <ScimStatusPanel
+        status={null}
+        isLoading
+        error={null}
+        onRetry={onRetry}
+      />,
     );
-    expect(screen.getByText("Loading provisioning status...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Loading provisioning status..."),
+    ).toBeInTheDocument();
 
     rerender(
-      <ScimStatusPanel status={null} isLoading={false} error={new Error("x")} onRetry={onRetry} />,
+      <ScimStatusPanel
+        status={null}
+        isLoading={false}
+        error={new Error("x")}
+        onRetry={onRetry}
+      />,
     );
     fireEvent.click(screen.getByText("Retry"));
     expect(onRetry).toHaveBeenCalled();
@@ -110,7 +135,12 @@ describe("ScimStatusPanel", () => {
 
   it("renders nothing without data", () => {
     const { container } = render(
-      <ScimStatusPanel status={null} isLoading={false} error={null} onRetry={vi.fn()} />,
+      <ScimStatusPanel
+        status={null}
+        isLoading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />,
     );
     expect(container).toBeEmptyDOMElement();
   });

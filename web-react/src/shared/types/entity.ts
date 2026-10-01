@@ -42,7 +42,15 @@ export type PermissionType =
   | "prompts"
   | "ai-endpoints"
   | "ai-secrets"
-  | "ai-models";
+  | "ai-models"
+  | "mcp-servers";
+
+/** Permission types that also have regex (pattern) permissions. MCP servers have none. */
+export type RegexPermissionType = Exclude<PermissionType, "mcp-servers">;
+
+export const supportsRegexPermissions = (
+  type: PermissionType,
+): type is RegexPermissionType => type !== "mcp-servers";
 
 export type EntityPermission = {
   kind: PermissionKind;
@@ -181,6 +189,16 @@ export type GatewaySecretListItem = {
 export type GatewayModelListItem = {
   name: string;
   source: string;
+};
+
+// MCP server registry types
+export type McpServerListItem = {
+  name: string;
+  display_name?: string | null;
+  description?: string | null;
+  status?: string | null;
+  latest_version?: string | null;
+  workspace?: string | null;
 };
 
 // Workspace types

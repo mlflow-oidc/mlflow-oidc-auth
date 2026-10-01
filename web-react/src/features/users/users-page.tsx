@@ -204,8 +204,7 @@ function AdminUsersView() {
     [deactivatingUser, updateLocalUser, showToast],
   );
 
-  const mutedClass = (active: boolean) =>
-    active ? "" : "opacity-50";
+  const mutedClass = (active: boolean) => (active ? "" : "opacity-50");
 
   const columns: ColumnConfig<UserRow>[] = useMemo(
     () => [
@@ -234,7 +233,9 @@ function AdminUsersView() {
       },
       {
         header: "State",
-        render: (user) => <LifecycleBadge variant="state" active={user.active} />,
+        render: (user) => (
+          <LifecycleBadge variant="state" active={user.active} />
+        ),
       },
       {
         header: "Managed by",

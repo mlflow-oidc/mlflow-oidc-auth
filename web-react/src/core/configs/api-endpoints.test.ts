@@ -135,6 +135,36 @@ describe("API Endpoints", () => {
       );
     });
 
+    it("returns correct MCP server permission URLs, encoding the slash in the name", () => {
+      expect(STATIC_API_ENDPOINTS.ALL_MCP_SERVERS).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_USER_PERMISSIONS("com.example/weather"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/users",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_GROUP_PERMISSIONS("com.example/weather"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/groups",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSIONS("u1")).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION("u1", "com.example/w"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/mcp-servers/com.example%2Fw");
+      expect(DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSIONS("g1")).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/mcp-servers",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION("g1", "com.example/w"),
+      ).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/mcp-servers/com.example%2Fw",
+      );
+    });
+
     it("returns correct gateway user permissions URLs", () => {
       expect(
         DYNAMIC_API_ENDPOINTS.GATEWAY_ENDPOINT_USER_PERMISSIONS("endpoint1"),

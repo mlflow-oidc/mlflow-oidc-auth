@@ -29,7 +29,9 @@ const failed: ScimActivityEntry = {
   error: "A valid SCIM bearer token is required",
 };
 
-function renderTable(overrides: Partial<Parameters<typeof ScimActivityTable>[0]> = {}) {
+function renderTable(
+  overrides: Partial<Parameters<typeof ScimActivityTable>[0]> = {},
+) {
   const props = {
     entries: [ok, failed],
     outcome: null,
@@ -93,9 +95,17 @@ describe("ScimActivityTable", () => {
   });
 
   it("shows loading and error messages", () => {
-    renderTable({ entries: [], isLoading: true, error: new Error("x"), hasMore: true, isLoadingMore: true });
+    renderTable({
+      entries: [],
+      isLoading: true,
+      error: new Error("x"),
+      hasMore: true,
+      isLoadingMore: true,
+    });
     expect(screen.getByText("Loading activity...")).toBeInTheDocument();
-    expect(screen.getByText("Failed to load SCIM activity.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Failed to load SCIM activity."),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
   });
 });

@@ -3,7 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspaceDetailPage from "./workspace-detail-page";
 
-import type { WorkspaceUserPermission, WorkspaceGroupPermission, PermissionLevel } from "../../shared/types/entity";
+import type {
+  WorkspaceUserPermission,
+  WorkspaceGroupPermission,
+  PermissionLevel,
+} from "../../shared/types/entity";
 import type { Mock } from "vitest";
 
 const mockNavigate = vi.fn();
@@ -16,9 +20,8 @@ vi.mock("react-router", () => ({
   },
 }));
 
-const mockUseRuntimeConfig: Mock<
-  () => { workspaces_enabled: boolean }
-> = vi.fn();
+const mockUseRuntimeConfig: Mock<() => { workspaces_enabled: boolean }> =
+  vi.fn();
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
   useRuntimeConfig: () => mockUseRuntimeConfig(),
@@ -60,15 +63,24 @@ vi.mock("../../core/hooks/use-workspace-groups", () => ({
 }));
 
 vi.mock("../../core/hooks/use-all-users", () => ({
-  useAllUsers: () => ({ allUsers: ["alice", "bob", "newuser"], isLoading: false }),
+  useAllUsers: () => ({
+    allUsers: ["alice", "bob", "newuser"],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-all-accounts", () => ({
-  useAllServiceAccounts: () => ({ allServiceAccounts: ["svc-build", "svc-deploy"], isLoading: false }),
+  useAllServiceAccounts: () => ({
+    allServiceAccounts: ["svc-build", "svc-deploy"],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-all-groups", () => ({
-  useAllGroups: () => ({ allGroups: ["admins", "viewers", "newgroup"], isLoading: false }),
+  useAllGroups: () => ({
+    allGroups: ["admins", "viewers", "newgroup"],
+    isLoading: false,
+  }),
 }));
 
 vi.mock("../../core/hooks/use-user", () => ({
@@ -97,15 +109,25 @@ vi.mock("../../core/services/api-utils", () => ({
 
 vi.mock("../../core/configs/api-endpoints", () => ({
   DYNAMIC_API_ENDPOINTS: {
-    WORKSPACE_USERS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users`,
-    WORKSPACE_GROUPS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups`,
-    WORKSPACE_USER: (workspace: string, username: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users/${username}`,
-    WORKSPACE_GROUP: (workspace: string, groupName: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups/${groupName}`,
+    WORKSPACE_USERS: (workspace: string) =>
+      `/api/3.0/mlflow/permissions/workspaces/${workspace}/users`,
+    WORKSPACE_GROUPS: (workspace: string) =>
+      `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups`,
+    WORKSPACE_USER: (workspace: string, username: string) =>
+      `/api/3.0/mlflow/permissions/workspaces/${workspace}/users/${username}`,
+    WORKSPACE_GROUP: (workspace: string, groupName: string) =>
+      `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups/${groupName}`,
   },
 }));
 
 vi.mock("../../shared/components/page/page-container", () => ({
-  default: ({ children, title }: { children: React.ReactNode; title: string }) => (
+  default: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
     <div data-testid="page-container" title={title}>
       {children}
     </div>
@@ -113,7 +135,13 @@ vi.mock("../../shared/components/page/page-container", () => ({
 }));
 
 vi.mock("../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: { isLoading: boolean; error: Error | null }) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -121,7 +149,13 @@ vi.mock("../../shared/components/page/page-status", () => ({
 }));
 
 vi.mock("../../shared/components/modal", () => ({
-  Modal: ({ children, title }: { children: React.ReactNode; title: string }) => (
+  Modal: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
     <div data-testid="modal" title={title}>
       {children}
     </div>
@@ -141,7 +175,17 @@ vi.mock("../../shared/components/icon-button", () => ({
 }));
 
 vi.mock("../../shared/components/button", () => ({
-  Button: ({ children, onClick, disabled, title }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; title?: string }) => (
+  Button: ({
+    children,
+    onClick,
+    disabled,
+    title,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+    title?: string;
+  }) => (
     <button onClick={onClick} disabled={disabled} title={title}>
       {children}
     </button>
@@ -170,7 +214,10 @@ vi.mock("../permissions/components/grant-permission-modal", () => ({
     isOpen ? (
       <div data-testid={`grant-modal-${label}`} title={title}>
         <span data-testid="grant-modal-options">{options.join(",")}</span>
-        <button data-testid={`grant-save-${label}`} onClick={() => void onSave(options[0], "READ")}>
+        <button
+          data-testid={`grant-save-${label}`}
+          onClick={() => void onSave(options[0], "READ")}
+        >
           Save
         </button>
       </div>
@@ -216,14 +263,25 @@ describe("WorkspaceDetailPage", () => {
   it("renders workspace name in title", () => {
     render(<WorkspaceDetailPage />);
 
-    expect(screen.getByTestId("page-container")).toHaveAttribute("title", "Permissions for Workspace test-workspace");
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Permissions for Workspace test-workspace",
+    );
   });
 
   it("renders user members with permissions", () => {
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [
-        { workspace: "test-workspace", username: "alice", permission: "MANAGE" as PermissionLevel },
-        { workspace: "test-workspace", username: "bob", permission: "READ" as PermissionLevel },
+        {
+          workspace: "test-workspace",
+          username: "alice",
+          permission: "MANAGE" as PermissionLevel,
+        },
+        {
+          workspace: "test-workspace",
+          username: "bob",
+          permission: "READ" as PermissionLevel,
+        },
       ],
       isLoading: false,
       error: null,
@@ -242,8 +300,16 @@ describe("WorkspaceDetailPage", () => {
   it("renders group members with permissions", () => {
     mockUseWorkspaceGroups.mockReturnValue({
       workspaceGroups: [
-        { workspace: "test-workspace", group_name: "admins", permission: "MANAGE" as PermissionLevel },
-        { workspace: "test-workspace", group_name: "viewers", permission: "READ" as PermissionLevel },
+        {
+          workspace: "test-workspace",
+          group_name: "admins",
+          permission: "MANAGE" as PermissionLevel,
+        },
+        {
+          workspace: "test-workspace",
+          group_name: "viewers",
+          permission: "READ" as PermissionLevel,
+        },
       ],
       isLoading: false,
       error: null,
@@ -298,7 +364,9 @@ describe("WorkspaceDetailPage", () => {
 
     fireEvent.click(screen.getByText("+ Add Service Account"));
 
-    expect(screen.getByTestId("grant-modal-Service Account")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("grant-modal-Service Account"),
+    ).toBeInTheDocument();
   });
 
   it("opens grant group modal on add group click", () => {
@@ -311,7 +379,13 @@ describe("WorkspaceDetailPage", () => {
 
   it("filters available users by excluding already-assigned members", () => {
     mockUseWorkspaceUsers.mockReturnValue({
-      workspaceUsers: [{ workspace: "test-workspace", username: "alice", permission: "MANAGE" as PermissionLevel }],
+      workspaceUsers: [
+        {
+          workspace: "test-workspace",
+          username: "alice",
+          permission: "MANAGE" as PermissionLevel,
+        },
+      ],
       isLoading: false,
       error: null,
       refresh: vi.fn(),
@@ -390,7 +464,9 @@ describe("WorkspaceDetailPage", () => {
     fireEvent.click(screen.getByText("Bulk Assign Users"));
 
     expect(screen.getByTestId("bulk-assign-modal")).toBeInTheDocument();
-    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent("Bulk Assign Users");
+    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent(
+      "Bulk Assign Users",
+    );
   });
 
   it("opens bulk assign groups modal on click", () => {
@@ -400,7 +476,9 @@ describe("WorkspaceDetailPage", () => {
     fireEvent.click(screen.getByText("Bulk Assign Groups"));
 
     expect(screen.getByTestId("bulk-assign-modal")).toBeInTheDocument();
-    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent("Bulk Assign Groups");
+    expect(screen.getByTestId("bulk-assign-modal")).toHaveTextContent(
+      "Bulk Assign Groups",
+    );
   });
 
   it("redirects to home when workspaces are disabled", () => {
@@ -414,7 +492,11 @@ describe("WorkspaceDetailPage", () => {
     mockIsAdmin = false;
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [
-        { workspace: "test-workspace", username: "admin", permission: "READ" as PermissionLevel },
+        {
+          workspace: "test-workspace",
+          username: "admin",
+          permission: "READ" as PermissionLevel,
+        },
       ],
       isLoading: false,
       error: null,
@@ -432,7 +514,11 @@ describe("WorkspaceDetailPage", () => {
     mockIsAdmin = false;
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [
-        { workspace: "test-workspace", username: "admin", permission: "MANAGE" as PermissionLevel },
+        {
+          workspace: "test-workspace",
+          username: "admin",
+          permission: "MANAGE" as PermissionLevel,
+        },
       ],
       isLoading: false,
       error: null,
@@ -458,7 +544,11 @@ describe("WorkspaceDetailPage", () => {
     });
     mockUseWorkspaceGroups.mockReturnValue({
       workspaceGroups: [
-        { workspace: "test-workspace", group_name: "team-alpha", permission: "MANAGE" as PermissionLevel },
+        {
+          workspace: "test-workspace",
+          group_name: "team-alpha",
+          permission: "MANAGE" as PermissionLevel,
+        },
       ],
       isLoading: false,
       error: null,

@@ -26,7 +26,10 @@ const headClass = "py-2 px-3 font-medium";
  * A user's live sessions with per-session and revoke-all actions (issue #325). Every revoke
  * asks for confirmation first; the list is re-read from the server after each one.
  */
-export function UserSessionsModal({ username, onClose }: UserSessionsModalProps) {
+export function UserSessionsModal({
+  username,
+  onClose,
+}: UserSessionsModalProps) {
   const { sessions, isLoading, error, refresh } = useUserSessions(username);
   const { showToast } = useToast();
   const [pending, setPending] = useState<PendingRevoke | null>(null);
@@ -43,7 +46,10 @@ export function UserSessionsModal({ username, onClose }: UserSessionsModalProps)
     try {
       if (pending.kind === "one") {
         await revokeUserSession(username, pending.session.pk);
-        showToast(`Session ${pending.session.session_id_prefix}… revoked`, "success");
+        showToast(
+          `Session ${pending.session.session_id_prefix}… revoked`,
+          "success",
+        );
       } else {
         const { revoked } = await revokeAllUserSessions(username);
         showToast(
@@ -108,11 +114,19 @@ export function UserSessionsModal({ username, onClose }: UserSessionsModalProps)
                     data-testid={`session-${session.pk}`}
                     className="border-b border-ui-border dark:border-ui-border-dark"
                   >
-                    <td className={`${cellClass} font-mono`}>{session.session_id_prefix}…</td>
+                    <td className={`${cellClass} font-mono`}>
+                      {session.session_id_prefix}…
+                    </td>
                     <td className={cellClass}>{session.provider_id ?? "-"}</td>
-                    <td className={cellClass}>{formatDateTime(session.created_at)}</td>
-                    <td className={cellClass}>{formatDateTime(session.last_seen_at)}</td>
-                    <td className={cellClass}>{formatDateTime(session.expires_at)}</td>
+                    <td className={cellClass}>
+                      {formatDateTime(session.created_at)}
+                    </td>
+                    <td className={cellClass}>
+                      {formatDateTime(session.last_seen_at)}
+                    </td>
+                    <td className={cellClass}>
+                      {formatDateTime(session.expires_at)}
+                    </td>
                     <td className={cellClass}>
                       <Button
                         variant="danger"
@@ -142,7 +156,11 @@ export function UserSessionsModal({ username, onClose }: UserSessionsModalProps)
                 : `Revoke all ${sessions.length} sessions of ${username}? They will be signed out everywhere.`}
             </p>
             <div className="flex justify-end space-x-3">
-              <Button variant="ghost" onClick={() => setPending(null)} disabled={isProcessing}>
+              <Button
+                variant="ghost"
+                onClick={() => setPending(null)}
+                disabled={isProcessing}
+              >
                 Cancel
               </Button>
               <Button

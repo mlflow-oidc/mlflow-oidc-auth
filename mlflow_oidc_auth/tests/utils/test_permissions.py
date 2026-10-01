@@ -425,9 +425,10 @@ class TestPermissions(unittest.TestCase):
 class TestResolvePermission(unittest.TestCase):
     """Tests for resolve_permission() and PERMISSION_REGISTRY."""
 
-    def test_registry_has_seven_entries(self) -> None:
-        """PERMISSION_REGISTRY should contain exactly 7 resource types."""
-        self.assertEqual(len(PERMISSION_REGISTRY), 7)
+    def test_registry_has_eight_entries(self) -> None:
+        """PERMISSION_REGISTRY should contain exactly 8 resource types."""
+        self.assertEqual(len(PERMISSION_REGISTRY), 8)
+        self.assertIn("mcp_server", PERMISSION_REGISTRY)
         self.assertIn("experiment", PERMISSION_REGISTRY)
         self.assertIn("registered_model", PERMISSION_REGISTRY)
         self.assertIn("prompt", PERMISSION_REGISTRY)

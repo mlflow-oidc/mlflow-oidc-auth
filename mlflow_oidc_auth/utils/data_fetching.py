@@ -342,3 +342,37 @@ def fetch_all_gateway_model_definitions() -> List[Dict[str, Any]]:
             all_models.append(model)
 
     return all_models
+
+
+def fetch_all_mcp_servers() -> List[Dict[str, Any]]:
+    """Fetch every MCP server of the request's workspace from MLflow's MCP server registry.
+
+    The registry exists from MLflow 3.15; on an older MLflow there is nothing to list.
+
+    Returns:
+        One dictionary per server with ``name``, ``display_name``, ``description``, ``status``,
+        ``latest_version`` and ``workspace``.
+    """
+    store = _get_tracking_store()
+    if not hasattr(store, "search_mcp_servers"):
+        return []
+    servers: List[Dict[str, Any]] = []
+    page_token = None
+    while True:
+        page = store.search_mcp_servers(max_results=1000, page_token=page_token)
+        for server in page:
+            status = getattr(server, "status", None)
+            servers.append(
+                {
+                    "name": server.name,
+                    "display_name": getattr(server, "display_name", None),
+                    "description": getattr(server, "description", None),
+                    "status": str(status) if status is not None else None,
+                    "latest_version": getattr(server, "latest_version", None),
+                    "workspace": getattr(server, "workspace", None),
+                }
+            )
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            break
+    return servers

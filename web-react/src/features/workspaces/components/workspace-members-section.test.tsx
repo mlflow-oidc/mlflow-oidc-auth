@@ -12,7 +12,13 @@ vi.mock("../../../shared/components/toast/use-toast", () => ({
 }));
 
 vi.mock("../../../shared/components/page/page-status", () => ({
-  default: ({ isLoading, error }: { isLoading: boolean; error: Error | null }) => {
+  default: ({
+    isLoading,
+    error,
+  }: {
+    isLoading: boolean;
+    error: Error | null;
+  }) => {
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div>Error</div>;
     return null;
@@ -20,7 +26,13 @@ vi.mock("../../../shared/components/page/page-status", () => ({
 }));
 
 vi.mock("../../../shared/components/modal", () => ({
-  Modal: ({ children, title }: { children: React.ReactNode; title: string }) => (
+  Modal: ({
+    children,
+    title,
+  }: {
+    children: React.ReactNode;
+    title: string;
+  }) => (
     <div data-testid="modal" title={title}>
       {children}
     </div>
@@ -40,7 +52,15 @@ vi.mock("../../../shared/components/icon-button", () => ({
 }));
 
 vi.mock("../../../shared/components/button", () => ({
-  Button: ({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) => (
+  Button: ({
+    children,
+    onClick,
+    disabled,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    disabled?: boolean;
+  }) => (
     <button onClick={onClick} disabled={disabled}>
       {children}
     </button>
@@ -137,8 +157,12 @@ describe("WorkspaceMembersSection", () => {
       />,
     );
 
-    expect(screen.queryByTestId("icon-button-Edit permission")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("icon-button-Remove member")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("icon-button-Edit permission"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("icon-button-Remove member"),
+    ).not.toBeInTheDocument();
   });
 
   it("hides Actions column header when canManage is false", () => {
@@ -146,9 +170,7 @@ describe("WorkspaceMembersSection", () => {
       <WorkspaceMembersSection
         {...defaultProps}
         canManage={false}
-        members={[
-          { name: "alice", permission: "MANAGE" },
-        ]}
+        members={[{ name: "alice", permission: "MANAGE" }]}
       />,
     );
 
@@ -163,9 +185,7 @@ describe("WorkspaceMembersSection", () => {
       <WorkspaceMembersSection
         {...defaultProps}
         canManage={true}
-        members={[
-          { name: "alice", permission: "MANAGE" },
-        ]}
+        members={[{ name: "alice", permission: "MANAGE" }]}
       />,
     );
 

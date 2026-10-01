@@ -17,7 +17,7 @@ import * as useGroupGatewaySecretPatternPermissions from "../../../core/hooks/us
 import * as useUserGatewayModelPatternPermissions from "../../../core/hooks/use-user-gateway-model-pattern-permissions";
 import * as useGroupGatewayModelPatternPermissions from "../../../core/hooks/use-group-gateway-model-pattern-permissions";
 import type {
-  PermissionType,
+  RegexPermissionType,
   ExperimentPatternPermission,
   ModelPatternPermission,
 } from "../../../shared/types/entity";
@@ -211,7 +211,7 @@ describe("RegexPermissionsView", () => {
     });
   });
 
-  const types: PermissionType[] = [
+  const types: RegexPermissionType[] = [
     "experiments",
     "models",
     "prompts",
@@ -220,7 +220,7 @@ describe("RegexPermissionsView", () => {
     "ai-models",
   ];
 
-  const getUrlPart = (type: PermissionType) => {
+  const getUrlPart = (type: RegexPermissionType) => {
     if (type === "experiments") return "experiment-patterns";
     if (type === "models") return "registered-models-patterns";
     if (type === "prompts") return "prompts-patterns";

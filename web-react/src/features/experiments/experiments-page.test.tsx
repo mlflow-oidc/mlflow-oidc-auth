@@ -35,7 +35,8 @@ const mockUsePagedList = vi.fn();
 vi.mock("../../core/hooks/use-paged-list", () => ({
   usePagedList: (fetchPage: unknown, search = "") => {
     mockUsePagedList(fetchPage, search);
-    const { allExperiments, isLoading, error, refresh } = mockUseAllExperiments();
+    const { allExperiments, isLoading, error, refresh } =
+      mockUseAllExperiments();
     return pagedListState(
       (allExperiments ?? []).filter((item: ExperimentListItem) =>
         item.name.toLowerCase().includes(search.toLowerCase()),
@@ -189,7 +190,10 @@ describe("ExperimentsPage", () => {
     });
 
     renderPage();
-    expect(mockUsePagedList).toHaveBeenCalledWith(fetchExperimentsPage, "Exp 1");
+    expect(mockUsePagedList).toHaveBeenCalledWith(
+      fetchExperimentsPage,
+      "Exp 1",
+    );
     expect(screen.getByText("Exp 1")).toBeInTheDocument();
     expect(screen.queryByText("Exp 2")).not.toBeInTheDocument();
   });

@@ -28,7 +28,9 @@ export default function WorkspaceDetailPage() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isAddAccountModalOpen, setIsAddAccountModalOpen] = useState(false);
   const [isAddGroupModalOpen, setIsAddGroupModalOpen] = useState(false);
-  const [bulkAssignTarget, setBulkAssignTarget] = useState<"users" | "groups" | null>(null);
+  const [bulkAssignTarget, setBulkAssignTarget] = useState<
+    "users" | "groups" | null
+  >(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Fetch workspace members
@@ -58,20 +60,41 @@ export default function WorkspaceDetailPage() {
 
   // Compute available options (filter out already-assigned)
   const existingUsernames = new Set(workspaceUsers.map((wu) => wu.username));
-  const existingGroupNames = new Set(workspaceGroups.map((wg) => wg.group_name));
+  const existingGroupNames = new Set(
+    workspaceGroups.map((wg) => wg.group_name),
+  );
 
-  const availableUsers = (allUsers || []).filter((u) => !existingUsernames.has(u));
-  const availableAccounts = (allServiceAccounts || []).filter((u) => !existingUsernames.has(u));
-  const availableGroups = (allGroups || []).filter((g) => !existingGroupNames.has(g));
+  const availableUsers = (allUsers || []).filter(
+    (u) => !existingUsernames.has(u),
+  );
+  const availableAccounts = (allServiceAccounts || []).filter(
+    (u) => !existingUsernames.has(u),
+  );
+  const availableGroups = (allGroups || []).filter(
+    (g) => !existingGroupNames.has(g),
+  );
 
   // Derive canManage: admin OR user has direct MANAGE OR user's group has MANAGE
-  const userGroupNames = new Set((currentUser?.groups ?? []).map((g) => g.group_name));
+  const userGroupNames = new Set(
+    (currentUser?.groups ?? []).map((g) => g.group_name),
+  );
   const canManage =
     isAdmin ||
-    workspaceUsers.some((wu) => wu.username === currentUser?.username && wu.permission === "MANAGE") ||
-    workspaceGroups.some((wg) => wg.group_name && userGroupNames.has(wg.group_name) && wg.permission === "MANAGE");
+    workspaceUsers.some(
+      (wu) =>
+        wu.username === currentUser?.username && wu.permission === "MANAGE",
+    ) ||
+    workspaceGroups.some(
+      (wg) =>
+        wg.group_name &&
+        userGroupNames.has(wg.group_name) &&
+        wg.permission === "MANAGE",
+    );
 
-  const handleGrantUser = async (name: string, permission: PermissionLevel): Promise<boolean> => {
+  const handleGrantUser = async (
+    name: string,
+    permission: PermissionLevel,
+  ): Promise<boolean> => {
     try {
       await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USERS(workspaceName), {
         method: "POST",
@@ -86,7 +109,10 @@ export default function WorkspaceDetailPage() {
     }
   };
 
-  const handleUpdateUser = async (name: string, permission: PermissionLevel): Promise<void> => {
+  const handleUpdateUser = async (
+    name: string,
+    permission: PermissionLevel,
+  ): Promise<void> => {
     try {
       await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USER(workspaceName, name), {
         method: "PATCH",
@@ -111,7 +137,10 @@ export default function WorkspaceDetailPage() {
     }
   };
 
-  const handleGrantGroup = async (name: string, permission: PermissionLevel): Promise<boolean> => {
+  const handleGrantGroup = async (
+    name: string,
+    permission: PermissionLevel,
+  ): Promise<boolean> => {
     try {
       await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUPS(workspaceName), {
         method: "POST",
@@ -126,12 +155,18 @@ export default function WorkspaceDetailPage() {
     }
   };
 
-  const handleUpdateGroup = async (name: string, permission: PermissionLevel): Promise<void> => {
+  const handleUpdateGroup = async (
+    name: string,
+    permission: PermissionLevel,
+  ): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name), {
-        method: "PATCH",
-        body: JSON.stringify({ group_name: name, permission }),
-      });
+      await request(
+        DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name),
+        {
+          method: "PATCH",
+          body: JSON.stringify({ group_name: name, permission }),
+        },
+      );
       showToast(`Permission for ${name} has been updated`, "success");
       refreshGroups();
     } catch {
@@ -141,9 +176,12 @@ export default function WorkspaceDetailPage() {
 
   const handleRemoveGroup = async (name: string): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name), {
-        method: "DELETE",
-      });
+      await request(
+        DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name),
+        {
+          method: "DELETE",
+        },
+      );
       showToast(`Permission for ${name} has been removed`, "success");
       refreshGroups();
     } catch {
@@ -170,7 +208,11 @@ export default function WorkspaceDetailPage() {
             variant="secondary"
             onClick={() => setIsAddUserModalOpen(true)}
             disabled={availableUsers.length === 0}
-            title={availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
+            title={
+              availableUsers.length === 0
+                ? "All users already have permissions"
+                : "Add user permission"
+            }
           >
             + Add User
           </Button>
@@ -178,12 +220,19 @@ export default function WorkspaceDetailPage() {
             variant="secondary"
             onClick={() => setIsAddAccountModalOpen(true)}
             disabled={availableAccounts.length === 0}
-            title={availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
+            title={
+              availableAccounts.length === 0
+                ? "All service accounts already have permissions"
+                : "Add service account permission"
+            }
           >
             + Add Service Account
           </Button>
           {isAdmin && (
-            <Button variant="secondary" onClick={() => setBulkAssignTarget("users")}>
+            <Button
+              variant="secondary"
+              onClick={() => setBulkAssignTarget("users")}
+            >
               Bulk Assign Users
             </Button>
           )}
@@ -209,12 +258,19 @@ export default function WorkspaceDetailPage() {
             variant="secondary"
             onClick={() => setIsAddGroupModalOpen(true)}
             disabled={availableGroups.length === 0}
-            title={availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
+            title={
+              availableGroups.length === 0
+                ? "All groups already have permissions"
+                : "Add group permission"
+            }
           >
             + Add Group
           </Button>
           {isAdmin && (
-            <Button variant="secondary" onClick={() => setBulkAssignTarget("groups")}>
+            <Button
+              variant="secondary"
+              onClick={() => setBulkAssignTarget("groups")}
+            >
               Bulk Assign Groups
             </Button>
           )}

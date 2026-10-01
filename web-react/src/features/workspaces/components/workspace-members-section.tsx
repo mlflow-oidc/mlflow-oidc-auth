@@ -32,11 +32,17 @@ export default function WorkspaceMembersSection({
   canManage,
 }: WorkspaceMembersSectionProps) {
   const { showToast } = useToast();
-  const [editingMember, setEditingMember] = useState<{ name: string; permission: PermissionLevel } | null>(null);
+  const [editingMember, setEditingMember] = useState<{
+    name: string;
+    permission: PermissionLevel;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editPermission, setEditPermission] = useState<PermissionLevel>("READ");
 
-  const handleEditClick = (member: { name: string; permission: PermissionLevel }) => {
+  const handleEditClick = (member: {
+    name: string;
+    permission: PermissionLevel;
+  }) => {
     setEditingMember(member);
     setEditPermission(member.permission);
   };
@@ -68,33 +74,61 @@ export default function WorkspaceMembersSection({
         </h2>
       </div>
 
-      <PageStatus isLoading={isLoading} loadingText={`Loading ${title.toLowerCase()}...`} error={error} onRetry={onRefresh} />
+      <PageStatus
+        isLoading={isLoading}
+        loadingText={`Loading ${title.toLowerCase()}...`}
+        error={error}
+        onRetry={onRefresh}
+      />
 
       {!isLoading && !error && (
         <>
           {members.length === 0 ? (
-            <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60">No {title.toLowerCase()} assigned.</p>
+            <p className="text-sm text-ui-text dark:text-ui-text-dark opacity-60">
+              No {title.toLowerCase()} assigned.
+            </p>
           ) : (
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="border-b border-ui-border dark:border-ui-border-dark">
-                  <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">{nameLabel}</th>
-                  <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">Permission</th>
+                  <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">
+                    {nameLabel}
+                  </th>
+                  <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark">
+                    Permission
+                  </th>
                   {canManage && (
-                    <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark w-24">Actions</th>
+                    <th className="py-2 px-3 font-medium text-ui-text dark:text-ui-text-dark w-24">
+                      Actions
+                    </th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {members.map((member) => (
-                  <tr key={member.name} className="border-b border-ui-border dark:border-ui-border-dark">
-                    <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.name}</td>
-                    <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">{member.permission}</td>
+                  <tr
+                    key={member.name}
+                    className="border-b border-ui-border dark:border-ui-border-dark"
+                  >
+                    <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">
+                      {member.name}
+                    </td>
+                    <td className="py-2 px-3 text-ui-text dark:text-ui-text-dark">
+                      {member.permission}
+                    </td>
                     {canManage && (
                       <td className="py-2 px-3">
                         <div className="flex space-x-2">
-                          <IconButton icon={faEdit} title="Edit permission" onClick={() => handleEditClick(member)} />
-                          <IconButton icon={faTrash} title="Remove member" onClick={() => void handleRemove(member.name)} />
+                          <IconButton
+                            icon={faEdit}
+                            title="Edit permission"
+                            onClick={() => handleEditClick(member)}
+                          />
+                          <IconButton
+                            icon={faTrash}
+                            title="Remove member"
+                            onClick={() => void handleRemove(member.name)}
+                          />
                         </div>
                       </td>
                     )}
@@ -107,9 +141,15 @@ export default function WorkspaceMembersSection({
       )}
 
       {editingMember && (
-        <Modal isOpen={!!editingMember} onClose={() => setEditingMember(null)} title={`Edit Permission for ${editingMember.name}`}>
+        <Modal
+          isOpen={!!editingMember}
+          onClose={() => setEditingMember(null)}
+          title={`Edit Permission for ${editingMember.name}`}
+        >
           <div className="mb-4">
-            <label className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">{nameLabel}</label>
+            <label className="block text-sm font-medium text-text-primary dark:text-text-primary-dark mb-1">
+              {nameLabel}
+            </label>
             <input
               type="text"
               value={editingMember.name}
@@ -118,13 +158,28 @@ export default function WorkspaceMembersSection({
             />
           </div>
 
-          <PermissionLevelSelect id="edit-permission-level" label="Permission" value={editPermission} onChange={(val) => setEditPermission(val)} required containerClassName="mb-4" />
+          <PermissionLevelSelect
+            id="edit-permission-level"
+            label="Permission"
+            value={editPermission}
+            onChange={(val) => setEditPermission(val)}
+            required
+            containerClassName="mb-4"
+          />
 
           <div className="flex justify-end space-x-3">
-            <Button onClick={() => setEditingMember(null)} variant="ghost" disabled={isSaving}>
+            <Button
+              onClick={() => setEditingMember(null)}
+              variant="ghost"
+              disabled={isSaving}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void handleEditSave()} variant="primary" disabled={isSaving}>
+            <Button
+              onClick={() => void handleEditSave()}
+              variant="primary"
+              disabled={isSaving}
+            >
               {isSaving ? "Saving..." : "Save"}
             </Button>
           </div>

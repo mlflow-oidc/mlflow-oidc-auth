@@ -15,6 +15,7 @@ describe("useGrantWorkspaceScope", () => {
     "ai-endpoints",
     "ai-secrets",
     "ai-models",
+    "mcp-servers",
   ])("%s grants belong to the selected workspace", (type) => {
     const { result } = renderHook(() => useGrantWorkspaceScope(type), {
       wrapper: workspaceScopeWrapper(true, "team-a"),

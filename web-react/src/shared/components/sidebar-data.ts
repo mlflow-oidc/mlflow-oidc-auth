@@ -14,6 +14,7 @@ import {
   faBuilding,
   faPlug,
   faSitemap,
+  faServer,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -52,6 +53,13 @@ export const getSidebarData = (
       href: "/models",
       isInternalLink: true,
       icon: faHexagonNodes,
+    },
+    // MLflow's MCP server registry: not part of the AI gateway, so not behind its flag.
+    {
+      label: "MCP Servers",
+      href: "/mcp-servers",
+      isInternalLink: true,
+      icon: faServer,
     },
   ];
 

@@ -5,6 +5,39 @@ describe("getPermissionUrl", () => {
   const entityName = "testEntity";
   const identifier = "testId";
 
+  describe("MCP server permissions", () => {
+    it("generates user and group MCP server URLs", () => {
+      expect(
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "mcp-servers",
+          identifier: "com.example/weather",
+        }),
+      ).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/mcp-servers/com.example%2Fweather`,
+      );
+      expect(
+        getPermissionUrl({
+          entityKind: "group",
+          entityName,
+          type: "mcp-servers",
+        }),
+      ).toBe(`/api/2.0/mlflow/permissions/groups/${entityName}/mcp-servers`);
+    });
+
+    it("refuses pattern URLs: MCP servers have no pattern API", () => {
+      expect(() =>
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "mcp-servers",
+          isPattern: true,
+        }),
+      ).toThrow();
+    });
+  });
+
   describe("Normal Permissions", () => {
     it("generates user experiment permission URL", () => {
       const url = getPermissionUrl({

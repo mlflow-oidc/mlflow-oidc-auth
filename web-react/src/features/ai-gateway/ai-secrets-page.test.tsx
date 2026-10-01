@@ -15,12 +15,13 @@ const mockUsePagedList = vi.fn();
 vi.mock("../../core/hooks/use-paged-list", () => ({
   usePagedList: (fetchPage: unknown, search = "") => {
     mockUsePagedList(fetchPage, search);
-    const { allGatewaySecrets, isLoading, error, refresh } = mockListSource() as {
-      allGatewaySecrets: { key: string }[] | null;
-      isLoading: boolean;
-      error: Error | null;
-      refresh: () => void;
-    };
+    const { allGatewaySecrets, isLoading, error, refresh } =
+      mockListSource() as {
+        allGatewaySecrets: { key: string }[] | null;
+        isLoading: boolean;
+        error: Error | null;
+        refresh: () => void;
+      };
     return pagedListState(
       (allGatewaySecrets ?? []).filter((item: { key: string }) =>
         item.key.toLowerCase().includes(search.toLowerCase()),
