@@ -221,7 +221,19 @@ def test_every_job_mlflow_allows_is_classified():
     assert set(_ALLOWED_JOB_NAME_LIST) <= set(_JOB_CHECKS)
 
 
+#: Parameters a job function gained in an MLflow release after the supported floor (3.16.0). The
+#: validator declares them so that newer MLflow's jobs are not refused; on the floor the job
+#: function does not take them, and a submission carrying one fails in MLflow, not here.
+_ADDED_AFTER_FLOOR = {
+    # MLflow 3.16.1
+    "invoke_scorer": {"scorer_version"},
+    "invoke_genai_evaluate": {"experiment_id", "scorer_versions"},
+}
+
+
 def test_declared_params_match_the_job_function_signatures():
+    """Every parameter the installed job function takes is declared (else real jobs are refused),
+    and a declared one it does not take is a known later addition (else the list has drifted)."""
     import inspect
 
     from mlflow.server.jobs.utils import _load_function, get_job_fn_fullname
@@ -230,4 +242,6 @@ def test_declared_params_match_the_job_function_signatures():
 
     for job_name, (declared, _check) in _JOB_CHECKS.items():
         fn = _load_function(get_job_fn_fullname(job_name))
-        assert declared == set(inspect.signature(fn).parameters), job_name
+        accepted = set(inspect.signature(fn).parameters)
+        assert accepted <= declared, (job_name, accepted - declared)
+        assert declared - accepted <= _ADDED_AFTER_FLOOR.get(job_name, set()), (job_name, declared - accepted)
