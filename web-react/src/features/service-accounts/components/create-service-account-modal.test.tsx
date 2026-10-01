@@ -92,6 +92,41 @@ describe("CreateServiceAccountModal", () => {
     );
   });
 
+  it("asks for the subject of an external administrator account", () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+        sources={[
+          {
+            id: "internal",
+            display_name: "Internal (issued access tokens only)",
+            type: "internal",
+          },
+          { id: "ci", display_name: "CI workloads", type: "oidc" },
+        ]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Service Account Name/i), {
+      target: { value: "root-bot" },
+    });
+    fireEvent.click(screen.getByLabelText(/Grant Admin Privileges/i));
+    fireEvent.change(screen.getByLabelText("Signs in with"), {
+      target: { value: "ci" },
+    });
+
+    expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "needs its subject now",
+    );
+
+    fireEvent.change(screen.getByLabelText("Subject (optional)"), {
+      target: { value: "client-root" },
+    });
+    expect(screen.getByRole("button", { name: /Save/i })).toBeEnabled();
+  });
+
   it("allows manual display name change", () => {
     render(
       <CreateServiceAccountModal

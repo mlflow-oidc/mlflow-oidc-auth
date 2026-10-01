@@ -69,7 +69,11 @@ export const CreateServiceAccountModal: React.FC<
     onClose();
   };
 
-  const isFormValid = name.trim() !== "" && displayName.trim() !== "";
+  // An external administrator account is bound to its subject now: no first token binds one.
+  const needsSubject =
+    isAdmin && source !== INTERNAL_SOURCE && subject.trim() === "";
+  const isFormValid =
+    name.trim() !== "" && displayName.trim() !== "" && !needsSubject;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create Service Account">
@@ -118,6 +122,13 @@ export const CreateServiceAccountModal: React.FC<
           Grant Admin Privileges
         </label>
       </div>
+
+      {needsSubject && (
+        <p role="alert" className="text-sm text-amber-800 dark:text-amber-200">
+          An administrator service account signing in through a provider needs
+          its subject now.
+        </p>
+      )}
 
       <div className="flex justify-end space-x-3 pt-4 border-t border-ui-secondary-bg dark:border-ui-secondary-bg-dark">
         <Button onClick={onClose} variant="ghost">
