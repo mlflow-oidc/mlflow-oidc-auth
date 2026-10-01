@@ -164,9 +164,17 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # ---------------------------------------------------------------------------
 
 
-def _match_regex_permission(regexes, name: str, label: str) -> str:
-    """Generic regex matcher for any resource type. Replaces 8 near-identical functions."""
+def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
+    """Generic regex matcher for any resource type. Replaces 8 near-identical functions.
+
+    Only patterns that apply in the resource's workspace count — ``workspace``, or the request's
+    grant workspace when omitted (see ``utils/grant_workspace.pattern_in_scope``).
+    """
+    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
+
     for regex in regexes:
+        if not pattern_in_scope(regex, workspace):
+            continue
         if re.match(regex.regex, name):
             logger.debug(f"Regex permission found for {label} {name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
             return regex.permission

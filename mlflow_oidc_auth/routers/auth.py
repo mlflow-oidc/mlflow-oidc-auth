@@ -1282,6 +1282,7 @@ def _provision_login(
         derived_username=username,
         user_exists=store.has_user,
         providers_bound_to=_providers_bound_to,
+        providers_in_domain=lambda domain: store.user_identity_repo.providers_in_email_domain(domain),
     )
     if not outcome.allowed:
         logger.warning("Refusing login via provider '%s': %s", provider.id, outcome.reason)

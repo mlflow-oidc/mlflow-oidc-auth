@@ -93,9 +93,8 @@ Regex permissions use Python regular expression syntax to match resource names b
 1. Patterns are ordered by **priority** (lower number = checked first)
 2. The **first matching pattern** determines the permission
 3. Both user-level and group-level regex permissions are supported
-4. With workspaces enabled, a pattern matches resource names in **every** workspace. Grants on a
-   single model, prompt or gateway resource, by contrast, belong to one workspace (see
-   [Workspaces](workspaces#grants-on-models-prompts-and-gateway-resources))
+4. With workspaces enabled, a pattern applies in the workspace it was made in, or in every
+   workspace when made with none selected (see [Workspaces](workspaces#pattern-regex-grants))
 
 ### Pattern Examples
 

@@ -228,7 +228,14 @@ def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> 
                 # An unknown binding set must not read as "bound to nobody".
                 return ["<unknown>"]
 
-        outcome = apply_provisioning_policy(provider, decision, derived_username=username, user_exists=store.has_user, providers_bound_to=providers_bound_to)
+        outcome = apply_provisioning_policy(
+            provider,
+            decision,
+            derived_username=username,
+            user_exists=store.has_user,
+            providers_bound_to=providers_bound_to,
+            providers_in_domain=lambda domain: store.user_identity_repo.providers_in_email_domain(domain),
+        )
     except Exception as e:
         logger.warning("Refusing a bearer token from provider '%s': identity could not be resolved (%s)", provider.id, type(e).__name__)
         # Not cached: a transient failure must not refuse the identity for a whole TTL.

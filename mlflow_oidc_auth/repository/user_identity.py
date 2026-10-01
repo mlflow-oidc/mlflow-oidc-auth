@@ -6,7 +6,7 @@ reads and writes rows.
 """
 
 from datetime import datetime, timezone
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Set
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
@@ -54,6 +54,31 @@ class UserIdentityRepository:
         with self._Session() as session:
             rows = session.query(SqlUserIdentity.provider_id).join(SqlUser, SqlUserIdentity.user_id == SqlUser.id).filter(SqlUser.username == username).all()
             return [row[0] for row in rows]
+
+    def providers_in_email_domain(self, domain: str) -> Set[str]:
+        """The providers whose identities own accounts named by an address in ``domain``.
+
+        An account with no identity bound counts as the ``default`` provider's: it is from before
+        identities were recorded, or was created by an administrator or SCIM — either way not by
+        another provider's login.
+
+        Parameters:
+            domain: The email domain, compared case-insensitively.
+
+        Returns:
+            The provider ids; empty when no account is named in the domain.
+        """
+        from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+
+        suffix = "@" + domain.strip().lower()
+        with self._Session() as session:
+            rows = (
+                session.query(SqlUser.id, SqlUserIdentity.provider_id)
+                .outerjoin(SqlUserIdentity, SqlUserIdentity.user_id == SqlUser.id)
+                .filter(SqlUser.username.endswith(suffix, autoescape=True))
+                .all()
+            )
+            return {provider_id or DEFAULT_PROVIDER_ID for _, provider_id in rows}
 
     def link(self, provider_id: str, subject: str, username: str, *, allow_additional_provider: bool = False) -> bool:
         """Bind ``(provider_id, subject)`` to an existing user.

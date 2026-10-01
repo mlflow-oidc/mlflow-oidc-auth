@@ -10,6 +10,9 @@ class RegexPermissionBase:
     permission: str
     user_id: Optional[int] = None
     group_id: Optional[int] = None
+    #: For resource patterns, the workspace the pattern applies in, or "*" for every workspace.
+    #: None for workspace patterns, which match workspace names and have no workspace of their own.
+    workspace: Optional[str] = None
 
     def to_json(self) -> Dict[str, Any]:
         data = asdict(self)

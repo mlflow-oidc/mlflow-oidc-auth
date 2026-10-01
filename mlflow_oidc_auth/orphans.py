@@ -222,11 +222,15 @@ def _key_columns(model, names):
 RuleList = List[Any]
 
 
-def _regex_permission(rules: RuleList, subject: str, workspace: bool = False) -> Optional[str]:
+def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, resource_workspace: Optional[str] = None) -> Optional[str]:
     """The permission ``rules`` resolve to for ``subject``, exactly as the request-time resolver does.
 
+    ``resource_workspace`` is the workspace of the resource ``subject`` names, so that only the
+    patterns that apply there count; when it is not known, every pattern may apply.
     ``None`` when nothing matches — or when a pattern is malformed, which holds nothing either.
     """
+    from mlflow_oidc_auth.utils.grant_workspace import EVERY_WORKSPACE
+
     from mlflow.exceptions import MlflowException
 
     try:
@@ -237,7 +241,7 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False) ->
             return permission.name if permission is not None else None
         from mlflow_oidc_auth.utils.permissions import _match_regex_permission
 
-        return _match_regex_permission(rules, subject, "resource")
+        return _match_regex_permission(rules, subject, "resource", workspace=resource_workspace or EVERY_WORKSPACE)
     except (MlflowException, re.error):
         return None
 
@@ -535,7 +539,7 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
 HELD, NOT_HELD, UNKNOWN = "held", "not_held", "unknown"
 
 
-def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prompt: bool, workspace: bool) -> str:
+def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prompt: bool, workspace: bool, resource_workspace: Optional[str] = None) -> str:
     """Replay ``PERMISSION_SOURCE_ORDER`` for one holder: the first source with an answer decides.
 
     ``subject`` is ``None`` while the regex subject is not known yet: a regex source that has
@@ -555,7 +559,7 @@ def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prom
                 continue
             if subject is None:
                 return UNKNOWN
-            answer = _regex_permission(rules, subject, workspace)
+            answer = _regex_permission(rules, subject, workspace, resource_workspace)
         else:
             continue
         if answer is not None:
@@ -563,8 +567,8 @@ def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prom
     return NOT_HELD
 
 
-def _judge(holders: List[_Holder], keys, subject: Optional[str], prompt: bool, workspace: bool) -> str:
-    outcomes = {_replay(h, keys, subject, prompt, workspace) for h in holders}
+def _judge(holders: List[_Holder], keys, subject: Optional[str], prompt: bool, workspace: bool, resource_workspace: Optional[str] = None) -> str:
+    outcomes = {_replay(h, keys, subject, prompt, workspace, resource_workspace) for h in holders}
     if HELD in outcomes:
         return HELD
     return UNKNOWN if UNKNOWN in outcomes else NOT_HELD
@@ -580,19 +584,24 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     if not holders:
         return {keys: NOT_HELD for keys in mine}
     workspace = spec.resource_type == WORKSPACE
+    # Where the resource's workspace is part of its key, only the patterns that apply there count.
+    in_workspace = spec.key_columns[:1] == ("workspace",)
+
+    def resource_workspace(keys):
+        return keys[0] if in_workspace else None
 
     if spec.regex_key_index is None:  # experiments: patterns match the name, which MLflow holds
-        verdicts = {keys: _judge(holders, keys, None, False, workspace) for keys in mine}
+        verdicts = {keys: _judge(holders, keys, None, False, workspace, resource_workspace(keys)) for keys in mine}
         pending = sorted(keys for keys, verdict in verdicts.items() if verdict == UNKNOWN)
         if pending:
             names = _experiment_names([keys[0] for keys in pending])
             for keys in pending:
                 if keys[0] in names:
-                    verdicts[keys] = _judge(holders, keys, names[keys[0]], False, workspace)
+                    verdicts[keys] = _judge(holders, keys, names[keys[0]], False, workspace, resource_workspace(keys))
         return verdicts
 
     if spec.resource_type != REGISTERED_MODEL:
-        return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace) for keys in mine}
+        return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace, resource_workspace(keys)) for keys in mine}
 
     # Registered models and prompts share grant rows but not patterns. Ask the registry only when
     # the answer differs between the two; a name that is both, in different workspaces, must be held
@@ -601,7 +610,9 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     pending_models: Dict[str, List[Tuple[str, ...]]] = {}
     name_at = spec.regex_key_index
     for keys in mine:
-        as_model, as_prompt = _judge(holders, keys, keys[name_at], False, workspace), _judge(holders, keys, keys[name_at], True, workspace)
+        as_model, as_prompt = _judge(holders, keys, keys[name_at], False, workspace, resource_workspace(keys)), _judge(
+            holders, keys, keys[name_at], True, workspace, resource_workspace(keys)
+        )
         if as_model == as_prompt:
             verdicts[keys] = as_model
         else:
@@ -612,7 +623,9 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
         for name, pending in pending_models.items():
             if name in kinds:
                 for keys in pending:
-                    verdicts[keys] = HELD if all(_judge(holders, keys, name, kind, workspace) == HELD for kind in kinds[name]) else NOT_HELD
+                    verdicts[keys] = (
+                        HELD if all(_judge(holders, keys, name, kind, workspace, resource_workspace(keys)) == HELD for kind in kinds[name]) else NOT_HELD
+                    )
     return verdicts
 
 
