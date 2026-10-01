@@ -418,6 +418,10 @@ workspace keeps its grants. See [Workspaces → Grants on models, prompts and ga
 
 AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order; a user's group grant is the most permissive grant any of their groups holds on the resource.
 
+> **Upgrade note:** before this release, group grants on AI Gateway resources were never consulted,
+> so a group grant on an endpoint, secret or model definition had no effect. They take effect now,
+> with or without workspaces. Review existing gateway group grants before upgrading.
+
 Gateway permissions are managed through:
 - **Admin UI**: The gateway section (when `OIDC_GEN_AI_GATEWAY_ENABLED=true`)
 - **REST API**: `/api/2.0/mlflow/permissions/gateways/` endpoints

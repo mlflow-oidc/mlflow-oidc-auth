@@ -14,8 +14,10 @@ With workspaces disabled every resource lives in the default workspace, so every
   name, including ones created later by another tenant, so the grant alone is no evidence of which
   one it was meant for;
 * the ``default`` workspace is the exception: it holds the resources from before workspaces were
-  enabled, which those grants were made for, so a grant on a name found there is kept there even
-  when the grantee has no workspace permission of its own;
+  enabled, which those grants were made for, so a grant on a name found there that the grantee
+  reaches in no workspace at all is kept there. A grantee who does reach another workspace holding
+  the name gets the grant only there (and in ``default`` only with a permission on it): a tenant who
+  created a same-named resource in their own workspace must not come away owning ``default``'s;
 * no such workspace, or the name exists nowhere (the resource was deleted) → marked unresolved
   (:data:`~mlflow_oidc_auth.utils.grant_workspace.UNRESOLVED_WORKSPACE`) and reported.
 
@@ -173,7 +175,9 @@ def _backfill(store) -> BackfillReport:
                     targets = [DEFAULT_WORKSPACE_NAME]
                 else:
                     candidates = sorted(resources[kind].get(name, set()))
-                    targets = [ws for ws in candidates if ws == DEFAULT_WORKSPACE_NAME or can_reach(principal_col, principal_id, ws)]
+                    targets = [ws for ws in candidates if can_reach(principal_col, principal_id, ws)]
+                    if not targets and DEFAULT_WORKSPACE_NAME in candidates:
+                        targets = [DEFAULT_WORKSPACE_NAME]
                     if not targets:
                         reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspace(s), grantee reaches none"
                         report.unresolved[table].append(f"{name} ({reason})")
