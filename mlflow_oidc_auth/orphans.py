@@ -609,6 +609,12 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     experiment_workspaces: Dict[str, str] = {}
 
     def resource_workspace(keys):
+        from mlflow_oidc_auth.config import config
+
+        if not config.MLFLOW_ENABLE_WORKSPACES:
+            # Every resource is in ``default``; a pattern recorded for another workspace does not
+            # count, exactly as at request time.
+            return "default"
         if in_workspace:
             return keys[0]
         if spec.resource_type in (EXPERIMENT, SCORER):

@@ -175,3 +175,17 @@ class TestOrphanDetection:
             store.create_registered_model_permission("churn", ALICE, "MANAGE")
 
         assert find_orphaned_resources(ALICE, store=store) == []
+
+
+def test_with_workspaces_disabled_orphan_detection_counts_only_patterns_that_apply(store, monkeypatch):
+    """As at request time: with workspaces disabled only patterns for every workspace (or default) apply."""
+    from mlflow_oidc_auth.orphans import find_orphaned_resources
+    from mlflow_oidc_auth.tests.test_workspace_scoped_grants import VICTOR
+
+    with in_workspace("team-a"):
+        store.create_registered_model_regex_permission("^churn", 1, "MANAGE", VICTOR)
+        store.create_prompt_regex_permission("^churn", 1, "MANAGE", VICTOR)
+    monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+    store.create_registered_model_permission("churn", ALICE, "MANAGE")
+
+    assert find_orphaned_resources(ALICE, store=store) == [("registered_model", "churn")]

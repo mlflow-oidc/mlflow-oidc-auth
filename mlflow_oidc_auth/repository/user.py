@@ -427,6 +427,7 @@ class UserRepository:
         username = normalize_username(username)
         sessions_revoked = 0
         permitted_conflict = None
+        _flush_bearer_identity = False
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             # A write from one source must not silently overwrite a row another source owns.
@@ -474,6 +475,12 @@ class UserRepository:
             if is_admin is not None:
                 user.is_admin = is_admin
             if is_service_account is not None:
+                if bool(user.is_service_account) != bool(is_service_account):
+                    # How the account signs in changes with it: a service account's source no
+                    # longer applies to a person, and a person's cached bearer decisions not to a
+                    # service account.
+                    user.service_account_source = "internal" if is_service_account else None
+                    _flush_bearer_identity = True
                 user.is_service_account = is_service_account
             if active is not None:
                 user.active = active
@@ -513,6 +520,10 @@ class UserRepository:
             entity = user.to_mlflow_entity()
 
         # Past the ``with``: the transaction has committed, so the events are true when written.
+        if _flush_bearer_identity:
+            from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+            flush_bearer_identity_cache()
         if permitted_conflict is not None:
             _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True)
         if sessions_revoked:

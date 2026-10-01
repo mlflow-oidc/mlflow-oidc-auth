@@ -127,6 +127,17 @@ class TestDowngrade:
         with engine.connect() as conn:
             assert conn.execute(text("SELECT name, permission FROM registered_model_permissions")).fetchall() == [("churn", "READ")]
 
+    def test_duplicate_unassigned_grants_do_not_block_the_downgrade(self, engine):
+        _upgrade(engine, REVISION)
+        _seed(engine)  # an unassigned grant per table
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO registered_model_permissions (name, user_id, permission) SELECT 'churn', id, 'MANAGE' FROM users"))
+
+        _downgrade(engine, PREVIOUS_REVISION)
+
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT name, permission FROM registered_model_permissions")).fetchall() == [("churn", "EDIT")]
+
     def test_round_trip(self, engine):
         _upgrade(engine, PREVIOUS_REVISION)
         _seed(engine)

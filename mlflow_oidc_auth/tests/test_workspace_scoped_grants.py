@@ -545,6 +545,48 @@ class TestThePermissionApiFallsBackToTheWorkspacePermission:
         assert response.status_code == 403, response.text
 
 
+class TestAnExperimentIsJudgedInItsOwnWorkspace:
+    """Experiment ids are unique across workspaces: a permission on the workspace a request names
+    reaches an experiment only when that experiment is in it."""
+
+    @pytest.fixture
+    def experiments(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from mlflow.utils.workspace_context import get_request_workspace
+
+        from mlflow_oidc_auth.utils import permissions
+
+        homes = {"42": "team-a", "7": "team-b"}
+
+        class _Store:
+            def get_experiment(self, experiment_id):
+                if homes.get(experiment_id) != (get_request_workspace() or "default"):
+                    from mlflow.exceptions import MlflowException
+                    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+                    raise MlflowException(f"No experiment {experiment_id} in this workspace", RESOURCE_DOES_NOT_EXIST)
+                return SimpleNamespace(experiment_id=experiment_id, name=f"exp-{experiment_id}")
+
+        monkeypatch.setattr(permissions, "_get_tracking_store", lambda: _Store())
+
+    def test_manage_on_one_workspace_does_not_reach_another_workspaces_experiment(self, api, store, experiments):
+        store.create_workspace_permission("team-b", ALICE, "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{ALICE}/experiments/42", json={"permission": "MANAGE"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert response.status_code == 403, response.text
+
+    def test_it_reaches_its_own_workspaces_experiment(self, api, store, experiments):
+        store.create_workspace_permission("team-b", ALICE, "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{VICTOR}/experiments/7", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert response.status_code == 200, response.text
+
+
 class TestRenamingAModelThroughTheHook:
     def test_group_grants_follow_a_rename_when_the_workspace_has_no_user_grants(self, store):
         """The user rename finds nothing to move in this workspace; the group rename must still run."""

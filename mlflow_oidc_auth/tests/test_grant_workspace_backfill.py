@@ -229,6 +229,36 @@ class TestWorkspacesEnabled:
         with patch.object(grant_workspace_backfill, "_mlflow_resource_workspaces", side_effect=RuntimeError("boom")):
             assert grant_workspace_backfill.backfill_grant_workspaces(store) is None
 
+    def test_duplicate_unresolvable_grants_collapse_instead_of_breaking_the_run(self, store, monkeypatch):
+        """A rolling upgrade can leave two unassigned copies; marking both unresolved would break the
+        unique constraint and roll back every assignment on every start."""
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
+        legacy(store, "SqlRegisteredModelPermission", "fraud", user=ALICE)
+        with resources(registered_model={"fraud": {"default"}}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert sorted(rows(store, "SqlRegisteredModelPermission")) == [("churn", UNRESOLVED, "EDIT"), ("fraud", "default", "EDIT")]
+
+    def test_a_wrapped_unique_violation_is_the_race_not_a_failure(self, store, monkeypatch, caplog):
+        from mlflow.exceptions import MlflowException
+        from sqlalchemy.exc import IntegrityError
+
+        def raced(*_args, **_kwargs):
+            try:
+                raise IntegrityError("INSERT", {}, Exception("unique"))
+            except IntegrityError as e:
+                raise MlflowException("database error") from e
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
+        with patch.object(grant_workspace_backfill, "_place", side_effect=raced), caplog.at_level(logging.INFO):
+            assert grant_workspace_backfill.backfill_grant_workspaces(store) is None
+
+        assert "another process placed the same grants first" in caplog.text
+        assert "backfill failed" not in caplog.text
+
     def test_losing_a_race_with_another_worker_rolls_back_and_never_raises(self, store, monkeypatch):
         from sqlalchemy.exc import IntegrityError
 

@@ -65,7 +65,8 @@ def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
 _WORKLOAD_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_workload_bearer", default=False)
 
 #: Set while authenticating an IdP bearer token: ``(provider, subject)`` of the token, or
-#: :data:`_KUBERNETES_BEARER` for a Kubernetes service-account token, which its own path authorized.
+#: ``(_KUBERNETES_BEARER, provider)`` for a Kubernetes service-account token, which its own path
+#: authorized.
 #: Read by :func:`_service_account_denial` once the account is known.
 _BEARER_IDENTITY: ContextVar[Optional[object]] = ContextVar("mlflow_oidc_auth_bearer_identity", default=None)
 _KUBERNETES_BEARER = "kubernetes"
@@ -237,9 +238,18 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
         return "" if source == INTERNAL_SOURCE else "an external service account signs in with its identity provider's tokens only"
     if method not in (AUTH_METHOD_BEARER, AUTH_METHOD_WORKLOAD):
         return "a service account does not sign in interactively"
-    if bearer_identity == _KUBERNETES_BEARER:
-        # Authorized on its own path, unless an administrator has made the account internal.
-        return "" if source != INTERNAL_SOURCE else "an internal service account signs in with access tokens issued for it only"
+    if isinstance(bearer_identity, tuple) and bearer_identity[0] == _KUBERNETES_BEARER:
+        # Authorized on its own path (namespace allowlist), and only for the accounts its own
+        # cluster provider created: a second cluster allowing the same namespace, or an account an
+        # administrator has re-pointed, is refused.
+        from mlflow_oidc_auth.utils.service_accounts import KUBERNETES_SOURCE
+
+        cluster = bearer_identity[1]
+        return (
+            ""
+            if source in (KUBERNETES_SOURCE, getattr(cluster, "id", None))
+            else f"this service account does not sign in through '{getattr(cluster, 'id', '?')}'"
+        )
     if not isinstance(bearer_identity, tuple) or source == INTERNAL_SOURCE:
         return "an internal service account signs in with access tokens issued for it only"
     provider, subject = bearer_identity
@@ -247,6 +257,16 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
         return f"this service account signs in through provider '{source}' only"
     if not subject:
         return "the token asserts no subject"
+    try:
+        return _external_binding_denial(username, provider, subject, is_admin)
+    except Exception as e:
+        # Fail closed: a binding that cannot be read or written is no binding.
+        logger.warning("Could not check the binding of service account %s: %s", username, type(e).__name__)
+        return "the service account's binding could not be checked"
+
+
+def _external_binding_denial(username: str, provider, subject: str, is_admin: bool) -> str:
+    """The subject check of :func:`_service_account_denial` for an external service account."""
     from mlflow_oidc_auth.utils.bearer_identity_cache import bearer_identity_cache
 
     cache = bearer_identity_cache()
@@ -703,7 +723,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # list that had to include ``sub`` to make this work would also change how every
                 # other provider's tokens are named.
                 _WORKLOAD_BEARER.set(True)
-                _BEARER_IDENTITY.set(_KUBERNETES_BEARER)
+                _BEARER_IDENTITY.set((_KUBERNETES_BEARER, provider))
                 return self._authenticate_service_account(token, payload, provider)
 
             # Extract username from configured fields. extract_username guarantees a

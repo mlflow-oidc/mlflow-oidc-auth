@@ -197,6 +197,8 @@ def registry_router(registry: FakeRegistry) -> APIRouter:
         if registry.get(name) is None:
             # MLflow creates the parent; with an auth plugin's flag set it does so explicitly first.
             registry.add(name, request.state.username)
+        if (await request.json() or {}).get("fail"):
+            return JSONResponse(status_code=400, content={"error_code": "INVALID_PARAMETER_VALUE"})
         registry.get(name)["versions"].append("1.0.0")
         return {"name": name, "version": "1.0.0"}
 
@@ -387,6 +389,15 @@ class TestCreate:
         assert response.status_code == 400
         assert _grants(store) == []
 
+    def test_a_failed_version_still_leaves_its_new_server_managed_by_its_creator(self, api, store, members, registry):
+        """MLflow creates the server before the version: a version that then fails leaves the server,
+        and its creator must manage it, or only an admin could."""
+        response = api.alice.post(f"{API}/{SERVER}/versions", json={"fail": True}, headers=ws("team-a"))
+
+        assert response.status_code == 400
+        assert ("team-a", SERVER) in registry.servers
+        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
+
     def test_a_version_on_a_new_server_is_a_creation(self, api, store, members, registry):
         response = api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
         assert response.status_code == 403
@@ -432,14 +443,15 @@ class TestCreate:
         assert response.status_code == 200
         assert _grants(store) == []
 
-    def test_workspaces_disabled_anyone_creates_and_the_grant_is_in_default(self, api, store, registry, monkeypatch):
+    def test_workspaces_disabled_only_an_admin_creates(self, api, store, registry, monkeypatch):
+        """As before per-server permissions: one registry, and registering a server is an admin's job."""
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
         _clear_cache()
 
         response = api.alice.post(API, json={"name": SERVER})
-
+        assert response.status_code == 403
+        response = api.admin.post(API, json={"name": SERVER})
         assert response.status_code == 200
-        assert _grants(store) == [(ALICE, SERVER, "default", "MANAGE")]
 
     def test_workspaces_disabled_restrict_resource_creation_denies(self, api, store, registry, monkeypatch):
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
@@ -738,13 +750,24 @@ class TestHeaderlessFallbackUsesMlflowsWorkspace:
 
 
 class TestWorkspacesDisabled:
-    def test_one_registry_and_server_grants_still_decide(self, api, store, registry, monkeypatch):
+    def test_the_registry_is_readable_and_server_grants_still_decide(self, api, store, registry, monkeypatch):
+        """With workspaces disabled any authenticated user reads the registry, as before per-server
+        permissions; a grant on a server — NO_PERMISSIONS included — decides for that server."""
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        registry.add(SERVER, "an-admin", workspace="default")
         _clear_cache()
-        response = api.alice.post(API, json={"name": SERVER})
-        assert response.status_code == 200
 
-        # Bob has no grant and the global default is NO_PERMISSIONS.
+        response = api.bob.get(f"{API}/{SERVER}")
+        assert response.status_code == 200
+        response = api.bob.get(API)
+        assert [s["name"] for s in response.json()["mcp_servers"]] == [SERVER]
+        response = api.bob.patch(f"{API}/{SERVER}", json={})
+        assert response.status_code == 403  # nobody manages it: admin-only for changes
+
+        with _as(ADMIN, "default"):
+            store.create_mcp_server_permission(SERVER, BOB, "NO_PERMISSIONS")
+            store.create_mcp_server_permission(SERVER, ALICE, "MANAGE")
+        _clear_cache()
         response = api.bob.get(f"{API}/{SERVER}")
         assert response.status_code == 403
         response = api.bob.get(API)

@@ -153,12 +153,13 @@ def backfill_grant_workspaces(store=None) -> Optional[BackfillReport]:
 
             store = store_singleton
         return _backfill(store)
-    except IntegrityError:
+    except Exception as e:
         # Several workers starting at once each run the backfill; the one that loses the race on
-        # the unique constraint rolls back, and the grants are placed by the winner.
-        logger.info("Grant workspace backfill: another process placed the same grants first; nothing changed here")
-        return None
-    except Exception:
+        # the unique constraint rolls back, and the grants are placed by the winner. The store's
+        # session wraps the database error, so the cause is what says so.
+        if isinstance(e, IntegrityError) or isinstance(e.__cause__, IntegrityError) or isinstance(getattr(e, "__context__", None), IntegrityError):
+            logger.info("Grant workspace backfill: another process placed the same grants first; nothing changed here")
+            return None
         logger.exception("Grant workspace backfill failed; legacy grants stay unassigned until the next start")
         return None
 
@@ -193,7 +194,21 @@ def _backfill(store) -> BackfillReport:
                     if not targets:
                         reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspace(s), grantee reaches none"
                         report.unresolved[table].append(f"{name} ({reason})")
-                        row.workspace = UNRESOLVED_WORKSPACE
+                        duplicate = (
+                            session.query(model.id)
+                            .filter(
+                                model.workspace == UNRESOLVED_WORKSPACE,
+                                getattr(model, resource_col) == name,
+                                getattr(model, principal_col) == principal_id,
+                            )
+                            .first()
+                        )
+                        if duplicate is not None:
+                            # A copy written during a rolling upgrade: one unresolved grant is enough.
+                            session.delete(row)
+                        else:
+                            row.workspace = UNRESOLVED_WORKSPACE
+                        session.flush()
                         continue
                 _place(session, model, row, resource_col, principal_col, targets, report, table)
             session.flush()
