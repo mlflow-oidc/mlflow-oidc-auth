@@ -458,6 +458,10 @@ def admin_api(store, monkeypatch):
     app = FastAPI()
     app.include_router(users_router.users_router)
     app.dependency_overrides[dependencies.require_interactive_login] = lambda: None  # an admin's browser session
+    from mlflow_oidc_auth import utils
+
+    app.dependency_overrides[utils.get_username] = lambda: "root@corp.example"
+    app.dependency_overrides[utils.get_is_admin] = lambda: True
     with TestClient(app) as client:
         yield client
 
@@ -523,3 +527,85 @@ class TestManagingAServiceAccountsSource:
 
     def test_a_person_has_no_source(self, store, providers, admin_api):
         assert admin_api.put(f"{USERS}/{BOB}/service-account-source", json={"source": "internal"}).status_code == 409
+
+
+class TestReviewFollowUps:
+    def test_no_access_token_can_be_minted_for_an_external_account_by_any_route(self, store, providers, admin_api):
+        store.create_user("ci-bot", "CI", is_service_account=True, service_account_source="partner")
+
+        response = admin_api.patch(f"{USERS}/access-token", json={"username": "ci-bot"})
+
+        assert response.status_code == 409, response.text
+        assert store.list_user_tokens("ci-bot") == []
+
+    def test_any_change_of_source_revokes_issued_tokens(self, store, providers, admin_api):
+        from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
+        store.create_user("ci-bot", "CI", is_service_account=True, service_account_source="partner")
+        set_known_token(store, "ci-bot", "minted-while-external")  # e.g. from before this release
+
+        assert admin_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "internal"}).status_code == 200
+
+        assert store.list_user_tokens("ci-bot") == []
+
+    def test_an_external_admin_account_needs_its_subject_now(self, store, providers, admin_api):
+        body = {"username": "root-bot", "display_name": "R", "is_service_account": True, "is_admin": True, "service_account_source": "partner"}
+
+        assert admin_api.post(USERS, json=body).status_code == 400
+        assert admin_api.post(USERS, json={**body, "subject": "client-root"}).status_code == 201
+
+    def test_a_first_token_never_binds_an_admin_account(self, store, providers):
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER
+        from mlflow_oidc_auth.middleware.auth_middleware import _service_account_denial
+
+        store.create_user("root-bot", "R", is_admin=True, is_service_account=True, service_account_source="partner")
+
+        assert _service_account_denial("root-bot", True, "partner", AUTH_METHOD_BEARER, (PARTNER, "attacker"), is_admin=True)
+        assert store.user_identity_repo.list_identities_for_username("root-bot") == []
+
+    def test_racing_first_tokens_leave_only_the_earliest_binding(self, store, providers, monkeypatch):
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER
+        from mlflow_oidc_auth.middleware.auth_middleware import _service_account_denial
+
+        store.create_user("ci-bot", "CI", is_service_account=True, service_account_source="partner")
+        store.user_identity_repo.link("partner", "winner", "ci-bot", allow_additional_provider=True)  # bound meanwhile
+        real = store.user_identity_repo.list_identities_for_username
+        calls = {"n": 0}
+
+        def listing(username):
+            calls["n"] += 1
+            return [] if calls["n"] == 1 else real(username)  # the loser read before the winner's insert
+
+        monkeypatch.setattr(store.user_identity_repo, "list_identities_for_username", listing)
+
+        assert _service_account_denial("ci-bot", True, "partner", AUTH_METHOD_BEARER, (PARTNER, "loser"))
+        assert real("ci-bot") == [("partner", "winner")]
+
+    def test_a_refused_subject_changes_nothing(self, store, providers, admin_api):
+        store.create_user("ci-bot", "CI", is_service_account=True)
+
+        response = admin_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "partner", "subject": "partner-bob-sub"})
+
+        assert response.status_code == 409, response.text
+        assert store.get_user_profile("ci-bot").service_account_source == "internal"
+
+    def test_an_existing_username_is_not_re_pointed_by_create(self, store, providers, admin_api):
+        store.create_user("ci-bot", "CI", is_service_account=True)
+
+        body = {"username": "ci-bot", "display_name": "CI", "is_service_account": True, "service_account_source": "partner"}
+        assert admin_api.post(USERS, json=body).status_code == 409
+        assert store.get_user_profile("ci-bot").service_account_source == "internal"
+
+    def test_a_kubernetes_token_is_refused_once_its_account_is_internal(self):
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_WORKLOAD
+        from mlflow_oidc_auth.middleware.auth_middleware import _KUBERNETES_BEARER, _service_account_denial
+
+        assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "internal", AUTH_METHOD_WORKLOAD, _KUBERNETES_BEARER)
+
+    def test_a_service_accounts_session_is_flagged_by_the_session_lookup(self, store):
+        from datetime import datetime, timedelta, timezone
+
+        store.create_user("ci-bot", "CI", is_service_account=True)
+        session_id = store.create_auth_session("ci-bot", datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1))
+
+        assert store.auth_session_repo.resolve(session_id).is_service_account is True

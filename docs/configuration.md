@@ -582,7 +582,8 @@ a service principal's client-credentials token, a CI job's workload-identity tok
 For each service account a workload reaches with an IdP token, an administrator sets its sign-in
 source to that provider (**Service Accounts** page, or
 `PUT /api/2.0/mlflow/users/{username}/service-account-source` with `{"source": "<provider-id>"}`,
-optionally with `"subject"`). Becoming external revokes the access tokens issued for it. Kubernetes
+optionally with `"subject"`; required for an administrator account). Any change of source revokes
+the access tokens issued for the account and its sessions. Kubernetes
 service accounts keep working: they are their cluster provider's. No service account signs in
 through the browser.
 
