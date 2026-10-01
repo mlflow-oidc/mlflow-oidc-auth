@@ -18,6 +18,7 @@ from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository._base import BaseGroupRegexPermissionRepository
 from mlflow_oidc_auth.repository import GroupRepository
 from mlflow_oidc_auth.repository.utils import get_group
+from mlflow_oidc_auth.utils.grant_workspace import new_pattern_workspace
 
 
 class RegisteredModelGroupRegexPermissionRepository(
@@ -74,6 +75,7 @@ class RegisteredModelGroupRegexPermissionRepository(
                 group_id=group.id,
                 permission=permission,
                 prompt=prompt,
+                workspace=new_pattern_workspace(),
             )
             session.add(perm)
             session.flush()

@@ -29,6 +29,11 @@ from mlflow_oidc_auth.config import config
 #: resource created later can never pick it up.
 UNRESOLVED_WORKSPACE = "::unresolved"
 
+#: Recorded on a resource pattern (regex grant) that applies in every workspace: one created with
+#: no workspace named, and every pattern from before patterns carried a workspace. MLflow's
+#: workspace names cannot contain "*", so it never equals a real workspace.
+EVERY_WORKSPACE = "*"
+
 
 def current_grant_workspace() -> str:
     """The workspace grants are read and written in for the current request.
@@ -125,3 +130,85 @@ def workspace_scoped_grant_tables():
         (SqlGatewayModelDefinitionPermission, "model_definition_id", "user_id", "gateway_model_definition"),
         (SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
     )
+
+
+def new_pattern_workspace() -> str:
+    """The workspace a new resource pattern applies in.
+
+    The one the request names (``X-MLFLOW-WORKSPACE``) — in the admin UI, the workspace selected in
+    the picker — or every workspace when it names none ("All Workspaces") or workspaces are
+    disabled. Patterns are created by administrators only.
+
+    Returns:
+        A workspace name, or :data:`EVERY_WORKSPACE`.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return EVERY_WORKSPACE
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+
+    return get_request_workspace() or EVERY_WORKSPACE
+
+
+def pattern_in_scope(rule, workspace: str | None = None) -> bool:
+    """Whether a resource pattern applies to a resource in ``workspace``.
+
+    A pattern for every workspace always applies; one recorded for a workspace applies only to that
+    workspace's resources. With workspaces disabled every resource is in ``default``, so a pattern
+    recorded for another workspace (on a deployment that turns workspaces off again) does not apply.
+
+    Parameters:
+        rule: A pattern entity; one without a ``workspace`` (a workspace pattern) always applies.
+        workspace: The resource's workspace; the current request's grant workspace when omitted.
+            :data:`EVERY_WORKSPACE` stands for a resource whose workspace is not known, to which
+            every pattern may apply.
+    """
+    rule_workspace = getattr(rule, "workspace", None)
+    if not isinstance(rule_workspace, str) or rule_workspace == EVERY_WORKSPACE or workspace == EVERY_WORKSPACE:
+        return True
+    if workspace is None:
+        workspace = current_grant_workspace()
+    return rule_workspace == workspace
+
+
+def workspace_scoped_pattern_tables():
+    """Every resource pattern table, whose rows carry the workspace they apply in.
+
+    Returns:
+        The SQLAlchemy models of the user and group pattern tables of experiments, registered models
+        and prompts, scorers and AI Gateway resources. Workspace patterns are not among them.
+    """
+    from mlflow_oidc_auth.db.models import (
+        SqlExperimentGroupRegexPermission,
+        SqlExperimentRegexPermission,
+        SqlGatewayEndpointGroupRegexPermission,
+        SqlGatewayEndpointRegexPermission,
+        SqlGatewayModelDefinitionGroupRegexPermission,
+        SqlGatewayModelDefinitionRegexPermission,
+        SqlGatewaySecretGroupRegexPermission,
+        SqlGatewaySecretRegexPermission,
+        SqlRegisteredModelGroupRegexPermission,
+        SqlRegisteredModelRegexPermission,
+        SqlScorerGroupRegexPermission,
+        SqlScorerRegexPermission,
+    )
+
+    return (
+        SqlExperimentRegexPermission,
+        SqlExperimentGroupRegexPermission,
+        SqlRegisteredModelRegexPermission,
+        SqlRegisteredModelGroupRegexPermission,
+        SqlScorerRegexPermission,
+        SqlScorerGroupRegexPermission,
+        SqlGatewayEndpointRegexPermission,
+        SqlGatewayEndpointGroupRegexPermission,
+        SqlGatewaySecretRegexPermission,
+        SqlGatewaySecretGroupRegexPermission,
+        SqlGatewayModelDefinitionRegexPermission,
+        SqlGatewayModelDefinitionGroupRegexPermission,
+    )
+
+
+def pattern_workspace_of(rule) -> str | None:
+    """The workspace a pattern entity reports, for API responses: a name, ``*``, or None if unknown."""
+    workspace = getattr(rule, "workspace", None)
+    return workspace if isinstance(workspace, str) else None

@@ -78,6 +78,7 @@ from mlflow_oidc_auth.utils.permissions import (
 )
 
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
+from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
 logger = get_logger()
 
@@ -388,6 +389,7 @@ async def list_user_experiment_pattern_permissions(
                 regex=perm.regex,
                 priority=perm.priority,
                 permission=perm.permission,
+                workspace=pattern_workspace_of(perm),
             )
             for perm in permissions
         ]
@@ -437,6 +439,7 @@ async def get_user_experiment_pattern_permission(
             regex=permission.regex,
             priority=permission.priority,
             permission=permission.permission,
+            workspace=pattern_workspace_of(permission),
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
@@ -2062,6 +2065,7 @@ async def get_user_gateway_endpoint_pattern_permissions(
                 priority=p.priority,
                 user_id=p.user_id,
                 permission=p.permission,
+                workspace=pattern_workspace_of(p),
             )
             for p in perms
         ]
@@ -2110,6 +2114,7 @@ async def create_user_gateway_endpoint_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error creating gateway endpoint pattern permission: {str(e)}")
@@ -2140,6 +2145,7 @@ async def get_user_gateway_endpoint_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error getting gateway endpoint pattern permission: {str(e)}")
@@ -2184,6 +2190,7 @@ async def update_user_gateway_endpoint_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error updating gateway endpoint pattern permission: {str(e)}")
@@ -2447,6 +2454,7 @@ async def get_user_gateway_model_definition_pattern_permissions(
                 priority=p.priority,
                 user_id=p.user_id,
                 permission=p.permission,
+                workspace=pattern_workspace_of(p),
             )
             for p in perms
         ]
@@ -2495,6 +2503,7 @@ async def create_user_gateway_model_definition_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error creating gateway model definition pattern permission: {str(e)}")
@@ -2528,6 +2537,7 @@ async def get_user_gateway_model_definition_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error getting gateway model definition pattern permission: {str(e)}")
@@ -2575,6 +2585,7 @@ async def update_user_gateway_model_definition_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error updating gateway model definition pattern permission: {str(e)}")
@@ -2817,6 +2828,7 @@ async def get_user_gateway_secret_pattern_permissions(
                 priority=p.priority,
                 user_id=p.user_id,
                 permission=p.permission,
+                workspace=pattern_workspace_of(p),
             )
             for p in perms
         ]
@@ -2862,6 +2874,7 @@ async def create_user_gateway_secret_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error creating gateway secret pattern permission: {str(e)}")
@@ -2889,6 +2902,7 @@ async def get_user_gateway_secret_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error getting gateway secret pattern permission: {str(e)}")
@@ -2930,6 +2944,7 @@ async def update_user_gateway_secret_pattern_permission(
             priority=perm.priority,
             user_id=perm.user_id,
             permission=perm.permission,
+            workspace=pattern_workspace_of(perm),
         )
     except Exception as e:
         logger.error(f"Error updating gateway secret pattern permission: {str(e)}")

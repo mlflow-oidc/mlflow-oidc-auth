@@ -45,7 +45,22 @@ When workspaces are enabled, these resources are automatically scoped to the act
 
 **Not workspace-scoped:**
 - Users and groups (global across all workspaces)
-- Pattern (regex) grants — they match resource names in every workspace
+
+### Pattern (regex) grants
+
+A pattern grant on experiments, models, prompts, scorers or AI Gateway resources applies in the
+workspace it was made in: one created with a workspace named (`X-MLFLOW-WORKSPACE` — in the admin
+UI, the workspace selected in the picker) matches only that workspace's resources. One created with
+no workspace named (**All Workspaces**) applies in every workspace. Patterns are created by
+administrators only, and each lists the workspace it applies in (`*` for every workspace).
+
+- The same pattern may be recorded once per workspace, with a different permission in each.
+- Patterns from before this release apply in every workspace, as they did.
+- Deleting a workspace removes its patterns; patterns for every workspace stay.
+- With workspaces disabled, patterns for every workspace apply; a pattern recorded for one
+  workspace counts only if workspaces are enabled again.
+- **Downgrading** keeps only patterns for every workspace — a pattern recorded for one workspace
+  would otherwise apply in all of them — and logs how many were removed.
 
 ### Grants on models, prompts and gateway resources
 

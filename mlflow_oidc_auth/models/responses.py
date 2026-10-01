@@ -84,6 +84,7 @@ class RegisteredModelRegexPermissionRecord(BaseModel):
     user_id: int = Field(..., description="User ID")
     permission: str = Field(..., description="Permission name")
     prompt: bool = Field(False, description="True if this pattern applies to prompts")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class PromptRegexPermissionResponse(BaseModel):
@@ -121,6 +122,7 @@ class ScorerRegexPermissionRecord(BaseModel):
     priority: int = Field(..., description="Evaluation priority")
     user_id: int = Field(..., description="User ID")
     permission: str = Field(..., description="Permission name")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class ScorerRegexPermissionResponse(BaseModel):
@@ -138,6 +140,7 @@ class UserGatewayRegexPermissionItem(BaseModel):
     user_id: Optional[int] = Field(None, description="Identifier of the user that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["user"] = Field("user", description="Indicates this is a user gateway regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class RegisteredModelRegexPermissionListResponse(BaseModel):

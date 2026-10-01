@@ -57,10 +57,12 @@ class SqlRegisteredModelRegexPermission(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     prompt: Mapped[bool] = mapped_column(Boolean, default=False)
-    __table_args__ = (UniqueConstraint("regex", "user_id", "prompt", name="unique_name_user_regex"),)
+    # The workspace the pattern applies in, or "*" for every workspace (utils/grant_workspace.py).
+    workspace: Mapped[str] = mapped_column(String(63), nullable=False, default="*", server_default="*")
+    __table_args__ = (UniqueConstraint("regex", "user_id", "prompt", "workspace", name="uq_name_user_regex_ws"),)
 
     def to_mlflow_entity(self):
-        return RegisteredModelRegexPermission(
+        entity = RegisteredModelRegexPermission(
             id_=self.id,
             regex=self.regex,
             priority=self.priority,
@@ -68,6 +70,8 @@ class SqlRegisteredModelRegexPermission(Base):
             permission=self.permission,
             prompt=bool(self.prompt),
         )
+        entity.workspace = self.workspace
+        return entity
 
 
 class SqlRegisteredModelGroupRegexPermission(Base):
@@ -78,10 +82,12 @@ class SqlRegisteredModelGroupRegexPermission(Base):
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id"), nullable=False)
     permission: Mapped[str] = mapped_column(String(255))
     prompt: Mapped[bool] = mapped_column(Boolean, default=False)
-    __table_args__ = (UniqueConstraint("regex", "group_id", "prompt", name="unique_name_group_regex"),)
+    # The workspace the pattern applies in, or "*" for every workspace (utils/grant_workspace.py).
+    workspace: Mapped[str] = mapped_column(String(63), nullable=False, default="*", server_default="*")
+    __table_args__ = (UniqueConstraint("regex", "group_id", "prompt", "workspace", name="uq_name_group_regex_ws"),)
 
     def to_mlflow_entity(self):
-        return RegisteredModelGroupRegexPermission(
+        entity = RegisteredModelGroupRegexPermission(
             id_=self.id,
             regex=self.regex,
             priority=self.priority,
@@ -89,3 +95,5 @@ class SqlRegisteredModelGroupRegexPermission(Base):
             permission=self.permission,
             prompt=bool(self.prompt),
         )
+        entity.workspace = self.workspace
+        return entity

@@ -28,7 +28,7 @@ from mlflow_oidc_auth.repository.utils import (
 )
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
-from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace, grant_workspace_condition
+from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace, grant_workspace_condition, new_pattern_workspace
 
 ModelT = TypeVar("ModelT")
 EntityT = TypeVar("EntityT")
@@ -546,6 +546,14 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             session.flush()
 
 
+def _pattern_workspace_fields(model_class) -> dict:
+    """The workspace a new pattern records, for resource pattern tables (utils/grant_workspace.py).
+
+    Workspace pattern tables match workspace names and have no workspace of their own.
+    """
+    return {"workspace": new_pattern_workspace()} if hasattr(model_class, "workspace") else {}
+
+
 class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
     """Base class for regex-based user permission repositories.
 
@@ -606,6 +614,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                     priority=priority,
                     user_id=user.id,
                     permission=permission,
+                    **_pattern_workspace_fields(self.model_class),
                 )
                 session.add(perm)
                 session.flush()
@@ -759,6 +768,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
                     group_id=group.id,
                     permission=permission,
                     priority=priority,
+                    **_pattern_workspace_fields(self.model_class),
                 )
                 session.add(perm)
                 session.flush()

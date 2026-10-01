@@ -269,7 +269,12 @@ def _find_regex_permission(regexes: List, name: str) -> Optional[str]:
     Returns:
         The permission string if a match is found, None otherwise.
     """
+    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
+
     for regex_perm in regexes:
+        # Only patterns that apply in the request's workspace, as in utils/permissions.py.
+        if not pattern_in_scope(regex_perm):
+            continue
         if re.match(regex_perm.regex, name):
             return regex_perm.permission
     return None
