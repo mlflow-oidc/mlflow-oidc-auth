@@ -63,6 +63,12 @@ one has used yet, the first provider to create an account owns it. For a domain 
 before anyone signs in, use `identity_binding: email` with `allowed_email_domains` on the provider
 that should own it, or have accounts created there first (for example by SCIM).
 
+> **Upgrading:** where several providers serve the same directory — an OIDC and a SAML entry for
+> one IdP, say — list the shared domain in `allowed_email_domains` on every provider other than
+> `default` (SAML entries accept it too). Otherwise a user's first login through such a provider is
+> refused once the domain holds accounts from another; the refusal is logged and audited, naming
+> the domain and the setting.
+
 ### SAML provider fields
 
 Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They are refused on any other type, and a SAML entry refuses the bearer-token fields (`audience`, `issuer`, `discovery_url`, `client_id`, `allowed_algorithms`, `allow_tokens_without_expiry`, and the Kubernetes key fields) as well as `identity_binding: email`. See [SAML Authentication](saml-auth).
