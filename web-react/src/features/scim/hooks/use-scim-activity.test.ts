@@ -12,10 +12,7 @@ import type {
 vi.mock("../services/scim-activity-service");
 vi.mock("../../../core/hooks/use-auth");
 
-function entry(
-  id: number,
-  outcome: ScimActivityEntry["outcome"] = "ok",
-): ScimActivityEntry {
+function entry(id: number, outcome: ScimActivityEntry["outcome"] = "ok"): ScimActivityEntry {
   return {
     id,
     at: "2026-09-01T00:00:00+00:00",
@@ -72,27 +69,18 @@ describe("useScimActivity", () => {
   it("restarts from the newest row when the filter changes", async () => {
     const fetchSpy = vi
       .spyOn(service, "fetchScimActivity")
-      .mockResolvedValueOnce({
-        activity: [entry(2), entry(1)],
-        next_before: null,
-      })
-      .mockResolvedValueOnce({
-        activity: [entry(1, "client_error")],
-        next_before: null,
-      });
+      .mockResolvedValueOnce({ activity: [entry(2), entry(1)], next_before: null })
+      .mockResolvedValueOnce({ activity: [entry(1, "client_error")], next_before: null });
 
     const { result, rerender } = renderHook(
-      ({ outcome }: { outcome: ScimActivityOutcome | null }) =>
-        useScimActivity(outcome),
+      ({ outcome }: { outcome: ScimActivityOutcome | null }) => useScimActivity(outcome),
       { initialProps: { outcome: null as ScimActivityOutcome | null } },
     );
     await waitFor(() => expect(result.current.entries).toHaveLength(2));
 
     rerender({ outcome: "client_error" });
     await waitFor(() => {
-      expect(result.current.entries.map((e) => e.outcome)).toEqual([
-        "client_error",
-      ]);
+      expect(result.current.entries.map((e) => e.outcome)).toEqual(["client_error"]);
     });
     expect(fetchSpy).toHaveBeenLastCalledWith(
       { limit: SCIM_ACTIVITY_PAGE_SIZE, outcome: "client_error" },
@@ -101,21 +89,15 @@ describe("useScimActivity", () => {
   });
 
   it("never appends a page fetched with the previous filter's cursor", async () => {
-    let resolveFiltered: (page: {
-      activity: ScimActivityEntry[];
-      next_before: number | null;
-    }) => void = () => undefined;
+    let resolveFiltered: (page: { activity: ScimActivityEntry[]; next_before: number | null }) => void = () => undefined;
     const fetchSpy = vi
       .spyOn(service, "fetchScimActivity")
       .mockResolvedValueOnce({ activity: [entry(5), entry(4)], next_before: 4 })
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (resolveFiltered = resolve)),
-      )
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFiltered = resolve)))
       .mockResolvedValue({ activity: [entry(3)], next_before: null });
 
     const { result, rerender } = renderHook(
-      ({ outcome }: { outcome: ScimActivityOutcome | null }) =>
-        useScimActivity(outcome),
+      ({ outcome }: { outcome: ScimActivityOutcome | null }) => useScimActivity(outcome),
       { initialProps: { outcome: null as ScimActivityOutcome | null } },
     );
     await waitFor(() => expect(result.current.hasMore).toBe(true));
@@ -134,17 +116,12 @@ describe("useScimActivity", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      resolveFiltered({
-        activity: [entry(9, "client_error")],
-        next_before: null,
-      });
+      resolveFiltered({ activity: [entry(9, "client_error")], next_before: null });
       await Promise.resolve();
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.entries.map((e) => e.id)).toEqual([9]);
-    expect(fetchSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ before: 4 }),
-    );
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ before: 4 }));
   });
 
   it("reports an error and refresh fetches again", async () => {

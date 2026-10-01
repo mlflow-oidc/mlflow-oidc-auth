@@ -8,26 +8,14 @@ describe("pageTitleFor", () => {
   it.each([
     ["/", "Not found · MLflow Access Control"],
     ["/users", "Users · MLflow Access Control"],
-    [
-      "/users/alice%40example.com/experiments",
-      "alice@example.com · Experiments · Users · MLflow Access Control",
-    ],
-    [
-      "/groups/data-science/models",
-      "data-science · Models · Groups · MLflow Access Control",
-    ],
-    [
-      "/service-accounts/ci-bot/ai-secrets",
-      "ci-bot · AI secrets · Service accounts · MLflow Access Control",
-    ],
+    ["/users/alice%40example.com/experiments", "alice@example.com · Experiments · Users · MLflow Access Control"],
+    ["/groups/data-science/models", "data-science · Models · Groups · MLflow Access Control"],
+    ["/service-accounts/ci-bot/ai-secrets", "ci-bot · AI secrets · Service accounts · MLflow Access Control"],
     ["/service-accounts", "Service accounts · MLflow Access Control"],
     ["/workspaces/team-a", "team-a · Workspaces · MLflow Access Control"],
     ["/experiments/42", "42 · Experiments · MLflow Access Control"],
     ["/ai-gateway/ai-endpoints", "AI endpoints · MLflow Access Control"],
-    [
-      "/ai-gateway/secrets/openai-key",
-      "openai-key · AI secrets · MLflow Access Control",
-    ],
+    ["/ai-gateway/secrets/openai-key", "openai-key · AI secrets · MLflow Access Control"],
     ["/ai-gateway/models/gpt", "gpt · AI models · MLflow Access Control"],
     ["/mcp-servers", "MCP servers · MLflow Access Control"],
     [
@@ -50,20 +38,14 @@ describe("pageTitleFor", () => {
   });
 
   it("keeps a segment that is not valid percent-encoding as it is", () => {
-    expect(pageTitleFor("/users/100%")).toBe(
-      "100% · Users · MLflow Access Control",
-    );
+    expect(pageTitleFor("/users/100%")).toBe("100% · Users · MLflow Access Control");
   });
 });
 
 describe("useDocumentTitle", () => {
   it("sets document.title for the current route", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(
-        MemoryRouter,
-        { initialEntries: ["/groups"] },
-        children,
-      );
+      React.createElement(MemoryRouter, { initialEntries: ["/groups"] }, children);
     renderHook(() => useDocumentTitle(), { wrapper });
     expect(document.title).toBe("Groups · MLflow Access Control");
   });

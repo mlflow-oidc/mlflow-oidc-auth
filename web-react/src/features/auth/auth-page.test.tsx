@@ -299,11 +299,12 @@ describe("AuthPage SAML hint (#330)", () => {
 
     render(<AuthPage />);
 
-    expect(screen.getByRole("link", { name: "Corporate SSO" })).toHaveAttribute(
-      "href",
-      "/api/login/corp",
+    expect(
+      screen.getByRole("link", { name: "Corporate SSO" }),
+    ).toHaveAttribute("href", "/api/login/corp");
+    expect(screen.getByTestId("provider-kind-corp")).toHaveTextContent(
+      "SAML",
     );
-    expect(screen.getByTestId("provider-kind-corp")).toHaveTextContent("SAML");
   });
 
   it("shows no SAML hint for a single OIDC provider", () => {

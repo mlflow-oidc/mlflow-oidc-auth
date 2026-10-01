@@ -62,8 +62,12 @@ describe("ProviderPicker", () => {
       />,
     );
 
-    expect(screen.getByTestId("provider-kind-corp")).toHaveTextContent("SAML");
-    expect(screen.queryByTestId("provider-kind-entra")).not.toBeInTheDocument();
+    expect(screen.getByTestId("provider-kind-corp")).toHaveTextContent(
+      "SAML",
+    );
+    expect(
+      screen.queryByTestId("provider-kind-entra"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows no kind label at all when every provider is OIDC", () => {

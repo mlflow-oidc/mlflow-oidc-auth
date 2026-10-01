@@ -20,13 +20,10 @@ describe("user-token-service", () => {
   it("creates a token with name and expiration", async () => {
     const data = { name: "ci", expiration: "2027-01-01T23:59:59Z" };
     await createUserToken(undefined, data);
-    expect(request).toHaveBeenCalledWith(
-      "/api/2.0/mlflow/users/current/tokens",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      },
-    );
+    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
     await createUserToken("bob", data);
     expect(request).toHaveBeenLastCalledWith(
       "/api/2.0/mlflow/users/bob/tokens",
@@ -36,12 +33,9 @@ describe("user-token-service", () => {
 
   it("deletes one token", async () => {
     await deleteUserToken(undefined, 7);
-    expect(request).toHaveBeenCalledWith(
-      "/api/2.0/mlflow/users/current/tokens/7",
-      {
-        method: "DELETE",
-      },
-    );
+    expect(request).toHaveBeenCalledWith("/api/2.0/mlflow/users/current/tokens/7", {
+      method: "DELETE",
+    });
     await deleteUserToken("bob smith", 8);
     expect(request).toHaveBeenLastCalledWith(
       "/api/2.0/mlflow/users/bob%20smith/tokens/8",

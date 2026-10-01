@@ -108,28 +108,18 @@ export function ScimActivityTable({
                     : ""
                 }`}
               >
-                <td className={`${cellClass} whitespace-nowrap`}>
-                  {formatDateTime(entry.at)}
-                </td>
-                <td className={cellClass}>
-                  {entry.token_name ?? (
-                    <span className="italic">unauthenticated</span>
-                  )}
-                </td>
+                <td className={`${cellClass} whitespace-nowrap`}>{formatDateTime(entry.at)}</td>
+                <td className={cellClass}>{entry.token_name ?? <span className="italic">unauthenticated</span>}</td>
                 <td className={`${cellClass} font-mono`}>{entry.method}</td>
                 <td className={`${cellClass} font-mono break-all`}>
                   {entry.path}
                   {entry.resource_id && (
-                    <span className="block text-xs opacity-80">
-                      {entry.resource_id}
-                    </span>
+                    <span className="block text-xs opacity-80">{entry.resource_id}</span>
                   )}
                 </td>
                 <td className={`${cellClass} font-mono`}>{entry.status}</td>
                 <td className={cellClass}>{OUTCOME_LABELS[entry.outcome]}</td>
-                <td className={`${cellClass} break-words`}>
-                  {entry.error ?? ""}
-                </td>
+                <td className={`${cellClass} break-words`}>{entry.error ?? ""}</td>
               </tr>
             ))}
             {!isLoading && entries.length === 0 && (
@@ -143,17 +133,11 @@ export function ScimActivityTable({
         </table>
       </div>
 
-      {isLoading && (
-        <p className="mt-2 text-sm opacity-70">Loading activity...</p>
-      )}
+      {isLoading && <p className="mt-2 text-sm opacity-70">Loading activity...</p>}
 
       {hasMore && (
         <div className="mt-3 flex justify-center">
-          <Button
-            variant="secondary"
-            onClick={onLoadMore}
-            disabled={isLoading || isLoadingMore}
-          >
+          <Button variant="secondary" onClick={onLoadMore} disabled={isLoading || isLoadingMore}>
             {isLoadingMore ? "Loading..." : "Load more"}
           </Button>
         </div>

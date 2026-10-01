@@ -108,18 +108,18 @@ export const SharedPermissionsPage = ({
         {currentUser?.is_admin &&
           type !== "tokens" &&
           supportsRegexPermissions(type) && (
-            <Switch
-              checked={isRegexMode}
-              onChange={setIsRegexMode}
-              label={"Regex\u00A0Mode"}
-              className="mr-2 shrink-0"
-              labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
-                isRegexMode
-                  ? "text-btn-primary dark:text-btn-primary-dark"
-                  : "text-text-primary hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
-              }`}
-            />
-          )}
+          <Switch
+            checked={isRegexMode}
+            onChange={setIsRegexMode}
+            label={"Regex\u00A0Mode"}
+            className="mr-2 shrink-0"
+            labelClassName={`py-2 px-2 font-medium text-sm transition-colors duration-200 ${
+              isRegexMode
+                ? "text-btn-primary dark:text-btn-primary-dark"
+                : "text-text-primary hover:text-text-primary-hover dark:hover:text-text-primary-hover-dark hover:border-btn-secondary-border dark:hover:border-btn-secondary-border-dark"
+            }`}
+          />
+        )}
       </div>
 
       {type === "tokens" ? (

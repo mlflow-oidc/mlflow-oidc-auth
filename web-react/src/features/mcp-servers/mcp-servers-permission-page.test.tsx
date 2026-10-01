@@ -24,10 +24,7 @@ const renderAt = (path: string) =>
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route
-          path="/mcp-servers/:name"
-          element={<McpServersPermissionPage />}
-        />
+        <Route path="/mcp-servers/:name" element={<McpServersPermissionPage />} />
         <Route path="/mcp-servers/" element={<McpServersPermissionPage />} />
       </Routes>
     </MemoryRouter>,

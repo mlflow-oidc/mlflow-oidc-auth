@@ -198,7 +198,10 @@ export default function TrashPage() {
           <input
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
-            checked={data.length > 0 && selectedIds.size === data.length}
+            checked={
+              data.length > 0 &&
+              selectedIds.size === data.length
+            }
             onChange={(e) => handleSelectAll(e.target.checked)}
           />
         </div>

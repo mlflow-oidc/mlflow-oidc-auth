@@ -11,15 +11,7 @@ vi.mock("../../../shared/components/toast/use-toast", () => ({
 }));
 
 vi.mock("../../../shared/components/modal", () => ({
-  Modal: ({
-    children,
-    isOpen,
-    title,
-  }: {
-    children: React.ReactNode;
-    isOpen: boolean;
-    title: string;
-  }) =>
+  Modal: ({ children, isOpen, title }: { children: React.ReactNode; isOpen: boolean; title: string }) =>
     isOpen ? (
       <div data-testid="modal" title={title}>
         {children}
@@ -28,18 +20,8 @@ vi.mock("../../../shared/components/modal", () => ({
 }));
 
 vi.mock("../../../shared/components/permission-level-select", () => ({
-  PermissionLevelSelect: ({
-    value,
-    onChange,
-  }: {
-    value: string;
-    onChange: (v: string) => void;
-  }) => (
-    <select
-      data-testid="permission-select"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
+  PermissionLevelSelect: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <select data-testid="permission-select" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="READ">READ</option>
       <option value="EDIT">EDIT</option>
       <option value="MANAGE">MANAGE</option>
@@ -48,17 +30,7 @@ vi.mock("../../../shared/components/permission-level-select", () => ({
 }));
 
 vi.mock("../../../shared/components/button", () => ({
-  Button: ({
-    children,
-    onClick,
-    disabled,
-    variant,
-  }: {
-    children: React.ReactNode;
-    onClick?: () => void;
-    disabled?: boolean;
-    variant?: string;
-  }) => (
+  Button: ({ children, onClick, disabled, variant }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; variant?: string }) => (
     <button onClick={onClick} disabled={disabled} data-variant={variant}>
       {children}
     </button>
@@ -156,17 +128,12 @@ describe("BulkAssignModal", () => {
     fireEvent.click(screen.getByText("Assign 3 Selected"));
 
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith(
-        "Successfully assigned 3 permissions",
-        "success",
-      );
+      expect(mockShowToast).toHaveBeenCalledWith("Successfully assigned 3 permissions", "success");
     });
   });
 
   it("shows error summary when some grants fail", async () => {
-    defaultProps.onGrant.mockImplementation((name: string) =>
-      Promise.resolve(name !== "bob"),
-    );
+    defaultProps.onGrant.mockImplementation((name: string) => Promise.resolve(name !== "bob"));
 
     render(<BulkAssignModal {...defaultProps} />);
 
@@ -174,10 +141,7 @@ describe("BulkAssignModal", () => {
     fireEvent.click(screen.getByText("Assign 3 Selected"));
 
     await waitFor(() => {
-      expect(mockShowToast).toHaveBeenCalledWith(
-        "2 assigned, 1 failed",
-        "error",
-      );
+      expect(mockShowToast).toHaveBeenCalledWith("2 assigned, 1 failed", "error");
       expect(screen.getByText(/1 failed: bob/)).toBeInTheDocument();
       expect(screen.getByText(/2 assigned successfully/)).toBeInTheDocument();
     });
@@ -207,9 +171,7 @@ describe("BulkAssignModal", () => {
   });
 
   it("calls onSuccess but keeps modal open when some fail", async () => {
-    defaultProps.onGrant.mockImplementation((name: string) =>
-      Promise.resolve(name !== "bob"),
-    );
+    defaultProps.onGrant.mockImplementation((name: string) => Promise.resolve(name !== "bob"));
 
     render(<BulkAssignModal {...defaultProps} />);
 
@@ -236,9 +198,7 @@ describe("BulkAssignModal", () => {
   it("shows empty state when no options are available", () => {
     render(<BulkAssignModal {...defaultProps} options={[]} />);
 
-    expect(
-      screen.getByText(/All users already have permissions/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/All users already have permissions/)).toBeInTheDocument();
   });
 
   it("filters options by search text", async () => {
@@ -255,9 +215,7 @@ describe("BulkAssignModal", () => {
   it("changes permission level before assigning", async () => {
     render(<BulkAssignModal {...defaultProps} />);
 
-    fireEvent.change(screen.getByTestId("permission-select"), {
-      target: { value: "MANAGE" },
-    });
+    fireEvent.change(screen.getByTestId("permission-select"), { target: { value: "MANAGE" } });
 
     const checkboxes = screen.getAllByRole("checkbox");
     await userEvent.click(checkboxes[0]); // alice

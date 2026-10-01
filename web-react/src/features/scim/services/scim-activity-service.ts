@@ -7,9 +7,11 @@ import type {
   ScimProvisioningStatus,
 } from "../../../shared/types/scim";
 
-export const fetchScimStatus = createStaticApiFetcher<ScimProvisioningStatus>({
-  endpointKey: "SCIM_STATUS",
-});
+export const fetchScimStatus = createStaticApiFetcher<ScimProvisioningStatus>(
+  {
+    endpointKey: "SCIM_STATUS",
+  },
+);
 
 export const fetchScimActivity = async (
   query: ScimActivityQuery = {},

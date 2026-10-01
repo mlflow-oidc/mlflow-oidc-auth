@@ -293,9 +293,7 @@ describe("http", () => {
     });
 
     it("keeps the proxy prefix when it omits ?next=", async () => {
-      (
-        window as { __RUNTIME_CONFIG__?: { basePath?: string } }
-      ).__RUNTIME_CONFIG__ = {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
         basePath: "/proxy/path",
       };
       Object.defineProperty(window, "location", {
@@ -385,9 +383,7 @@ describe("http", () => {
     });
 
     it("uses runtime config basePath for the login URL behind a proxy", async () => {
-      (
-        window as { __RUNTIME_CONFIG__?: { basePath?: string } }
-      ).__RUNTIME_CONFIG__ = {
+      (window as { __RUNTIME_CONFIG__?: { basePath?: string } }).__RUNTIME_CONFIG__ = {
         basePath: "/proxy/path",
       };
 

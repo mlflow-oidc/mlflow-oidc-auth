@@ -60,10 +60,7 @@ describe("MCP server permission hooks", () => {
       await waitFor(() => {
         expect(result.current.permissions).toEqual(mockPermissions);
       });
-      expect(spy).toHaveBeenCalledWith(
-        "com.example/weather",
-        expect.anything(),
-      );
+      expect(spy).toHaveBeenCalledWith("com.example/weather", expect.anything());
     });
 
     it("does not fetch without a key", async () => {

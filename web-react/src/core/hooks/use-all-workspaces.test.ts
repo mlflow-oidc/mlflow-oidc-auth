@@ -99,13 +99,14 @@ describe("useAllWorkspaces", () => {
     vi.spyOn(workspaceService, "fetchAllWorkspaces").mockResolvedValue(
       mockResponse,
     );
-    vi.spyOn(workspaceService, "fetchWorkspaceMemberCounts").mockImplementation(
-      (name: string) => {
-        if (name === "workspace-1")
-          return Promise.resolve({ users: 5, groups: 2 });
-        return Promise.resolve({ users: 3, groups: 1 });
-      },
-    );
+    vi.spyOn(
+      workspaceService,
+      "fetchWorkspaceMemberCounts",
+    ).mockImplementation((name: string) => {
+      if (name === "workspace-1")
+        return Promise.resolve({ users: 5, groups: 2 });
+      return Promise.resolve({ users: 3, groups: 1 });
+    });
 
     const { result } = renderHook(() => useAllWorkspaces());
 
@@ -117,9 +118,9 @@ describe("useAllWorkspaces", () => {
       "workspace-1": { users: 5, groups: 2 },
       "workspace-2": { users: 3, groups: 1 },
     });
-    expect(workspaceService.fetchWorkspaceMemberCounts).toHaveBeenCalledTimes(
-      2,
-    );
+    expect(
+      workspaceService.fetchWorkspaceMemberCounts,
+    ).toHaveBeenCalledTimes(2);
   });
 
   it("sets memberCounts to null when allWorkspaces is empty", async () => {
@@ -223,8 +224,10 @@ describe("useAllWorkspaces", () => {
       default_artifact_root: "/artifacts/b",
     };
 
-    let resolveStale: (counts: WorkspaceMemberCounts) => void = () => undefined;
-    let resolveFresh: (counts: WorkspaceMemberCounts) => void = () => undefined;
+    let resolveStale: (counts: WorkspaceMemberCounts) => void = () =>
+      undefined;
+    let resolveFresh: (counts: WorkspaceMemberCounts) => void = () =>
+      undefined;
 
     vi.spyOn(workspaceService, "fetchAllWorkspaces")
       .mockResolvedValueOnce({ workspaces: [wsA] })

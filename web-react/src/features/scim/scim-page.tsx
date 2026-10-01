@@ -1,10 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import {
-  faPlus,
-  faCopy,
-  faRotate,
-  faBan,
-} from "@fortawesome/free-solid-svg-icons";
+import { faPlus, faCopy, faRotate, faBan } from "@fortawesome/free-solid-svg-icons";
 import PageContainer from "../../shared/components/page/page-container";
 import PageStatus from "../../shared/components/page/page-status";
 import { EntityListTable } from "../../shared/components/entity-list-table";
@@ -13,10 +8,7 @@ import { IconButton } from "../../shared/components/icon-button";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
 import { useScimTokens } from "./hooks/use-scim-tokens";
-import {
-  rotateScimToken,
-  revokeScimToken,
-} from "./services/scim-token-service";
+import { rotateScimToken, revokeScimToken } from "./services/scim-token-service";
 import { CreateScimTokenModal } from "./components/create-scim-token-modal";
 import { ScimTokenSecretModal } from "./components/scim-token-secret-modal";
 import { RotateScimTokenModal } from "./components/rotate-scim-token-modal";
@@ -159,9 +151,7 @@ export default function ScimPage() {
       {
         header: "Name",
         render: (t) => (
-          <span
-            className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}
-          >
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {t.name}
           </span>
         ),
@@ -179,9 +169,7 @@ export default function ScimPage() {
       {
         header: "Created",
         render: (t) => (
-          <span
-            className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}
-          >
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.created_at)}
           </span>
         ),
@@ -189,9 +177,7 @@ export default function ScimPage() {
       {
         header: "Created by",
         render: (t) => (
-          <span
-            className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}
-          >
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {t.created_by}
           </span>
         ),
@@ -199,9 +185,7 @@ export default function ScimPage() {
       {
         header: "Last used",
         render: (t) => (
-          <span
-            className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}
-          >
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.last_used_at)}
           </span>
         ),
@@ -209,9 +193,7 @@ export default function ScimPage() {
       {
         header: "Expires",
         render: (t) => (
-          <span
-            className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}
-          >
+          <span className={isTokenInactive(getTokenStatus(t)) ? "opacity-50" : ""}>
             {formatDate(t.expires_at)}
           </span>
         ),

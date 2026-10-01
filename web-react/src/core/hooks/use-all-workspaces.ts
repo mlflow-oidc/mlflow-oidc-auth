@@ -22,7 +22,8 @@ export function useAllWorkspaces() {
     error,
     refetch: refresh,
   } = useApi<WorkspaceListResponse>(fetchAllWorkspaces);
-  const allWorkspaces: WorkspaceListItem[] | null = data?.workspaces ?? null;
+  const allWorkspaces: WorkspaceListItem[] | null =
+    data?.workspaces ?? null;
 
   const [loaded, setLoaded] = useState<LoadedMemberCounts | null>(null);
 

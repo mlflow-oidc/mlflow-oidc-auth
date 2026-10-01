@@ -28,9 +28,7 @@ describe("user-session-service", () => {
       },
     ];
     vi.mocked(apiUtils.request).mockResolvedValue({ sessions });
-    await expect(listUserSessions("bob@example.com")).resolves.toEqual(
-      sessions,
-    );
+    await expect(listUserSessions("bob@example.com")).resolves.toEqual(sessions);
     expect(apiUtils.request).toHaveBeenCalledWith(
       DYNAMIC_API_ENDPOINTS.USER_SESSIONS("bob@example.com"),
       expect.objectContaining({ method: "GET" }),

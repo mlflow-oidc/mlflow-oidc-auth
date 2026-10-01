@@ -42,11 +42,7 @@ describe("CreateScimTokenModal", () => {
     vi.setSystemTime(new Date("2026-03-02T09:30:00Z"));
 
     render(
-      <CreateScimTokenModal
-        isOpen={true}
-        onClose={vi.fn()}
-        onCreated={vi.fn()}
-      />,
+      <CreateScimTokenModal isOpen={true} onClose={vi.fn()} onCreated={vi.fn()} />,
     );
 
     const dateInput = screen.getByLabelText(/Expires on/i);
@@ -71,11 +67,7 @@ describe("CreateScimTokenModal", () => {
     vi.spyOn(scimTokenService, "createScimToken").mockResolvedValue(created);
 
     render(
-      <CreateScimTokenModal
-        isOpen={true}
-        onClose={vi.fn()}
-        onCreated={vi.fn()}
-      />,
+      <CreateScimTokenModal isOpen={true} onClose={vi.fn()} onCreated={vi.fn()} />,
     );
 
     fireEvent.change(screen.getByLabelText(/Name\*/i), {
@@ -114,11 +106,7 @@ describe("CreateScimTokenModal", () => {
     vi.spyOn(scimTokenService, "createScimToken").mockResolvedValue(created);
 
     render(
-      <CreateScimTokenModal
-        isOpen={true}
-        onClose={vi.fn()}
-        onCreated={vi.fn()}
-      />,
+      <CreateScimTokenModal isOpen={true} onClose={vi.fn()} onCreated={vi.fn()} />,
     );
 
     fireEvent.change(screen.getByLabelText(/Name\*/i), {

@@ -50,13 +50,16 @@ describe("workspace-service", () => {
         description: "A test workspace",
       });
 
-      expect(mockRequest).toHaveBeenCalledWith("/api/3.0/mlflow/workspaces", {
-        method: "POST",
-        body: JSON.stringify({
-          name: "test-ws",
-          description: "A test workspace",
-        }),
-      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        "/api/3.0/mlflow/workspaces",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "test-ws",
+            description: "A test workspace",
+          }),
+        },
+      );
       expect(result).toEqual({
         name: "test-ws",
         description: "A test workspace",
@@ -75,10 +78,13 @@ describe("workspace-service", () => {
 
       await createWorkspace({ name: "minimal-ws" });
 
-      expect(mockRequest).toHaveBeenCalledWith("/api/3.0/mlflow/workspaces", {
-        method: "POST",
-        body: JSON.stringify({ name: "minimal-ws" }),
-      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        "/api/3.0/mlflow/workspaces",
+        {
+          method: "POST",
+          body: JSON.stringify({ name: "minimal-ws" }),
+        },
+      );
     });
 
     it("passes default_artifact_root when provided", async () => {
@@ -95,13 +101,16 @@ describe("workspace-service", () => {
         default_artifact_root: "s3://my-bucket",
       });
 
-      expect(mockRequest).toHaveBeenCalledWith("/api/3.0/mlflow/workspaces", {
-        method: "POST",
-        body: JSON.stringify({
-          name: "test-ws",
-          default_artifact_root: "s3://my-bucket",
-        }),
-      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        "/api/3.0/mlflow/workspaces",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "test-ws",
+            default_artifact_root: "s3://my-bucket",
+          }),
+        },
+      );
     });
   });
 
