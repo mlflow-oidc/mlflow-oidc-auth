@@ -60,6 +60,7 @@ counts only the resources that caller may see, never the ones hidden from them.
 | `GET /api/2.0/mlflow/permissions/gateways/endpoints` | `name` |
 | `GET /api/2.0/mlflow/permissions/gateways/secrets` | `key` |
 | `GET /api/2.0/mlflow/permissions/gateways/model-definitions` | `name` |
+| `GET /api/2.0/mlflow/permissions/mcp-servers` | `name` |
 | `GET /api/2.0/mlflow/permissions/groups` | the group name (`string[]`) |
 | `GET /api/2.0/mlflow/permissions/groups/details` | `group_name` |
 | `GET /api/2.0/mlflow/users` (also with `service=true`) | the username (`string[]`) |
@@ -342,6 +343,17 @@ These endpoints list resources with their permission summaries. Used by the admi
 | GET | `/api/2.0/mlflow/permissions/gateways/model-definitions/{name}/users` | Model Def MANAGE | List user permissions |
 | GET | `/api/2.0/mlflow/permissions/gateways/model-definitions/{name}/groups` | Model Def MANAGE | List group permissions |
 
+### MCP Servers
+
+MLflow 3.15+ MCP server registry. Names are `<namespace>/<slug>`; grants are read and written in
+the request's workspace. See [Permissions → MCP Server Registry](permissions#mcp-server-registry).
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/2.0/mlflow/permissions/mcp-servers` | Authenticated | List the MCP servers the caller can manage (all for an admin) |
+| GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/users` | Server MANAGE | List user permissions |
+| GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/groups` | Server MANAGE | List group permissions |
+
 ---
 
 ## User Permission CRUD
@@ -373,6 +385,7 @@ For each resource type, the following CRUD operations are available:
 | Gateway Endpoints | `gateways/endpoints` | `{name}` |
 | Gateway Secrets | `gateways/secrets` | `{name}` |
 | Gateway Model Definitions | `gateways/model-definitions` | `{name}` |
+| MCP Servers | `mcp-servers` | `{name}` (`<namespace>/<slug>`; no regex patterns) |
 
 **Request body (POST/PATCH):**
 ```json
@@ -404,7 +417,7 @@ For each resource type, regex pattern permissions are also available:
 
 **Pattern path segments:** `experiment-patterns`, `registered-models-patterns`, `prompts-patterns`, `scorer-patterns`, `gateways/endpoints-patterns`, `gateways/secrets-patterns`, `gateways/model-definitions-patterns`
 
-**Total: 70 user permission endpoints** (7 resource types x 10 operations each)
+**Total: 75 user permission endpoints** (7 resource types x 10 operations each, plus 5 for MCP servers, which have no pattern permissions)
 
 ---
 
