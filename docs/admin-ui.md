@@ -129,6 +129,15 @@ row reveals a **Deactivate** or **Reactivate** action:
   was opened and when it expires. **Revoke** ends one session and **Revoke all** ends every one,
   each after a confirmation; the list refreshes afterwards. The session is signed out on its next
   request. The account, its grants and its access tokens are not affected; use Deactivate for that.
+- On the **Service Accounts** page, **Signs in with** shows how each account signs in — *Internal
+  (tokens)*, only with access tokens issued for it, or the one provider whose tokens reach it —
+  and the key action changes it. Creating a service account asks the same question; choosing a
+  provider can bind its subject now, or leave the provider's first token to bind its own. Moving
+  an account to a provider revokes the access tokens issued for it.
+- **Identities** (also on the Service Accounts page) lists the `(provider, subject)` identities
+  that sign in as the account. **Unbind** removes one after a confirmation — for a subject that
+  changed, such as a re-created client or a CI workflow issuing a new `sub` — so the new one can be
+  bound on its next sign-in. The account and its grants are kept.
 
 If the target account is directory-managed (SCIM or OIDC), the deactivate dialog shows an
 **"Override ownership guard"** switch, since a later directory sync could otherwise overwrite the
@@ -233,8 +242,13 @@ When workspaces are enabled, a workspace selector appears in the UI header. Swit
 - Updates the `X-MLFLOW-WORKSPACE` header for all API calls
 - Persists the selected workspace in local storage
 - Selects which workspace's grants the model, prompt and AI Gateway permission pages show and change.
-  Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources));
-  with **All Workspaces** selected, they are the `default` workspace's
+  Those grants belong to one workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources)),
+  and each of those pages — the matching tabs of a user or group, and your own User Page — names
+  the workspace. With **All Workspaces** selected they show the `default` workspace's grants
+  read-only: choose a workspace to add, change or remove one. Experiment grants are unaffected.
+- A pattern (regex rule) applies in the workspace selected when it is created, or in every workspace
+  under **All Workspaces**; the "Add New Regex Rule" dialog says which, and pattern lists show each
+  pattern's workspace ([details](workspaces#pattern-regex-grants)).
 
 ## Search and Filtering
 

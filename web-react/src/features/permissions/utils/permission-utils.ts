@@ -23,7 +23,10 @@ export const getPermissionUrl = ({
     }
     if (identifier) {
       return entityKind === "user"
-        ? DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(entityName, identifier)
+        ? DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(
+            entityName,
+            identifier,
+          )
         : DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
             entityName,
             identifier,
@@ -254,3 +257,8 @@ export const getPermissionUrl = ({
 
   throw new Error("Unknown permission type");
 };
+
+/** How a pattern's workspace reads in a list: "*" (or an older server's none) is every workspace. */
+export function patternWorkspaceLabel(workspace: string | undefined): string {
+  return !workspace || workspace === "*" ? "All workspaces" : workspace;
+}

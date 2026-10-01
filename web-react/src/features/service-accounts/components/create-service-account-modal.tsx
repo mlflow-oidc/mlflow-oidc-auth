@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
+import { ServiceAccountSourceFields } from "./service-account-source-fields";
+import {
+  INTERNAL_SOURCE,
+  type ServiceAccountSource,
+} from "../services/service-account-source-service";
 
 interface CreateServiceAccountModalProps {
   isOpen: boolean;
@@ -10,16 +15,22 @@ interface CreateServiceAccountModalProps {
     name: string;
     display_name: string;
     is_admin: boolean;
+    service_account_source: string;
+    subject?: string;
   }) => void | Promise<void>;
+  /** The sources it can sign in through; empty offers internal only. */
+  sources?: ServiceAccountSource[];
 }
 
 export const CreateServiceAccountModal: React.FC<
   CreateServiceAccountModalProps
-> = ({ isOpen, onClose, onSave }) => {
+> = ({ isOpen, onClose, onSave, sources = [] }) => {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isDisplayNameManual, setIsDisplayNameManual] = useState(false);
+  const [source, setSource] = useState(INTERNAL_SOURCE);
+  const [subject, setSubject] = useState("");
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,15 +57,28 @@ export const CreateServiceAccountModal: React.FC<
 
   const handleSave = async () => {
     if (!name || !displayName) return;
-    await onSave({
-      name,
-      display_name: displayName,
-      is_admin: isAdmin,
-    });
+    try {
+      await onSave({
+        name,
+        display_name: displayName,
+        is_admin: isAdmin,
+        service_account_source: source,
+        ...(source !== INTERNAL_SOURCE && subject.trim()
+          ? { subject: subject.trim() }
+          : {}),
+      });
+    } catch {
+      // The caller has reported why; keep what was typed so it can be corrected.
+      return;
+    }
     onClose();
   };
 
-  const isFormValid = name.trim() !== "" && displayName.trim() !== "";
+  // An external administrator account is bound to its subject now: no first token binds one.
+  const needsSubject =
+    isAdmin && source !== INTERNAL_SOURCE && subject.trim() === "";
+  const isFormValid =
+    name.trim() !== "" && displayName.trim() !== "" && !needsSubject;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Create Service Account">
@@ -78,6 +102,14 @@ export const CreateServiceAccountModal: React.FC<
           placeholder="My Service Account"
           required
         />
+        <ServiceAccountSourceFields
+          sources={sources}
+          source={source}
+          subject={subject}
+          onSourceChange={setSource}
+          onSubjectChange={setSubject}
+          idPrefix="create-sa"
+        />
       </div>
 
       <div className="flex items-center space-x-2">
@@ -95,6 +127,13 @@ export const CreateServiceAccountModal: React.FC<
           Grant Admin Privileges
         </label>
       </div>
+
+      {needsSubject && (
+        <p role="alert" className="text-sm text-amber-800 dark:text-amber-200">
+          An administrator service account signing in through a provider needs
+          its subject now.
+        </p>
+      )}
 
       <div className="flex justify-end space-x-3 pt-4 border-t border-ui-secondary-bg dark:border-ui-secondary-bg-dark">
         <Button onClick={onClose} variant="ghost">

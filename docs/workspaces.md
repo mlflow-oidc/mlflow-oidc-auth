@@ -70,7 +70,8 @@ one of them — to a user or a group — therefore belongs to one workspace's re
 
 - A grant is recorded in the workspace the request names (`X-MLFLOW-WORKSPACE`), or in the
   `default` workspace when it names none. The admin UI sends the workspace chosen in the workspace
-  picker; with **All Workspaces** selected it sends none, so grants are made and listed in `default`.
+  picker and names it on every page listing these grants; with **All Workspaces** selected it sends
+  none, so it lists `default`'s grants and does not let you change them until you choose a workspace.
 - A grant applies only to requests in that workspace. A grant on `churn` in `team-a` gives nothing
   on `team-b`'s `churn`, and creating a same-named resource in another workspace grants its creator
   nothing on this one.

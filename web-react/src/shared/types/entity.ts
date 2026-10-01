@@ -26,7 +26,15 @@ export type PermissionLevel =
   | "MANAGE"
   | "NO_PERMISSIONS";
 
-export type PermissionKind = "user" | "group" | "regex" | "group-regex" | "fallback" | "workspace" | "workspace-deny" | "service-account";
+export type PermissionKind =
+  | "user"
+  | "group"
+  | "regex"
+  | "group-regex"
+  | "fallback"
+  | "workspace"
+  | "workspace-deny"
+  | "service-account";
 
 export type PermissionType =
   | "experiments"
@@ -77,6 +85,8 @@ export type BasePatternPermission = {
   regex: string;
   user_id?: number;
   group_id?: number;
+  /** The workspace the pattern applies in, or "*" for every workspace (absent from older servers). */
+  workspace?: string;
 };
 
 export type ExperimentPatternPermission = BasePatternPermission;

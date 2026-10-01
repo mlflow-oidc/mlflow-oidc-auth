@@ -18,6 +18,9 @@ import type { ColumnConfig } from "../../shared/types/table";
 import type { PermissionItem } from "../../shared/types/entity";
 import { UserTokensPanel } from "../tokens/components/user-tokens-panel";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
+import { GrantWorkspaceNotice } from "../permissions/components/grant-workspace-notice";
+import { useGrantWorkspaceScope } from "../permissions/hooks/use-grant-workspace-scope";
+import type { PermissionType } from "../../shared/types/entity";
 
 export const UserPage = () => {
   const { tab = "info" } = useParams<{ tab?: string }>();
@@ -32,6 +35,7 @@ export const UserPage = () => {
   const secretHook = useUserGatewaySecretPermissions({ username });
   const modelGatewayHook = useUserGatewayModelPermissions({ username });
   const mcpServerHook = useUserMcpServerPermissions({ username });
+  const grantScope = useGrantWorkspaceScope(tab as PermissionType);
 
   const activeHook =
     {
@@ -142,6 +146,7 @@ export const UserPage = () => {
           {tab === "tokens" && <UserTokensPanel />}
           {activeHook && (
             <>
+              <GrantWorkspaceNotice scope={grantScope} readOnly />
               <div className="mb-2">
                 <SearchInput
                   value={searchTerm}

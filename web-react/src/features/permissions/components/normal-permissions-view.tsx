@@ -25,6 +25,9 @@ import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
 import { IconButton } from "../../../shared/components/icon-button";
+import { GrantWorkspaceNotice } from "./grant-workspace-notice";
+import { grantControlTitle } from "../hooks/use-grant-workspace-scope";
+import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import type {
   PermissionType,
@@ -51,6 +54,7 @@ export const NormalPermissionsView = ({
   entityKind,
   entityName,
 }: NormalPermissionsViewProps) => {
+  const scope = useGrantWorkspaceScope(type);
   const { showToast } = useToast();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PermissionItem | null>(null);
@@ -331,16 +335,20 @@ export const NormalPermissionsView = ({
           <div className="flex space-x-2">
             <IconButton
               icon={editIcon}
-              title={isCreate ? "Add permission" : "Edit permission"}
+              title={grantControlTitle(
+                scope,
+                isCreate ? "Add permission" : "Edit permission",
+              )}
               onClick={() => handleEditClick(item)}
+              disabled={!scope.canChange}
             />
             <IconButton
               icon={faTrash}
-              title="Remove permission"
+              title={grantControlTitle(scope, "Remove permission")}
               onClick={() => {
                 void handleRemovePermission(item);
               }}
-              disabled={deleteDisabled}
+              disabled={deleteDisabled || !scope.canChange}
             />
           </div>
         );
@@ -364,6 +372,7 @@ export const NormalPermissionsView = ({
 
       {!isLoading && !error && (
         <>
+          <GrantWorkspaceNotice scope={scope} />
           <div className="mt-2 mb-3 flex items-center gap-6">
             <SearchInput
               value={searchTerm}
@@ -376,7 +385,8 @@ export const NormalPermissionsView = ({
               <Button
                 variant="secondary"
                 onClick={() => setIsGrantModalOpen(true)}
-                disabled={availableEntities.length === 0}
+                disabled={!scope.canChange || availableEntities.length === 0}
+                title={grantControlTitle(scope, undefined)}
                 icon={faPlus}
                 className="whitespace-nowrap h-8 mb-1 mt-2"
               >
