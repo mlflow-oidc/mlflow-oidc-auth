@@ -17,6 +17,15 @@ describe("pageTitleFor", () => {
     ["/ai-gateway/ai-endpoints", "AI endpoints · MLflow Access Control"],
     ["/ai-gateway/secrets/openai-key", "openai-key · AI secrets · MLflow Access Control"],
     ["/ai-gateway/models/gpt", "gpt · AI models · MLflow Access Control"],
+    ["/mcp-servers", "MCP servers · MLflow Access Control"],
+    [
+      "/mcp-servers/com.example%2Fweather",
+      "com.example/weather · MCP servers · MLflow Access Control",
+    ],
+    [
+      "/users/alice/mcp-servers",
+      "alice · MCP servers · Users · MLflow Access Control",
+    ],
     ["/trash/runs", "Trash · MLflow Access Control"],
     ["/user/tokens", "My account · MLflow Access Control"],
     ["/scim", "SCIM · MLflow Access Control"],

@@ -64,8 +64,8 @@ administrators only, and each lists the workspace it applies in (`*` for every w
 
 ### Grants on models, prompts and gateway resources
 
-MLflow keeps registered models, prompts and AI Gateway endpoints, secrets and model definitions
-unique per **workspace and name**: two workspaces can each have a model called `churn`. A grant on
+MLflow keeps registered models, prompts, AI Gateway endpoints, secrets and model definitions, and
+MCP servers unique per **workspace and name**: two workspaces can each have a model called `churn`. A grant on
 one of them — to a user or a group — therefore belongs to one workspace's resource:
 
 - A grant is recorded in the workspace the request names (`X-MLFLOW-WORKSPACE`), or in the
@@ -102,7 +102,10 @@ later — so a workspace's resource keeps it only where the grantee could alread
 workspace. Where a grant for the same workspace, resource and principal already exists, the
 existing one is kept.
 
-Deleting a workspace now also removes the grants on its models, prompts and gateway resources, so a
+Grants on MCP servers (MLflow 3.15+) are workspace-scoped from the start: they always record a
+workspace, so nothing about them needs upgrading.
+
+Deleting a workspace now also removes the grants on its models, prompts, gateway resources and MCP servers, so a
 workspace created later under the same name starts without them. When MLflow moves a deleted
 workspace's resources to `default` instead of deleting them, those resources arrive without grants
 and only administrators can manage them until they are granted again.
@@ -241,9 +244,13 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 
 ### MCP server registry
 
-MLflow keeps an MCP server registry per workspace. Reading it requires at least `READ` on the
-workspace the request names — the default workspace when it names none — like any other
-workspace-scoped resource. Changing it is admin-only.
+MLflow keeps an MCP server registry per workspace, and each server has its own user and group
+grants, recorded in the server's workspace (see [Permissions → MCP Server Registry](permissions#mcp-server-registry)).
+A server with no grant for the caller falls back to the caller's permission on the workspace the
+request names — the default workspace when it names none, never `DEFAULT_MLFLOW_PERMISSION` — so a
+workspace member with `READ` reads its servers and one with `EDIT` may create and change them, and
+a non-member sees nothing unless a server is shared with them. Searches list only the servers the
+caller can read. The creator of a server is granted `MANAGE` on it in the request's workspace.
 
 ## Workspace Detection During Login
 

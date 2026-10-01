@@ -823,6 +823,7 @@ class GroupRepository:
             SqlGatewayModelDefinitionGroupRegexPermission,
             SqlGatewaySecretGroupPermission,
             SqlGatewaySecretGroupRegexPermission,
+            SqlMCPServerGroupPermission,
             SqlRegisteredModelGroupPermission,
             SqlRegisteredModelGroupRegexPermission,
             SqlScorerGroupPermission,
@@ -870,6 +871,7 @@ class GroupRepository:
                     SqlGatewayModelDefinitionGroupRegexPermission,
                     SqlGatewaySecretGroupPermission,
                     SqlGatewaySecretGroupRegexPermission,
+                    SqlMCPServerGroupPermission,
                     SqlWorkspaceGroupPermission,
                     SqlWorkspaceGroupRegexPermission,
                 ):

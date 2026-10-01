@@ -62,6 +62,8 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionPermissionRegexRepository,
     GatewayModelDefinitionGroupPermissionRepository,
     GatewayModelDefinitionPermissionGroupRegexRepository,
+    MCPServerGroupPermissionRepository,
+    MCPServerPermissionRepository,
     UserRepository,
     UserTokenRepository,
     UserIdentityRepository,
@@ -128,6 +130,10 @@ class SqlAlchemyStore:
         self.gateway_model_definition_group_repo = GatewayModelDefinitionGroupPermissionRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_regex_repo = GatewayModelDefinitionPermissionRegexRepository(self.ManagedSessionMaker)
         self.gateway_model_definition_group_regex_repo = GatewayModelDefinitionPermissionGroupRegexRepository(self.ManagedSessionMaker)
+
+        # MCP server registry permissions (workspace-scoped; no regex sources)
+        self.mcp_server_repo = MCPServerPermissionRepository(self.ManagedSessionMaker)
+        self.mcp_server_group_repo = MCPServerGroupPermissionRepository(self.ManagedSessionMaker)
 
         # Workspace permissions
         self.workspace_permission_repo = WorkspacePermissionRepository(self.ManagedSessionMaker)
@@ -986,6 +992,55 @@ class SqlAlchemyStore:
     def delete_group_gateway_endpoint_regex_permission(self, id: int, group_name: str):
         return self.gateway_endpoint_group_regex_repo.revoke(id, group_name)
 
+    # mcp_server_repo — grants on MLflow's MCP server registry, in the request's grant workspace
+    def create_mcp_server_permission(self, name: str, username: str, permission: str):
+        return self.mcp_server_repo.grant_permission(name, username, permission)
+
+    def get_mcp_server_permission(self, name: str, username: str):
+        return self.mcp_server_repo.get_permission(name, username)
+
+    def list_mcp_server_permissions(self, username: str):
+        return self.mcp_server_repo.list_permissions_for_user(username)
+
+    def list_mcp_server_users(self, name: str):
+        """``(username, permission, is_service_account)`` for every user grant on ``name``."""
+        return self.mcp_server_repo.list_users_for_resource(name)
+
+    def update_mcp_server_permission(self, name: str, username: str, permission: str):
+        return self.mcp_server_repo.update_permission(name, username, permission)
+
+    def delete_mcp_server_permission(self, name: str, username: str) -> None:
+        return self.mcp_server_repo.revoke_permission(name, username)
+
+    def wipe_mcp_server_permissions(self, name: str) -> None:
+        """Delete every user and group grant on ``name`` in the request's grant workspace."""
+        self.mcp_server_repo.wipe(name)
+        self.mcp_server_group_repo.wipe(name)
+
+    # mcp_server_group_repo
+    def create_group_mcp_server_permission(self, group_name: str, name: str, permission: str):
+        return self.mcp_server_group_repo.grant_group_permission(group_name, name, permission)
+
+    def get_group_mcp_server_permission(self, group_name: str, name: str):
+        return self.mcp_server_group_repo.get_group_permission_for_group(name, group_name)
+
+    def list_group_mcp_server_permissions(self, group_name: str):
+        return self.mcp_server_group_repo.list_permissions_for_group(group_name)
+
+    def list_mcp_server_groups(self, name: str):
+        """``(group_name, permission)`` for every group grant on ``name``."""
+        return self.mcp_server_group_repo.list_groups_for_resource(name)
+
+    def get_user_mcp_server_group_permission(self, name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on ``name`` (resolution)."""
+        return self.mcp_server_group_repo.get_group_permission_for_user_resource(name, username)
+
+    def update_group_mcp_server_permission(self, group_name: str, name: str, permission: str):
+        return self.mcp_server_group_repo.update_group_permission(group_name, name, permission)
+
+    def delete_group_mcp_server_permission(self, group_name: str, name: str):
+        return self.mcp_server_group_repo.revoke_group_permission(group_name, name)
+
     # gateway_model_definition_repo
     def create_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
         return self.gateway_model_definition_repo.grant_permission(gateway_name, username, permission)
@@ -1153,7 +1208,7 @@ class SqlAlchemyStore:
         """Delete every permission recorded for a workspace.
 
         Used for cascade-delete when a workspace is removed: the user and group workspace grants,
-        and the grants on the workspace's registered models, prompts and gateway resources — which
+        and the grants on the workspace's registered models, prompts, gateway resources and MCP servers — which
         would otherwise come back to life on a same-named resource in a workspace later created
         under the same name.
 
@@ -1705,6 +1760,14 @@ _PERMISSION_CUD_METHODS = [
     "create_group_gateway_model_definition_regex_permission",
     "update_group_gateway_model_definition_regex_permission",
     "delete_group_gateway_model_definition_regex_permission",
+    # MCP server permissions (user- and group-scoped)
+    "create_mcp_server_permission",
+    "update_mcp_server_permission",
+    "delete_mcp_server_permission",
+    "wipe_mcp_server_permissions",
+    "create_group_mcp_server_permission",
+    "update_group_mcp_server_permission",
+    "delete_group_mcp_server_permission",
     # Group membership (affects group-scoped permission resolution)
     "set_user_groups",
     "add_user_to_group",
