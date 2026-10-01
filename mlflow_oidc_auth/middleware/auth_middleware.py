@@ -176,29 +176,43 @@ def _bearer_identity(provider, payload, username: str) -> Tuple[Optional[str], b
     return resolved, creating
 
 
-def _automation_account(username: str, providers_bound_to) -> bool:
+def _unbound_account(username: str, *, service_account_only: bool) -> bool:
+    """Whether ``username`` is an existing, active, non-admin account no identity is bound to.
+
+    The identity migration's placeholder (``default`` with the username as its subject) is not a
+    binding. A Kubernetes service account never counts: it is its cluster provider's alone, and its
+    tokens take their own path.
+
+    Parameters:
+        username: The account.
+        service_account_only: Count only service accounts.
+    """
+    from mlflow_oidc_auth.kubernetes import USERNAME_TEMPLATE
+
+    if username.endswith(USERNAME_TEMPLATE[USERNAME_TEMPLATE.index("@") :]):
+        return False
+    try:
+        profile = store.get_user_profile(username)
+        if getattr(profile, "is_admin", False) or not getattr(profile, "active", True):
+            return False
+        if service_account_only and not getattr(profile, "is_service_account", False):
+            return False
+        return not store.user_identity_repo.has_real_binding(username)
+    except Exception:
+        return False
+
+
+def _automation_account(username: str) -> bool:
     """Whether ``username`` is a service account an administrator created for automation.
 
     The programmatic-access guide has an administrator create a service account named like the
     workload's token, for a service principal or a CI job whose token comes from any provider. Such
     an account has no identity bound, so the identity decision alone would refuse every provider
     but ``default`` — breaking automation that worked before. It stays reachable by name, as it
-    always was, while a human account, an administrator, a Kubernetes service account (its
-    cluster provider's alone; it never reaches this path) and an account already bound to an
-    identity do not.
+    always was, while a human account, an administrator, a Kubernetes service account and an
+    account bound to an identity do not.
     """
-    from mlflow_oidc_auth.kubernetes import USERNAME_TEMPLATE
-
-    kubernetes_suffix = USERNAME_TEMPLATE[USERNAME_TEMPLATE.index("@") :]
-    if username.endswith(kubernetes_suffix):
-        return False
-    try:
-        profile = store.get_user_profile(username)
-    except Exception:
-        return False
-    if not getattr(profile, "is_service_account", False) or getattr(profile, "is_admin", False) or not getattr(profile, "active", True):
-        return False
-    return not providers_bound_to(username)
+    return _unbound_account(username, service_account_only=True)
 
 
 def _bound_to_identity(provider, payload, username: str) -> bool:
@@ -253,11 +267,24 @@ def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> 
                 # An unknown binding set must not read as "bound to nobody".
                 return ["<unknown>"]
 
-        if decision.resolution is Resolution.CREATE and _automation_account(username, providers_bound_to):
-            # A service principal's or CI job's token reaching the service account an administrator
-            # created for it (docs/programmatic-access.md): unbound, so the identity decision alone
-            # would refuse it for any provider but ``default``.
-            return username, False
+        if decision.resolution is not Resolution.MATCHED and provider.id != DEFAULT_PROVIDER_ID and store.has_user(username):
+            # An existing account this identity is not bound to. Two kinds stay reachable:
+            # (Not over a refusal: an email-bound provider's domain policy still decides.)
+            adoptable = decision.resolution is Resolution.CREATE and getattr(provider, "bearer_adopts_unbound_accounts", False)
+            if adoptable and _unbound_account(username, service_account_only=False):
+                # The provider opted in: bind the account to this identity on first use (for one
+                # its bearer provisioning created before identities were bound), so afterwards
+                # only this identity reaches it.
+                store.user_identity_repo.link(provider.id, subject, username, allow_additional_provider=True)
+                logger.info("Bound an unbound account to provider '%s' on its first bearer use", provider.id)
+                emit_audit_event(
+                    "auth.identity_adopted", actor=username, resource_type="user", resource_id=username, detail={"provider": provider.id, "method": "bearer"}
+                )
+                return username, False
+            if _automation_account(username):
+                # A service principal's or CI job's token reaching the service account an
+                # administrator created for it (docs/programmatic-access.md), as it always did.
+                return username, False
         outcome = apply_provisioning_policy(
             provider,
             decision,

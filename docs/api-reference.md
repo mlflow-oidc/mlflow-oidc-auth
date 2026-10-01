@@ -137,6 +137,8 @@ Base path: `/api/2.0/mlflow/users`
 | GET | `/api/2.0/mlflow/users/current/tokens` | Authenticated | List the caller's access tokens |
 | POST | `/api/2.0/mlflow/users/current/tokens` | Session or IdP bearer token | Create a named access token for the caller |
 | DELETE | `/api/2.0/mlflow/users/current/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
+| GET | `/api/2.0/mlflow/users/{username}/identities` | Admin | List the `(provider, subject)` identities bound to a user |
+| DELETE | `/api/2.0/mlflow/users/{username}/identities?provider_id=…&subject=…` | Admin | Unbind one identity (the subject goes in the query: it may contain `/`), so a changed subject can be bound again |
 | GET | `/api/2.0/mlflow/users/{username}/tokens` | Admin | List a user's or service account's access tokens |
 | POST | `/api/2.0/mlflow/users/{username}/tokens` | Admin, session or IdP bearer token | Create a named access token for a user or service account |
 | DELETE | `/api/2.0/mlflow/users/{username}/tokens/{token_id}` | Admin | Delete one of a user's access tokens |
