@@ -57,15 +57,20 @@ export const CreateServiceAccountModal: React.FC<
 
   const handleSave = async () => {
     if (!name || !displayName) return;
-    await onSave({
-      name,
-      display_name: displayName,
-      is_admin: isAdmin,
-      service_account_source: source,
-      ...(source !== INTERNAL_SOURCE && subject.trim()
-        ? { subject: subject.trim() }
-        : {}),
-    });
+    try {
+      await onSave({
+        name,
+        display_name: displayName,
+        is_admin: isAdmin,
+        service_account_source: source,
+        ...(source !== INTERNAL_SOURCE && subject.trim()
+          ? { subject: subject.trim() }
+          : {}),
+      });
+    } catch {
+      // The caller has reported why; keep what was typed so it can be corrected.
+      return;
+    }
     onClose();
   };
 

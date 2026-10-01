@@ -75,19 +75,21 @@ vi.mock("./components/create-service-account-modal", () => ({
       is_admin: boolean;
       service_account_source: string;
       subject?: string;
-    }) => void;
+    }) => void | Promise<void>;
   }) =>
     isOpen ? (
       <div data-testid="create-modal">
         <button
           onClick={() =>
-            onSave({
-              name: "newsa",
-              display_name: "New SA",
-              is_admin: false,
-              service_account_source: "ci",
-              subject: "repo:org/app:ref:refs/heads/main",
-            })
+            void Promise.resolve(
+              onSave({
+                name: "newsa",
+                display_name: "New SA",
+                is_admin: false,
+                service_account_source: "ci",
+                subject: "repo:org/app:ref:refs/heads/main",
+              }),
+            ).catch(() => undefined)
           }
         >
           Confirm Create
@@ -219,6 +221,7 @@ describe("ServiceAccountsPage", () => {
     fireEvent.click(screen.getByText("Confirm Create"));
 
     await waitFor(() => {
+      // A plain error carries no server reason, so the fallback is shown.
       expect(mockShowToast).toHaveBeenCalledWith(
         "Failed to create service account",
         "error",

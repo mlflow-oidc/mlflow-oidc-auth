@@ -32,6 +32,7 @@ import {
 
 const fetchServiceAccountDetails = fetchAllUserDetails(true);
 import { useToast } from "../../shared/components/toast/use-toast";
+import { extractErrorMessage } from "../../core/services/http";
 
 export default function ServiceAccountsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -74,7 +75,12 @@ export default function ServiceAccountsPage() {
       setIsModalOpen(false);
     } catch (err) {
       console.error("Failed to create service account:", err);
-      showToast("Failed to create service account", "error");
+      showToast(
+        extractErrorMessage(err, "Failed to create service account"),
+        "error",
+      );
+      // Let the dialog stay open with what was typed (a subject already bound, say).
+      throw err;
     }
   };
 
@@ -198,9 +204,7 @@ export default function ServiceAccountsPage() {
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
             sources={sources}
-            onSave={(data) => {
-              void handleCreateServiceAccount(data);
-            }}
+            onSave={handleCreateServiceAccount}
           />
         </>
       )}

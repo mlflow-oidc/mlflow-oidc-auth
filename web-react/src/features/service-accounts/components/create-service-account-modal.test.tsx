@@ -127,6 +127,29 @@ describe("CreateServiceAccountModal", () => {
     expect(screen.getByRole("button", { name: /Save/i })).toBeEnabled();
   });
 
+  it("stays open with what was typed when saving fails", async () => {
+    const onClose = vi.fn();
+    const failing = vi
+      .fn()
+      .mockRejectedValue(new Error("That subject is already bound"));
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={onClose}
+        onSave={failing}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Service Account Name/i), {
+      target: { value: "ci-bot" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
+
+    await waitFor(() => expect(failing).toHaveBeenCalled());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Service Account Name/i)).toHaveValue("ci-bot");
+  });
+
   it("allows manual display name change", () => {
     render(
       <CreateServiceAccountModal

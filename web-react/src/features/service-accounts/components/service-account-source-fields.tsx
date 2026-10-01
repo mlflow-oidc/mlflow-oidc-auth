@@ -38,6 +38,10 @@ export function ServiceAccountSourceFields({
           },
         ]
   ).map((s) => ({ value: s.id, label: s.display_name }));
+  if (!options.some((option) => option.value === source)) {
+    // A provider since removed from the configuration: shown as it is, not as Internal.
+    options.push({ value: source, label: `${source} (not configured)` });
+  }
   const external = source !== INTERNAL_SOURCE;
 
   return (
