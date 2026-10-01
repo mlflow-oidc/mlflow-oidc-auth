@@ -10,7 +10,7 @@ from typing import Callable, List, Optional, Set
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
-from sqlalchemy import func
+from sqlalchemy import func, true
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlUser, SqlUserIdentity
@@ -99,7 +99,7 @@ class UserIdentityRepository:
         flush_bearer_identity_cache()
         return bool(removed)
 
-    def providers_in_email_domain(self, domain: str) -> Set[str]:
+    def providers_in_email_domain(self, domain: str, exclude_username: Optional[str] = None) -> Set[str]:
         """The providers whose identities own accounts named by an address in ``domain``.
 
         An account with no identity bound counts as the ``default`` provider's: it is from before
@@ -122,6 +122,7 @@ class UserIdentityRepository:
                 # Lowered in SQL too: LIKE is case-sensitive on PostgreSQL, and rows from before
                 # usernames were normalised may be mixed case.
                 .filter(func.lower(SqlUser.username).endswith(suffix, autoescape=True))
+                .filter(SqlUser.username != normalize_username(exclude_username) if exclude_username else true())
                 .all()
             )
             return {provider_id or DEFAULT_PROVIDER_ID for _, provider_id in rows}

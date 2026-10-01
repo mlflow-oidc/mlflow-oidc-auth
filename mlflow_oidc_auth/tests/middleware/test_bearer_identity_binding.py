@@ -636,3 +636,101 @@ class TestReviewFollowUps:
         monkeypatch.setattr(store.user_identity_repo, "list_identities_for_username", lambda *_: (_ for _ in ()).throw(RuntimeError("db down")))
 
         assert _service_account_denial("ci-bot", True, "partner", AUTH_METHOD_BEARER, (PARTNER, "s1")) != ""
+
+
+def test_a_kubernetes_account_an_older_replica_created_keeps_working():
+    """During a rolling upgrade an older replica creates Kubernetes accounts with no source recorded."""
+    from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_WORKLOAD
+    from mlflow_oidc_auth.middleware.auth_middleware import _KUBERNETES_BEARER, _service_account_denial
+
+    cluster = _provider("cluster", type="k8s")
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, None, AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, cluster)) == ""
+
+
+class TestOnlyAdministratorsManageServiceAccountSources:
+    @pytest.fixture
+    def member_api(self, store, monkeypatch):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        import mlflow_oidc_auth.dependencies as dependencies
+        import mlflow_oidc_auth.routers.users as users_router
+
+        async def username(request=None):
+            return BOB
+
+        async def is_admin(request=None):
+            return False
+
+        monkeypatch.setattr(dependencies, "get_username", username)
+        monkeypatch.setattr(dependencies, "get_is_admin", is_admin)
+        app = FastAPI()
+        app.include_router(users_router.users_router)
+        with TestClient(app) as client:
+            yield client
+
+    def test_a_member_can_neither_list_nor_change_sources_nor_create_with_one(self, store, providers, member_api):
+        store.create_user("ci-bot", "CI", is_service_account=True)
+
+        response = member_api.get(f"{USERS}/service-account-sources")
+        assert response.status_code == 403
+        response = member_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "partner"})
+        assert response.status_code == 403
+        body = {"username": "x-bot", "display_name": "X", "is_service_account": True, "service_account_source": "partner"}
+        response = member_api.post(USERS, json=body)
+        assert response.status_code == 403
+        assert store.get_user_profile("ci-bot").service_account_source == "internal"
+        assert not store.has_user("x-bot")
+
+
+class TestFinalReviewFollowUps:
+    ADOPTING = _provider("partner", bearer_adopts_unbound_accounts=True)
+
+    def test_adoption_never_reaches_into_another_providers_domain(self, store, providers):
+        providers(DEFAULT, self.ADOPTING)  # LEGACY is unbound, in corp.example where ADMIN is default's
+
+        assert authenticate(self.ADOPTING, {"sub": "partner-mallory", "email": LEGACY}) is None
+        assert store.user_identity_repo.list_identities_for_username(LEGACY) == []
+
+    def test_adoption_never_takes_an_account_from_before_identities_were_recorded(self, store, providers):
+        providers(DEFAULT, self.ADOPTING)
+        store.create_user("old-ci@partner.example", "Old CI")
+        store.user_identity_repo.link("default", "old-ci@partner.example", "old-ci@partner.example")  # the placeholder
+
+        assert authenticate(self.ADOPTING, {"sub": "partner-ci", "email": "old-ci@partner.example"}) is None
+
+    def test_a_pre_identity_service_account_pointed_at_default_binds_its_first_token(self, store, providers, admin_api):
+        providers(DEFAULT)
+        store.create_user("ci-bot", "CI", is_service_account=True)
+        store.user_identity_repo.link("default", "ci-bot", "ci-bot")  # the placeholder
+
+        assert admin_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "default"}).status_code == 200
+
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER
+        from mlflow_oidc_auth.middleware.auth_middleware import _service_account_denial
+
+        assert _service_account_denial("ci-bot", True, "default", AUTH_METHOD_BEARER, (DEFAULT, "corp-client-ci")) == ""
+
+    def test_an_unidentified_provider_is_a_denial_not_an_error(self, store):
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER
+        from mlflow_oidc_auth.middleware.auth_middleware import _service_account_denial
+
+        assert _service_account_denial("ci-bot", True, "partner", AUTH_METHOD_BEARER, (None, "s"))
+
+    def test_promoting_an_external_service_account_drops_its_first_token_subject(self, store, providers):
+        store.create_user("etl", "ETL", is_service_account=True, service_account_source="partner")
+        store.user_identity_repo.link("partner", "first-token-sub", "etl", allow_additional_provider=True)
+
+        store.update_user("etl", is_admin=True)
+
+        assert store.user_identity_repo.list_identities_for_username("etl") == []
+
+
+@pytest.mark.parametrize("provider_id", ["internal", "kubernetes"])
+def test_reserved_provider_ids_are_refused(provider_id):
+    from mlflow_oidc_auth.tests.test_provider_registry import build, valid_entry
+
+    result = build([valid_entry(id=provider_id)])
+
+    assert result.providers == []
+    assert any("is reserved" in error for error in result.errors)

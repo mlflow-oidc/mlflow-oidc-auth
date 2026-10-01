@@ -33,7 +33,7 @@ Per-provider fields set on an entry in `AUTH_PROVIDERS` / `AUTH_PROVIDERS_FILE` 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `public_client` | Boolean | `false` | Declare this OIDC provider a **public client**, registered without a client secret and authenticated by PKCE instead. The same rules as `OIDC_PUBLIC_CLIENT`: requires PKCE, and refuses a secret (`OIDC_CLIENT_SECRET_<PROVIDER_ID>`) configured alongside it. Without it, a provider with no secret is not registered. Accepted only on `oidc` providers; set on `saml` or `k8s` the entry is refused at load. Must be a JSON boolean (`"true"` is refused). For the synthesised `default` provider it comes from `OIDC_PUBLIC_CLIENT`. See [Public clients](#public-clients) |
-| `bearer_adopts_unbound_accounts` | Boolean | `false` | `oidc` providers other than `default` only. Let this provider's bearer tokens reach an existing non-admin account no identity is bound to — typically one its bearer provisioning created before identities were bound — and bind it to the token's `(provider, sub)` on first use, after which only that identity reaches it. Off by default, because such an account may be a human's who has not signed in since identities were recorded. Turn it on for a CI or service-principal issuer whose accounts predate this release. Must be a JSON `true` or `false` |
+| `bearer_adopts_unbound_accounts` | Boolean | `false` | `oidc` providers other than `default` only. Let this provider's bearer tokens reach an existing non-admin person's account that no identity has ever been recorded for — typically one its bearer provisioning created before identities were bound — and bind it to the token's `(provider, sub)` on first use, after which only that identity reaches it. Never an account in an email domain whose accounts belong to another provider (unless listed in its `allowed_email_domains`), and never one carrying the identity migration's placeholder: for an account from before identities were recorded, an administrator removes the placeholder first (`DELETE /api/2.0/mlflow/users/{username}/identities`). Off by default. Turn it on for a CI or service-principal issuer whose accounts predate this release. Must be a JSON `true` or `false` |
 | `userinfo_groups` | Boolean | `false` | `oidc` providers only. Let this provider's UserInfo endpoint supply the groups and workspace claims when the ID token lacks them. The same rules as `OIDC_USERINFO_GROUPS`, which sets it for the synthesised `default` provider. Must be a JSON `true` or `false` (a string such as `"true"` is rejected), and is rejected on a `saml` or `k8s` provider. See [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint) |
 | `interactive` | Boolean | `true` for `oidc` and `saml`, `false` for `k8s` | Whether the provider carries a browser login and appears on the login page. Set `false` on an `oidc` provider that only issues tokens to workloads — a service principal's client-credentials tokens or a CI workload-identity issuer. A bearer token from a non-interactive provider authenticates normally but is refused (`403`) by every endpoint that issues an access token. Must be a JSON boolean; `true` on a `k8s` provider is refused at load. See [Programmatic access](programmatic-access#idp-client-credentials-and-workload-identity) |
 | `allow_tokens_without_expiry` | Boolean | `false` | Accept a bearer token that carries no `exp` claim. By default every provider — including the synthesised `default` one — refuses such a token, because nothing else would ever make it stop working. Accepted only on token providers (`oidc`, `k8s`); set on `saml` or any other type the entry is refused at load. Must be a JSON boolean (`"true"` is refused). Waives only a *missing* `exp`: a present `exp` in the past, the issuer, the audience and the signature are all still enforced. Setting it logs a warning at startup. Intended for legacy Kubernetes service-account tokens — see [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry) |
@@ -574,18 +574,49 @@ with the client's address, which the plugin does not trust unless that address i
 `TRUSTED_PROXIES`; for such a deployment set `OIDC_REDIRECT_URI` and serve the application at the
 same path the proxy exposes rather than relying on `X-Forwarded-Prefix`.
 
-## Upgrading: service accounts sign in one way
+## Upgrading: workspace-scoped grants and sign-in rules (breaking)
 
-**Breaking.** Every existing service account becomes **internal** on upgrade: it signs in only with
-access tokens issued for it, and an identity provider's token that used to reach it by naming it —
-a service principal's client-credentials token, a CI job's workload-identity token — is refused.
-For each service account a workload reaches with an IdP token, an administrator sets its sign-in
-source to that provider (**Service Accounts** page, or
-`PUT /api/2.0/mlflow/users/{username}/service-account-source` with `{"source": "<provider-id>"}`,
-optionally with `"subject"`; required for an administrator account). Any change of source revokes
-the access tokens issued for the account and its sessions. Kubernetes
-service accounts keep working: they are their cluster provider's. No service account signs in
-through the browser.
+This release changes what a running deployment does on upgrade. Upgrade every replica together; the
+migrations and a grant backfill run on start. What changes, and what an operator does about it:
+
+- **MLflow 3.16.0 or later is required** (see [Installation](installation)).
+- **Every existing service account becomes internal.** It signs in only with access tokens issued
+  for it; an identity provider's token that reached it by naming it — a service principal's
+  client-credentials token, a CI job's workload-identity token — is refused. For each account a
+  workload reaches with an IdP token, set its sign-in source to that provider (**Service
+  Accounts** page, or `PUT /api/2.0/mlflow/users/{username}/service-account-source` with
+  `{"source": "<provider-id>"}`; give `"subject"` too for an administrator account). Any change of
+  source revokes the account's access tokens and sessions. Kubernetes service accounts keep
+  working. No service account signs in through the browser. See
+  [Programmatic access](programmatic-access#automation-oidc-service-accounts).
+- **Grants on models, prompts and AI Gateway resources belong to one workspace**, and existing
+  ones are assigned a workspace on start; with workspaces enabled, a grant the grantee could not
+  reach is marked unresolved and matches nothing. Deleting a workspace removes its grants. See
+  [Workspaces → Upgrading: existing grants](workspaces#upgrading-existing-grants). Enabling
+  workspaces later does not copy `default`'s grants to other workspaces.
+- **Pattern grants apply in the workspace they were made in**; existing patterns apply everywhere,
+  as before ([Workspaces → Pattern grants](workspaces#pattern-regex-grants)).
+- **Group grants on AI Gateway resources take effect** — they were ignored before. Review them.
+- **The permission API honours workspace permissions** when the request names a workspace, instead
+  of `DEFAULT_MLFLOW_PERMISSION`; an experiment is judged only in its own workspace.
+- **MCP servers**: changes need someone holding `MANAGE` on a server, so existing servers stay
+  admin-only for changes until granted; with workspaces enabled, reading and searching need
+  permissions ([Permissions → MCP Server Registry](permissions#mcp-server-registry)).
+- **With more than one provider in the registry** — of any type, so the `default` provider beside a
+  Kubernetes one counts:
+  - a bearer token reaches only the account its `(provider, sub)` identity is bound to — a token
+    whose username claim has drifted reaches the account bound to its `sub`, as a login does;
+    accounts a non-default provider's bearer provisioning created before this release are refused
+    unless that provider sets `bearer_adopts_unbound_accounts` (see its limits above; identities
+    are listed and removed with `GET`/`DELETE /api/2.0/mlflow/users/{username}/identities`);
+  - a provider other than `default` cannot create accounts in an email domain whose accounts
+    belong to another provider: list shared domains in its `allowed_email_domains`;
+  - bearer-provisioned users of a provider other than `default` get `<provider-id>:<group>`
+    groups, as on login — grant to those names; bearer provisioning also applies login's admin
+    gate and refuses a provider whose `provisioning` is not `jit`; such a provider no longer
+    creates usernames with more than one `@`.
+- **Downgrading** removes grants and patterns recorded for workspaces other than `default`, MCP
+  server grants, and every service account's sign-in source.
 
 ## Upgrading to this release
 

@@ -12,6 +12,12 @@ All endpoints except health probes, login/callback, and static files require aut
 
 When workspaces are enabled, include the `X-MLFLOW-WORKSPACE` header to specify the active workspace.
 
+With workspaces enabled, the permission APIs for registered models, prompts, AI Gateway resources
+and MCP servers read and write the grants of the workspace the request names — the `default`
+workspace when it names none — and pattern-permission responses carry a `workspace` field: the
+workspace a pattern applies in, or `*` for every workspace. A pattern created with a workspace named
+applies only there. See [Workspaces](workspaces#grants-on-models-prompts-and-gateway-resources).
+
 ## Permission Levels
 
 Request/response bodies reference these permission values:
@@ -357,6 +363,10 @@ the request's workspace. See [Permissions → MCP Server Registry](permissions#m
 | GET | `/api/2.0/mlflow/permissions/mcp-servers` | Authenticated | List the MCP servers the caller can manage (all for an admin) |
 | GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/users` | Server MANAGE | List user permissions |
 | GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/groups` | Server MANAGE | List group permissions |
+| GET | `/api/2.0/mlflow/permissions/users/{username}/mcp-servers` | The user, or Admin | A user's effective permission on each MCP server of the request's workspace |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/users/{username}/mcp-servers/{name}` | Server MANAGE | A user's grant on a server (`{"permission": "READ"}`) |
+| GET | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers` | Admin, or server MANAGE per row | A group's grants |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers/{name}` | Server MANAGE | A group's grant on a server |
 
 ---
 

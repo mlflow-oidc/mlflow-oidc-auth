@@ -202,6 +202,28 @@ def _unbound_person(username: str) -> bool:
         return False
 
 
+def _adoptable_by(provider, username: str) -> bool:
+    """Whether a provider with ``bearer_adopts_unbound_accounts`` may adopt ``username``.
+
+    Only an account no identity has ever been recorded for — not even the identity migration's
+    placeholder, so a person from before identities were recorded is not adoptable; an administrator
+    who means it removes the placeholder first (``DELETE /users/{username}/identities``) — and only
+    where the email-domain rule lets this provider create the account: never in a domain other
+    providers' accounts own, unless listed in its ``allowed_email_domains``.
+    """
+    from mlflow_oidc_auth.provisioning_policy import _squats_a_domain
+
+    if not _unbound_person(username):
+        return False
+    try:
+        if store.user_identity_repo.list_identities_for_username(username):
+            return False
+        owners = lambda domain: store.user_identity_repo.providers_in_email_domain(domain, exclude_username=username)  # noqa: E731
+        return _squats_a_domain(provider, username, owners) is None
+    except Exception:
+        return False
+
+
 def _is_service_account(username: str) -> bool:
     try:
         return bool(getattr(store.get_user_profile(username), "is_service_account", False))
@@ -233,6 +255,7 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
     """
     if not is_service_account:
         return ""
+    recorded = source
     source = source or INTERNAL_SOURCE
     if method == AUTH_METHOD_BASIC:
         return "" if source == INTERNAL_SOURCE else "an external service account signs in with its identity provider's tokens only"
@@ -245,6 +268,10 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
         from mlflow_oidc_auth.utils.service_accounts import KUBERNETES_SOURCE
 
         cluster = bearer_identity[1]
+        # No source recorded: a Kubernetes account a replica on an older release created during a
+        # rolling upgrade — reached on this path only for a Kubernetes-derived username.
+        if recorded is None:
+            return ""
         return (
             ""
             if source in (KUBERNETES_SOURCE, getattr(cluster, "id", None))
@@ -253,6 +280,8 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
     if not isinstance(bearer_identity, tuple) or source == INTERNAL_SOURCE:
         return "an internal service account signs in with access tokens issued for it only"
     provider, subject = bearer_identity
+    if provider is None:
+        return "the provider that validated the token could not be identified"
     if source != provider.id:
         return f"this service account signs in through provider '{source}' only"
     if not subject:
@@ -273,7 +302,8 @@ def _external_binding_denial(username: str, provider, subject: str, is_admin: bo
     key = "\x1fsa\x1f".join((provider.id, subject, username))
     if cache.get(key):
         return ""
-    subjects = [s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id]
+    # The identity migration's placeholder (default, username) is not a subject binding.
+    subjects = [s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id and not (p == "default" and s == username)]
     if subjects and subject not in subjects:
         return "this service account is bound to another subject of its provider"
     if not subjects:
@@ -355,7 +385,7 @@ def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> 
                 return username, False
             # (Not over a refusal: an email-bound provider's domain policy still decides.)
             adoptable = decision.resolution is Resolution.CREATE and getattr(provider, "bearer_adopts_unbound_accounts", False)
-            if adoptable and _unbound_person(username):
+            if adoptable and _adoptable_by(provider, username):
                 # The provider opted in: bind the account to this identity on first use (for one
                 # its bearer provisioning created before identities were bound), so afterwards
                 # only this identity reaches it.
@@ -561,11 +591,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # who is writing and the memberships are owned by that provider rather than ``manual``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
-            # Bound like a login binds it, so this account answers to this provider's subject
-            # alone and another provider cannot later adopt it by asserting the same name.
-            subject = payload.get("sub")
-            if isinstance(subject, str) and subject.strip():
-                store.user_identity_repo.link(provider.id, subject.strip(), username)
             if groups is not None:
                 arrived = user_module.populate_groups(group_names=groups, written_by=written_by)
                 user_module.update_user(username=username, group_names=groups, written_by=written_by)
@@ -574,6 +599,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
 
                     apply_rules_for_groups(arrived, source=written_by)
+            # Bound like a login binds it, so this account answers to this provider's subject
+            # alone and another provider cannot later adopt it by asserting the same name. A bind
+            # that fails (the subject already names another account) leaves the account unbound:
+            # with several providers its token is then refused (_bound_to_identity).
+            subject = payload.get("sub")
+            if isinstance(subject, str) and subject.strip():
+                try:
+                    store.user_identity_repo.link(provider.id, subject.strip(), username)
+                except Exception as e:
+                    logger.warning("Bearer provisioning of %s could not bind its identity: %s", username, type(e).__name__)
             logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(groups or []))
             if admission is not None and admission.kind == BY_PATTERN:
                 emit_audit_event(
@@ -1027,6 +1062,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     # A service account never signs in through the browser; a session it holds
                     # (from before the account became one) is not honoured.
                     logger.info("Authentication denied for service account %s on %s: a browser session", username, path)
+                    if _should_audit_denial(username, DENIAL_SERVICE_ACCOUNT_SOURCE):
+                        emit_audit_event(
+                            DENIAL_AUDIT_EVENTS[DENIAL_SERVICE_ACCOUNT_SOURCE],
+                            actor=username,
+                            resource_type="user",
+                            resource_id=username,
+                            detail={"reason": "a service account does not sign in interactively"},
+                            status="denied",
+                        )
                     return await self._deny(request, path)
             else:
                 is_admin, is_active, denial_reason, account = self._get_user_auth_facts(username)

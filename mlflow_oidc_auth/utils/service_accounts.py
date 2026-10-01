@@ -92,7 +92,8 @@ def apply_source(username: str, source: str, subject=None) -> None:
     changed = (profile.service_account_source or INTERNAL_SOURCE) != source
     store.set_service_account_source(username, source)
     for provider_id, bound in store.user_identity_repo.list_identities_for_username(username):
-        if source == INTERNAL_SOURCE or provider_id != source or (subject and bound != subject):
+        placeholder = provider_id == "default" and bound == profile.username
+        if placeholder or source == INTERNAL_SOURCE or provider_id != source or (subject and bound != subject):
             store.user_identity_repo.unlink(provider_id, bound, username)
     if changed:
         # Credentials of the old way stop working: issued tokens (an external account keeps none;

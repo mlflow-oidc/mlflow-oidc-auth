@@ -16,10 +16,12 @@ stores are available. Until then, with workspaces enabled, such a grant matches 
 workspaces disabled nothing is filtered, so a deployment that never enabled workspaces is unaffected.
 
 Downgrade drops the column and restores the name-only unique constraints, under which a grant
-applies to every workspace's resource of that name. So that a downgrade never widens access, only
-grants of the ``default`` workspace (and unassigned ones) are kept; grants recorded for any other
-workspace are deleted and counted in the log. A deployment that never enabled workspaces has only
-``default`` grants and loses nothing. The downgrade never refuses.
+applies to every workspace's resource of that name — the old release's behaviour, which a
+downgrade brings back for the grants it keeps. Only grants of the ``default`` workspace (and
+unassigned ones) are kept; grants recorded for any other workspace are deleted and counted in the
+log, so a grant made for one tenant's resource is not handed every tenant's. A kept ``default``
+grant does again reach same-named resources in other workspaces. A deployment that never enabled
+workspaces has only ``default`` grants and loses nothing. The downgrade never refuses.
 
 ``batch_alter_table`` because SQLite cannot change a table's constraints in place: it rebuilds the
 table from the reflected schema; on PostgreSQL these are plain ALTERs.

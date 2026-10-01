@@ -32,7 +32,7 @@ Never raises: a failure is logged, and the unassigned grants stay inert until th
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 from sqlalchemy.exc import IntegrityError
@@ -108,8 +108,10 @@ def _mlflow_resource_workspaces() -> Optional[Dict[str, Dict[str, Set[str]]]]:
         return None
 
 
-def _principal_can_reach(session) -> Callable[[str, int, str], bool]:
-    """``can_reach(principal_column, principal_id, workspace)``: whether the grantee has ``READ`` there.
+def _principal_can_reach(session) -> Callable[[str, int, str], Optional[object]]:
+    """``can_reach(principal_column, principal_id, workspace)``: the grantee's permission there, when it reads it.
+
+    Returns the workspace permission (at least ``READ``), or None.
 
     A user is judged by the full workspace resolution (user, group, regex, group-regex grants and
     rule-owned group grants). A group by its own group grants on the workspace.
@@ -119,8 +121,16 @@ def _principal_can_reach(session) -> Callable[[str, int, str], bool]:
     from mlflow_oidc_auth.utils.workspace_cache import _lookup_workspace_permission
 
     usernames: Dict[int, Optional[str]] = {}
+    reached: Dict[Tuple[str, int, str], Optional[object]] = {}
 
-    def can_reach(principal: str, principal_id: int, workspace: str) -> bool:
+    def can_reach(principal: str, principal_id: int, workspace: str):
+        # Memoised: a grantee with many legacy grants is judged once per workspace.
+        key = (principal, principal_id, workspace)
+        if key not in reached:
+            reached[key] = _reaches(principal, principal_id, workspace)
+        return reached[key]
+
+    def _reaches(principal: str, principal_id: int, workspace: str):
         try:
             if principal == "user_id":
                 if principal_id not in usernames:
@@ -128,15 +138,16 @@ def _principal_can_reach(session) -> Callable[[str, int, str], bool]:
                     usernames[principal_id] = row[0] if row else None
                 username = usernames[principal_id]
                 permission = _lookup_workspace_permission(username, workspace) if username else None
-                return permission is not None and permission.can_read
+                return permission if permission is not None and permission.can_read else None
             row = (
                 session.query(SqlWorkspaceGroupPermission.permission)
                 .filter(SqlWorkspaceGroupPermission.group_id == principal_id, SqlWorkspaceGroupPermission.workspace == workspace)
                 .one_or_none()
             )
-            return row is not None and get_permission(row[0]).can_read
+            permission = get_permission(row[0]) if row is not None else None
+            return permission if permission is not None and permission.can_read else None
         except Exception:
-            return False
+            return None
 
     return can_reach
 
@@ -184,13 +195,20 @@ def _backfill(store) -> BackfillReport:
             rows = session.query(model).filter(model.workspace.is_(None)).order_by(model.id).all()
             for row in rows:
                 name, principal_id = getattr(row, resource_col), getattr(row, principal_col)
+                caps = {}
                 if not workspaces_enabled:
                     targets = [DEFAULT_WORKSPACE_NAME]
                 else:
                     candidates = sorted(resources.get(kind, {}).get(name, set()))
-                    targets = [ws for ws in candidates if can_reach(principal_col, principal_id, ws)]
+                    levels = {ws: can_reach(principal_col, principal_id, ws) for ws in candidates}
+                    targets = [ws for ws in candidates if levels[ws] is not None]
                     if not targets and DEFAULT_WORKSPACE_NAME in candidates:
                         targets = [DEFAULT_WORKSPACE_NAME]
+                    # When several workspaces hold the name, which tenant's resource the name-only
+                    # grant was made for is unknowable: a copy placed in a workspace other than
+                    # default carries no more than the grantee already holds on that workspace.
+                    if len(candidates) > 1:
+                        caps = {ws: levels[ws] for ws in targets if ws != DEFAULT_WORKSPACE_NAME and levels.get(ws) is not None}
                     if not targets:
                         reason = "not found in any workspace" if not candidates else f"in {len(candidates)} workspace(s), grantee reaches none"
                         report.unresolved[table].append(f"{name} ({reason})")
@@ -210,15 +228,28 @@ def _backfill(store) -> BackfillReport:
                             row.workspace = UNRESOLVED_WORKSPACE
                         session.flush()
                         continue
-                _place(session, model, row, resource_col, principal_col, targets, report, table)
+                _place(session, model, row, resource_col, principal_col, targets, report, table, caps)
             session.flush()
 
     _log(report, workspaces_enabled)
     return report
 
 
-def _place(session, model, row, resource_col: str, principal_col: str, targets: List[str], report: BackfillReport, table: str) -> None:
-    """Give ``row`` the first target workspace and copy it to the others, skipping any that exist."""
+def _place(session, model, row, resource_col: str, principal_col: str, targets: List[str], report: BackfillReport, table: str, caps=None) -> None:
+    """Give ``row`` the first target workspace and copy it to the others, skipping any that exist.
+
+    ``caps`` maps a target workspace to the most the grant may carry there (see the caller).
+    """
+    from mlflow_oidc_auth.permissions import compare_permissions
+
+    caps = caps or {}
+    original = row.permission
+
+    def capped(workspace: str) -> str:
+        cap = caps.get(workspace)
+        if cap is None or compare_permissions(original, cap.name):
+            return original
+        return cap.name
 
     def exists(workspace: str) -> bool:
         return (
@@ -239,12 +270,14 @@ def _place(session, model, row, resource_col: str, principal_col: str, targets: 
             continue
         if not placed_row:
             row.workspace = workspace
+            row.permission = capped(workspace)
             session.flush()
             placed_row = True
             report.assigned[table] += 1
             continue
-        copy = model(**{c.key: getattr(row, c.key) for c in model.__table__.columns if c.key not in ("id", "workspace")})
+        copy = model(**{c.key: getattr(row, c.key) for c in model.__table__.columns if c.key not in ("id", "workspace", "permission")})
         copy.workspace = workspace
+        copy.permission = capped(workspace)
         session.add(copy)
         session.flush()
         report.copied[table] += 1

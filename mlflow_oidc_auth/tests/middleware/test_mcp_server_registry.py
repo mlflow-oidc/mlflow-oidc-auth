@@ -750,6 +750,22 @@ class TestHeaderlessFallbackUsesMlflowsWorkspace:
 
 
 class TestWorkspacesDisabled:
+    def test_a_permissive_global_default_never_lets_anyone_change_a_server(self, api, store, registry, monkeypatch):
+        """Workspaces disabled: only a grant on the server changes it, not DEFAULT_MLFLOW_PERMISSION."""
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        registry.add(SERVER, "an-admin", workspace="default")
+        with _as(ADMIN, "default"):
+            store.create_mcp_server_permission(SERVER, ALICE, "MANAGE")
+        _clear_cache()
+
+        response = api.bob.patch(f"{API}/{SERVER}", json={})
+        assert response.status_code == 403
+        response = api.bob.delete(f"{API}/{SERVER}")
+        assert response.status_code == 403
+        response = api.alice.patch(f"{API}/{SERVER}", json={})
+        assert response.status_code == 200
+
     def test_the_registry_is_readable_and_server_grants_still_decide(self, api, store, registry, monkeypatch):
         """With workspaces disabled any authenticated user reads the registry, as before per-server
         permissions; a grant on a server — NO_PERMISSIONS included — decides for that server."""

@@ -781,8 +781,11 @@ def _mcp_server_write_permission(name: str, user: str):
     so normal rules apply to it at once. Administrators are let through before this is asked.
     """
     result = effective_mcp_server_permission(name, user)
-    if result.kind not in ("user", "group") and not store.mcp_server_has_manager(name):
-        return None
+    if result.kind not in ("user", "group"):
+        # With workspaces disabled there is no workspace to delegate through: only a grant on the
+        # server changes it, never the global default.
+        if not config.MLFLOW_ENABLE_WORKSPACES or not store.mcp_server_has_manager(name):
+            return None
     return result.permission
 
 

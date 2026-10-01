@@ -1236,15 +1236,13 @@ class SqlAlchemyStore:
         Returns:
             Total number of permission rows deleted.
         """
-        user_count = self.workspace_permission_repo.delete_all_for_workspace(workspace)
-        group_count = self.workspace_group_permission_repo.delete_all_for_workspace(workspace)
-        return user_count + group_count + self._wipe_workspace_resource_grants(workspace)
-
-    def _wipe_workspace_resource_grants(self, workspace: str) -> int:
-        """Delete the grants and patterns recorded for ``workspace``; patterns for every workspace stay."""
+        # One transaction: a failure part way must not leave grants behind that a workspace later
+        # created under the same name would bring back to life.
+        from mlflow_oidc_auth.db.models import SqlWorkspaceGroupPermission, SqlWorkspacePermission
         from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_grant_tables, workspace_scoped_pattern_tables
 
-        models = [model for model, *_ in workspace_scoped_grant_tables()] + list(workspace_scoped_pattern_tables())
+        models = [SqlWorkspacePermission, SqlWorkspaceGroupPermission]
+        models += [model for model, *_ in workspace_scoped_grant_tables()] + list(workspace_scoped_pattern_tables())
         with self.ManagedSessionMaker(read_only=False) as session:
             return sum(session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model in models)
 

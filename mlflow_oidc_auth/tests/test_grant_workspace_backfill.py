@@ -145,7 +145,8 @@ class TestWorkspacesEnabled:
         with resources(registered_model={"churn": {"default", "team-b"}}):
             grant_workspace_backfill.backfill_grant_workspaces(store)
 
-        assert sorted(rows(store, "SqlRegisteredModelPermission")) == [("churn", "default", "EDIT"), ("churn", "team-b", "EDIT")]
+        # default keeps the grant; team-b's copy carries no more than Alice's READ on team-b.
+        assert sorted(rows(store, "SqlRegisteredModelPermission")) == [("churn", "default", "EDIT"), ("churn", "team-b", "READ")]
 
     def test_a_name_in_several_workspaces_goes_only_where_the_grantee_reaches(self, store):
         store.create_workspace_permission("team-a", ALICE, "READ")
@@ -153,7 +154,8 @@ class TestWorkspacesEnabled:
         with resources(registered_model={"churn": {"team-a", "team-b"}}):
             grant_workspace_backfill.backfill_grant_workspaces(store)
 
-        assert rows(store, "SqlRegisteredModelPermission") == [("churn", "team-a", "MANAGE")]
+        # Two workspaces hold the name: the grant carries no more than Alice holds on team-a.
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", "team-a", "READ")]
 
     def test_a_group_grant_is_copied_to_every_workspace_the_group_reaches(self, store):
         store.create_workspace_group_permission("team-a", "team", "READ")
@@ -162,7 +164,8 @@ class TestWorkspacesEnabled:
         with resources(gateway_endpoint={"chat": {"team-a", "team-b", "team-c"}}):
             report = grant_workspace_backfill.backfill_grant_workspaces(store)
 
-        assert rows(store, "SqlGatewayEndpointGroupPermission") == [("chat", "team-a", "USE"), ("chat", "team-b", "USE")]
+        # Capped at the group's permission on each workspace: READ on team-a, USE fits under EDIT on team-b.
+        assert rows(store, "SqlGatewayEndpointGroupPermission") == [("chat", "team-a", "READ"), ("chat", "team-b", "USE")]
         assert sum(report.assigned.values()) == 1 and sum(report.copied.values()) == 1
 
     @pytest.mark.parametrize("found", [set(), {"team-a", "team-b"}], ids=["deleted", "ambiguous"])

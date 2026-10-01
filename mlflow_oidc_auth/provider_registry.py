@@ -417,6 +417,11 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # who wrote it believes it changes something.
         errors.append(f"{label}: 'userinfo_groups' applies only to an 'oidc' provider, not to {provider_type!r}")
 
+    if isinstance(entry.get("id"), str) and entry["id"].strip() in ("internal", "kubernetes"):
+        # Reserved: a service account's sign-in source names its provider by id, and these two
+        # mean "issued tokens only" and "a Kubernetes account from before sources were recorded".
+        errors.append(f"{label}: provider id {entry['id'].strip()!r} is reserved")
+
     bearer_adopts_unbound_accounts = entry.get("bearer_adopts_unbound_accounts", False)
     if not isinstance(bearer_adopts_unbound_accounts, bool):
         errors.append(f"{label}: 'bearer_adopts_unbound_accounts' must be true or false, got {bearer_adopts_unbound_accounts!r}")
