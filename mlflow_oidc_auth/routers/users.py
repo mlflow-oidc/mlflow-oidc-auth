@@ -441,7 +441,13 @@ async def create_new_user(
             service_account_source=source,
         )
         if status and source and user_request.subject:
-            apply_source(user_request.username, source, user_request.subject)
+            try:
+                apply_source(user_request.username, source, user_request.subject)
+            except Exception:
+                # Never leave an external account behind unbound: its provider's first token
+                # would bind whatever subject it carries.
+                store.delete_user(user_request.username)
+                raise HTTPException(status_code=409, detail="That subject could not be bound to the new service account")
 
         if status:
             # User was created successfully
@@ -461,6 +467,8 @@ async def create_new_user(
             # User already exists (updated)
             return JSONResponse(content={"message": message}, status_code=200)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating user: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create user")

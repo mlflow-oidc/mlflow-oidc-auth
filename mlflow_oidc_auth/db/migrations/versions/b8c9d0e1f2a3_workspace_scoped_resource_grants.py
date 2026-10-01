@@ -71,13 +71,18 @@ def _collapse(connection, table: str, resource: str, principal: str) -> int:
     """Leave at most one grant per (resource, principal), never one from a non-default workspace.
 
     Deletes every grant recorded for a workspace other than ``default``, then any unassigned grant
-    that duplicates a ``default`` one. Returns how many rows were deleted.
+    that duplicates a ``default`` one, then all but the oldest of unassigned grants that duplicate
+    one another. Returns how many rows were deleted.
     """
     t = sa.table(table, sa.column("id", sa.Integer), sa.column(resource, sa.String), sa.column(principal, sa.Integer), sa.column("workspace", sa.String))
     removed = connection.execute(t.delete().where(t.c.workspace.isnot(None), t.c.workspace != DEFAULT_WORKSPACE)).rowcount or 0
     kept = sa.alias(t, "kept")
     duplicate = sa.exists().where(kept.c[resource] == t.c[resource], kept.c[principal] == t.c[principal], kept.c.workspace == DEFAULT_WORKSPACE)
     removed += connection.execute(t.delete().where(t.c.workspace.is_(None), duplicate)).rowcount or 0
+    # Unassigned grants that duplicate one another (a rolling upgrade can write those): keep the
+    # oldest of each, so the name-only constraint can be restored.
+    oldest = sa.select(sa.func.min(t.c.id)).where(t.c.workspace.is_(None)).group_by(t.c[resource], t.c[principal])
+    removed += connection.execute(t.delete().where(t.c.workspace.is_(None), t.c.id.not_in(oldest.scalar_subquery()))).rowcount or 0
     return removed
 
 

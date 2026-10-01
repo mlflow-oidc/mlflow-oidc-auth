@@ -792,7 +792,7 @@ class TestWorkspaceFallbackEndToEnd:
     """
 
     @staticmethod
-    def _workspace_env(workspace_grants: dict):
+    def _workspace_env(workspace_grants: dict, experiment_in_workspace: bool = True):
         from contextlib import ExitStack
 
         from mlflow_oidc_auth.models import PermissionResult
@@ -802,6 +802,8 @@ class TestWorkspaceFallbackEndToEnd:
         stack = ExitStack()
         stack.enter_context(patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", True))
         stack.enter_context(patch.object(perms, "get_permission_from_store_or_default", return_value=PermissionResult(NO_PERMISSIONS, "fallback")))
+        # Experiment 42 is (or is not) one of the request workspace's experiments.
+        stack.enter_context(patch.object(perms, "_experiment_in_request_workspace", return_value=experiment_in_workspace))
         stack.enter_context(
             patch(
                 "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
@@ -820,6 +822,16 @@ class TestWorkspaceFallbackEndToEnd:
             response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
 
         assert response.status_code == 200
+
+    def test_workspace_manage_does_not_reach_another_workspaces_experiment(self):
+        """Experiment ids are global: MANAGE on the header's workspace reaches only its experiments."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        with self._workspace_env({("user@example.com", "team-ws"): MANAGE}, experiment_in_workspace=False):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 403
 
     def test_no_workspace_grant_is_denied_on_otel_route(self):
         """Negative path: the same request against a workspace the user has no grant on is 403."""

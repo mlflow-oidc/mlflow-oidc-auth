@@ -352,7 +352,14 @@ def test_a_kubernetes_token_was_authorized_on_its_own_path():
     from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_WORKLOAD
     from mlflow_oidc_auth.middleware.auth_middleware import _KUBERNETES_BEARER, _service_account_denial
 
-    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "cluster", AUTH_METHOD_WORKLOAD, _KUBERNETES_BEARER) == ""
+    cluster = _provider("cluster", type="k8s")
+    other_cluster = _provider("cluster-b", type="k8s")
+
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "cluster", AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, cluster)) == ""
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "kubernetes", AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, cluster)) == ""
+    # Another cluster allowing the same namespace, or an account re-pointed elsewhere, is refused.
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "cluster", AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, other_cluster))
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "partner", AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, cluster))
 
 
 class TestAProviderThatAdoptsUnboundAccounts:
@@ -600,7 +607,9 @@ class TestReviewFollowUps:
         from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_WORKLOAD
         from mlflow_oidc_auth.middleware.auth_middleware import _KUBERNETES_BEARER, _service_account_denial
 
-        assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "internal", AUTH_METHOD_WORKLOAD, _KUBERNETES_BEARER)
+        assert _service_account_denial(
+            "t.ns@serviceaccount.cluster.local", True, "internal", AUTH_METHOD_WORKLOAD, (_KUBERNETES_BEARER, _provider("cluster", type="k8s"))
+        )
 
     def test_a_service_accounts_session_is_flagged_by_the_session_lookup(self, store):
         from datetime import datetime, timedelta, timezone
@@ -609,3 +618,21 @@ class TestReviewFollowUps:
         session_id = store.create_auth_session("ci-bot", datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1))
 
         assert store.auth_session_repo.resolve(session_id).is_service_account is True
+
+    def test_a_subject_that_cannot_be_bound_on_create_leaves_no_account(self, store, providers, admin_api, monkeypatch):
+        from mlflow.exceptions import MlflowException
+
+        monkeypatch.setattr(store.user_identity_repo, "link", lambda *a, **k: (_ for _ in ()).throw(MlflowException("bound meanwhile")))
+        body = {"username": "ci-bot", "display_name": "CI", "is_service_account": True, "service_account_source": "partner", "subject": "s1"}
+
+        assert admin_api.post(USERS, json=body).status_code == 409
+        assert not store.has_user("ci-bot")
+
+    def test_a_binding_that_cannot_be_checked_is_a_denial(self, store, providers, monkeypatch):
+        from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER
+        from mlflow_oidc_auth.middleware.auth_middleware import _service_account_denial
+
+        store.create_user("ci-bot", "CI", is_service_account=True, service_account_source="partner")
+        monkeypatch.setattr(store.user_identity_repo, "list_identities_for_username", lambda *_: (_ for _ in ()).throw(RuntimeError("db down")))
+
+        assert _service_account_denial("ci-bot", True, "partner", AUTH_METHOD_BEARER, (PARTNER, "s1")) != ""

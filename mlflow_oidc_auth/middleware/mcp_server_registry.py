@@ -199,18 +199,14 @@ def can_create_mcp_server(username: str) -> bool:
     ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``, the same threshold as creating experiments, models and
     gateway resources. (MLflow's own plugin asks for a workspace grant that carries ``can_use``.)
 
-    With workspaces disabled: any authenticated user, as in MLflow — unless
-    ``RESTRICT_RESOURCE_CREATION`` is set, in which case ``DEFAULT_MLFLOW_PERMISSION`` must grant
-    ``EDIT`` (MCP servers have no pattern grants to match a new name against).
+    With workspaces disabled: administrators only, as before per-server permissions.
     """
     from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
-    from mlflow_oidc_auth.permissions import get_permission
-
     if not config.MLFLOW_ENABLE_WORKSPACES:
-        if not config.RESTRICT_RESOURCE_CREATION:
-            return True
-        return get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_update
+        # One registry and no workspace to delegate through: registering a server stays an
+        # administrator's job, as before per-server permissions (admins never reach this check).
+        return False
 
     from mlflow_oidc_auth.bridge.user import get_request_workspace
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
@@ -243,6 +239,22 @@ def can_search_mcp_servers(username: str) -> bool:
     return permission is not None and permission.can_read
 
 
+def _may_read(name: str, username: str) -> bool:
+    """Whether ``username`` may read MCP server ``name``.
+
+    With workspaces disabled the registry is readable by every authenticated user, as it was before
+    per-server permissions: a server with no grant of its own is readable, and a grant on it — a
+    ``NO_PERMISSIONS`` included — decides otherwise. With workspaces enabled ``READ`` on the server
+    decides, a workspace permission standing in for a missing grant.
+    """
+    from mlflow_oidc_auth.utils.permissions import effective_mcp_server_permission
+
+    result = effective_mcp_server_permission(name, username)
+    if not config.MLFLOW_ENABLE_WORKSPACES and result.kind not in ("user", "group"):
+        return True
+    return result.permission.can_read
+
+
 def _mcp_server_exists(name: str) -> bool:
     """Whether the request's workspace holds an MCP server called ``name``.
 
@@ -264,7 +276,7 @@ def _mcp_server_exists(name: str) -> bool:
 
 def get_mcp_server_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
     """Return the validator for an MCP server registry request (see the module docstring)."""
-    from mlflow_oidc_auth.utils.permissions import can_delete_mcp_server, can_read_mcp_server, can_update_mcp_server
+    from mlflow_oidc_auth.utils.permissions import can_delete_mcp_server, can_update_mcp_server
 
     async def validator(username: str, request: Request) -> bool:
         route = resolve_mcp_route(path, request.method)
@@ -292,7 +304,7 @@ def get_mcp_server_validator(path: str) -> Callable[[str, Request], Awaitable[bo
             request.state.mcp_server_can_update_existing_recheck = _recheck(name, username, auth_context)
             return can_create_mcp_server(username)
         if route.action in (READ, READ_SERVER):
-            return can_read_mcp_server(name, username)
+            return _may_read(name, username)
         if route.action == UPDATE:
             return can_update_mcp_server(name, username)
         if route.action in (DELETE, DELETE_SERVER):
@@ -345,12 +357,12 @@ def _filter_search_body(username: str, body: bytes, list_key: str, name_key: str
             continue
         if name not in cache:
             try:
-                cache[name] = effective_mcp_server_permission(name, username).permission
+                cache[name] = effective_mcp_server_permission(name, username).permission if _may_read(name, username) else None
             except Exception as e:
                 logger.error("MCP server registry: permission check failed: %s", type(e).__name__)
                 cache[name] = None
         permission = cache[name]
-        if permission is None or not permission.can_read:
+        if permission is None:
             continue
         if stamp:
             item["allowed_actions"] = _allowed_actions(mcp_server_display_permission(name, username))
@@ -386,6 +398,21 @@ def _grant_creator_manage(name: str, username: str) -> None:
         store.update_mcp_server_permission(name, username, MANAGE.name)
 
 
+def _grant_parent_creator(name: str, username: str, auth_context: Any) -> None:
+    """Grant MANAGE on a server MLflow created for this caller's version request. Never raises."""
+    try:
+        from mlflow.server.handlers import _get_tracking_store
+
+        server = _get_tracking_store().get_mcp_server(name)
+        # MLflow records the caller as the creator of a server it creates for a version; a server
+        # someone else created first is theirs, not this caller's.
+        if getattr(server, "created_by", None) == username:
+            with _bridged(auth_context):
+                _grant_creator_manage(name, username)
+    except Exception as e:
+        logger.error("MCP server registry: could not grant the creator MANAGE: %s", type(e).__name__)
+
+
 def _created_in_grant_workspace(data: dict) -> bool:
     """Whether the server MLflow reports is in the workspace the grant would be written in."""
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
@@ -412,6 +439,10 @@ async def finalize_mcp_response(path: str, username: str, request: Request, resp
     Non-2xx responses are returned unchanged.
     """
     route = resolve_mcp_route(path, request.method)
+    if route is not None and route.action == CREATE_VERSION and not is_admin and getattr(request.state, "mcp_server_parent_auto_created", False):
+        # MLflow creates the server before the version, so a version that then fails still leaves
+        # the server behind: its creator manages it either way, or nobody but an admin could.
+        _grant_parent_creator(route.name, username, auth_context)
     if route is None or not 200 <= response.status_code < 300:
         return response
     if is_admin and route.action != DELETE_SERVER:
@@ -460,21 +491,6 @@ async def finalize_mcp_response(path: str, username: str, request: Request, resp
             # With no MANAGE grant it is admin-only for changes until an admin grants one.
             logger.error("MCP server registry: could not grant the creator MANAGE: %s", type(e).__name__)
         return _rebuilt(response, body)
-
-    if route.action == CREATE_VERSION:
-        if getattr(request.state, "mcp_server_parent_auto_created", False):
-            try:
-                from mlflow.server.handlers import _get_tracking_store
-
-                server = _get_tracking_store().get_mcp_server(route.name)
-                # MLflow records the caller as the creator of a server it creates for a version; a
-                # server someone else created first is theirs, not this caller's.
-                if getattr(server, "created_by", None) == username:
-                    with _bridged(auth_context):
-                        _grant_creator_manage(route.name, username)
-            except Exception as e:
-                logger.error("MCP server registry: could not grant the creator MANAGE: %s", type(e).__name__)
-        return response
 
     if route.action == DELETE_SERVER:
         try:

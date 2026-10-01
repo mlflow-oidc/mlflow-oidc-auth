@@ -356,7 +356,7 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 _KNOWN_PERMISSION_SOURCES = frozenset(("user", "group", "regex", "group-regex"))
 
 
-def _apply_workspace_fallback(result: PermissionResult, username: str) -> PermissionResult:
+def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
     """Defer a generic ``fallback`` result to the user's workspace permission.
 
     Per WSAUTH-C/WSAUTH-04: when workspaces are enabled and no resource-level
@@ -376,10 +376,26 @@ def _apply_workspace_fallback(result: PermissionResult, username: str) -> Permis
     workspace = get_request_workspace()
     if not workspace:
         return result
+    if resource_type in (EXPERIMENT, SCORER) and not _experiment_in_request_workspace(resource_id):
+        # Experiment (and scorer) grants are keyed by an id MLflow keeps unique across workspaces,
+        # so the workspace a request names says nothing about the experiment: a permission on
+        # workspace B must not reach an experiment of workspace A. MLflow's store resolves the id
+        # only within the request's workspace; an experiment it does not find there gets nothing.
+        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
     ws_perm = get_workspace_permission_cached(username, workspace)
     if ws_perm is not None:
         return PermissionResult(ws_perm, "workspace")
     return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+
+def _experiment_in_request_workspace(experiment_id: str | None) -> bool:
+    """Whether MLflow finds ``experiment_id`` in the request's workspace. Any failure is a no."""
+    if not experiment_id:
+        return False
+    try:
+        return _get_tracking_store().get_experiment(str(experiment_id)) is not None
+    except Exception:
+        return False
 
 
 _FALLBACK_COUNTS: Dict[str, int] = {}
@@ -493,7 +509,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     builder = PERMISSION_REGISTRY[resource_type]
     sources_config = builder(resource_id, username, **kwargs)
     result = get_permission_from_store_or_default(sources_config)
-    result = _apply_workspace_fallback(result, username)
+    result = _apply_workspace_fallback(result, username, resource_type, resource_id)
 
     # Recorded here rather than where the fallback is constructed, because this is the
     # only layer that knows WHICH resource and user it was for. Checked after the
