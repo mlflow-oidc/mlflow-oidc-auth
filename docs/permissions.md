@@ -160,7 +160,7 @@ For non-admin users, search and list results are filtered to only include resour
 - `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
 - Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
-The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
+The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist. The MCP server searches are the exception: a filtered page can hold fewer than `max_results` servers (follow `next_page_token`), which is why searching a workspace's registry needs `READ` on that workspace.
 
 ## Artifact Access
 
@@ -462,7 +462,7 @@ servers unique per `(workspace, name)`; a name is `<reverse-dns namespace>/<slug
 | Route | Permission required |
 |---|---|
 | `POST mcp-servers` (create) | create rights, see below; the creator is granted `MANAGE` once MLflow returns success |
-| `GET mcp-servers` (search), `GET mcp-servers/endpoints` | any authenticated user; the results contain only servers the caller can `READ` |
+| `GET mcp-servers` (search), `GET mcp-servers/endpoints` | `READ` on the request's workspace (any authenticated user with workspaces disabled); the results contain only servers the caller can `READ`. A server shared with a non-member is reached by name |
 | `GET mcp-servers/<name>` and every `GET` under it (versions, aliases, access endpoints) | `READ` on the server |
 | `PATCH mcp-servers/<name>`, `POST`/`PATCH` on its tags, aliases, versions and access endpoints | `EDIT` on the server |
 | `POST mcp-servers/<name>/versions` on a server that does not exist yet | create rights — MLflow creates the server — and the creator is granted `MANAGE` |
@@ -480,11 +480,13 @@ the server:
 A grant on a server applies whether or not the grantee is a member of its workspace: sharing a
 server with a non-member is what a resource grant is for, as for every other resource type.
 
-**Servers nobody is granted on stay admin-only for changes.** A permission that comes only from the
+**Servers nobody manages stay admin-only for changes.** A permission that comes only from the
 workspace (or, with workspaces disabled, from `DEFAULT_MLFLOW_PERMISSION`) lets its holder read a
-server, but changing, deleting or sharing one needs someone — anyone — to be granted on it first.
-That keeps servers registered before this release, when only administrators could change them,
-admin-only until an administrator grants someone on them. A server created since carries its
+server, but changing, deleting or sharing one needs a user or group to hold `MANAGE` on it first —
+a lesser grant, such as `READ` for one contractor or `NO_PERMISSIONS` to shut someone out, does not
+open it to everyone else. That keeps servers registered before this release, when only
+administrators could change them, admin-only until an administrator grants someone `MANAGE`.
+`allowed_actions` reflects this. A server created since carries its
 creator's `MANAGE` grant, so the normal rules apply to it at once.
 
 **Create rights.** With workspaces enabled: `MANAGE` on the workspace MLflow serves the request
@@ -501,7 +503,7 @@ fewer than `max_results` servers; follow `next_page_token` as usual. Admins are 
 > **Upgrade note:** before this release, registry writes were admin-only and reads needed only
 > `READ` on the workspace. Now any user with `MANAGE` on a workspace (any authenticated user with
 > workspaces disabled) can create servers and manages the ones they create. Existing servers stay
-> admin-only for changes until an administrator grants someone on them. Reading a server needs
+> admin-only for changes until an administrator grants someone `MANAGE` on them. Reading a server needs
 > `READ` on it, which workspace members keep through the workspace fallback. With workspaces
 > disabled and the shipped `NO_PERMISSIONS` default, existing servers are no longer readable by
 > non-admins until they are granted.

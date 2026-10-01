@@ -9,7 +9,6 @@ import pytest
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.tests.test_workspace_scoped_grants import (  # noqa: F401  (fixtures)
-    ADMIN,
     ALICE,
     USERS_API,
     _clear_cache,

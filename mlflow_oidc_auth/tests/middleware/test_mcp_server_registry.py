@@ -387,15 +387,15 @@ class TestCreate:
     def test_a_version_on_a_new_server_is_a_creation(self, api, store, members, registry):
         assert api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
         assert registry.servers == {}
-        # Someone is granted on the name already, so the race recheck below is not the
-        # admin-only rule for servers nobody is granted on (TestServersFromBeforePermissions).
+        # Someone manages the name already, so the race recheck below is not the admin-only
+        # rule for servers nobody manages (TestServersFromBeforePermissions).
         with _as(ADMIN, "team-a"):
-            store.create_mcp_server_permission(SERVER, BOB, "READ")
+            store.create_mcp_server_permission(SERVER, BOB, "MANAGE")
 
         response = api.alice.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
 
         assert response.status_code == 200, response.text
-        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE"), (BOB, SERVER, "team-a", "READ")]
+        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE"), (BOB, SERVER, "team-a", "MANAGE")]
         # MLflow's handler is told to create the parent itself; its race recheck resolves in the
         # caller's workspace although it runs after the middleware's bridged context is gone
         # (Alice's MANAGE on team-a).
@@ -503,7 +503,7 @@ class TestPerServerChecks:
         assert client.get(f"{API}/{SERVER}", headers=headers).status_code == 403
         assert client.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=headers).status_code == 403
         assert client.delete(f"{API}/{SERVER}", headers=headers).status_code == 403
-        assert client.get(API, headers=headers).json()["mcp_servers"] == []
+        assert client.get(API, headers=headers).status_code == 403  # searching needs the workspace
 
     def test_a_grant_shares_a_server_with_a_non_member(self, api, store, alices_server):
         """As for every resource here: a grant on the server applies without workspace membership."""
@@ -520,7 +520,8 @@ class TestPerServerChecks:
 
         assert api.alice.get(f"{API}/{SERVER}", headers=headers).status_code == 200
         assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=headers).status_code == 403
-        assert [s["name"] for s in api.alice.get(API, headers=headers).json()["mcp_servers"]] == [SERVER]
+        # Reached by name; searching the workspace's registry is for its members.
+        assert api.alice.get(API, headers=headers).status_code == 403
 
     def test_the_ajax_prefix_is_judged_the_same(self, api, store, alices_server):
         assert api.bob.patch(f"{AJAX}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
@@ -557,12 +558,20 @@ class TestServersFromBeforePermissions:
         assert _grants(store) == []
         assert ("team-a", SERVER) in registry.servers
 
-    def test_admins_still_change_it_and_a_grant_brings_normal_rules(self, api, store, curated, registry):
-        assert api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
+    def test_a_lesser_grant_does_not_open_it_to_the_workspace(self, api, store, curated, registry):
+        """READ for one person — or NO_PERMISSIONS to shut one out — must not unlock it for everyone."""
         assert api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 201
         _clear_cache()
 
-        # Granted on now: Alice's MANAGE on the workspace reaches it like any other server.
+        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
+        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).json()["allowed_actions"] == ["USE"]
+
+    def test_admins_still_change_it_and_a_manage_grant_brings_normal_rules(self, api, store, curated, registry):
+        assert api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
+        assert api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a")).status_code == 201
+        _clear_cache()
+
+        # Managed now: Alice's MANAGE on the workspace reaches it like any other server.
         assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
 
 
@@ -575,7 +584,7 @@ class TestSameNameInAnotherWorkspace:
         assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-b")).status_code == 403
         assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-b")).status_code == 403
         assert api.alice.delete(f"{API}/{SERVER}", headers=ws("team-b")).status_code == 403
-        assert api.alice.get(API, headers=ws("team-b")).json()["mcp_servers"] == []
+        assert api.alice.get(API, headers=ws("team-b")).status_code == 403  # not a member of team-b
         assert ("team-b", SERVER) in registry.servers
 
     def test_deleting_team_bs_namesake_leaves_team_as_grants(self, api, store, members, registry):
@@ -592,12 +601,32 @@ class TestSameNameInAnotherWorkspace:
 # ---------------------------------------------------------------------------
 
 
+class TestSearchNeedsTheWorkspace:
+    """Filtering hides rows but MLflow's page token still counts them, so a workspace's registry is
+    searched only by its members."""
+
+    def test_a_non_member_cannot_search_another_workspaces_registry(self, api, store, members, registry):
+        registry.add(SERVER, "an-admin", workspace="team-b")
+
+        assert api.alice.get(API, headers=ws("team-b")).status_code == 403
+        assert api.alice.get(f"{API}/endpoints", headers=ws("team-b")).status_code == 403
+
+    def test_a_member_searches_and_sees_only_readable_servers(self, api, store, members, registry):
+        registry.add(SERVER, "an-admin", workspace="team-a")
+
+        response = api.bob.get(API, headers=ws("team-a"))
+        assert response.status_code == 200, response.text
+        assert [s["name"] for s in response.json()["mcp_servers"]] == [SERVER]
+
+
 class TestSearchIsFiltered:
     def test_only_readable_servers_are_listed(self, api, store, registry):
+        store.create_workspace_permission("team-a", ALICE, "READ")
         registry.add("com.example/one", ADMIN, workspace="team-a")
         registry.add("com.example/two", ADMIN, workspace="team-a")
         with _as(ADMIN, "team-a"):
             store.create_mcp_server_permission("com.example/one", ALICE, "READ")
+            store.create_mcp_server_permission("com.example/two", ALICE, "NO_PERMISSIONS")
         _clear_cache()
 
         servers = api.alice.get(API, headers=ws("team-a")).json()["mcp_servers"]
@@ -607,6 +636,7 @@ class TestSearchIsFiltered:
         assert [e["server_name"] for e in endpoints] == ["com.example/one"]
 
     def test_a_group_grant_counts(self, api, store, registry):
+        store.create_workspace_permission("team-a", BOB, "READ")
         registry.add("com.example/one", ADMIN, workspace="team-a")
         with _as(ADMIN, "team-a"):
             store.create_group_mcp_server_permission("team", "com.example/one", "EDIT")

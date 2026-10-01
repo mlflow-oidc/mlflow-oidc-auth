@@ -30,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, get_permission
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -757,15 +757,29 @@ def can_read_mcp_server(name: str, user: str) -> bool:
 def _mcp_server_write_permission(name: str, user: str):
     """The permission ``user`` may change ``name`` with, or None.
 
-    An MCP server with no grant at all — one registered before servers had permissions, when only
+    An MCP server nobody manages — one registered before servers had permissions, when only
     administrators could change them — stays that way: a permission that comes only from the
-    workspace (or the global default) does not reach it until someone is granted on it. A server
-    created since gets its creator's ``MANAGE`` grant, so normal rules apply to it at once.
-    Administrators are let through before this is asked.
+    workspace (or the global default) does not reach it until a user or group is granted ``MANAGE``
+    on it. A lesser grant — ``READ`` for a contractor, or ``NO_PERMISSIONS`` to shut someone out —
+    does not open it to everyone else. A server created since gets its creator's ``MANAGE`` grant,
+    so normal rules apply to it at once. Administrators are let through before this is asked.
     """
     result = effective_mcp_server_permission(name, user)
-    if result.kind not in ("user", "group") and not store.mcp_server_has_grants(name):
+    if result.kind not in ("user", "group") and not store.mcp_server_has_manager(name):
         return None
+    return result.permission
+
+
+def mcp_server_display_permission(name: str, user: str):
+    """The permission to report for ``user`` on ``name`` (MLflow's ``allowed_actions``).
+
+    The resolved permission, capped at ``USE`` where the rule for servers nobody manages keeps the
+    user from changing it (see :func:`_mcp_server_write_permission`), so a UI never offers an edit
+    or a delete that would be refused.
+    """
+    result = effective_mcp_server_permission(name, user)
+    if result.permission.can_update and _mcp_server_write_permission(name, user) is None:
+        return USE
     return result.permission
 
 

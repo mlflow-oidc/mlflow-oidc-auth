@@ -408,9 +408,10 @@ class TestMCPServerRegistryThroughTheMiddleware:
             assert client.post("/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"}).status_code == 403
 
     def test_the_search_is_narrowed_to_readable_servers(self):
-        from mlflow_oidc_auth.permissions import READ
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
 
-        with self._grants({}, {"com.example/a": READ}):
+        # A member of team-a (searching a registry needs READ on its workspace).
+        with self._grants({("user@example.com", "team-a"): READ}, {"com.example/a": READ, "com.example/b": NO_PERMISSIONS}):
             response = TestClient(self._app("user@example.com", False, "team-a")).get("/api/3.0/mlflow/mcp-servers")
 
         assert response.status_code == 200
@@ -427,7 +428,7 @@ class TestMCPServerRegistryThroughTheMiddleware:
         with self._grants({("user@example.com", "team-a"): MANAGE}):
             assert client.get("/mlflow/api/3.0/mlflow/mcp-servers/com.example/a").status_code == 403
             assert client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"}).status_code == 403
-            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers").json()["mcp_servers"] == []
+            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers").status_code == 403
 
     def test_admin_reads_any_workspace_unfiltered(self):
         with self._grants({}):

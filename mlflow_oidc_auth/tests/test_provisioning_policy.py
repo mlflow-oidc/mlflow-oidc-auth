@@ -286,7 +286,7 @@ class TestAProviderCannotSquatAnotherProvidersDomain:
         outcome = self.create("dave@corp.com", {"corp.com": {"default"}})
 
         assert outcome.allowed is False
-        assert "corp.com" in outcome.reason
+        assert outcome.reason.startswith("email domain 'corp.com' belongs to accounts of provider(s) default;")
 
     def test_a_domain_another_partner_owns_is_refused(self):
         assert self.create("eve@other.example", {"other.example": {"okta"}}).allowed is False
