@@ -19,6 +19,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import OwnershipDecision, evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
+from mlflow_oidc_auth.utils.service_accounts import INTERNAL_SOURCE
 
 logger = get_logger()
 
@@ -213,7 +214,7 @@ class UserRepository:
                     display_name=display_name,
                     is_admin=is_admin,
                     is_service_account=is_service_account,
-                    service_account_source=(service_account_source or "internal") if is_service_account else None,
+                    service_account_source=(service_account_source or INTERNAL_SOURCE) if is_service_account else None,
                 )
                 session.add(u)
                 session.flush()
@@ -473,13 +474,23 @@ class UserRepository:
                 self._assert_not_last_active_admin(session, user, "deactivate" if active is False else "demote")
 
             if is_admin is not None:
+                if is_admin and not user.is_admin and user.is_service_account and user.service_account_source not in (None, INTERNAL_SOURCE):
+                    # An external service account becoming an administrator keeps no subject a
+                    # first token may have chosen: an administrator binds it explicitly
+                    # (PUT /users/{username}/service-account-source with a subject).
+                    from mlflow_oidc_auth.db.models import SqlUserIdentity
+
+                    session.query(SqlUserIdentity).filter(
+                        SqlUserIdentity.user_id == user.id, SqlUserIdentity.provider_id == user.service_account_source
+                    ).delete(synchronize_session=False)
+                    _flush_bearer_identity = True
                 user.is_admin = is_admin
             if is_service_account is not None:
                 if bool(user.is_service_account) != bool(is_service_account):
                     # How the account signs in changes with it: a service account's source no
                     # longer applies to a person, and a person's cached bearer decisions not to a
                     # service account.
-                    user.service_account_source = "internal" if is_service_account else None
+                    user.service_account_source = INTERNAL_SOURCE if is_service_account else None
                     _flush_bearer_identity = True
                 user.is_service_account = is_service_account
             if active is not None:

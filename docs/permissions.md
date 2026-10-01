@@ -480,6 +480,8 @@ the server:
 A grant on a server applies whether or not the grantee is a member of its workspace: sharing a
 server with a non-member is what a resource grant is for, as for every other resource type.
 
+With workspaces disabled, only a grant on a server changes it — never `DEFAULT_MLFLOW_PERMISSION`.
+
 **Servers nobody manages stay admin-only for changes.** A permission that comes only from the
 workspace (or, with workspaces disabled, from `DEFAULT_MLFLOW_PERMISSION`) lets its holder read a
 server, but changing, deleting or sharing one needs a user or group to hold `MANAGE` on it first —

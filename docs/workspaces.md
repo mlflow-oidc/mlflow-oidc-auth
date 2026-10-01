@@ -94,7 +94,7 @@ them and the others change nothing:
 | Workspaces | What happens to an existing grant |
 |---|---|
 | Disabled | It is assigned `default`. |
-| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ`. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there when the grantee reaches no workspace holding that name. A grantee who reaches another such workspace keeps the grant only there — a tenant who created a same-named resource in their own workspace does not come away owning `default`'s. |
+| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ` — when several workspaces hold the name, a copy outside `default` carries no more than the grantee's permission on that workspace. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there when the grantee reaches no workspace holding that name. A grantee who reaches another such workspace keeps the grant only there — a tenant who created a same-named resource in their own workspace does not come away owning `default`'s. |
 | Enabled, no such workspace, or the resource no longer exists | It is marked **unresolved**: it matches nothing — with workspaces disabled too — and is never placed later, so a resource created afterwards does not pick it up. It is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
 
 An old grant reached every workspace's resource of its name — including ones another tenant created
@@ -245,12 +245,23 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 ### MCP server registry
 
 MLflow keeps an MCP server registry per workspace, and each server has its own user and group
-grants, recorded in the server's workspace (see [Permissions → MCP Server Registry](permissions#mcp-server-registry)).
-A server with no grant for the caller falls back to the caller's permission on the workspace the
-request names — the default workspace when it names none, never `DEFAULT_MLFLOW_PERMISSION` — so a
-workspace member with `READ` reads its servers and one with `EDIT` may create and change them, and
-a non-member sees nothing unless a server is shared with them. Searches list only the servers the
-caller can read. The creator of a server is granted `MANAGE` on it in the request's workspace.
+grants, recorded in the server's workspace (see [Permissions → MCP Server Registry](permissions#mcp-server-registry)
+for every route).
+
+- **Reading** a server needs `READ` on it; with no grant of its own, the caller's permission on the
+  workspace the request names stands in (the default workspace when it names none, never
+  `DEFAULT_MLFLOW_PERMISSION`). **Searching** a workspace's registry needs `READ` on that workspace,
+  and lists only the servers the caller can read; a server shared with a non-member is reached by
+  name.
+- **Creating** a server needs `MANAGE` on the workspace; the creator is granted `MANAGE` on it.
+- **Changing, deleting or sharing** a server needs `EDIT` (changes) or `MANAGE` (deletes and grants)
+  on it — and someone must hold `MANAGE` on the server: one nobody manages, such as every server
+  registered before this release, stays admin-only for changes until an administrator grants
+  `MANAGE`.
+
+With workspaces disabled the registry behaves as it did before per-server permissions: any
+authenticated user reads it unless a grant on a server says otherwise, and only administrators
+register servers.
 
 ## Workspace Detection During Login
 
