@@ -102,6 +102,20 @@ class TestSqlStore:
         assert _is_not_found(from_get_run.value)
         assert _is_not_found(from_helper.value)
 
+    @pytest.mark.parametrize("pattern", ["%", "_" * 32, "", "' OR 1=1 --"])
+    def test_a_run_id_is_matched_exactly_never_as_a_pattern(self, tracking_store, pattern):
+        """Wildcards and quotes in a run id match no run, as with ``get_run``: the lookup is equality."""
+        experiment_id = tracking_store.create_experiment(f"exact-match-{len(pattern)}-{pattern[:1]!r}")
+        run_id = _new_run(tracking_store, experiment_id)
+
+        for run_id_or_pattern in (pattern, run_id[:8] + "%"):
+            with pytest.raises(MlflowException) as from_get_run:
+                tracking_store.get_run(run_id_or_pattern)
+            with pytest.raises(MlflowException) as from_helper:
+                get_run_experiment_id(tracking_store, run_id_or_pattern)
+            assert _is_not_found(from_get_run.value)
+            assert _is_not_found(from_helper.value)
+
     def test_a_deleted_run_still_resolves_as_with_get_run(self, tracking_store):
         """``get_run`` returns soft-deleted runs; the checks must see the same run."""
         experiment_id = tracking_store.create_experiment("deleted-run")
