@@ -13,6 +13,7 @@ from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegisteredModelPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelPermission
     resource_id_attr = "name"
+    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # --- Aliases preserving backward-compatible method names -----------------
 
@@ -35,7 +36,7 @@ class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegist
 
     def rename(self, old_name: str, new_name: str) -> None:
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
+            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
             if not perms:
                 raise MlflowException(
                     f"No registered model permissions found for name: {old_name}",

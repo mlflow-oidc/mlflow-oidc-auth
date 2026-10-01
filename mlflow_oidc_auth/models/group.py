@@ -115,6 +115,7 @@ class GroupExperimentRegexPermissionItem(BaseModel):
     group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["group"] = Field("group", description="Indicates this is a group experiment regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class GroupRegisteredModelRegexPermissionItem(BaseModel):
@@ -127,10 +128,13 @@ class GroupRegisteredModelRegexPermissionItem(BaseModel):
     permission: str = Field(..., description="Permission granted when the regex matches")
     prompt: bool = Field(..., description="Whether the pattern targets prompts instead of registered models")
     kind: Literal["group"] = Field("group", description="Indicates this is a group registered model regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class GroupPromptRegexPermissionItem(GroupRegisteredModelRegexPermissionItem):
     """Serialized prompt regex permission entry for a group."""
+
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class GroupScorerPermissionItem(BaseModel):
@@ -152,6 +156,7 @@ class GroupScorerRegexPermissionItem(BaseModel):
     group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["group"] = Field("group", description="Indicates this is a group scorer regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')
 
 
 class GroupGatewayRegexPermissionItem(BaseModel):
@@ -163,3 +168,4 @@ class GroupGatewayRegexPermissionItem(BaseModel):
     group_id: Optional[int] = Field(None, description="Identifier of the group that owns the pattern")
     permission: str = Field(..., description="Permission granted when the regex matches")
     kind: Literal["group"] = Field("group", description="Indicates this is a group gateway regex permission")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')

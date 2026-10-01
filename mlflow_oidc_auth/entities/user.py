@@ -27,6 +27,7 @@ class User:
         groups=None,
         active: bool = True,
         managed_by: str = "manual",
+        service_account_source: str | None = None,
     ):
         # Provide sensible defaults so tests can construct User with partial data.
         # ``active`` defaults True and ``managed_by`` to "manual" to match the #333 backfill:
@@ -46,6 +47,7 @@ class User:
         self._groups = groups or []
         self._active = active
         self._managed_by = managed_by
+        self._service_account_source = service_account_source
 
     @property
     def id(self):
@@ -144,6 +146,11 @@ class User:
     def managed_by(self) -> str:
         """Which source owns this row — ``manual``, ``scim`` or ``oidc:<provider_id>``."""
         return self._managed_by
+
+    @property
+    def service_account_source(self) -> str | None:
+        """How a service account signs in: ``internal`` (tokens this plugin issues) or a provider id. None for a person."""
+        return self._service_account_source
 
     @groups.setter
     def groups(self, groups):

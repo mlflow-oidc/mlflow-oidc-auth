@@ -343,7 +343,8 @@ class TestProvisioningPathsAreAttributed:
 
         AuthMiddleware(app=MagicMock())._maybe_provision_bearer_user("bob@example.com", "token", {"groups": ["mlflow-users"], "name": "Bob"})
 
-        assert owners(store, "bob@example.com") == {"mlflow-users": "oidc:corp"}
+        # Namespaced like a login from the same provider: it is not the deployment's own.
+        assert owners(store, "bob@example.com") == {"corp:mlflow-users": "oidc:corp"}
 
     def test_service_account_provisioning(self, store):
         from unittest.mock import MagicMock

@@ -9,6 +9,7 @@ from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_gateway_model_definitions, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_model_definitions
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
@@ -47,7 +48,7 @@ async def get_gateway_model_definition_users(
     for user in list_users:
         user_defs = {}
         if hasattr(user, "gateway_model_definition_permissions") and user.gateway_model_definition_permissions:
-            user_defs = {g.model_definition_id: g.permission for g in user.gateway_model_definition_permissions}
+            user_defs = {g.model_definition_id: g.permission for g in user.gateway_model_definition_permissions if in_grant_workspace(g)}
 
         if name in user_defs:
             users.append(

@@ -89,12 +89,11 @@ class TestGetGroupPermission:
         assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
 
     def test_multiple_found(self, session_maker, session, repo_cls, field, list_groups_method):
-        """Test MultipleResultsFound raises MlflowException."""
+        """Unassigned duplicates (see _GrantWorkspaceScope._one_in_scope): one is picked deterministically."""
         repo = repo_cls(session_maker)
-        session.query().join().filter().one.side_effect = MultipleResultsFound()
-        with pytest.raises(MlflowException) as exc:
-            repo._get_group_permission(session, "res-1", "devs")
-        assert exc.value.error_code == "INVALID_STATE"
+        query = session.query().join().filter()
+        query.one.side_effect = MultipleResultsFound()
+        assert repo._get_group_permission(session, "res-1", "devs") is query.order_by().first()
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,12 @@ All endpoints except health probes, login/callback, and static files require aut
 
 When workspaces are enabled, include the `X-MLFLOW-WORKSPACE` header to specify the active workspace.
 
+With workspaces enabled, the permission APIs for registered models, prompts, AI Gateway resources
+and MCP servers read and write the grants of the workspace the request names — the `default`
+workspace when it names none — and pattern-permission responses carry a `workspace` field: the
+workspace a pattern applies in, or `*` for every workspace. A pattern created with a workspace named
+applies only there. See [Workspaces](workspaces#grants-on-models-prompts-and-gateway-resources).
+
 ## Permission Levels
 
 Request/response bodies reference these permission values:
@@ -60,6 +66,7 @@ counts only the resources that caller may see, never the ones hidden from them.
 | `GET /api/2.0/mlflow/permissions/gateways/endpoints` | `name` |
 | `GET /api/2.0/mlflow/permissions/gateways/secrets` | `key` |
 | `GET /api/2.0/mlflow/permissions/gateways/model-definitions` | `name` |
+| `GET /api/2.0/mlflow/permissions/mcp-servers` | `name` |
 | `GET /api/2.0/mlflow/permissions/groups` | the group name (`string[]`) |
 | `GET /api/2.0/mlflow/permissions/groups/details` | `group_name` |
 | `GET /api/2.0/mlflow/users` (also with `service=true`) | the username (`string[]`) |
@@ -129,13 +136,17 @@ Base path: `/api/2.0/mlflow/users`
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/users` | Authenticated | List users. Query param `service=true` to include service accounts |
-| POST | `/api/2.0/mlflow/users` | Admin | Create a new user |
+| POST | `/api/2.0/mlflow/users` | Admin | Create a new user. A service account (`"is_service_account": true`) is internal unless `"service_account_source"` names an OIDC provider; `"subject"` binds that provider's subject now |
 | DELETE | `/api/2.0/mlflow/users` | Admin | Delete a user |
 | GET | `/api/2.0/mlflow/users/current` | Authenticated | Get current user's profile |
 | GET | `/api/2.0/mlflow/users/{username}` | Admin | Get a specific user's profile |
 | GET | `/api/2.0/mlflow/users/current/tokens` | Authenticated | List the caller's access tokens |
 | POST | `/api/2.0/mlflow/users/current/tokens` | Session or IdP bearer token | Create a named access token for the caller |
 | DELETE | `/api/2.0/mlflow/users/current/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
+| GET | `/api/2.0/mlflow/users/service-account-sources` | Admin | The sources a service account can sign in through: `internal` and each OIDC provider |
+| PUT | `/api/2.0/mlflow/users/{username}/service-account-source` | Admin | Set how a service account signs in: `{"source": "internal"}` or `{"source": "<provider-id>", "subject": "<optional sub>"}`. Becoming external revokes its access tokens |
+| GET | `/api/2.0/mlflow/users/{username}/identities` | Admin | List the `(provider, subject)` identities bound to a user |
+| DELETE | `/api/2.0/mlflow/users/{username}/identities?provider_id=…&subject=…` | Admin | Unbind one identity (the subject goes in the query: it may contain `/`), so a changed subject can be bound again |
 | GET | `/api/2.0/mlflow/users/{username}/tokens` | Admin | List a user's or service account's access tokens |
 | POST | `/api/2.0/mlflow/users/{username}/tokens` | Admin, session or IdP bearer token | Create a named access token for a user or service account |
 | DELETE | `/api/2.0/mlflow/users/{username}/tokens/{token_id}` | Admin | Delete one of a user's access tokens |
@@ -342,6 +353,21 @@ These endpoints list resources with their permission summaries. Used by the admi
 | GET | `/api/2.0/mlflow/permissions/gateways/model-definitions/{name}/users` | Model Def MANAGE | List user permissions |
 | GET | `/api/2.0/mlflow/permissions/gateways/model-definitions/{name}/groups` | Model Def MANAGE | List group permissions |
 
+### MCP Servers
+
+MLflow 3.15+ MCP server registry. Names are `<namespace>/<slug>`; grants are read and written in
+the request's workspace. See [Permissions → MCP Server Registry](permissions#mcp-server-registry).
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/2.0/mlflow/permissions/mcp-servers` | Authenticated | List the MCP servers the caller can manage (all for an admin) |
+| GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/users` | Server MANAGE | List user permissions |
+| GET | `/api/2.0/mlflow/permissions/mcp-servers/{name}/groups` | Server MANAGE | List group permissions |
+| GET | `/api/2.0/mlflow/permissions/users/{username}/mcp-servers` | The user, or Admin | A user's effective permission on each MCP server of the request's workspace |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/users/{username}/mcp-servers/{name}` | Server MANAGE | A user's grant on a server (`{"permission": "READ"}`) |
+| GET | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers` | Admin, or server MANAGE per row | A group's grants |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers/{name}` | Server MANAGE | A group's grant on a server |
+
 ---
 
 ## User Permission CRUD
@@ -373,6 +399,7 @@ For each resource type, the following CRUD operations are available:
 | Gateway Endpoints | `gateways/endpoints` | `{name}` |
 | Gateway Secrets | `gateways/secrets` | `{name}` |
 | Gateway Model Definitions | `gateways/model-definitions` | `{name}` |
+| MCP Servers | `mcp-servers` | `{name}` (`<namespace>/<slug>`; no regex patterns) |
 
 **Request body (POST/PATCH):**
 ```json
@@ -404,7 +431,7 @@ For each resource type, regex pattern permissions are also available:
 
 **Pattern path segments:** `experiment-patterns`, `registered-models-patterns`, `prompts-patterns`, `scorer-patterns`, `gateways/endpoints-patterns`, `gateways/secrets-patterns`, `gateways/model-definitions-patterns`
 
-**Total: 70 user permission endpoints** (7 resource types x 10 operations each)
+**Total: 75 user permission endpoints** (7 resource types x 10 operations each, plus 5 for MCP servers, which have no pattern permissions)
 
 ---
 

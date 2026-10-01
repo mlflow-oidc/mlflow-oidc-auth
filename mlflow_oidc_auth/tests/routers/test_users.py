@@ -329,6 +329,7 @@ class TestCreateUserEndpoint:
             is_admin=False,
             is_service_account=False,
             written_by="manual",
+            service_account_source=None,
         )
 
     @pytest.mark.asyncio

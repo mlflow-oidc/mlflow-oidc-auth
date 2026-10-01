@@ -13,6 +13,9 @@ class RegisteredModelPermission:
     user_id: Optional[int] = None
     group_id: Optional[int] = None
     prompt: bool = False
+    # The workspace of the model or prompt this grant names; None only for a grant from before the
+    # workspace was recorded.
+    workspace: Optional[str] = None
 
     def to_json(self) -> Dict[str, Any]:
         # Keep explicit None for user_id/group_id for backward compatibility
@@ -22,6 +25,7 @@ class RegisteredModelPermission:
             "permission": self.permission,
             "group_id": self.group_id,
             "prompt": bool(self.prompt),
+            "workspace": self.workspace,
         }
 
     @classmethod

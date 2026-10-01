@@ -10,6 +10,9 @@ export const STATIC_API_ENDPOINTS = {
   ALL_GATEWAY_SECRETS: "/api/2.0/mlflow/permissions/gateways/secrets",
   ALL_GATEWAY_MODELS: "/api/2.0/mlflow/permissions/gateways/model-definitions",
 
+  // MCP server registry
+  ALL_MCP_SERVERS: "/api/2.0/mlflow/permissions/mcp-servers",
+
   // Workspace management
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
   // Workspace group rules (admin only)
@@ -20,6 +23,7 @@ export const STATIC_API_ENDPOINTS = {
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
   USERS_DETAILS: "/api/2.0/mlflow/users/details",
+  SERVICE_ACCOUNT_SOURCES: "/api/2.0/mlflow/users/service-account-sources",
   // The signed-in user's own API tokens
   CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/current/tokens",
 
@@ -46,6 +50,10 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
   USER_SESSIONS: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
+  USER_SERVICE_ACCOUNT_SOURCE: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/service-account-source`,
+  USER_IDENTITIES: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/identities`,
   USER_SESSION: (userName: string, sessionPk: number | string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
   CURRENT_USER_TOKEN: (tokenId: number | string) =>
@@ -223,6 +231,20 @@ export const DYNAMIC_API_ENDPOINTS = {
     patternId: string,
   ) =>
     `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/gateways/model-definitions-patterns/${encodeURIComponent(patternId)}`,
+
+  // MCP server permissions (no pattern permissions exist for MCP servers)
+  MCP_SERVER_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/mcp-servers/${encodeURIComponent(String(name))}/users`,
+  MCP_SERVER_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/mcp-servers/${encodeURIComponent(String(name))}/groups`,
+  USER_MCP_SERVER_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/mcp-servers`,
+  USER_MCP_SERVER_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/mcp-servers/${encodeURIComponent(name)}`,
+  GROUP_MCP_SERVER_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers`,
+  GROUP_MCP_SERVER_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers/${encodeURIComponent(name)}`,
 
   // Workspace CRUD
   WORKSPACE_DETAIL: (workspace: string) =>

@@ -7,6 +7,7 @@ from mlflow_oidc_auth.dependencies import check_prompt_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
 from mlflow_oidc_auth.store import store
+from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_prompts
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
@@ -74,7 +75,7 @@ async def get_prompt_users(
         # Prompts are stored as registered models in the system
         user_models = {}
         if hasattr(user, "registered_model_permissions") and user.registered_model_permissions:
-            user_models = {model.name: model.permission for model in user.registered_model_permissions}
+            user_models = {model.name: model.permission for model in user.registered_model_permissions if in_grant_workspace(model)}
 
         if prompt_name in user_models:
             users.append(

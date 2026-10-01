@@ -221,7 +221,8 @@ class TestWhereGroupsArrive:
         """A partner provider asserting ``team-acme`` arrives as ``partner:team-acme``: the tenant's
         rule must not match it, and only a rule written for the partner's namespace does."""
         create_rule(client)
-        partner = provider("partner")
+        # Allowed to create accounts in example.com, where the deployment's own accounts are.
+        partner = provider("partner", allowed_email_domains=["example.com"])
 
         username, errors = login(ALICE, ["mlflow-users", "team-acme"], prov=partner)
 
@@ -698,3 +699,23 @@ class TestEvaluate:
     def test_empty_workspace_capture_matches_nothing(self, store):
         plan = workspace_rules.evaluate(self._rule(pattern=r"^team-(?P<ws>[a-z]*)$"), ["team-"], competitors=[], workspace_exists=lambda _: True)
         assert plan.desired == {} and plan.items == []
+
+
+class TestNoInteractiveLoginIntoAServiceAccount:
+    """A service account signs in with its issued tokens, or its provider's tokens — never through
+    the browser, whoever's claims name it."""
+
+    def test_a_login_naming_a_service_account_is_refused(self, client, store):
+        store.create_user("ci-bot@example.com", "CI bot", is_service_account=True)
+
+        username, errors = login("ci-bot@example.com", ["mlflow-users"])
+
+        assert username is None
+        assert errors == ["This account cannot be used to sign in here"]
+
+    def test_an_external_service_account_is_refused_too(self, client, store):
+        store.create_user("ci-bot@example.com", "CI bot", is_service_account=True, service_account_source="default")
+
+        username, _ = login("ci-bot@example.com", ["mlflow-users"])
+
+        assert username is None

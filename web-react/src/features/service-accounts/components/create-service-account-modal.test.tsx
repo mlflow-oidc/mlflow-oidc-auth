@@ -47,9 +47,107 @@ describe("CreateServiceAccountModal", () => {
         name: "test-sa",
         display_name: "test-sa",
         is_admin: true,
+        service_account_source: "internal",
       });
       expect(mockOnClose).toHaveBeenCalled();
     });
+  });
+
+  it("creates an external account bound to a provider and subject", async () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+        sources={[
+          {
+            id: "internal",
+            display_name: "Internal (issued access tokens only)",
+            type: "internal",
+          },
+          { id: "ci", display_name: "CI workloads", type: "oidc" },
+        ]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Service Account Name/i), {
+      target: { value: "ci-bot" },
+    });
+    fireEvent.change(screen.getByLabelText("Signs in with"), {
+      target: { value: "ci" },
+    });
+    fireEvent.change(screen.getByLabelText("Subject (optional)"), {
+      target: { value: "repo:o/a:ref:main" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
+
+    await waitFor(() =>
+      expect(mockOnSave).toHaveBeenCalledWith({
+        name: "ci-bot",
+        display_name: "ci-bot",
+        is_admin: false,
+        service_account_source: "ci",
+        subject: "repo:o/a:ref:main",
+      }),
+    );
+  });
+
+  it("asks for the subject of an external administrator account", () => {
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+        sources={[
+          {
+            id: "internal",
+            display_name: "Internal (issued access tokens only)",
+            type: "internal",
+          },
+          { id: "ci", display_name: "CI workloads", type: "oidc" },
+        ]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Service Account Name/i), {
+      target: { value: "root-bot" },
+    });
+    fireEvent.click(screen.getByLabelText(/Grant Admin Privileges/i));
+    fireEvent.change(screen.getByLabelText("Signs in with"), {
+      target: { value: "ci" },
+    });
+
+    expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "needs its subject now",
+    );
+
+    fireEvent.change(screen.getByLabelText("Subject (optional)"), {
+      target: { value: "client-root" },
+    });
+    expect(screen.getByRole("button", { name: /Save/i })).toBeEnabled();
+  });
+
+  it("stays open with what was typed when saving fails", async () => {
+    const onClose = vi.fn();
+    const failing = vi
+      .fn()
+      .mockRejectedValue(new Error("That subject is already bound"));
+    render(
+      <CreateServiceAccountModal
+        isOpen={true}
+        onClose={onClose}
+        onSave={failing}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Service Account Name/i), {
+      target: { value: "ci-bot" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
+
+    await waitFor(() => expect(failing).toHaveBeenCalled());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Service Account Name/i)).toHaveValue("ci-bot");
   });
 
   it("allows manual display name change", () => {

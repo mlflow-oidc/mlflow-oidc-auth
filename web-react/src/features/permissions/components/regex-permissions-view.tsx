@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { use, useState, useEffect } from "react";
 import { request } from "../../../core/services/api-utils";
 import { extractErrorMessage } from "../../../core/services/http";
-import { getPermissionUrl } from "../utils/permission-utils";
+import {
+  getPermissionUrl,
+  patternWorkspaceLabel,
+} from "../utils/permission-utils";
 import { useToast } from "../../../shared/components/toast/use-toast";
 import { EditPermissionModal } from "../../users/components/edit-permission-modal";
 import { AddRegexRuleModal } from "./add-regex-rule-modal";
@@ -24,15 +27,16 @@ import { IconButton } from "../../../shared/components/icon-button";
 import { Button } from "../../../shared/components/button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import type {
-  PermissionType,
+  RegexPermissionType,
   PatternPermissionItem,
   PermissionLevel,
 } from "../../../shared/types/entity";
 import type { ColumnConfig } from "../../../shared/types/table";
 import { useSearch } from "../../../core/hooks/use-search";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 
 interface RegexPermissionsViewProps {
-  type: PermissionType;
+  type: RegexPermissionType;
   entityKind: "user" | "group";
   entityName: string;
 }
@@ -237,6 +241,10 @@ export const RegexPermissionsView = ({
     }
   };
 
+  const workspacesEnabled = Boolean(
+    use(RuntimeConfigContext)?.workspaces_enabled,
+  );
+
   const permissionColumns: ColumnConfig<PatternPermissionItem>[] = [
     {
       header: "Regex Pattern",
@@ -246,6 +254,15 @@ export const RegexPermissionsView = ({
         </span>
       ),
     },
+    ...(workspacesEnabled
+      ? [
+          {
+            header: "Workspace",
+            render: (item: PatternPermissionItem) =>
+              patternWorkspaceLabel(item.workspace),
+          },
+        ]
+      : []),
     { header: "Permission", render: (item) => item.permission },
     { header: "Priority", render: (item) => item.priority },
     {

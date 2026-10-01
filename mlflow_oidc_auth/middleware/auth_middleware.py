@@ -41,6 +41,7 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.group_detection import call_group_detection_plugin
 from mlflow_oidc_auth.group_patterns import BY_PATTERN, admitting_rule, normalize_group_values
 from mlflow_oidc_auth.utils.oidc_field_extraction import extract_username, extract_display_name, BEARER_TOKEN_SOURCE
+from mlflow_oidc_auth.utils.service_accounts import INTERNAL_SOURCE
 
 logger = get_logger()
 
@@ -63,6 +64,13 @@ def _authenticate_basic_auth_sync(username: str, password: str) -> bool:
 #: tokens (issue #189).
 _WORKLOAD_BEARER: ContextVar[bool] = ContextVar("mlflow_oidc_auth_workload_bearer", default=False)
 
+#: Set while authenticating an IdP bearer token: ``(provider, subject)`` of the token, or
+#: ``(_KUBERNETES_BEARER, provider)`` for a Kubernetes service-account token, which its own path
+#: authorized.
+#: Read by :func:`_service_account_denial` once the account is known.
+_BEARER_IDENTITY: ContextVar[Optional[object]] = ContextVar("mlflow_oidc_auth_bearer_identity", default=None)
+_KUBERNETES_BEARER = "kubernetes"
+
 
 def _auth_method(request: Request, workload_bearer: bool = False) -> str:
     """The credential :meth:`AuthMiddleware._authenticate_user` tried, in the order it tries them."""
@@ -81,8 +89,10 @@ def _auth_method(request: Request, workload_bearer: bool = False) -> str:
 DENIAL_UNKNOWN_USER = "unknown_user"
 DENIAL_INACTIVE = "inactive"
 DENIAL_LOOKUP_ERROR = "lookup_error"
+DENIAL_SERVICE_ACCOUNT_SOURCE = "service_account_source"
 
 DENIAL_AUDIT_EVENTS = {
+    DENIAL_SERVICE_ACCOUNT_SOURCE: "auth.denied_service_account_source",
     DENIAL_UNKNOWN_USER: "auth.denied_unknown_user",
     DENIAL_INACTIVE: "auth.denied_inactive",
     DENIAL_LOOKUP_ERROR: "auth.denied_lookup_error",
@@ -130,6 +140,285 @@ def normalize_workspace_header(raw_workspace: Optional[str]) -> Optional[str]:
     if not raw_workspace:
         return None
     return raw_workspace.strip() or None
+
+
+def _bearer_identity(provider, payload, username: str) -> Tuple[Optional[str], bool]:
+    """The local user a bearer token may act as, or None to refuse it.
+
+    With a single provider in the registry there is one identity space, and the username the claims
+    produce is the user — as it always was, at no cost. With more than one — of any type, since a
+    SAML login binds identities too — a token is held to what interactive login decides for the
+    same provider (``routers/auth.py``, issue #309): the identity ``(provider, sub)`` decides, a
+    bound identity reaches only its own user, and a name another provider's identity owns is
+    refused — so a provider cannot reach an account by asserting its email or username. Read-only:
+    unlike login it binds nothing (provisioning on first bearer authentication binds the account it
+    creates). Fails closed.
+
+    Parameters:
+        provider: The provider that validated the token, or None if it could not be identified.
+        payload: The validated claims.
+        username: The username the configured claim fields produce.
+
+    Returns:
+        ``(username, creating)``: the username to authenticate as, or None when the token must be
+        refused; and whether that is a user the identity would *create* — the caller accepts such
+        a token only once the account exists and is bound to this identity
+        (:func:`_bound_to_identity`).
+    """
+    from mlflow_oidc_auth.utils.bearer_identity_cache import bearer_identity_cache
+
+    if len(config.AUTH_PROVIDERS.providers) <= 1:
+        return username, False
+    if provider is None:
+        logger.warning("Refusing a bearer token: the provider that validated it could not be identified")
+        return None, False
+
+    subject = payload.get("sub")
+    subject = subject.strip() if isinstance(subject, str) else ""
+    key = "\x1f".join((provider.id, subject, username, str(payload.get("email")), str(payload.get("email_verified") is True)))
+    cache = bearer_identity_cache()
+    cached = cache.get(key)
+    if cached is not None:
+        return cached or None, False
+    resolved, creating = _resolve_bearer_identity(provider, subject, payload, username)
+    if not creating:
+        cache.set(key, resolved or "")
+    return resolved, creating
+
+
+def _unbound_person(username: str) -> bool:
+    """Whether ``username`` is an existing, active, non-admin person's account no identity is bound to.
+
+    The identity migration's placeholder (``default`` with the username as its subject) is not a
+    binding. A service account never counts: how it signs in is its own setting
+    (:func:`_service_account_denial`).
+    """
+    try:
+        profile = store.get_user_profile(username)
+        if getattr(profile, "is_service_account", False) or getattr(profile, "is_admin", False) or not getattr(profile, "active", True):
+            return False
+        return not store.user_identity_repo.has_real_binding(username)
+    except Exception:
+        return False
+
+
+def _adoptable_by(provider, username: str) -> bool:
+    """Whether a provider with ``bearer_adopts_unbound_accounts`` may adopt ``username``.
+
+    Only an account no identity has ever been recorded for — not even the identity migration's
+    placeholder, so a person from before identities were recorded is not adoptable; an administrator
+    who means it removes the placeholder first (``DELETE /users/{username}/identities``) — and only
+    where the email-domain rule lets this provider create the account: never in a domain other
+    providers' accounts own, unless listed in its ``allowed_email_domains``.
+    """
+    from mlflow_oidc_auth.provisioning_policy import _squats_a_domain
+
+    if not _unbound_person(username):
+        return False
+    try:
+        if store.user_identity_repo.list_identities_for_username(username):
+            return False
+        owners = lambda domain: store.user_identity_repo.providers_in_email_domain(domain, exclude_username=username)  # noqa: E731
+        return _squats_a_domain(provider, username, owners) is None
+    except Exception:
+        return False
+
+
+def _is_service_account(username: str) -> bool:
+    try:
+        return bool(getattr(store.get_user_profile(username), "is_service_account", False))
+    except Exception:
+        return False
+
+
+def _service_account_denial(username: str, is_service_account: bool, source: Optional[str], method: str, bearer_identity, is_admin: bool = False) -> str:
+    """Why a service account may not use this credential, or ``""`` when it may.
+
+    A service account signs in one way only (``users.service_account_source``):
+
+    * ``internal`` — with access tokens this plugin issues (basic auth); no IdP token reaches it,
+      whatever username it claims;
+    * a provider id — with that provider's tokens only, and only for the subject bound to it; the
+      first token from that provider binds its subject when none is bound yet. Its lifecycle lives
+      in the IdP, so access tokens this plugin issued do not work for it.
+
+    A Kubernetes service account's token was authorized on its own path (namespace allowlist) and
+    is not judged again here. A person's account is never judged here.
+
+    Parameters:
+        username: The authenticated account.
+        is_service_account: Whether it is a service account.
+        source: Its ``service_account_source``.
+        method: The credential (``AUTH_METHOD_*``).
+        bearer_identity: :data:`_BEARER_IDENTITY` for this request.
+        is_admin: Whether the account is an administrator: one is never bound by a first token.
+    """
+    if not is_service_account:
+        return ""
+    recorded = source
+    source = source or INTERNAL_SOURCE
+    if method == AUTH_METHOD_BASIC:
+        return "" if source == INTERNAL_SOURCE else "an external service account signs in with its identity provider's tokens only"
+    if method not in (AUTH_METHOD_BEARER, AUTH_METHOD_WORKLOAD):
+        return "a service account does not sign in interactively"
+    if isinstance(bearer_identity, tuple) and bearer_identity[0] == _KUBERNETES_BEARER:
+        # Authorized on its own path (namespace allowlist), and only for the accounts its own
+        # cluster provider created: a second cluster allowing the same namespace, or an account an
+        # administrator has re-pointed, is refused.
+        from mlflow_oidc_auth.utils.service_accounts import KUBERNETES_SOURCE
+
+        cluster = bearer_identity[1]
+        # No source recorded: a Kubernetes account a replica on an older release created during a
+        # rolling upgrade — reached on this path only for a Kubernetes-derived username.
+        if recorded is None:
+            return ""
+        return (
+            ""
+            if source in (KUBERNETES_SOURCE, getattr(cluster, "id", None))
+            else f"this service account does not sign in through '{getattr(cluster, 'id', '?')}'"
+        )
+    if not isinstance(bearer_identity, tuple) or source == INTERNAL_SOURCE:
+        return "an internal service account signs in with access tokens issued for it only"
+    provider, subject = bearer_identity
+    if provider is None:
+        return "the provider that validated the token could not be identified"
+    if source != provider.id:
+        return f"this service account signs in through provider '{source}' only"
+    if not subject:
+        return "the token asserts no subject"
+    try:
+        return _external_binding_denial(username, provider, subject, is_admin)
+    except Exception as e:
+        # Fail closed: a binding that cannot be read or written is no binding.
+        logger.warning("Could not check the binding of service account %s: %s", username, type(e).__name__)
+        return "the service account's binding could not be checked"
+
+
+def _external_binding_denial(username: str, provider, subject: str, is_admin: bool) -> str:
+    """The subject check of :func:`_service_account_denial` for an external service account."""
+    from mlflow_oidc_auth.utils.bearer_identity_cache import bearer_identity_cache
+
+    cache = bearer_identity_cache()
+    key = "\x1fsa\x1f".join((provider.id, subject, username))
+    if cache.get(key):
+        return ""
+    # The identity migration's placeholder (default, username) is not a subject binding.
+    subjects = [s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id and not (p == "default" and s == username)]
+    if subjects and subject not in subjects:
+        return "this service account is bound to another subject of its provider"
+    if not subjects:
+        if is_admin:
+            # An administrator account is bound when created; whoever could mint a token naming
+            # it first must not get to choose its subject.
+            return "an external administrator service account has no subject bound"
+        # The first token from its provider binds the account to that subject.
+        store.user_identity_repo.link(provider.id, subject, username, allow_additional_provider=True)
+        # Two first tokens can race: the earliest binding wins, and a later one is taken back.
+        first = next(s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id)
+        if first != subject:
+            store.user_identity_repo.unlink(provider.id, subject, username)
+            return "this service account is bound to another subject of its provider"
+        emit_audit_event(
+            "auth.identity_adopted", actor=username, resource_type="user", resource_id=username, detail={"provider": provider.id, "method": "bearer"}
+        )
+    cache.set(key, "1")
+    return ""
+
+
+def _bound_to_identity(provider, payload, username: str) -> bool:
+    """Whether the token's identity is now bound to ``username``.
+
+    Checked after provisioning for a token whose identity would create its user: only an account
+    this identity owns is accepted. Without provisioning nothing creates it, so the token is refused
+    (the user would not exist anyway); with it, a failed bind — or another identity claiming the
+    name in between — is refused rather than served.
+    """
+    from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+
+    subject = payload.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        # Only the deployment's own provider gets here without a subject; it names accounts by
+        # the configured claim fields, as it always did.
+        return provider.id == DEFAULT_PROVIDER_ID
+    try:
+        return store.user_identity_repo.get_username_by_identity(provider.id, subject.strip()) == username
+    except Exception as e:
+        logger.warning("Refusing a bearer token from provider '%s': the identity binding could not be read (%s)", provider.id, type(e).__name__)
+        return False
+
+
+def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> Tuple[Optional[str], bool]:
+    """The uncached decision behind :func:`_bearer_identity`.
+
+    Returns:
+        ``(username or None, creating)``. A decision to reach an existing user, and a refusal, are
+        cached by the caller. One that would *create* a user is not: until the account exists the
+        name is free, and once another identity claims it the answer must change at once.
+    """
+    from mlflow_oidc_auth.identity_resolution import IdentityDecision, Resolution, resolve_identity
+    from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+    from mlflow_oidc_auth.provisioning_policy import apply_provisioning_policy
+
+    try:
+        if not subject:
+            if provider.id != DEFAULT_PROVIDER_ID:
+                logger.warning("Refusing a bearer token from provider '%s': it asserts no subject", provider.id)
+                return None, False
+            # As on login: the deployment's own provider without a subject names accounts by the
+            # configured claim fields, as it always did.
+            decision = IdentityDecision(Resolution.CREATE, reason="no subject asserted")
+        else:
+            decision = resolve_identity(provider, subject, payload, store.user_identity_repo, user_lookup=store.has_user, username=username)
+
+        def providers_bound_to(name: str) -> list:
+            try:
+                return list(store.user_identity_repo.list_providers_for_username(name))
+            except Exception:
+                # An unknown binding set must not read as "bound to nobody".
+                return ["<unknown>"]
+
+        if decision.resolution is not Resolution.MATCHED and provider.id != DEFAULT_PROVIDER_ID and store.has_user(username):
+            # An existing account this identity is not bound to.
+            if _is_service_account(username):
+                # A service account's own setting decides, once the request is authenticated
+                # (_service_account_denial): which provider and subject it accepts.
+                return username, False
+            # (Not over a refusal: an email-bound provider's domain policy still decides.)
+            adoptable = decision.resolution is Resolution.CREATE and getattr(provider, "bearer_adopts_unbound_accounts", False)
+            if adoptable and _adoptable_by(provider, username):
+                # The provider opted in: bind the account to this identity on first use (for one
+                # its bearer provisioning created before identities were bound), so afterwards
+                # only this identity reaches it.
+                store.user_identity_repo.link(provider.id, subject, username, allow_additional_provider=True)
+                logger.info("Bound an unbound account to provider '%s' on its first bearer use", provider.id)
+                emit_audit_event(
+                    "auth.identity_adopted", actor=username, resource_type="user", resource_id=username, detail={"provider": provider.id, "method": "bearer"}
+                )
+                return username, False
+        outcome = apply_provisioning_policy(
+            provider,
+            decision,
+            derived_username=username,
+            user_exists=store.has_user,
+            providers_bound_to=providers_bound_to,
+            providers_in_domain=lambda domain: store.user_identity_repo.providers_in_email_domain(domain),
+        )
+    except Exception as e:
+        logger.warning("Refusing a bearer token from provider '%s': identity could not be resolved (%s)", provider.id, type(e).__name__)
+        # Not cached: a transient failure must not refuse the identity for a whole TTL.
+        return None, True
+    if not outcome.allowed:
+        logger.warning("Refusing a bearer token from provider '%s': %s", provider.id, outcome.reason)
+        emit_audit_event(
+            "auth.identity_refused",
+            actor=username,
+            resource_type="user",
+            resource_id=username,
+            detail={"provider": provider.id, "reason": outcome.reason, "method": "bearer"},
+            status="denied",
+        )
+        return None, False
+    return outcome.username or username, bool(outcome.create)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -263,22 +552,34 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
             return
 
+        from mlflow_oidc_auth.provisioning_policy import admin_from_claims, groups_to_apply
+
         # Same authorization gate as interactive login (routers/auth.py): the user must be an
-        # admin-group or allowed-group member. Otherwise do NOT provision — a bearer token must
-        # never be able to create an account that interactive login would reject.
-        is_admin_claim = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-        admission = None if is_admin_claim else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
-        if not is_admin_claim and admission is None:
+        # admin-group member *by this provider's say-so* or an allowed-group member. Otherwise do
+        # NOT provision — a bearer token must never create an account interactive login would
+        # reject. An admin group name only admits when the provider may confer admin (#318): a
+        # provider configured ``admin_source: none`` — a tenant whose group names you do not
+        # control — gets no say through it here either.
+        may_be_admin = admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
+        admission = None if may_be_admin else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
+        if not may_be_admin and admission is None:
             logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
             return
 
-        # Admin is conferred from a token only when the operator has explicitly opted in *and*
-        # the asserting provider is allowed to say so (#318). Without the second half, a provider
-        # configured ``admin_source: none`` — the answer for a tenant whose group names you do
-        # not control — could still mint administrators through this path.
-        from mlflow_oidc_auth.provisioning_policy import admin_from_claims
+        # Login creates an unknown user only for a provider whose provisioning is ``jit``; with
+        # ``scim`` the directory decides who exists, and a token must not either.
+        if provider.provisioning != "jit":
+            logger.info(
+                "Not provisioning %s: provider '%s' has provisioning '%s' (parity with interactive login)", username, provider.id, provider.provisioning
+            )
+            return
 
-        is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS and admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
+        # Admin is conferred from a token only when the operator has explicitly opted in as well.
+        is_admin = may_be_admin and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
+        # The membership login would write: namespaced as ``<provider-id>:<group>`` for any provider
+        # but the deployment's own, so another provider's group never joins a local group of the
+        # same name, and nothing at all for a provider configured ``group_sync: none``.
+        groups = groups_to_apply(provider, user_groups, [], is_new_user=True)
         display_name, display_name_error = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)
         if display_name_error:
             logger.debug("Bearer provisioning of %s falling back to username as display name: %s", username, display_name_error)
@@ -290,9 +591,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # who is writing and the memberships are owned by that provider rather than ``manual``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
-            user_module.populate_groups(group_names=user_groups, written_by=written_by)
-            user_module.update_user(username=username, group_names=user_groups, written_by=written_by)
-            logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
+            if groups is not None:
+                arrived = user_module.populate_groups(group_names=groups, written_by=written_by)
+                user_module.update_user(username=username, group_names=groups, written_by=written_by)
+                # Groups this created get their workspace group rules (#418), as on login.
+                if arrived:
+                    from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
+
+                    apply_rules_for_groups(arrived, source=written_by)
+            # Bound like a login binds it, so this account answers to this provider's subject
+            # alone and another provider cannot later adopt it by asserting the same name. A bind
+            # that fails (the subject already names another account) leaves the account unbound:
+            # with several providers its token is then refused (_bound_to_identity).
+            subject = payload.get("sub")
+            if isinstance(subject, str) and subject.strip():
+                try:
+                    store.user_identity_repo.link(provider.id, subject.strip(), username)
+                except Exception as e:
+                    logger.warning("Bearer provisioning of %s could not bind its identity: %s", username, type(e).__name__)
+            logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(groups or []))
             if admission is not None and admission.kind == BY_PATTERN:
                 emit_audit_event(
                     "auth.admitted_by_group_pattern",
@@ -390,7 +707,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Attributed to the Kubernetes provider (#360): the namespace group membership is its,
             # not ``manual``, so no other source's sync can quietly remove it under ``enforce``.
             written_by = f"oidc:{provider.id}"
-            user_module.create_user(username=username, display_name=display_name, is_admin=False, is_service_account=True, written_by=written_by)
+            user_module.create_user(
+                username=username,
+                display_name=display_name,
+                is_admin=False,
+                is_service_account=True,
+                written_by=written_by,
+                # Its cluster provider's alone: reached by that provider's tokens on their own path.
+                service_account_source=provider.id,
+            )
             user_module.populate_groups(group_names=[group], written_by=written_by)
             user_module.update_user(username=username, group_names=[group], written_by=written_by)
             logger.info("Provisioned service account %s from namespace %s", username, account.namespace)
@@ -433,6 +758,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # list that had to include ``sub`` to make this work would also change how every
                 # other provider's tokens are named.
                 _WORKLOAD_BEARER.set(True)
+                _BEARER_IDENTITY.set((_KUBERNETES_BEARER, provider))
                 return self._authenticate_service_account(token, payload, provider)
 
             # Extract username from configured fields. extract_username guarantees a
@@ -441,7 +767,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if error_msg:
                 return False, None, error_msg
 
+            username, creating = _bearer_identity(provider, payload, username)
+            if username is None:
+                return False, None, "This account cannot be used here"
+
             self._maybe_provision_bearer_user(username, token, payload)
+            if creating and not _bound_to_identity(provider, payload, username):
+                return False, None, "This account cannot be used here"
+            subject = payload.get("sub")
+            _BEARER_IDENTITY.set((provider, subject.strip() if isinstance(subject, str) else ""))
             logger.debug(f"User {username} authenticated via bearer token")
             return True, username, ""
         except Exception as e:
@@ -603,18 +937,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return is_admin and is_active
 
     def _get_user_auth_state(self, username: str) -> Tuple[bool, bool, str]:
+        """``(is_admin, is_active, denial_reason)``; see :meth:`_get_user_auth_facts`."""
+        is_admin, is_active, denial_reason, _ = self._get_user_auth_facts(username)
+        return is_admin, is_active, denial_reason
+
+    def _get_user_auth_facts(self, username: str) -> Tuple[bool, bool, str, Tuple[bool, Optional[str]]]:
         """Read the facts the auth path needs about a user, in one lookup.
 
         All come off the profile row that is already fetched on every authenticated request, so
-        ``active`` costs nothing: it is in the ``load_only`` list added by #333, and the
-        per-request statement count stays at the #305 budget of 2.
+        ``active`` and the service-account facts cost nothing: they are in its ``load_only`` list,
+        and the per-request statement count stays at the #305 budget of 2.
 
         Args:
             username: Username to check
 
         Returns:
-            ``(is_admin, is_active, denial_reason)``. ``denial_reason`` is ``""`` when the user
-            may authenticate, and otherwise names why not, so the caller can report a deleted
+            ``(is_admin, is_active, denial_reason, (is_service_account, service_account_source))``.
+            ``denial_reason`` is ``""`` when the user may authenticate, and otherwise names why not, so the caller can report a deleted
             account differently from a deactivated one (issue #306).
 
             Any failure yields ``(False, False, ...)``: an account that cannot be read is not an
@@ -630,18 +969,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # logging this at ERROR would fill the log with something nobody can act on.
                 # Not logged here at all — ``dispatch`` logs the denial once, with the path and
                 # the reason, and two lines per request is twice the volume for one event.
-                return False, False, DENIAL_UNKNOWN_USER
+                return False, False, DENIAL_UNKNOWN_USER, (False, None)
             logger.error("Error reading auth state for %s: %s", username, e)
-            return False, False, DENIAL_LOOKUP_ERROR
+            return False, False, DENIAL_LOOKUP_ERROR, (False, None)
         except Exception as e:
             logger.error("Error reading auth state for %s: %s", username, e)
-            return False, False, DENIAL_LOOKUP_ERROR
+            return False, False, DENIAL_LOOKUP_ERROR, (False, None)
 
         if not user:
-            return False, False, DENIAL_UNKNOWN_USER
+            return False, False, DENIAL_UNKNOWN_USER, (False, None)
+        source = getattr(user, "service_account_source", None)
+        account = (getattr(user, "is_service_account", False) is True, source if isinstance(source, str) else None)
         if not user.active:
-            return bool(user.is_admin), False, DENIAL_INACTIVE
-        return bool(user.is_admin), True, ""
+            return bool(user.is_admin), False, DENIAL_INACTIVE, account
+        return bool(user.is_admin), True, "", account
 
     async def _handle_auth_redirect(self, request: Request) -> Response:
         """
@@ -702,11 +1043,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Attempt authentication
         workload_marker = _WORKLOAD_BEARER.set(False)
+        identity_marker = _BEARER_IDENTITY.set(None)
         try:
             is_authenticated, username, error_msg = await self._authenticate_user(request)
             workload_bearer = _WORKLOAD_BEARER.get()
+            bearer_identity = _BEARER_IDENTITY.get()
         finally:
             _WORKLOAD_BEARER.reset(workload_marker)
+            _BEARER_IDENTITY.reset(identity_marker)
 
         if is_authenticated and username:
             resolved = getattr(request.state, "resolved_session", None)
@@ -714,8 +1058,37 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # Already read, in the same statement that validated the session.
                 is_admin, is_active = resolved.is_admin, resolved.is_active
                 denial_reason = "" if is_active else DENIAL_INACTIVE
+                if is_active and getattr(resolved, "is_service_account", False) is True:
+                    # A service account never signs in through the browser; a session it holds
+                    # (from before the account became one) is not honoured.
+                    logger.info("Authentication denied for service account %s on %s: a browser session", username, path)
+                    if _should_audit_denial(username, DENIAL_SERVICE_ACCOUNT_SOURCE):
+                        emit_audit_event(
+                            DENIAL_AUDIT_EVENTS[DENIAL_SERVICE_ACCOUNT_SOURCE],
+                            actor=username,
+                            resource_type="user",
+                            resource_id=username,
+                            detail={"reason": "a service account does not sign in interactively"},
+                            status="denied",
+                        )
+                    return await self._deny(request, path)
             else:
-                is_admin, is_active, denial_reason = self._get_user_auth_state(username)
+                is_admin, is_active, denial_reason, account = self._get_user_auth_facts(username)
+                if is_active:
+                    method = _auth_method(request, workload_bearer=workload_bearer)
+                    refusal = _service_account_denial(username, account[0], account[1], method, bearer_identity, is_admin)
+                    if refusal:
+                        logger.info("Authentication denied for service account %s on %s: %s", username, path, refusal)
+                        if _should_audit_denial(username, DENIAL_SERVICE_ACCOUNT_SOURCE):
+                            emit_audit_event(
+                                DENIAL_AUDIT_EVENTS[DENIAL_SERVICE_ACCOUNT_SOURCE],
+                                actor=username,
+                                resource_type="user",
+                                resource_id=username,
+                                detail={"reason": refusal},
+                                status="denied",
+                            )
+                        return await self._deny(request, path)
 
             # A deprovisioned user holds a signed cookie or a valid token that has not expired
             # yet, so credentials alone still check out. Directories deactivate rather than

@@ -221,6 +221,30 @@ async def check_gateway_model_definition_manage_permission(
     return None
 
 
+async def check_mcp_server_manage_permission(
+    name: str = Path(..., description="MCP server name (<namespace>/<slug>)"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> str:
+    """Check that the current user may manage the grants on an MCP server of the request's workspace.
+
+    Admins, and users whose permission on the server resolves to MANAGE (a grant of their own or a
+    group's, else their permission on the request's workspace), may proceed.
+
+    Returns:
+        The current username.
+
+    Raises:
+        HTTPException: 403 when the user cannot manage the server.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_mcp_server
+
+    if not is_admin and not can_manage_mcp_server(name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage MCP server {name}")
+
+    return current_username
+
+
 async def check_scorer_manage_permission(
     request: Request,
     current_username: str = Depends(get_username),

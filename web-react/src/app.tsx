@@ -26,6 +26,12 @@ const AiModelsPage = React.lazy(
 const AiModelsPermissionPage = React.lazy(
   () => import("./features/ai-gateway/ai-models-permissions-page"),
 );
+const McpServersPage = React.lazy(
+  () => import("./features/mcp-servers/mcp-servers-page"),
+);
+const McpServersPermissionPage = React.lazy(
+  () => import("./features/mcp-servers/mcp-servers-permission-page"),
+);
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page"),
 );
@@ -105,6 +111,22 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <AiEndpointsPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <McpServersPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/mcp-servers/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <McpServersPermissionPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -197,6 +219,14 @@ export default function App() {
         }
       />
       <Route
+        path="/groups/:groupName/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="mcp-servers" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/groups/:groupName/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -281,6 +311,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <ServiceAccountPermissionPage type="prompts" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/service-accounts/:username/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="mcp-servers" />
           </ProtectedLayoutRoute>
         }
       />
@@ -387,6 +425,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UserPermissionsPage type="prompts" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/mcp-servers"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="mcp-servers" />
           </ProtectedLayoutRoute>
         }
       />

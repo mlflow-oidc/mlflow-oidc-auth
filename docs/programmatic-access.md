@@ -19,6 +19,13 @@ are for people.
 
 ## Automation: OIDC service accounts
 
+**A service account signs in one way.** It is either **internal** — it signs in only with access
+tokens issued for it (basic auth), and no identity provider's token reaches it, whatever username
+the token claims — or **external** to one provider, whose tokens alone reach it, for the subject
+bound to it. A new service account is internal unless an administrator chooses a provider; a
+Kubernetes service account is its cluster provider's. No service account signs in through the
+browser.
+
 A workload identity is short-lived, rotated by the platform that issues it, revocable at the
 source (the IdP or the cluster), and nothing long-lived has to be stored in the pipeline. Tokens
 from a Kubernetes provider or from a provider configured `interactive: false` cannot be turned
@@ -99,15 +106,26 @@ short-lived token and send it as a bearer token. For such a token to authenticat
    tokens that have none of the earlier ones.
 3. **An active account with that username must exist** (usernames are case-insensitive). A bearer token whose username has no
    account is refused. Either:
-   - **create it ahead of time** — an admin creates a service account with exactly that username
-     on the **Service Accounts** page or with `POST /api/2.0/mlflow/users` and
-     `"is_service_account": true` ([API reference](api-reference#user-management)), then grants
-     it permissions. This is the usual answer for a service principal, whose token rarely carries
-     a groups claim; or
+   - **create it ahead of time** — an admin creates an **external** service account with exactly
+     that username, bound to the provider that issues the token: on the **Service Accounts** page
+     choose that provider as its sign-in source, or `POST /api/2.0/mlflow/users` with
+     `"is_service_account": true` and `"service_account_source": "<provider-id>"`
+     ([API reference](api-reference#user-management)), then grant it permissions. Give the
+     token's subject (`"subject": "<sub>"`) to bind it now — for example
+     `repo:org/app:ref:refs/heads/main` for a GitHub Actions workflow — or leave it out and the
+     first token from that provider binds its subject (an administrator service account must be
+     given its subject: no first token binds one). Only that provider's tokens, for that
+     subject, reach the account, and no access token can be issued for it: its lifecycle lives in
+     the IdP. This is the usual answer for a service principal, whose token rarely carries a
+     groups claim; or
    - **let the first request create it** with `OIDC_PROVISION_ON_BEARER_AUTH=true`. The account
-     is created only when the validating provider pins both audience and issuer and the token's
+     is bound to the token's `(provider, sub)`, so derive the username from a stable subject; with
+     several providers, a provider other than `default` writes its groups as `<provider-id>:<group>`
+     and grants must name them that way. The account is created only when the validating provider pins both audience and issuer and the token's
      own groups claim (`OIDC_GROUPS_ATTRIBUTE`, or `OIDC_GROUP_DETECTION_PLUGIN`) passes the same
-     `OIDC_GROUP_NAME` / `OIDC_GROUP_NAME_PATTERN` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login. It is never an admin
+     `OIDC_GROUP_NAME` / `OIDC_GROUP_NAME_PATTERN` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login
+     from that provider, and only for a provider with `provisioning: jit`. Its groups are written as
+     that login would write them, namespaced for any provider but `default`. It is never an admin
      unless `OIDC_TRUST_BEARER_GROUP_CLAIMS` is set. See the
      [configuration reference](configuration#oidc-authentication).
 4. **Interactive or not is set per issuer.** A client-credentials token from the IdP people sign
