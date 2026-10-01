@@ -425,9 +425,10 @@ class TestPermissions(unittest.TestCase):
 class TestResolvePermission(unittest.TestCase):
     """Tests for resolve_permission() and PERMISSION_REGISTRY."""
 
-    def test_registry_has_seven_entries(self) -> None:
-        """PERMISSION_REGISTRY should contain exactly 7 resource types."""
-        self.assertEqual(len(PERMISSION_REGISTRY), 7)
+    def test_registry_has_eight_entries(self) -> None:
+        """PERMISSION_REGISTRY should contain exactly 8 resource types."""
+        self.assertEqual(len(PERMISSION_REGISTRY), 8)
+        self.assertIn("mcp_server", PERMISSION_REGISTRY)
         self.assertIn("experiment", PERMISSION_REGISTRY)
         self.assertIn("registered_model", PERMISSION_REGISTRY)
         self.assertIn("prompt", PERMISSION_REGISTRY)
@@ -527,8 +528,10 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.kind, "user")
         self.assertEqual(result.permission, READ)
 
+    # The experiment is one of the request workspace's experiments (see _experiment_in_request_workspace).
+    @patch("mlflow_oidc_auth.utils.permissions._experiment_in_request_workspace", return_value=True)
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_fallback_workspaces_enabled_returns_workspace_permission(self, mock_resolver):
+    def test_fallback_workspaces_enabled_returns_workspace_permission(self, mock_resolver, _in_workspace):
         """When fallback + workspaces enabled + user has workspace perm → returns workspace result."""
         from mlflow_oidc_auth.permissions import EDIT, READ
 
@@ -557,8 +560,10 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
         self.assertEqual(result.kind, "workspace")
         self.assertEqual(result.permission, EDIT)
 
+    # The experiment is one of the request workspace's experiments (see _experiment_in_request_workspace).
+    @patch("mlflow_oidc_auth.utils.permissions._experiment_in_request_workspace", return_value=True)
     @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
-    def test_workspace_edit_fallback_allows_experiment_update_but_not_manage(self, mock_resolver):
+    def test_workspace_edit_fallback_allows_experiment_update_but_not_manage(self, mock_resolver, _in_workspace):
         """Workspace EDIT fallback grants update capability for existing experiments but not manage."""
         from mlflow_oidc_auth.permissions import EDIT, READ
 

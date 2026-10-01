@@ -67,6 +67,8 @@ class ResolvedSession:
     session_id: Optional[str] = None
     provider_id: Optional[str] = None
     encrypted_tokens: Optional[str] = field(default=None, repr=False)
+    #: Whether the session's user is a service account: such a session is never honoured.
+    is_service_account: bool = False
 
 
 #: How much of a session id the admin API shows. Enough to tell a user's handful of sessions
@@ -249,6 +251,8 @@ class AuthSessionRepository:
                     SqlUser.is_admin,
                     SqlUser.active,
                     SqlAuthSession.expires_at,
+                    # Same statement: whether the user is a service account, never served a session.
+                    SqlUser.is_service_account,
                     SqlAuthSession.id,
                     SqlAuthSession.session_id,
                     SqlAuthSession.provider_id,
@@ -269,10 +273,11 @@ class AuthSessionRepository:
                 is_admin=bool(row[1]),
                 is_active=bool(row[2]),
                 expires_at=row[3],
-                session_pk=row[4],
-                session_id=row[5],
-                provider_id=row[6],
-                encrypted_tokens=row[7],
+                session_pk=row[5],
+                session_id=row[6],
+                provider_id=row[7],
+                encrypted_tokens=row[8],
+                is_service_account=bool(row[4]),
             )
 
     def store_tokens(self, session_id: str, encrypted_tokens: Optional[str]) -> bool:

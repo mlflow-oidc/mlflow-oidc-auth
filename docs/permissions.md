@@ -34,6 +34,7 @@ The permission system covers these MLflow resource types:
 | Gateway Endpoints | Per endpoint name | AI Gateway routes |
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
+| MCP Servers | Per server name (`<namespace>/<slug>`) | MLflow 3.15+ MCP server registry. User and group grants only (no regex). See [MCP Server Registry](#mcp-server-registry) |
 | Workspaces | Per workspace name | Only when `MLFLOW_ENABLE_WORKSPACES=true`. See [Workspaces](workspaces) |
 
 ## Permission Sources
@@ -93,6 +94,8 @@ Regex permissions use Python regular expression syntax to match resource names b
 1. Patterns are ordered by **priority** (lower number = checked first)
 2. The **first matching pattern** determines the permission
 3. Both user-level and group-level regex permissions are supported
+4. With workspaces enabled, a pattern applies in the workspace it was made in, or in every
+   workspace when made with none selected (see [Workspaces](workspaces#pattern-regex-grants))
 
 ### Pattern Examples
 
@@ -138,6 +141,7 @@ When a user creates a resource, the plugin automatically grants them `MANAGE` pe
 - `CreateGatewayEndpoint` → MANAGE on the new endpoint
 - `CreateGatewaySecret` → MANAGE on the new secret
 - `CreateGatewayModelDefinition` → MANAGE on the new model definition
+- `POST /api/3.0/mlflow/mcp-servers` (and a version created on a server that did not exist yet) → MANAGE on the new MCP server, once MLflow returned success
 - `CreateWorkspace` → MANAGE workspace permission (when workspaces enabled)
 
 ## Search Result Filtering
@@ -152,10 +156,11 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewaySecretInfos` — removes unreadable gateway secrets
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
+- `GET /api/3.0/mlflow/mcp-servers` and `GET /api/3.0/mlflow/mcp-servers/endpoints` — remove MCP servers (and their access endpoints) the user cannot read; see [MCP Server Registry](#mcp-server-registry)
 - `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
 - Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
-The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist.
+The filtering preserves MLflow's pagination contract — the system continues fetching additional pages until the requested `max_results` is satisfied or no more results exist. The MCP server searches are the exception: a filtered page can hold fewer than `max_results` servers (follow `next_page_token`), which is why searching a workspace's registry needs `READ` on that workspace.
 
 ## Artifact Access
 
@@ -405,11 +410,20 @@ When resources are deleted or renamed, associated permissions are automatically 
 | Delete gateway endpoint/secret/model definition | All associated permissions are deleted |
 | Rename registered model | All permission records are updated to the new name |
 | Rename gateway endpoint | All endpoint permission records are updated to the new name |
+| Delete MCP server | All user and group permissions for that server (in the request's workspace) are deleted — also when an admin deletes it |
 | Delete workspace | All workspace permissions are deleted, cache is flushed |
+
+With workspaces enabled, deleting or renaming a registered model, prompt or gateway resource changes
+only the grants of the resource in the request's workspace; a same-named resource in another
+workspace keeps its grants. See [Workspaces → Grants on models, prompts and gateway resources](workspaces#grants-on-models-prompts-and-gateway-resources).
 
 ## Gateway Permissions
 
-AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order.
+AI Gateway resources (endpoints, secrets, model definitions) use the same permission system as experiments and models. Permission sources (user, group, regex, group-regex) are evaluated in the same order; a user's group grant is the most permissive grant any of their groups holds on the resource.
+
+> **Upgrade note:** before this release, group grants on AI Gateway resources were never consulted,
+> so a group grant on an endpoint, secret or model definition had no effect. They take effect now,
+> with or without workspaces. Review existing gateway group grants before upgrading.
 
 Gateway permissions are managed through:
 - **Admin UI**: The gateway section (when `OIDC_GEN_AI_GATEWAY_ENABLED=true`)
@@ -438,6 +452,78 @@ Admins receive both responses unchanged. **Configuration writes stay admin-only:
 these routes as `GET` only today; the write bindings exist so that a writer added by a future
 MLflow release is denied by default instead of being reachable by every authenticated user.
 
+## MCP Server Registry
+
+MLflow 3.15 added an MCP server registry, served from FastAPI under `/api/3.0/mlflow/mcp-servers`
+and `/ajax-api/3.0/mlflow/mcp-servers` (behind `--static-prefix` when one is set). MLflow keeps MCP
+servers unique per `(workspace, name)`; a name is `<reverse-dns namespace>/<slug>`, e.g.
+`com.example/weather`. Each server has its own permissions, mirroring MLflow's own auth plugin:
+
+| Route | Permission required |
+|---|---|
+| `POST mcp-servers` (create) | create rights, see below; the creator is granted `MANAGE` once MLflow returns success |
+| `GET mcp-servers` (search), `GET mcp-servers/endpoints` | `READ` on the request's workspace (any authenticated user with workspaces disabled); the results contain only servers the caller can `READ`. A server shared with a non-member is reached by name |
+| `GET mcp-servers/<name>` and every `GET` under it (versions, aliases, access endpoints) | `READ` on the server |
+| `PATCH mcp-servers/<name>`, `POST`/`PATCH` on its tags, aliases, versions and access endpoints | `EDIT` on the server |
+| `POST mcp-servers/<name>/versions` on a server that does not exist yet | create rights — MLflow creates the server — and the creator is granted `MANAGE` |
+| `DELETE mcp-servers/<name>` and every `DELETE` under it (tags, aliases, versions, access endpoints) | `MANAGE` on the server (as in MLflow, where any `DELETE` needs `can_delete`) |
+
+**Resolution.** The caller's user grant on the server, then their groups' grants (most permissive
+wins), in `PERMISSION_SOURCE_ORDER`. There are no regex sources for MCP servers. With no grant on
+the server:
+
+- with workspaces enabled, the caller's permission on the request's workspace decides — on the
+  default workspace when the request names none (not `DEFAULT_MLFLOW_PERMISSION`, so a permissive
+  global default never opens the registry);
+- with workspaces disabled, `DEFAULT_MLFLOW_PERMISSION` decides, as for every resource.
+
+A grant on a server applies whether or not the grantee is a member of its workspace: sharing a
+server with a non-member is what a resource grant is for, as for every other resource type.
+
+With workspaces disabled, only a grant on a server changes it — never `DEFAULT_MLFLOW_PERMISSION`.
+
+**Servers nobody manages stay admin-only for changes.** A permission that comes only from the
+workspace (or, with workspaces disabled, from `DEFAULT_MLFLOW_PERMISSION`) lets its holder read a
+server, but changing, deleting or sharing one needs a user or group to hold `MANAGE` on it first —
+a lesser grant, such as `READ` for one contractor or `NO_PERMISSIONS` to shut someone out, does not
+open it to everyone else. That keeps servers registered before this release, when only
+administrators could change them, admin-only until an administrator grants someone `MANAGE`.
+`allowed_actions` reflects this. A server created since carries its
+creator's `MANAGE` grant, so the normal rules apply to it at once.
+
+**Create rights.** With workspaces enabled: `MANAGE` on the workspace MLflow serves the request
+from (the one named in `X-MLFLOW-WORKSPACE`, else `default`), subject to
+`OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` — the same
+threshold as creating experiments, models and gateway resources. With workspaces disabled: any
+authenticated user, as in MLflow — unless `RESTRICT_RESOURCE_CREATION` is set, in which
+case `DEFAULT_MLFLOW_PERMISSION` must grant `EDIT`.
+
+Search results and single servers carry MLflow's `allowed_actions` (`USE`, `UPDATE`, `DELETE`,
+`MANAGE`), which MLflow's UI uses to enable its edit and delete controls. A filtered page can hold
+fewer than `max_results` servers; follow `next_page_token` as usual. Admins are not restricted.
+
+> **Upgrade note:** before this release, registry writes were admin-only and reads needed only
+> `READ` on the workspace. Now any user with `MANAGE` on a workspace (any authenticated user with
+> workspaces disabled) can create servers and manages the ones they create. Existing servers stay
+> admin-only for changes until an administrator grants someone `MANAGE` on them. Reading a server needs
+> `READ` on it, which workspace members keep through the workspace fallback. With workspaces
+> disabled and the shipped `NO_PERMISSIONS` default, existing servers are no longer readable by
+> non-admins until they are granted.
+
+MCP server permissions are managed through:
+
+- **Admin UI**: *MCP Servers* in the sidebar, and the *MCP Servers* tab on users, groups and service accounts
+- **REST API** (`MANAGE` on the server, or admin; grants are read and written in the request's workspace):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/2.0/mlflow/permissions/mcp-servers` | Servers of the request's workspace the caller can manage (all for an admin) |
+| `GET /api/2.0/mlflow/permissions/mcp-servers/<name>/users` · `…/groups` | Who holds a grant on a server |
+| `GET /api/2.0/mlflow/permissions/users/<username>/mcp-servers` | A user's effective permissions |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/mcp-servers/<name>` | A user's grant (`{"permission": "READ"}`) |
+| `GET /api/2.0/mlflow/permissions/groups/<group>/mcp-servers` | A group's grants |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/mcp-servers/<name>` | A group's grant |
+
 ## GraphQL Authorization
 
 The plugin enforces permissions on MLflow's GraphQL API (`/graphql`) through a custom middleware:
@@ -456,6 +542,7 @@ Key points:
 - When workspaces are enabled, `DEFAULT_MLFLOW_PERMISSION` is not used as a resource fallback — workspace permissions take that role
 - With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
+- Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
 
 ## De-provisioning
 
@@ -508,7 +595,9 @@ against the same value the resolver uses:
 - gateway resources and workspaces: their name
 
 Experiment names and the model-or-prompt distinction come from MLflow. With workspaces enabled, each
-lookup is tried in every workspace. A name that is a model in one workspace and a prompt in another
+lookup is tried in every workspace, and a registered model, prompt or gateway resource is identified
+by its workspace and name: it is reported as `<workspace>/<name>` (for example `team-a/churn`), and
+the hand-over grants `MANAGE` on that workspace's resource. A name that is a model in one workspace and a prompt in another
 must be held as both. At most 1000 store calls are made per resource type. When the answer depends on
 a lookup that fails, the resource is reported with `via: "unresolved"` and a warning is logged, and it
 is **never** handed over. Administrators are not counted, because an administrator can always recover

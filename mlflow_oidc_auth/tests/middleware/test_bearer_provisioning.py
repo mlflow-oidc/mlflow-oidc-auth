@@ -34,9 +34,25 @@ def provider_carries_the_configured_scoping(monkeypatch):
         # ``admin_source`` matters since #318: a provider that may not assert administrator
         # status cannot mint one through this path either. These cases describe the deployment's
         # own provider, which may.
-        return SimpleNamespace(id="default", type="oidc", admin_source="claims", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
+        return _provider(id="default", audience=cfg.OIDC_AUDIENCE, issuer=cfg.OIDC_ISSUER)
 
     monkeypatch.setattr(auth_module, "resolve_token_provider", resolve)
+
+
+def _provider(**over):
+    """A registry entry with the registry's defaults (provider_registry.ProviderConfig)."""
+    fields = dict(
+        id="default",
+        type="oidc",
+        admin_source="claims",
+        audience="mlflow",
+        issuer="https://idp.example.com",
+        provisioning="jit",
+        group_sync="every_login",
+        group_sync_mode="authoritative",
+    )
+    fields.update(over)
+    return SimpleNamespace(**fields)
 
 
 def _mw():
@@ -329,7 +345,7 @@ class TestTheProviderMustBeAllowedToConferAdmin:
         monkeypatch.setattr(
             auth_module,
             "resolve_token_provider",
-            lambda token: SimpleNamespace(id="partner", type="oidc", admin_source="none", audience="mlflow", issuer="https://partner.invalid"),
+            lambda token: _provider(id="partner", admin_source="none", issuer="https://partner.invalid"),
         )
 
         with (
@@ -341,6 +357,86 @@ class TestTheProviderMustBeAllowedToConferAdmin:
         ):
             _cfg(cfg, OIDC_TRUST_BEARER_GROUP_CLAIMS=True)
             store.has_user.return_value = False
-            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins", "mlflow-users"]})
 
         assert create_user.call_args.kwargs["is_admin"] is False
+
+    def test_an_admin_group_name_alone_does_not_admit_through_such_a_provider(self, monkeypatch):
+        """Login refuses this token (the admin group name is not this provider's to assert, and it
+        is in no allowed group); provisioning from it must refuse too."""
+        import mlflow_oidc_auth.auth as auth_module
+
+        monkeypatch.setattr(auth_module, "resolve_token_provider", lambda token: _provider(id="partner", admin_source="none"))
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+        ):
+            _cfg(cfg)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-admins"]})
+
+        create_user.assert_not_called()
+
+
+class TestGroupsAreWrittenAsLoginWritesThem:
+    """Bearer provisioning writes the membership interactive login would: namespaced per provider,
+    and following the provider's group_sync."""
+
+    def _provision(self, monkeypatch, provider, groups):
+        import mlflow_oidc_auth.auth as auth_module
+
+        monkeypatch.setattr(auth_module, "resolve_token_provider", lambda token: provider)
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user") as create_user,
+            patch("mlflow_oidc_auth.user.populate_groups", return_value=[]) as populate_groups,
+            patch("mlflow_oidc_auth.user.update_user") as update_user,
+        ):
+            _cfg(cfg)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": groups})
+        return create_user, populate_groups, update_user
+
+    def test_another_providers_groups_are_namespaced(self, monkeypatch):
+        _, populate_groups, update_user = self._provision(monkeypatch, _provider(id="partner"), ["mlflow-users", "finance-ds"])
+
+        populate_groups.assert_called_once_with(group_names=["partner:mlflow-users", "partner:finance-ds"], written_by="oidc:partner")
+        update_user.assert_called_once_with(username="a@x.com", group_names=["partner:mlflow-users", "partner:finance-ds"], written_by="oidc:partner")
+
+    def test_the_deployments_own_provider_keeps_raw_names(self, monkeypatch):
+        _, populate_groups, _ = self._provision(monkeypatch, _provider(), ["mlflow-users"])
+
+        populate_groups.assert_called_once_with(group_names=["mlflow-users"], written_by="oidc:default")
+
+    def test_a_provider_that_syncs_no_groups_writes_none(self, monkeypatch):
+        create_user, populate_groups, update_user = self._provision(monkeypatch, _provider(id="partner", group_sync="none"), ["mlflow-users"])
+
+        create_user.assert_called_once()
+        populate_groups.assert_not_called()
+        update_user.assert_not_called()
+
+    def test_a_provider_that_does_not_create_users_at_login_does_not_here(self, monkeypatch):
+        create_user, _, _ = self._provision(monkeypatch, _provider(id="partner", provisioning="scim"), ["mlflow-users"])
+
+        create_user.assert_not_called()
+
+    def test_groups_this_created_get_their_workspace_rules(self, monkeypatch):
+        import mlflow_oidc_auth.auth as auth_module
+
+        monkeypatch.setattr(auth_module, "resolve_token_provider", lambda token: _provider(id="partner"))
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.middleware.auth_middleware.store") as store,
+            patch("mlflow_oidc_auth.user.create_user"),
+            patch("mlflow_oidc_auth.user.populate_groups", return_value=["partner:mlflow-users"]),
+            patch("mlflow_oidc_auth.user.update_user"),
+            patch("mlflow_oidc_auth.workspace_rules.apply_rules_for_groups") as apply_rules,
+        ):
+            _cfg(cfg)
+            store.has_user.return_value = False
+            _mw()._maybe_provision_bearer_user("a@x.com", "tok", {"groups": ["mlflow-users"]})
+
+        apply_rules.assert_called_once_with(["partner:mlflow-users"], source="oidc:partner")

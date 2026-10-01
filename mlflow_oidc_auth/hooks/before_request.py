@@ -1007,7 +1007,10 @@ def before_request_hook():
     """Called before each request. If it did not return a response,
     the view function for the matched route is called and returns a response"""
 
-    if _is_unprotected_route(request.path):
+    # MLflow mounts its routes under ``--static-prefix`` when it is set, so ``request.path``
+    # carries the prefix on a prefixed deployment. Compare without it, as MLflow's own basic auth
+    # does, or the server would require a session to answer its own health probe.
+    if _is_unprotected_route(strip_static_prefix(request.path)):
         return None
 
     username, is_admin = _get_auth_context()

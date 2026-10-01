@@ -8,7 +8,10 @@ sub-path). Deciding on anything else lets the middleware and the router disagree
 endpoint a request reaches, so every check in this package goes through :func:`routed_path`.
 """
 
+import os
 from typing import Any, Mapping
+
+from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 
 try:  # pragma: no cover - exercised implicitly on every supported Starlette version
     from starlette._utils import get_route_path as _starlette_get_route_path
@@ -90,9 +93,32 @@ UNPROTECTED_PREFIXES = (
 # silently unprotect any later route whose path merely began with it.
 UNPROTECTED_EXACT = ("/providers",)
 
+# The unprotected routes MLflow itself registers under ``--static-prefix``: its health probe and
+# Prometheus endpoint (matched exactly) and its React bundle (matched below ``/static-files/``).
+# A path under the prefix is matched against these alone: the plugin's own routes (login, SCIM,
+# SAML, the admin UI) are never mounted there, so the rest of the list has nothing to answer
+# under it, and matching exactly keeps a plugin route the prefix happens to cover (a prefix of
+# ``/gateway`` covers ``/gateway/health/...``) from being opened by a probe-like segment.
+UNPROTECTED_UNDER_STATIC_PREFIX = ("/health", "/metrics")
+UNPROTECTED_UNDER_STATIC_PREFIX_TREES = ("/static-files/",)
+
+
+def _static_prefix() -> str:
+    """MLflow's ``--static-prefix`` without its trailing slash, or ``""`` when none is set."""
+    return (os.environ.get(STATIC_PREFIX_ENV_VAR) or "").rstrip("/")
+
 
 def is_unprotected_route(path: str) -> bool:
     """Return True when ``path`` does not require an authenticated user.
+
+    MLflow registers its routes under ``--static-prefix`` when it is set, which puts the prefix
+    in the path rather than in ``root_path``. A path under the prefix is judged with the prefix
+    removed, and only against the probes MLflow mounts there
+    (:data:`UNPROTECTED_UNDER_STATIC_PREFIX`, :data:`UNPROTECTED_UNDER_STATIC_PREFIX_TREES`); MLflow's own basic auth opens the same ones, or
+    a prefixed deployment would answer its own health probe with a login redirect and never
+    become ready. Judging such a path against the plugin's list instead would open every MLflow
+    route whenever the prefix itself began with an entry of that list (``/healthcheck``,
+    ``/static``), so it never is.
 
     Parameters:
         path: The routed path (see :func:`routed_path`), never the raw request path.
@@ -100,4 +126,27 @@ def is_unprotected_route(path: str) -> bool:
     Returns:
         True if the route is unprotected, False otherwise.
     """
+    prefix = _static_prefix()
+    if prefix and (path == prefix or path.startswith(prefix + "/")):
+        rest = path[len(prefix) :]
+        return rest in UNPROTECTED_UNDER_STATIC_PREFIX or rest.startswith(UNPROTECTED_UNDER_STATIC_PREFIX_TREES)
     return path in UNPROTECTED_EXACT or path.startswith(UNPROTECTED_PREFIXES)
+
+
+def static_prefix_conflicts() -> tuple[str, ...]:
+    """The plugin's unprotected routes that MLflow's ``--static-prefix`` would cover.
+
+    A path under the prefix is only ever matched against MLflow's own probes (see
+    :func:`is_unprotected_route`), so any of the plugin's unprotected routes that falls under
+    the prefix requires a signed-in user and stops working for its intended callers (the login
+    page, SCIM clients, the IdP's logout call). Empty when no prefix is set or none overlaps.
+
+    Returns:
+        The overlapping entries of :data:`UNPROTECTED_PREFIXES` and :data:`UNPROTECTED_EXACT`.
+    """
+    prefix = _static_prefix()
+    if not prefix:
+        return ()
+    under = prefix + "/"
+    # Compared on path segments: "/healthcheck" covers nothing of "/health", "/oidc" covers "/oidc/ui".
+    return tuple(route for route in UNPROTECTED_PREFIXES + UNPROTECTED_EXACT if route.startswith(under) or under.startswith(route.rstrip("/") + "/"))

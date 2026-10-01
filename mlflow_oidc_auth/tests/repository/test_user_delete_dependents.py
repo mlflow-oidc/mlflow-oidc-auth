@@ -120,6 +120,7 @@ class TestEveryForeignKeyToUsersIsCovered:
             "gateway_secret_regex_permissions",
             "gateway_model_definition_permissions",
             "gateway_model_definition_regex_permissions",
+            "mcp_server_permissions",
             "workspace_permissions",
             "workspace_regex_permissions",
             "prompt_permissions",

@@ -33,6 +33,7 @@ class TestUserDetails:
             "is_service_account": False,
             "active": True,
             "managed_by": "manual",
+            "service_account_source": None,
         }
         assert rows[ADMIN]["is_admin"] is True
         assert rows["svc-bot"]["is_service_account"] is True
@@ -89,6 +90,7 @@ class TestSetActive:
             "is_service_account": False,
             "active": False,
             "managed_by": "manual",
+            "service_account_source": None,
         }
         assert client.get(PROTECTED).status_code == 401, "the live session is revoked"
         assert client.get(PROTECTED, headers=bob).status_code == 401, "the token is revoked"

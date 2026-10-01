@@ -16,6 +16,27 @@ export const getPermissionUrl = ({
   isPattern = false,
   identifier,
 }: GetPermissionUrlParams): string => {
+  if (type === "mcp-servers") {
+    // MCP servers have user and group grants only; there is no pattern API.
+    if (isPattern) {
+      throw new Error("Pattern permissions are not supported for MCP servers");
+    }
+    if (identifier) {
+      return entityKind === "user"
+        ? DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(
+            entityName,
+            identifier,
+          )
+        : DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
+            entityName,
+            identifier,
+          );
+    }
+    return entityKind === "user"
+      ? DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSIONS(entityName)
+      : DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSIONS(entityName);
+  }
+
   if (isPattern) {
     if (identifier) {
       // Single pattern permission (GET, PATCH, DELETE)
@@ -236,3 +257,8 @@ export const getPermissionUrl = ({
 
   throw new Error("Unknown permission type");
 };
+
+/** How a pattern's workspace reads in a list: "*" (or an older server's none) is every workspace. */
+export function patternWorkspaceLabel(workspace: string | undefined): string {
+  return !workspace || workspace === "*" ? "All workspaces" : workspace;
+}

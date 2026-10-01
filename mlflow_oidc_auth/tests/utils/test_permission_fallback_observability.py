@@ -114,7 +114,7 @@ class TestResolutionPathsRecord:
 
     def test_single_resource_resolution_records_the_fallback(self, monkeypatch):
         monkeypatch.setattr(P, "get_permission_from_store_or_default", lambda cfg: PermissionResult(get_permission("MANAGE"), "fallback"))
-        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username: result)
+        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username, *_: result)
         monkeypatch.setitem(P.PERMISSION_REGISTRY, "experiment", lambda resource_id, username, **kw: {})
         P.flush_permission_cache()
 
@@ -124,7 +124,7 @@ class TestResolutionPathsRecord:
 
     def test_a_real_grant_is_not_recorded_as_a_fallback(self, monkeypatch):
         monkeypatch.setattr(P, "get_permission_from_store_or_default", lambda cfg: PermissionResult(get_permission("READ"), "user"))
-        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username: result)
+        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username, *_: result)
         monkeypatch.setitem(P.PERMISSION_REGISTRY, "experiment", lambda resource_id, username, **kw: {})
         P.flush_permission_cache()
 

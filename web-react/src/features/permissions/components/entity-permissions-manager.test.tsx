@@ -7,6 +7,9 @@ import * as useAllAccountsModule from "../../../core/hooks/use-all-accounts";
 import * as useAllGroupsModule from "../../../core/hooks/use-all-groups";
 import * as useSearchModule from "../../../core/hooks/use-search";
 import type { EntityPermission } from "../../../shared/types/entity";
+import type { PermissionType } from "../../../shared/types/entity";
+import { CHOOSE_WORKSPACE_TITLE } from "../hooks/use-grant-workspace-scope";
+import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
 
 vi.mock("../hooks/use-permissions-management");
 vi.mock("../../../core/hooks/use-all-users");
@@ -229,5 +232,62 @@ describe("EntityPermissionsManager", () => {
     expect(
       groupOptions.map((o) => (o as HTMLOptionElement).value),
     ).not.toContain("group1");
+  });
+
+  describe("workspace scope", () => {
+    const renderScoped = (
+      type: PermissionType,
+      selected: string | null,
+      enabled = true,
+    ) =>
+      render(
+        <EntityPermissionsManager
+          resourceId="churn"
+          resourceName="churn"
+          resourceType={type}
+          permissions={mockPermissions}
+          isLoading={false}
+          error={null}
+          refresh={mockRefresh}
+        />,
+        { wrapper: workspaceScopeWrapper(enabled, selected) },
+      );
+
+    it("names the workspace the grants belong to and allows changes", () => {
+      renderScoped("models", "team-a");
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Grants shown here belong to workspace team-a",
+      );
+      expect(screen.getByRole("button", { name: "+ Add" })).toBeEnabled();
+      expect(screen.getAllByTitle("Edit permission")[0]).toBeEnabled();
+    });
+
+    it("with All Workspaces, says these are default's grants and blocks every change", () => {
+      renderScoped("ai-endpoints", null);
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "These are the default workspace's grants",
+      );
+      for (const name of ["+ Add", "+ Add Service Account", "+ Add Group"]) {
+        expect(screen.getByRole("button", { name })).toBeDisabled();
+      }
+      const blocked = screen.getAllByTitle(CHOOSE_WORKSPACE_TITLE);
+      expect(blocked.length).toBeGreaterThan(3);
+      for (const control of blocked) {
+        expect(control).toBeDisabled();
+      }
+    });
+
+    it("leaves experiment grants and workspace-disabled deployments unchanged", () => {
+      const { unmount } = renderScoped("experiments", null);
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByRole("button", { name: "+ Add" })).toBeEnabled();
+      unmount();
+
+      renderScoped("models", null, false);
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByRole("button", { name: "+ Add" })).toBeEnabled();
+    });
   });
 });

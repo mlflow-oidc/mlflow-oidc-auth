@@ -60,6 +60,10 @@ export const createUser = async (data: {
   display_name: string;
   is_admin: boolean;
   is_service_account: boolean;
+  /** For a service account: "internal" (default) or the id of the provider it signs in through. */
+  service_account_source?: string;
+  /** For an external service account: the provider subject to bind now. */
+  subject?: string;
 }) => {
   return request(STATIC_API_ENDPOINTS.USERS_RESOURCE, {
     method: "POST",

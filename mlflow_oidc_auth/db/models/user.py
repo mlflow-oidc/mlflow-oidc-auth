@@ -26,6 +26,10 @@ class SqlUser(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
     managed_by: Mapped[str] = mapped_column(String(255), nullable=False, server_default="manual", default="manual")
     external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # How a service account signs in (utils/service_accounts.py): ``internal`` — only with access
+    # tokens this plugin issues — or the id of the one provider whose tokens it accepts. None for
+    # a person's account.
+    service_account_source: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # Nullable at the DB level: they are added to an existing table, and SQLite refuses
     # ADD COLUMN with a non-constant default once the table has rows. The migration backfills
     # existing rows; ``default`` populates new ones.
@@ -57,6 +61,7 @@ class SqlUser(Base):
             is_service_account=self.is_service_account,
             active=self.active,
             managed_by=self.managed_by,
+            service_account_source=self.service_account_source,
             experiment_permissions=[p.to_mlflow_entity() for p in self.experiment_permissions],
             registered_model_permissions=[p.to_mlflow_entity() for p in self.registered_model_permissions],
             scorer_permissions=[p.to_mlflow_entity() for p in self.scorer_permissions],

@@ -83,6 +83,7 @@ class TestCreateUser:
             is_admin=False,
             is_service_account=False,
             written_by=None,
+            service_account_source=None,
         )
 
     @patch("mlflow_oidc_auth.user.store")
@@ -102,6 +103,7 @@ class TestCreateUser:
             is_admin=True,
             is_service_account=False,
             written_by=None,
+            service_account_source=None,
         )
 
     @patch("mlflow_oidc_auth.user.store")
@@ -121,6 +123,7 @@ class TestCreateUser:
             is_admin=False,
             is_service_account=True,
             written_by=None,
+            service_account_source=None,
         )
 
     @patch("mlflow_oidc_auth.user.store")
@@ -140,6 +143,7 @@ class TestCreateUser:
             is_admin=True,
             is_service_account=True,
             written_by=None,
+            service_account_source=None,
         )
 
     @patch("mlflow_oidc_auth.user.store")
@@ -316,6 +320,7 @@ def test_create_user_new_user(mock_store):
         is_admin=False,
         is_service_account=True,
         written_by=None,
+        service_account_source=None,
     )
 
 

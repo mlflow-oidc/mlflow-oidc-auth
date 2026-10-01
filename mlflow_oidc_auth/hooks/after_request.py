@@ -39,6 +39,8 @@ from mlflow.server.handlers import (
     catch_mlflow_exception,
     get_endpoints,
 )
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
@@ -541,8 +543,14 @@ def _rename_registered_model_permission(resp: Response):
     if not name or not new_name:
         # Defensive no-op: avoid turning a successful rename into a 500 in after_request.
         return
-    store.rename_registered_model_permissions(name, new_name)
-    store.rename_group_model_permissions(name, new_name)
+    # Each rename raises RESOURCE_DOES_NOT_EXIST when it has no grants to move; the model may have
+    # user grants and no group grants in this workspace or the reverse, so neither may skip the other.
+    for rename in (store.rename_registered_model_permissions, store.rename_group_model_permissions):
+        try:
+            rename(name, new_name)
+        except MlflowException as e:
+            if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                raise
 
 
 def _set_can_manage_scorer_permission(resp: Response):

@@ -16,6 +16,9 @@ import { useAllServiceAccounts } from "../../../core/hooks/use-all-accounts";
 import { useAllGroups } from "../../../core/hooks/use-all-groups";
 import { Button } from "../../../shared/components/button";
 import { GrantPermissionModal } from "./grant-permission-modal";
+import { GrantWorkspaceNotice } from "./grant-workspace-notice";
+import { grantControlTitle } from "../hooks/use-grant-workspace-scope";
+import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
 import { useState } from "react";
 
 interface EntityPermissionsManagerProps {
@@ -52,6 +55,7 @@ export function EntityPermissionsManager({
     refresh,
   });
 
+  const scope = useGrantWorkspaceScope(resourceType);
   const { allUsers } = useAllUsers();
   const { allServiceAccounts } = useAllServiceAccounts();
   const { allGroups } = useAllGroups();
@@ -103,13 +107,15 @@ export function EntityPermissionsManager({
         <div className="flex space-x-2">
           <IconButton
             icon={faEdit}
-            title="Edit permission"
+            title={grantControlTitle(scope, "Edit permission")}
             onClick={() => handleEditClick(item)}
+            disabled={!scope.canChange}
           />
           <IconButton
             icon={faTrash}
-            title="Remove permission"
+            title={grantControlTitle(scope, "Remove permission")}
             onClick={() => void handleRemovePermission(item)}
+            disabled={!scope.canChange}
           />
         </div>
       ),
@@ -128,40 +134,44 @@ export function EntityPermissionsManager({
 
       {!isLoading && !error && (
         <>
+          <GrantWorkspaceNotice scope={scope} />
           <div className="flex items-center space-x-2 mb-4">
             <Button
               variant="secondary"
               onClick={() => setIsAddUserModalOpen(true)}
-              disabled={availableUsers.length === 0}
-              title={
+              disabled={!scope.canChange || availableUsers.length === 0}
+              title={grantControlTitle(
+                scope,
                 availableUsers.length === 0
                   ? "All users already have permissions"
-                  : "Add user permission"
-              }
+                  : "Add user permission",
+              )}
             >
               + Add
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddAccountModalOpen(true)}
-              disabled={availableAccounts.length === 0}
-              title={
+              disabled={!scope.canChange || availableAccounts.length === 0}
+              title={grantControlTitle(
+                scope,
                 availableAccounts.length === 0
                   ? "All service accounts already have permissions"
-                  : "Add service account permission"
-              }
+                  : "Add service account permission",
+              )}
             >
               + Add Service Account
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddGroupModalOpen(true)}
-              disabled={availableGroups.length === 0}
-              title={
+              disabled={!scope.canChange || availableGroups.length === 0}
+              title={grantControlTitle(
+                scope,
                 availableGroups.length === 0
                   ? "All groups already have permissions"
-                  : "Add group permission"
-              }
+                  : "Add group permission",
+              )}
             >
               + Add Group
             </Button>

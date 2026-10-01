@@ -27,6 +27,7 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
+from mlflow_oidc_auth.middleware.route_path import static_prefix_conflicts
 from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
 
@@ -263,6 +264,13 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(oidc_app)
 
+    conflicts = static_prefix_conflicts()
+    if conflicts:
+        logger.error(
+            "MLflow's static prefix covers the plugin's unauthenticated routes %s; they will require a signed-in user. Choose a static prefix that does not overlap them.",
+            ", ".join(conflicts),
+        )
+
     add_middleware_stack(oidc_app)
 
     for router in get_all_routers():
@@ -282,6 +290,12 @@ def create_app() -> FastAPI:
     # Register Flask hooks directly with the Flask app
     app.before_request(before_request_hook)
     app.after_request(after_request_hook)
+
+    # Grants on name-keyed resources carry the resource's workspace; give one to any recorded before
+    # they did. Runs on every start, workspaces enabled or not, and never raises.
+    from mlflow_oidc_auth.grant_workspace_backfill import backfill_grant_workspaces
+
+    backfill_grant_workspaces()
 
     # Seed default workspace and register workspace routers when workspaces are enabled (WSFND-04)
     if config.MLFLOW_ENABLE_WORKSPACES:

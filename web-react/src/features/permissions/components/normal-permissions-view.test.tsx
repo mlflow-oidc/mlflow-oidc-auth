@@ -22,6 +22,9 @@ import * as useGroupGatewayModelPermissions from "../../../core/hooks/use-group-
 import * as useAllGatewayEndpoints from "../../../core/hooks/use-all-gateway-endpoints";
 import * as useAllGatewaySecrets from "../../../core/hooks/use-all-gateway-secrets";
 import * as useAllGatewayModels from "../../../core/hooks/use-all-gateway-models";
+import * as useUserMcpServerPermissions from "../../../core/hooks/use-user-mcp-server-permissions";
+import * as useGroupMcpServerPermissions from "../../../core/hooks/use-group-mcp-server-permissions";
+import * as useAllMcpServers from "../../../core/hooks/use-all-mcp-servers";
 import type {
   PermissionType,
   ExperimentPermission,
@@ -30,6 +33,8 @@ import type {
 } from "../../../shared/types/entity";
 import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 import { getRuntimeConfig } from "../../../shared/services/runtime-config";
+import { CHOOSE_WORKSPACE_TITLE } from "../hooks/use-grant-workspace-scope";
+import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/services/runtime-config", () => ({
@@ -62,6 +67,9 @@ vi.mock("../../../core/hooks/use-group-gateway-model-permissions");
 vi.mock("../../../core/hooks/use-all-gateway-endpoints");
 vi.mock("../../../core/hooks/use-all-gateway-secrets");
 vi.mock("../../../core/hooks/use-all-gateway-models");
+vi.mock("../../../core/hooks/use-user-mcp-server-permissions");
+vi.mock("../../../core/hooks/use-group-mcp-server-permissions");
+vi.mock("../../../core/hooks/use-all-mcp-servers");
 
 describe("NormalPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -252,6 +260,31 @@ describe("NormalPermissionsView", () => {
       error: null,
       refresh: vi.fn(),
     });
+
+    vi.spyOn(
+      useUserMcpServerPermissions,
+      "useUserMcpServerPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+    vi.spyOn(
+      useGroupMcpServerPermissions,
+      "useGroupMcpServerPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+    vi.spyOn(useAllMcpServers, "useAllMcpServers").mockReturnValue({
+      allMcpServers: [{ name: "com.example/new" }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
   });
 
   const types: PermissionType[] = [
@@ -261,6 +294,7 @@ describe("NormalPermissionsView", () => {
     "ai-endpoints",
     "ai-secrets",
     "ai-models",
+    "mcp-servers",
   ];
 
   types.forEach((type) => {
@@ -272,6 +306,7 @@ describe("NormalPermissionsView", () => {
         if (t === "ai-endpoints") return "New Endpoint";
         if (t === "ai-secrets") return "New Secret";
         if (t === "ai-models") return "New AI Model";
+        if (t === "mcp-servers") return "com.example/new";
         throw new Error(`Unknown type in getExpectedValue: ${t}`);
       };
 
@@ -307,7 +342,9 @@ describe("NormalPermissionsView", () => {
                   ? /Add secret/i
                   : type === "ai-models"
                     ? /Add AI model/i
-                    : /Add AI endpoint/i;
+                    : type === "mcp-servers"
+                      ? /Add MCP server/i
+                      : /Add AI endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
         const labelText =
@@ -321,7 +358,9 @@ describe("NormalPermissionsView", () => {
                   ? /Secret/i
                   : type === "ai-models"
                     ? /AI Model/i
-                    : /AI Endpoint/i;
+                    : type === "mcp-servers"
+                      ? /MCP Server/i
+                      : /AI Endpoint/i;
         const select = screen.getByLabelText(labelText);
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 
@@ -482,5 +521,55 @@ describe("NormalPermissionsView", () => {
     );
 
     expect(defaultSearch.handleClearSearch).toHaveBeenCalled();
+  });
+
+  describe("workspace scope", () => {
+    it("names the workspace on a user's model grants and allows changes", () => {
+      render(
+        <NormalPermissionsView
+          type="models"
+          entityKind="user"
+          entityName="user1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, "team-a") },
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Grants shown here belong to workspace team-a",
+      );
+      expect(screen.getAllByTitle(/Remove permission/i)[0]).toBeEnabled();
+    });
+
+    it("with All Workspaces, blocks editing, removing and adding a group's grants", () => {
+      render(
+        <NormalPermissionsView
+          type="prompts"
+          entityKind="group"
+          entityName="group1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, null) },
+      );
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "These are the default workspace's grants",
+      );
+      expect(screen.getByText(/Add prompt/i).closest("button")).toBeDisabled();
+      const blocked = screen.getAllByTitle(CHOOSE_WORKSPACE_TITLE);
+      expect(blocked.length).toBeGreaterThan(1);
+      for (const control of blocked) {
+        expect(control).toBeDisabled();
+      }
+    });
+
+    it("leaves experiment grants unchanged under All Workspaces", () => {
+      render(
+        <NormalPermissionsView
+          type="experiments"
+          entityKind="user"
+          entityName="user1"
+        />,
+        { wrapper: workspaceScopeWrapper(true, null) },
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryAllByTitle(CHOOSE_WORKSPACE_TITLE)).toHaveLength(0);
+    });
   });
 });

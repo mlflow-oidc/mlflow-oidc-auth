@@ -45,6 +45,7 @@ class TestUser(unittest.TestCase):
                     "permission": "EDIT",
                     "group_id": None,
                     "prompt": False,
+                    "workspace": None,
                 }
             ],
             "scorer_permissions": [],

@@ -1,9 +1,42 @@
 import { describe, it, expect } from "vitest";
-import { getPermissionUrl } from "./permission-utils";
+import { getPermissionUrl, patternWorkspaceLabel } from "./permission-utils";
 
 describe("getPermissionUrl", () => {
   const entityName = "testEntity";
   const identifier = "testId";
+
+  describe("MCP server permissions", () => {
+    it("generates user and group MCP server URLs", () => {
+      expect(
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "mcp-servers",
+          identifier: "com.example/weather",
+        }),
+      ).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/mcp-servers/com.example%2Fweather`,
+      );
+      expect(
+        getPermissionUrl({
+          entityKind: "group",
+          entityName,
+          type: "mcp-servers",
+        }),
+      ).toBe(`/api/2.0/mlflow/permissions/groups/${entityName}/mcp-servers`);
+    });
+
+    it("refuses pattern URLs: MCP servers have no pattern API", () => {
+      expect(() =>
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "mcp-servers",
+          isPattern: true,
+        }),
+      ).toThrow();
+    });
+  });
 
   describe("Normal Permissions", () => {
     it("generates user experiment permission URL", () => {
@@ -614,5 +647,16 @@ describe("getPermissionUrl", () => {
         }),
       ).toThrow("Unknown permission type");
     });
+  });
+});
+
+describe("patternWorkspaceLabel", () => {
+  it("names the workspace a pattern applies in", () => {
+    expect(patternWorkspaceLabel("team-a")).toBe("team-a");
+  });
+
+  it("reads every workspace, and an older server's missing value, as all workspaces", () => {
+    expect(patternWorkspaceLabel("*")).toBe("All workspaces");
+    expect(patternWorkspaceLabel(undefined)).toBe("All workspaces");
   });
 });

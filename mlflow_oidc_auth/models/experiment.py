@@ -96,3 +96,4 @@ class ExperimentRegexPermission(BaseModel):
     regex: str = Field(..., description="Regex pattern to match experiments")
     priority: int = Field(..., description="Priority of the permission rule")
     permission: str = Field(..., description="Permission level for matching experiments")
+    workspace: Optional[str] = Field(None, description='Workspace the pattern applies in; "*" for every workspace')

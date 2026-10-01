@@ -2,8 +2,8 @@
 FastAPI Permission Middleware for MLflow OIDC Auth.
 
 This middleware enforces authorization on FastAPI-native routes (gateway invocations,
-OTel trace ingestion, assistant, job API) that bypass Flask and therefore bypass
-the Flask ``before_request_hook``.
+OTel trace ingestion, assistant, job API, MCP server registry) that bypass Flask and
+therefore bypass the Flask ``before_request_hook``.
 
 It mirrors the upstream ``add_fastapi_permission_middleware`` from
 ``mlflow/server/auth/__init__.py`` but uses our OIDC-based authentication context
@@ -22,10 +22,10 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Match, Mount
 
 from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
-from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
+from mlflow_oidc_auth.middleware.mcp_server_registry import finalize_mcp_response, get_mcp_server_validator, is_mcp_server_path
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators.job_submission import can_submit_job
@@ -69,11 +69,6 @@ _RAW_PROXY_RE = re.compile(r"^/gateway/proxy/([^/]+)/.*$")
 # MLflow's FastAPI job API (mlflow.server.job_api.job_api_router)
 _JOBS_PREFIX = "/ajax-api/3.0/jobs"
 _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
-
-# MCP server registry, mounted by MLflow under both the API and the UI prefix
-# (mlflow.server.mcp_server_api.get_mcp_server_api_route_prefixes), each behind MLflow's static
-# prefix when one is configured. See _is_mcp_server_path.
-_MCP_SERVER_PREFIXES = ("/api/3.0/mlflow/mcp-servers", "/ajax-api/3.0/mlflow/mcp-servers")
 
 
 # This plugin's credentials: the session cookie and the Basic/Bearer ``Authorization`` header.
@@ -403,54 +398,9 @@ async def _filtered_gateway_models_response(username: str, response: Response, a
 def _is_mcp_server_path(path: str) -> bool:
     """Whether ``path`` is on the MCP server registry, with or without MLflow's static prefix.
 
-    ``app.py`` mounts the registry at ``get_mcp_server_api_route_prefixes()``, which puts MLflow's
-    static prefix (``--static-prefix``) in front of both paths. Matching only the bare paths would
-    let a prefixed deployment's registry skip this validator — reads and writes alike — so the
-    check asks MLflow, which reads the prefix the same way it mounts the routes. The bare paths
-    are kept as well, so the match can only ever be wider, never narrower.
+    See :mod:`mlflow_oidc_auth.middleware.mcp_server_registry`, which also holds the validator.
     """
-    if path.startswith(_MCP_SERVER_PREFIXES):
-        return True
-    try:
-        from mlflow.server.mcp_server_api import is_mcp_server_api_path
-    except ImportError:
-        return False
-    return is_mcp_server_api_path(path)
-
-
-def _get_mcp_server_registry_validator() -> Callable[[str, Request], Awaitable[bool]]:
-    """Return a validator for the MCP server registry routes.
-
-    Mutating the registry is admin-only. Admins never reach this validator (the middleware
-    short-circuits on ``is_admin``), so denying every write method here is what makes mutation
-    admin-only.
-
-    Reading depends on workspaces. MLflow keeps a registry per workspace, and serves the one the
-    request names — so with ``MLFLOW_ENABLE_WORKSPACES`` on, a read requires at least READ on that
-    workspace, the same boundary every other workspace-scoped resource has. A request that names
-    no workspace is served from the default workspace and is judged against it. With workspaces
-    off there is one registry and no tenant boundary to enforce, and reads stay open to any
-    authenticated user.
-    """
-
-    async def validator(username: str, request: Request) -> bool:
-        if request.method not in ("GET", "HEAD"):
-            return False
-        if not config.MLFLOW_ENABLE_WORKSPACES:
-            return True
-
-        from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
-
-        from mlflow_oidc_auth.bridge.user import get_request_workspace
-        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
-
-        # AuthMiddleware normalised the workspace header the way MLflow does; no header means
-        # MLflow serves the default workspace, so that is the one that must be readable.
-        workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
-        permission = get_workspace_permission_cached(username, workspace)
-        return permission is not None and permission.can_read
-
-    return validator
+    return is_mcp_server_path(path)
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +429,7 @@ def _find_fastapi_validator(
         return _get_require_authentication_validator()
 
     if _is_mcp_server_path(path):
-        return _get_mcp_server_registry_validator()
+        return get_mcp_server_validator(path)
 
     return None
 
@@ -550,7 +500,18 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             # has been written for it yet.
             if not username and not is_unprotected_route(path) and not _dispatches_to_flask_mount(request):
                 return _authentication_required()
-            return await call_next(request)
+            # Routes without a validator authorize in their own dependencies (this plugin's
+            # permission API, among others). Bridge the caller's AuthContext for them as for the
+            # validators, so a resource without a grant of its own falls back to the caller's
+            # permission on the request's workspace rather than the global default. Flask reads
+            # the same context from its environ, so bridging it for the mount changes nothing.
+            auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+            auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
+            try:
+                return await call_next(request)
+            finally:
+                if auth_context_token is not None:
+                    clear_auth_context(auth_context_token)
 
         # Check authentication context (already set by AuthMiddleware)
         if not username:
@@ -561,7 +522,11 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if is_admin:
             if path.startswith(_GATEWAY_PREFIX):
                 _strip_client_credentials(request, path)
-            return await call_next(request)
+            response = await call_next(request)
+            if _is_mcp_server_path(path):
+                # Admins are never filtered or granted anything, but a server they delete takes its grants with it.
+                return await finalize_mcp_response(path, username, request, response, request.scope.get(AUTH_CONTEXT_KEY), is_admin=True)
+            return response
 
         # Bridge AuthContext into ContextVar so downstream permission code
         # (e.g. _apply_workspace_fallback) can resolve the workspace even
@@ -593,4 +558,6 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             return await _filtered_job_search_response(username, response)
         if _is_gateway_models_list(path, request):
             return await _filtered_gateway_models_response(username, response, auth_context)
+        if _is_mcp_server_path(path):
+            return await finalize_mcp_response(path, username, request, response, auth_context)
         return response

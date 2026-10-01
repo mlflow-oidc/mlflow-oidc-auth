@@ -1163,6 +1163,19 @@ async def auth_status(request: Request):
         raise HTTPException(status_code=500, detail="Failed to get authentication status")
 
 
+def _is_service_account(username: str) -> bool:
+    """Whether ``username`` names an existing service account."""
+    from mlflow.exceptions import MlflowException
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+
+    try:
+        return store.get_user_profile(username).is_service_account is True
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return False
+        raise
+
+
 def _account_is_inactive(username: str) -> bool:
     """Whether ``username`` names an existing account that is deactivated.
 
@@ -1282,6 +1295,7 @@ def _provision_login(
         derived_username=username,
         user_exists=store.has_user,
         providers_bound_to=_providers_bound_to,
+        providers_in_domain=lambda domain: store.user_identity_repo.providers_in_email_domain(domain),
     )
     if not outcome.allowed:
         logger.warning("Refusing login via provider '%s': %s", provider.id, outcome.reason)
@@ -1297,6 +1311,22 @@ def _provision_login(
         return None, errors
 
     username = outcome.username or username
+
+    # A service account never signs in interactively: an internal one signs in with the tokens
+    # issued for it, an external one with its provider's tokens (utils/service_accounts.py). A
+    # person whose claims name one must not land in it.
+    if _is_service_account(username):
+        logger.warning("Refusing login via provider '%s': the account is a service account", provider.id)
+        emit_audit_event(
+            "auth.identity_refused",
+            actor=username,
+            resource_type="user",
+            resource_id=username,
+            detail={"provider": provider.id, "reason": "service account"},
+            status="denied",
+        )
+        errors.append("This account cannot be used to sign in here")
+        return None, errors
 
     # A deactivated account completes nothing. Checked before any write: otherwise the login
     # would refresh the row's admin flag, groups and workspaces and open a session that the

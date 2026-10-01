@@ -6,8 +6,11 @@ from ._base import PermissionBase, RegexPermissionBase
 
 @dataclass
 class GatewayEndpointPermission(PermissionBase):
-    def __init__(self, endpoint_id: str, permission: str, user_id: Optional[int] = None, group_id: Optional[int] = None):
+    def __init__(self, endpoint_id: str, permission: str, user_id: Optional[int] = None, group_id: Optional[int] = None, workspace: Optional[str] = None):
         super().__init__(instance=endpoint_id, permission=permission, user_id=user_id, group_id=group_id)
+        # The workspace of the resource this grant names; None only for a grant from before the
+        # workspace was recorded.
+        self.workspace = workspace
 
     @property
     def endpoint_id(self) -> str:
@@ -16,6 +19,7 @@ class GatewayEndpointPermission(PermissionBase):
     def to_json(self) -> Dict[str, Any]:
         d = super().to_json()
         d["endpoint_id"] = d.pop("instance")
+        d["workspace"] = self.workspace
         return d
 
     @classmethod

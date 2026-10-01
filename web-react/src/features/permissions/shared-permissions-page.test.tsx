@@ -222,6 +222,40 @@ describe("SharedPermissionsPage", () => {
     expect(screen.queryByText("AI Endpoints")).not.toBeInTheDocument();
   });
 
+  it("always shows an MCP Servers tab, independent of the AI gateway flag", () => {
+    render(
+      <SharedPermissionsPage
+        type="experiments"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
+  });
+
+  it("offers no regex mode on the MCP servers tab: there is no pattern API", () => {
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "" },
+    });
+    localStorage.setItem("_mlflow_is_regex_mode", "true");
+    render(
+      <SharedPermissionsPage
+        type="mcp-servers"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.queryByTestId("regex-switch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("regex-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("normal-view")).toBeInTheDocument();
+    expect(screen.getByTestId("page-container")).toHaveAttribute(
+      "title",
+      "Permissions for testuser",
+    );
+  });
+
   it("encodes entityName in tab links", () => {
     mockUseParams.mockReturnValue({
       username: "alice@example.com",

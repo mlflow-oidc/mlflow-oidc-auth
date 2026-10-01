@@ -1,12 +1,14 @@
-import React, { useState } from "react";
+import React, { use, useState } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 import { Input } from "../../../shared/components/input";
 import { PermissionLevelSelect } from "../../../shared/components/permission-level-select";
 import type {
   PermissionLevel,
   PermissionType,
 } from "../../../shared/types/entity";
+import { useSelectedWorkspace } from "../../../shared/context/use-workspace";
 
 interface AddRegexRuleModalProps {
   isOpen: boolean;
@@ -27,6 +29,10 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   type,
   isLoading = false,
 }) => {
+  const workspacesEnabled = Boolean(
+    use(RuntimeConfigContext)?.workspaces_enabled,
+  );
+  const selectedWorkspace = useSelectedWorkspace();
   const [regex, setRegex] = useState("");
   const [priority, setPriority] = useState<number>(100);
   const [permission, setPermission] = useState<PermissionLevel>("READ");
@@ -70,6 +76,24 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Regex Rule">
+      {workspacesEnabled && (
+        <p
+          role="status"
+          className="mb-4 text-sm text-ui-text-muted dark:text-ui-text-muted-dark"
+        >
+          {selectedWorkspace ? (
+            <>
+              This pattern will apply only in workspace{" "}
+              <span className="font-semibold">{selectedWorkspace}</span>.
+            </>
+          ) : (
+            <>
+              This pattern will apply in <strong>every</strong> workspace.
+              Choose a workspace in the header to limit it to one.
+            </>
+          )}
+        </p>
+      )}
       <Input
         id="regex-input"
         label="Regex*"

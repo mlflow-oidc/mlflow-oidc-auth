@@ -40,11 +40,87 @@ When workspaces are enabled, these resources are automatically scoped to the act
 | Webhooks | Treated as workspace-isolated by the model registry store |
 | Deleted Experiments (Trash) | Filtered by workspace — restore and hard-delete respect workspace boundaries |
 | Registered Model Tags, Aliases | Scoped through their parent model's workspace |
+| Prompts | Registered models, scoped the same way |
+| AI Gateway endpoints, secrets, model definitions | MLflow's tracking store keeps them per workspace |
 
 **Not workspace-scoped:**
 - Users and groups (global across all workspaces)
-- Permission records (global — permissions reference specific resources within workspaces)
-- AI Gateway endpoints, secrets, model definitions (not workspace-isolated by MLflow)
+
+### Pattern (regex) grants
+
+A pattern grant on experiments, models, prompts, scorers or AI Gateway resources applies in the
+workspace it was made in: one created with a workspace named (`X-MLFLOW-WORKSPACE` — in the admin
+UI, the workspace selected in the picker) matches only that workspace's resources. One created with
+no workspace named (**All Workspaces**) applies in every workspace. Patterns are created by
+administrators only, and each lists the workspace it applies in (`*` for every workspace).
+
+- The same pattern may be recorded once per workspace, with a different permission in each.
+- Patterns from before this release apply in every workspace, as they did.
+- Deleting a workspace removes its patterns; patterns for every workspace stay.
+- With workspaces disabled, patterns for every workspace apply; a pattern recorded for one
+  workspace counts only if workspaces are enabled again.
+- **Downgrading** keeps only patterns for every workspace — a pattern recorded for one workspace
+  would otherwise apply in all of them — and logs how many were removed.
+
+### Grants on models, prompts and gateway resources
+
+MLflow keeps registered models, prompts, AI Gateway endpoints, secrets and model definitions, and
+MCP servers unique per **workspace and name**: two workspaces can each have a model called `churn`. A grant on
+one of them — to a user or a group — therefore belongs to one workspace's resource:
+
+- A grant is recorded in the workspace the request names (`X-MLFLOW-WORKSPACE`), or in the
+  `default` workspace when it names none. The admin UI sends the workspace chosen in the workspace
+  picker and names it on every page listing these grants; with **All Workspaces** selected it sends
+  none, so it lists `default`'s grants and does not let you change them until you choose a workspace.
+- A grant applies only to requests in that workspace. A grant on `churn` in `team-a` gives nothing
+  on `team-b`'s `churn`, and creating a same-named resource in another workspace grants its creator
+  nothing on this one.
+- Deleting or renaming a resource updates only the grants of that workspace's resource.
+- The permission API lists and changes the grants of the request's workspace.
+- Experiment and scorer grants are keyed by experiment id, which MLflow keeps unique across
+  workspaces, so they need no workspace of their own.
+
+With workspaces disabled every resource lives in `default`, new grants record it, and only the
+`default` workspace's grants (and grants from before this release) count — for a deployment that
+never enabled workspaces, that is every grant, so behaviour is unchanged. A deployment that turns
+workspaces off again keeps its other workspaces' grants, but they count only if workspaces are
+enabled again.
+
+#### Upgrading: existing grants
+
+Grants made before this release carry no workspace. They are assigned one automatically on every
+start, before the server takes requests. When several workers start at once, one of them assigns
+them and the others change nothing:
+
+| Workspaces | What happens to an existing grant |
+|---|---|
+| Disabled | It is assigned `default`. |
+| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ` — when several workspaces hold the name, a copy outside `default` carries no more than the grantee's permission on that workspace. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there when the grantee reaches no workspace holding that name. A grantee who reaches another such workspace keeps the grant only there — a tenant who created a same-named resource in their own workspace does not come away owning `default`'s. |
+| Enabled, no such workspace, or the resource no longer exists | It is marked **unresolved**: it matches nothing — with workspaces disabled too — and is never placed later, so a resource created afterwards does not pick it up. It is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
+
+An old grant reached every workspace's resource of its name — including ones another tenant created
+later — so a workspace's resource keeps it only where the grantee could already reach that
+workspace. Where a grant for the same workspace, resource and principal already exists, the
+existing one is kept.
+
+Grants on MCP servers (MLflow 3.15+) are workspace-scoped from the start: they always record a
+workspace, so nothing about them needs upgrading.
+
+Deleting a workspace now also removes the grants on its models, prompts, gateway resources and MCP servers, so a
+workspace created later under the same name starts without them. When MLflow moves a deleted
+workspace's resources to `default` instead of deleting them, those resources arrive without grants
+and only administrators can manage them until they are granted again.
+
+A grant on a single model, prompt or gateway resource applies to its holder whether or not they
+have a permission on the workspace itself — that is how one resource is shared with someone outside
+the workspace. Removing someone's workspace permission does not remove such grants; revoke them on
+the resource.
+
+**Upgrade all replicas together.** While a replica on an older release writes grants, it writes them
+without a workspace; a request touching such a grant can fail until the next restart assigns it.
+
+**Downgrading** keeps only the `default` workspace's grants — a grant recorded for another workspace
+would otherwise apply to every workspace's resource of that name — and logs how many were removed.
 
 ## Workspace Permissions
 
@@ -169,9 +245,24 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 
 ### MCP server registry
 
-MLflow keeps an MCP server registry per workspace. Reading it requires at least `READ` on the
-workspace the request names — the default workspace when it names none — like any other
-workspace-scoped resource. Changing it is admin-only.
+MLflow keeps an MCP server registry per workspace, and each server has its own user and group
+grants, recorded in the server's workspace (see [Permissions → MCP Server Registry](permissions#mcp-server-registry)
+for every route).
+
+- **Reading** a server needs `READ` on it; with no grant of its own, the caller's permission on the
+  workspace the request names stands in (the default workspace when it names none, never
+  `DEFAULT_MLFLOW_PERMISSION`). **Searching** a workspace's registry needs `READ` on that workspace,
+  and lists only the servers the caller can read; a server shared with a non-member is reached by
+  name.
+- **Creating** a server needs `MANAGE` on the workspace; the creator is granted `MANAGE` on it.
+- **Changing, deleting or sharing** a server needs `EDIT` (changes) or `MANAGE` (deletes and grants)
+  on it — and someone must hold `MANAGE` on the server: one nobody manages, such as every server
+  registered before this release, stays admin-only for changes until an administrator grants
+  `MANAGE`.
+
+With workspaces disabled the registry behaves as it did before per-server permissions: any
+authenticated user reads it unless a grant on a server says otherwise, and only administrators
+register servers.
 
 ## Workspace Detection During Login
 

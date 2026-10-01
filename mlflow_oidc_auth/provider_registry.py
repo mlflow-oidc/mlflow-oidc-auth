@@ -181,6 +181,12 @@ class ProviderConfig:
             administrator status and workspace membership, so this is opt-in: by default only
             identity claims (username, email, display name) are completed from UserInfo. False by
             default; for the synthesised ``default`` provider it comes from ``OIDC_USERINFO_GROUPS``.
+        bearer_adopts_unbound_accounts: ``oidc`` only, and not ``default``. Whether this provider's
+            bearer tokens may reach an existing non-admin account that no identity is bound to —
+            one this provider's bearer provisioning created before identities were bound, or one
+            an administrator created — and bind it to the token's ``(provider, sub)`` on first use,
+            after which only that identity reaches it. Off by default: such an account could also
+            be a human's who has not signed in since identities were recorded.
         jwks_inline: Key set written into configuration, for a cluster whose JWKS cannot be
             fetched. The only mode that needs no network at all.
         jwks_uri: Key set URL, when it is known and discovery is not readable.
@@ -232,6 +238,7 @@ class ProviderConfig:
     public_client: bool = False
     # Opt-in: groups and workspace claims may come from UserInfo when the ID token lacks them.
     userinfo_groups: bool = False
+    bearer_adopts_unbound_accounts: bool = False
     # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
     # readable and often unreachable from wherever MLflow runs, so the keys can come from
     # discovery, from configuration, or from the API server using the pod's own credentials.
@@ -410,6 +417,21 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # who wrote it believes it changes something.
         errors.append(f"{label}: 'userinfo_groups' applies only to an 'oidc' provider, not to {provider_type!r}")
 
+    if isinstance(entry.get("id"), str) and entry["id"].strip() in ("internal", "kubernetes"):
+        # Reserved: a service account's sign-in source names its provider by id, and these two
+        # mean "issued tokens only" and "a Kubernetes account from before sources were recorded".
+        errors.append(f"{label}: provider id {entry['id'].strip()!r} is reserved")
+
+    bearer_adopts_unbound_accounts = entry.get("bearer_adopts_unbound_accounts", False)
+    if not isinstance(bearer_adopts_unbound_accounts, bool):
+        errors.append(f"{label}: 'bearer_adopts_unbound_accounts' must be true or false, got {bearer_adopts_unbound_accounts!r}")
+    elif bearer_adopts_unbound_accounts and provider_type != "oidc":
+        # Only an OIDC provider's tokens take the bearer path that consults it (a Kubernetes token
+        # reaches its own service accounts; SAML has no bearer tokens).
+        errors.append(f"{label}: 'bearer_adopts_unbound_accounts' applies only to an 'oidc' provider, not to {provider_type!r}")
+    elif bearer_adopts_unbound_accounts and entry.get("id") == DEFAULT_PROVIDER_ID:
+        errors.append(f"{label}: 'bearer_adopts_unbound_accounts' does not apply to the 'default' provider, which reaches unbound accounts already")
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -520,6 +542,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             client_id=client_id.strip() if isinstance(client_id, str) else None,
             public_client=public_client is True,
             userinfo_groups=userinfo_groups is True,
+            bearer_adopts_unbound_accounts=bearer_adopts_unbound_accounts is True,
             **saml_fields,
         ),
         [],

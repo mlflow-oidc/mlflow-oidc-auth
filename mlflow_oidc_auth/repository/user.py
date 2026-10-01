@@ -19,6 +19,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.ownership import OwnershipDecision, evaluate_write
 from mlflow_oidc_auth.repository.utils import get_user
+from mlflow_oidc_auth.utils.service_accounts import INTERNAL_SOURCE
 
 logger = get_logger()
 
@@ -165,6 +166,7 @@ class UserRepository:
         is_service_account: bool = False,
         *,
         written_by: Optional[str] = None,
+        service_account_source: Optional[str] = None,
     ) -> User:
         """Create a user row, owned by ``manual``.
 
@@ -191,6 +193,8 @@ class UserRepository:
             is_admin: Administrator flag.
             is_service_account: Service-account flag.
             written_by: The source asking, for the audit record of a refused create.
+            service_account_source: How a service account signs in (``internal`` or a provider
+                id); ``internal`` when omitted. Ignored for a person's account.
 
         Returns:
             User: The new user.
@@ -210,6 +214,7 @@ class UserRepository:
                     display_name=display_name,
                     is_admin=is_admin,
                     is_service_account=is_service_account,
+                    service_account_source=(service_account_source or INTERNAL_SOURCE) if is_service_account else None,
                 )
                 session.add(u)
                 session.flush()
@@ -247,6 +252,23 @@ class UserRepository:
                 raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
             return u.to_mlflow_entity()
 
+    def set_service_account_source(self, username: str, source: str) -> None:
+        """Record how service account ``username`` signs in.
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown user, ``INVALID_PARAMETER_VALUE``
+                for an account that is not a service account.
+        """
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
+            user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
+            if user is None:
+                raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
+            if not user.is_service_account:
+                raise MlflowException(f"'{username}' is not a service account", INVALID_PARAMETER_VALUE)
+            user.service_account_source = source
+            session.flush()
+
     def get_profile(self, username: str) -> User:
         """Fetch a lightweight user entity without loading permission relationships.
 
@@ -277,6 +299,9 @@ class UserRepository:
                         # these for free and the #305 budget of 2 statements is unchanged.
                         SqlUser.active,
                         SqlUser.managed_by,
+                        # How a service account signs in, checked on every authenticated request:
+                        # same row, same statement.
+                        SqlUser.service_account_source,
                     ),
                     selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
                     # The User entity below is built by hand with these lists hardcoded to [],
@@ -304,6 +329,7 @@ class UserRepository:
                 is_service_account=u.is_service_account,
                 active=u.active,
                 managed_by=u.managed_by,
+                service_account_source=u.service_account_source,
                 experiment_permissions=[],
                 registered_model_permissions=[],
                 scorer_permissions=[],
@@ -402,6 +428,7 @@ class UserRepository:
         username = normalize_username(username)
         sessions_revoked = 0
         permitted_conflict = None
+        _flush_bearer_identity = False
         with self._Session(read_only=False) as session:
             user = get_user(session, username)
             # A write from one source must not silently overwrite a row another source owns.
@@ -447,8 +474,24 @@ class UserRepository:
                 self._assert_not_last_active_admin(session, user, "deactivate" if active is False else "demote")
 
             if is_admin is not None:
+                if is_admin and not user.is_admin and user.is_service_account and user.service_account_source not in (None, INTERNAL_SOURCE):
+                    # An external service account becoming an administrator keeps no subject a
+                    # first token may have chosen: an administrator binds it explicitly
+                    # (PUT /users/{username}/service-account-source with a subject).
+                    from mlflow_oidc_auth.db.models import SqlUserIdentity
+
+                    session.query(SqlUserIdentity).filter(
+                        SqlUserIdentity.user_id == user.id, SqlUserIdentity.provider_id == user.service_account_source
+                    ).delete(synchronize_session=False)
+                    _flush_bearer_identity = True
                 user.is_admin = is_admin
             if is_service_account is not None:
+                if bool(user.is_service_account) != bool(is_service_account):
+                    # How the account signs in changes with it: a service account's source no
+                    # longer applies to a person, and a person's cached bearer decisions not to a
+                    # service account.
+                    user.service_account_source = INTERNAL_SOURCE if is_service_account else None
+                    _flush_bearer_identity = True
                 user.is_service_account = is_service_account
             if active is not None:
                 user.active = active
@@ -488,6 +531,10 @@ class UserRepository:
             entity = user.to_mlflow_entity()
 
         # Past the ``with``: the transaction has committed, so the events are true when written.
+        if _flush_bearer_identity:
+            from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+            flush_bearer_identity_cache()
         if permitted_conflict is not None:
             _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True)
         if sessions_revoked:
@@ -644,6 +691,7 @@ class UserRepository:
                 SqlGatewayModelDefinitionRegexPermission,
                 SqlGatewaySecretPermission,
                 SqlGatewaySecretRegexPermission,
+                SqlMCPServerPermission,
                 SqlRegisteredModelPermission,
                 SqlRegisteredModelRegexPermission,
                 SqlScorerPermission,
@@ -694,6 +742,9 @@ class UserRepository:
                 synchronize_session=False
             )
 
+            # MCP server permissions
+            session.query(SqlMCPServerPermission).filter(SqlMCPServerPermission.user_id == user_id).delete(synchronize_session=False)
+
             # Workspace permissions
             session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
             session.query(SqlWorkspaceRegexPermission).filter(SqlWorkspaceRegexPermission.user_id == user_id).delete(synchronize_session=False)
@@ -711,6 +762,11 @@ class UserRepository:
             if after_cascade is not None:
                 after_cascade(session)
 
+        # A cached bearer identity decision about this account must not outlive it: its identities
+        # went with it, and a user later created under the same name is somebody else.
+        from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+        flush_bearer_identity_cache()
         # Emitted after the commit, for the same reason as in ``update``.
         if permitted_conflict is not None:
             _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True, operation="delete", actor=actor)

@@ -51,6 +51,7 @@ REGISTERED_MODEL = "registered_model"  # prompts are registered models and share
 SCORER = "scorer"
 GATEWAY_ENDPOINT = "gateway_endpoint"
 GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
+MCP_SERVER = "mcp_server"
 WORKSPACE = "workspace"
 
 #: Upper bound on MLflow store lookups (experiment names, prompt flags) per resource type and run.
@@ -67,11 +68,16 @@ class _Spec(NamedTuple):
     user_model: Any
     group_model: Any
     key_columns: Tuple[str, ...]
+    #: ``None`` for a kind with no pattern grants (MCP servers).
     user_regex_model: Any
     group_regex_model: Any
     #: Index into the key tuple of the value a regex is matched against. ``None`` for experiments,
     #: whose patterns match the experiment *name*, which only the tracking store knows.
     regex_key_index: Optional[int]
+    #: Grants on a resource MLflow keeps unique per ``(workspace, name)``. With workspaces enabled
+    #: the grant's ``workspace`` leads the key (see :func:`_effective`); with them disabled the key
+    #: is the name alone, exactly as before the column existed.
+    workspace_scoped: bool = False
 
 
 def _specs() -> List[_Spec]:
@@ -93,6 +99,8 @@ def _specs() -> List[_Spec]:
         SqlGatewaySecretGroupRegexPermission,
         SqlGatewaySecretPermission,
         SqlGatewaySecretRegexPermission,
+        SqlMCPServerGroupPermission,
+        SqlMCPServerPermission,
         SqlRegisteredModelGroupPermission,
         SqlRegisteredModelGroupRegexPermission,
         SqlRegisteredModelPermission,
@@ -125,12 +133,14 @@ def _specs() -> List[_Spec]:
             SqlRegisteredModelRegexPermission,
             SqlRegisteredModelGroupRegexPermission,
             0,
+            True,
         ),
         # A scorer's patterns match the scorer name, as in ``_build_scorer_sources``.
         _Spec(
             SCORER, SqlScorerPermission, SqlScorerGroupPermission, ("experiment_id", "scorer_name"), SqlScorerRegexPermission, SqlScorerGroupRegexPermission, 1
         ),
-        # Gateway resolvers pass one value to both the grant lookup and the pattern match: the key.
+        # Name-keyed resources are unique per (workspace, name) in MLflow (``workspace_scoped``).
+        # Gateway resolvers pass the name to both the grant lookup and the pattern match: the key.
         _Spec(
             GATEWAY_ENDPOINT,
             SqlGatewayEndpointPermission,
@@ -139,6 +149,7 @@ def _specs() -> List[_Spec]:
             SqlGatewayEndpointRegexPermission,
             SqlGatewayEndpointGroupRegexPermission,
             0,
+            True,
         ),
         _Spec(
             GATEWAY_MODEL_DEFINITION,
@@ -148,6 +159,7 @@ def _specs() -> List[_Spec]:
             SqlGatewayModelDefinitionRegexPermission,
             SqlGatewayModelDefinitionGroupRegexPermission,
             0,
+            True,
         ),
         # The resource-type label is written inline: a module constant carrying "secret" in its
         # name makes static analysis treat the label (not a secret) as sensitive wherever it is logged.
@@ -159,13 +171,49 @@ def _specs() -> List[_Spec]:
             SqlGatewaySecretRegexPermission,
             SqlGatewaySecretGroupRegexPermission,
             0,
+            True,
         ),
+        # MCP servers have user and group grants only — no pattern tables.
+        _Spec(MCP_SERVER, SqlMCPServerPermission, SqlMCPServerGroupPermission, ("name",), None, None, 0, True),
         _Spec(WORKSPACE, SqlWorkspacePermission, SqlWorkspaceGroupPermission, ("workspace",), SqlWorkspaceRegexPermission, SqlWorkspaceGroupRegexPermission, 0),
     ]
 
 
+def _effective(spec: _Spec) -> _Spec:
+    """``spec`` as this run sees it: a workspace-scoped kind is keyed by ``(workspace, name)`` when
+    workspaces are enabled, so two workspaces' resources of one name are judged separately."""
+    from mlflow_oidc_auth.config import config
+
+    if not spec.workspace_scoped or not getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
+        return spec
+    return spec._replace(key_columns=("workspace",) + spec.key_columns, regex_key_index=spec.regex_key_index + 1)
+
+
+def _counts(spec: _Spec, model):
+    """A condition limiting ``model``'s grant rows to the ones that count in this run.
+
+    Only workspace-scoped kinds are limited. With workspaces enabled, a grant with no workspace or
+    one the backfill marked unresolved matches nothing, so it is neither a holder nor an orphan.
+    With them disabled, only the default workspace's grants and unassigned ones count — a grant
+    recorded for another workspace on a deployment that had workspaces enabled before must not
+    become a ``MANAGE`` on ``default``'s same-named resource.
+    """
+    from sqlalchemy import and_, true
+
+    from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE, disabled_workspace_condition
+
+    if not spec.workspace_scoped:
+        return true()
+    if getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
+        return and_(model.workspace.isnot(None), model.workspace != UNRESOLVED_WORKSPACE)
+    return disabled_workspace_condition(model.workspace)
+
+
 def _resource_id(keys: Tuple[str, ...]) -> str:
-    return "/".join(str(k) for k in keys)
+    # A grant from before workspaces were recorded has no workspace: rendered as an empty segment,
+    # and turned back into NULL by the hand-over (see _transfer_in_session).
+    return "/".join("" if k is None else str(k) for k in keys)
 
 
 def _key_columns(model, names):
@@ -180,11 +228,15 @@ def _key_columns(model, names):
 RuleList = List[Any]
 
 
-def _regex_permission(rules: RuleList, subject: str, workspace: bool = False) -> Optional[str]:
+def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, resource_workspace: Optional[str] = None) -> Optional[str]:
     """The permission ``rules`` resolve to for ``subject``, exactly as the request-time resolver does.
 
+    ``resource_workspace`` is the workspace of the resource ``subject`` names, so that only the
+    patterns that apply there count; when it is not known, every pattern may apply.
     ``None`` when nothing matches — or when a pattern is malformed, which holds nothing either.
     """
+    from mlflow_oidc_auth.utils.grant_workspace import EVERY_WORKSPACE
+
     from mlflow.exceptions import MlflowException
 
     try:
@@ -195,7 +247,7 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False) ->
             return permission.name if permission is not None else None
         from mlflow_oidc_auth.utils.permissions import _match_regex_permission
 
-        return _match_regex_permission(rules, subject, "resource")
+        return _match_regex_permission(rules, subject, "resource", workspace=resource_workspace or EVERY_WORKSPACE)
     except (MlflowException, re.error):
         return None
 
@@ -248,6 +300,10 @@ def _rule_columns(model):
     columns = [model.id, model.regex, model.priority, model.permission]
     if hasattr(model, "prompt"):
         columns.append(model.prompt)
+    if hasattr(model, "workspace"):
+        # The workspace a resource pattern applies in: without it every pattern would replay as
+        # applying everywhere, holding resources in workspaces it does not reach.
+        columns.append(model.workspace)
     return columns
 
 
@@ -311,9 +367,15 @@ def _in_workspace(workspace: Optional[str]):
 
 
 def _experiment_names(experiment_ids: List[str]) -> Dict[str, str]:
-    """``{experiment_id: name}`` from the tracking store, trying each workspace. Unresolved ids are left out.
+    """``{experiment_id: name}`` from the tracking store, trying each workspace. Unresolved ids are left out."""
+    return {experiment_id: name for experiment_id, (name, _) in _experiment_locations(experiment_ids).items()}
 
-    Experiment ids are unique across workspaces, so the first workspace that knows an id names it.
+
+def _experiment_locations(experiment_ids: List[str]) -> Dict[str, Tuple[str, str]]:
+    """``{experiment_id: (name, workspace)}`` from the tracking store, trying each workspace.
+
+    Experiment ids are unique across workspaces, so the first workspace that knows an id is the one
+    it lives in. Unresolved ids are left out.
     """
     workspaces = _lookup_workspaces()
     if not workspaces:
@@ -326,14 +388,14 @@ def _experiment_names(experiment_ids: List[str]) -> Dict[str, str]:
         logger.warning("Orphan check: tracking store unavailable; experiment regex grants are unresolved")
         return {}
     budget = _Budget("experiments")
-    names: Dict[str, str] = {}
+    names: Dict[str, Tuple[str, str]] = {}
     for experiment_id in experiment_ids:
         for workspace in workspaces:
             if not budget.take():
                 return names
             try:
                 with _in_workspace(workspace):
-                    names[experiment_id] = tracking_store.get_experiment(experiment_id).name
+                    names[experiment_id] = (tracking_store.get_experiment(experiment_id).name, workspace)
                 break
             except Exception:
                 continue
@@ -417,13 +479,15 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
     rows = (
         ctx.session.query(spec.user_model.user_id, *user_keys)
         .join(SqlUser, SqlUser.id == spec.user_model.user_id)
-        .filter(spec.user_model.permission == MANAGE, SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
+        .filter(spec.user_model.permission == MANAGE, SqlUser.active.is_(True), SqlUser.id != ctx.user_id, _counts(spec, spec.user_model))
         .all()
     )
     candidates |= {row[0] for row in rows if tuple(row[1:]) in mine}
     manage_groups = {
         row[0]
-        for row in ctx.session.query(spec.group_model.group_id, *group_keys).filter(spec.group_model.permission == MANAGE).all()
+        for row in ctx.session.query(spec.group_model.group_id, *group_keys)
+        .filter(spec.group_model.permission == MANAGE, _counts(spec, spec.group_model))
+        .all()
         if tuple(row[1:]) in mine
     } & managed
 
@@ -433,11 +497,13 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
         .join(SqlUser, SqlUser.id == spec.user_regex_model.user_id)
         .filter(SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
         .all()
+        if spec.user_regex_model is not None
+        else []
     )
     for row in rows:
         own[row.user_id][_prompt_flag(row)].append(row)
     per_group: Dict[int, Dict[bool, List[Any]]] = defaultdict(lambda: defaultdict(list))
-    if managed:
+    if managed and spec.group_regex_model is not None:
         for row in ctx.session.query(spec.group_regex_model.group_id, *_rule_columns(spec.group_regex_model)).all():
             if row.group_id in managed:
                 per_group[row.group_id][_prompt_flag(row)].append(row)
@@ -452,13 +518,19 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
         return []
 
     direct: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
-    for row in ctx.session.query(spec.user_model.user_id, spec.user_model.permission, *user_keys).filter(spec.user_model.user_id.in_(candidates)).all():
+    for row in (
+        ctx.session.query(spec.user_model.user_id, spec.user_model.permission, *user_keys)
+        .filter(spec.user_model.user_id.in_(candidates), _counts(spec, spec.user_model))
+        .all()
+    ):
         direct[row[0]][tuple(row[2:])] = row[1]
     group_grants: Dict[int, Dict[Tuple[str, ...], str]] = defaultdict(dict)
     candidate_groups = {g for u in candidates for g in memberships.get(u, ())}
     if candidate_groups:
         rows = (
-            ctx.session.query(spec.group_model.group_id, spec.group_model.permission, *group_keys).filter(spec.group_model.group_id.in_(candidate_groups)).all()
+            ctx.session.query(spec.group_model.group_id, spec.group_model.permission, *group_keys)
+            .filter(spec.group_model.group_id.in_(candidate_groups), _counts(spec, spec.group_model))
+            .all()
         )
         for row in rows:
             group_grants[row[0]][tuple(row[2:])] = row[1]
@@ -485,7 +557,7 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
 HELD, NOT_HELD, UNKNOWN = "held", "not_held", "unknown"
 
 
-def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prompt: bool, workspace: bool) -> str:
+def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prompt: bool, workspace: bool, resource_workspace: Optional[str] = None) -> str:
     """Replay ``PERMISSION_SOURCE_ORDER`` for one holder: the first source with an answer decides.
 
     ``subject`` is ``None`` while the regex subject is not known yet: a regex source that has
@@ -505,7 +577,7 @@ def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prom
                 continue
             if subject is None:
                 return UNKNOWN
-            answer = _regex_permission(rules, subject, workspace)
+            answer = _regex_permission(rules, subject, workspace, resource_workspace)
         else:
             continue
         if answer is not None:
@@ -513,8 +585,8 @@ def _replay(holder: _Holder, keys: Tuple[str, ...], subject: Optional[str], prom
     return NOT_HELD
 
 
-def _judge(holders: List[_Holder], keys, subject: Optional[str], prompt: bool, workspace: bool) -> str:
-    outcomes = {_replay(h, keys, subject, prompt, workspace) for h in holders}
+def _judge(holders: List[_Holder], keys, subject: Optional[str], prompt: bool, workspace: bool, resource_workspace: Optional[str] = None) -> str:
+    outcomes = {_replay(h, keys, subject, prompt, workspace, resource_workspace) for h in holders}
     if HELD in outcomes:
         return HELD
     return UNKNOWN if UNKNOWN in outcomes else NOT_HELD
@@ -530,37 +602,65 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     if not holders:
         return {keys: NOT_HELD for keys in mine}
     workspace = spec.resource_type == WORKSPACE
+    # Where the resource's workspace is part of its key, only the patterns that apply there count.
+    in_workspace = spec.key_columns[:1] == ("workspace",)
+
+    #: Workspaces of experiments (and so of their scorers), looked up only when a pattern needs one.
+    experiment_workspaces: Dict[str, str] = {}
+
+    def resource_workspace(keys):
+        from mlflow_oidc_auth.config import config
+
+        if not config.MLFLOW_ENABLE_WORKSPACES:
+            # Every resource is in ``default``; a pattern recorded for another workspace does not
+            # count, exactly as at request time.
+            return "default"
+        if in_workspace:
+            return keys[0]
+        if spec.resource_type in (EXPERIMENT, SCORER):
+            return experiment_workspaces.get(keys[0])
+        return None
+
+    if spec.resource_type == SCORER and any(h.regex[False] or h.group_regex[False] for h in holders):
+        experiment_workspaces.update({eid: ws for eid, (_, ws) in _experiment_locations(sorted({keys[0] for keys in mine})).items()})
 
     if spec.regex_key_index is None:  # experiments: patterns match the name, which MLflow holds
-        verdicts = {keys: _judge(holders, keys, None, False, workspace) for keys in mine}
+        verdicts = {keys: _judge(holders, keys, None, False, workspace, resource_workspace(keys)) for keys in mine}
         pending = sorted(keys for keys, verdict in verdicts.items() if verdict == UNKNOWN)
         if pending:
-            names = _experiment_names([keys[0] for keys in pending])
+            located = _experiment_locations([keys[0] for keys in pending])
+            experiment_workspaces.update({eid: ws for eid, (_, ws) in located.items()})
             for keys in pending:
-                if keys[0] in names:
-                    verdicts[keys] = _judge(holders, keys, names[keys[0]], False, workspace)
+                if keys[0] in located:
+                    verdicts[keys] = _judge(holders, keys, located[keys[0]][0], False, workspace, resource_workspace(keys))
         return verdicts
 
     if spec.resource_type != REGISTERED_MODEL:
-        return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace) for keys in mine}
+        return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace, resource_workspace(keys)) for keys in mine}
 
     # Registered models and prompts share grant rows but not patterns. Ask the registry only when
     # the answer differs between the two; a name that is both, in different workspaces, must be held
     # as both.
     verdicts: Dict[Tuple[str, ...], str] = {}
-    pending_models: Dict[str, Tuple[str, ...]] = {}
+    pending_models: Dict[str, List[Tuple[str, ...]]] = {}
+    name_at = spec.regex_key_index
     for keys in mine:
-        as_model, as_prompt = _judge(holders, keys, keys[0], False, workspace), _judge(holders, keys, keys[0], True, workspace)
+        as_model, as_prompt = _judge(holders, keys, keys[name_at], False, workspace, resource_workspace(keys)), _judge(
+            holders, keys, keys[name_at], True, workspace, resource_workspace(keys)
+        )
         if as_model == as_prompt:
             verdicts[keys] = as_model
         else:
             verdicts[keys] = UNKNOWN
-            pending_models[keys[0]] = keys
+            pending_models.setdefault(keys[name_at], []).append(keys)
     if pending_models:
         kinds = _prompt_kinds(sorted(pending_models))
-        for name, keys in pending_models.items():
+        for name, pending in pending_models.items():
             if name in kinds:
-                verdicts[keys] = HELD if all(_judge(holders, keys, name, kind, workspace) == HELD for kind in kinds[name]) else NOT_HELD
+                for keys in pending:
+                    verdicts[keys] = (
+                        HELD if all(_judge(holders, keys, name, kind, workspace, resource_workspace(keys)) == HELD for kind in kinds[name]) else NOT_HELD
+                    )
     return verdicts
 
 
@@ -580,7 +680,7 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
     ctx = _Context(session, user_id)
     orphans: List[Tuple[str, str, str]] = []
 
-    for spec in _specs():
+    for spec in map(_effective, _specs()):
         key_names = spec.key_columns
         user_keys = _key_columns(spec.user_model, key_names)
         group_keys = _key_columns(spec.group_model, key_names)
@@ -588,14 +688,19 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
             logger.warning("Skipping orphan check for %s: unexpected permission schema", spec.resource_type)
             continue
 
-        direct = {tuple(r) for r in session.query(*user_keys).filter(spec.user_model.user_id == user_id, spec.user_model.permission == MANAGE).all()}
+        direct = {
+            tuple(r)
+            for r in session.query(*user_keys)
+            .filter(spec.user_model.user_id == user_id, spec.user_model.permission == MANAGE, _counts(spec, spec.user_model))
+            .all()
+        }
         # Resources the departing user manages through one of their groups, with the group names.
         through_group: Dict[Tuple[str, ...], List[str]] = defaultdict(list)
         rows = (
             session.query(*group_keys, SqlGroup.group_name)
             .join(SqlUserGroup, SqlUserGroup.group_id == spec.group_model.group_id)
             .join(SqlGroup, SqlGroup.id == spec.group_model.group_id)
-            .filter(SqlUserGroup.user_id == user_id, spec.group_model.permission == MANAGE)
+            .filter(SqlUserGroup.user_id == user_id, spec.group_model.permission == MANAGE, _counts(spec, spec.group_model))
             .all()
         )
         for r in rows:
@@ -689,14 +794,19 @@ def _valid_fallback(session, fallback: Optional[str], departing_id: int):
 
 def _transfer_in_session(session, target_id: int, orphans: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     """Grant ``MANAGE`` on each orphan to ``target_id``, raising an existing lower grant."""
-    specs: Dict[str, _Spec] = {spec.resource_type: spec for spec in _specs()}
+    specs: Dict[str, _Spec] = {spec.resource_type: _effective(spec) for spec in _specs()}
     transferred: List[Tuple[str, str]] = []
     for resource_type, resource_id in orphans:
         user_model, key_names = specs[resource_type].user_model, specs[resource_type].key_columns
         values = resource_id.split("/", len(key_names) - 1)
-        criteria = {name: value for name, value in zip(key_names, values)}
-        existing = session.query(user_model).filter_by(user_id=target_id, **criteria).one_or_none()
+        criteria = {name: (None if name == "workspace" and value == "" else value) for name, value in zip(key_names, values)}
+        existing = session.query(user_model).filter_by(user_id=target_id, **criteria).filter(_counts(specs[resource_type], user_model)).one_or_none()
         if existing is None:
+            if specs[resource_type].workspace_scoped and "workspace" not in criteria:
+                # Workspaces disabled: every resource lives in the default workspace.
+                from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
+                criteria["workspace"] = DEFAULT_WORKSPACE_NAME
             session.add(user_model(user_id=target_id, permission=MANAGE, **criteria))
         else:
             existing.permission = MANAGE

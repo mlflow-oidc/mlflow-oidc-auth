@@ -416,6 +416,9 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             "attribute_username": "email",
             "attribute_groups": "groups",
             "attribute_display_name": "displayName",
+            # The same directory as the OIDC providers: it speaks for example.com too, so it may
+            # create accounts in a domain whose accounts are theirs (provisioning_policy).
+            "allowed_email_domains": ["example.com"],
             "provisioning": "jit",
             "group_sync": "every_login",
         },
