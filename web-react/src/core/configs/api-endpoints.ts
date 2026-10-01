@@ -23,6 +23,7 @@ export const STATIC_API_ENDPOINTS = {
   GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
   USERS_RESOURCE: "/api/2.0/mlflow/users",
   USERS_DETAILS: "/api/2.0/mlflow/users/details",
+  SERVICE_ACCOUNT_SOURCES: "/api/2.0/mlflow/users/service-account-sources",
   // The signed-in user's own API tokens
   CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/current/tokens",
 

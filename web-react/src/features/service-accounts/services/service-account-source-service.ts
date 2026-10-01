@@ -1,5 +1,8 @@
 import { request } from "../../../core/services/api-utils";
-import { DYNAMIC_API_ENDPOINTS } from "../../../core/configs/api-endpoints";
+import {
+  DYNAMIC_API_ENDPOINTS,
+  STATIC_API_ENDPOINTS,
+} from "../../../core/configs/api-endpoints";
 
 /** A way a service account can sign in: "internal" or an OIDC provider. */
 export type ServiceAccountSource = {
@@ -13,10 +16,10 @@ export const INTERNAL_SOURCE = "internal";
 export const fetchServiceAccountSources = (
   signal?: AbortSignal,
 ): Promise<ServiceAccountSource[]> =>
-  request<ServiceAccountSource[]>(
-    "/api/2.0/mlflow/users/service-account-sources",
-    { method: "GET", signal },
-  );
+  request<ServiceAccountSource[]>(STATIC_API_ENDPOINTS.SERVICE_ACCOUNT_SOURCES, {
+    method: "GET",
+    signal,
+  });
 
 export const setServiceAccountSource = (
   username: string,
