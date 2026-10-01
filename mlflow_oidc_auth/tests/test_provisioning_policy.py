@@ -343,6 +343,11 @@ class TestWhoOwnsAnEmailDomain:
         repo = store.user_identity_repo
 
         assert repo.providers_in_email_domain("corp.com") == {"default"}
+        with store.ManagedSessionMaker(read_only=False) as session:  # a row from before usernames were lowercased
+            from mlflow_oidc_auth.db.models import SqlUser
+
+            session.add(SqlUser(username="Old@Legacy.COM", display_name="Old", is_admin=False, is_service_account=False, active=True, managed_by="manual"))
+        assert repo.providers_in_email_domain("legacy.com") == {"default"}
         assert repo.providers_in_email_domain("PARTNER.example") == {"entra"}
         assert repo.providers_in_email_domain("unused.example") == set()
         store.engine.dispose()

@@ -58,7 +58,10 @@ identity count as `default`'s. Creating it would bind the address to that provid
 lock out its real owner. It needs no configuration: a domain belongs to whoever's accounts are in
 it. Always allowed: usernames that are not email addresses (Kubernetes service accounts, workload
 names), a domain listed in the provider's own `allowed_email_domains`, and a domain with no
-accounts yet or only this provider's.
+accounts yet or only this provider's. The rule reacts to domains that already have accounts: in a domain no
+one has used yet, the first provider to create an account owns it. For a domain you must reserve
+before anyone signs in, use `identity_binding: email` with `allowed_email_domains` on the provider
+that should own it, or have accounts created there first (for example by SCIM).
 
 ### SAML provider fields
 

@@ -294,6 +294,10 @@ def _rule_columns(model):
     columns = [model.id, model.regex, model.priority, model.permission]
     if hasattr(model, "prompt"):
         columns.append(model.prompt)
+    if hasattr(model, "workspace"):
+        # The workspace a resource pattern applies in: without it every pattern would replay as
+        # applying everywhere, holding resources in workspaces it does not reach.
+        columns.append(model.workspace)
     return columns
 
 
@@ -357,9 +361,15 @@ def _in_workspace(workspace: Optional[str]):
 
 
 def _experiment_names(experiment_ids: List[str]) -> Dict[str, str]:
-    """``{experiment_id: name}`` from the tracking store, trying each workspace. Unresolved ids are left out.
+    """``{experiment_id: name}`` from the tracking store, trying each workspace. Unresolved ids are left out."""
+    return {experiment_id: name for experiment_id, (name, _) in _experiment_locations(experiment_ids).items()}
 
-    Experiment ids are unique across workspaces, so the first workspace that knows an id names it.
+
+def _experiment_locations(experiment_ids: List[str]) -> Dict[str, Tuple[str, str]]:
+    """``{experiment_id: (name, workspace)}`` from the tracking store, trying each workspace.
+
+    Experiment ids are unique across workspaces, so the first workspace that knows an id is the one
+    it lives in. Unresolved ids are left out.
     """
     workspaces = _lookup_workspaces()
     if not workspaces:
@@ -372,14 +382,14 @@ def _experiment_names(experiment_ids: List[str]) -> Dict[str, str]:
         logger.warning("Orphan check: tracking store unavailable; experiment regex grants are unresolved")
         return {}
     budget = _Budget("experiments")
-    names: Dict[str, str] = {}
+    names: Dict[str, Tuple[str, str]] = {}
     for experiment_id in experiment_ids:
         for workspace in workspaces:
             if not budget.take():
                 return names
             try:
                 with _in_workspace(workspace):
-                    names[experiment_id] = tracking_store.get_experiment(experiment_id).name
+                    names[experiment_id] = (tracking_store.get_experiment(experiment_id).name, workspace)
                 break
             except Exception:
                 continue
@@ -587,17 +597,28 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     # Where the resource's workspace is part of its key, only the patterns that apply there count.
     in_workspace = spec.key_columns[:1] == ("workspace",)
 
+    #: Workspaces of experiments (and so of their scorers), looked up only when a pattern needs one.
+    experiment_workspaces: Dict[str, str] = {}
+
     def resource_workspace(keys):
-        return keys[0] if in_workspace else None
+        if in_workspace:
+            return keys[0]
+        if spec.resource_type in (EXPERIMENT, SCORER):
+            return experiment_workspaces.get(keys[0])
+        return None
+
+    if spec.resource_type == SCORER and any(h.regex[False] or h.group_regex[False] for h in holders):
+        experiment_workspaces.update({eid: ws for eid, (_, ws) in _experiment_locations(sorted({keys[0] for keys in mine})).items()})
 
     if spec.regex_key_index is None:  # experiments: patterns match the name, which MLflow holds
         verdicts = {keys: _judge(holders, keys, None, False, workspace, resource_workspace(keys)) for keys in mine}
         pending = sorted(keys for keys, verdict in verdicts.items() if verdict == UNKNOWN)
         if pending:
-            names = _experiment_names([keys[0] for keys in pending])
+            located = _experiment_locations([keys[0] for keys in pending])
+            experiment_workspaces.update({eid: ws for eid, (_, ws) in located.items()})
             for keys in pending:
-                if keys[0] in names:
-                    verdicts[keys] = _judge(holders, keys, names[keys[0]], False, workspace, resource_workspace(keys))
+                if keys[0] in located:
+                    verdicts[keys] = _judge(holders, keys, located[keys[0]][0], False, workspace, resource_workspace(keys))
         return verdicts
 
     if spec.resource_type != REGISTERED_MODEL:

@@ -10,6 +10,7 @@ from typing import Callable, List, Optional, Set
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlUser, SqlUserIdentity
@@ -75,7 +76,9 @@ class UserIdentityRepository:
             rows = (
                 session.query(SqlUser.id, SqlUserIdentity.provider_id)
                 .outerjoin(SqlUserIdentity, SqlUserIdentity.user_id == SqlUser.id)
-                .filter(SqlUser.username.endswith(suffix, autoescape=True))
+                # Lowered in SQL too: LIKE is case-sensitive on PostgreSQL, and rows from before
+                # usernames were normalised may be mixed case.
+                .filter(func.lower(SqlUser.username).endswith(suffix, autoescape=True))
                 .all()
             )
             return {provider_id or DEFAULT_PROVIDER_ID for _, provider_id in rows}
