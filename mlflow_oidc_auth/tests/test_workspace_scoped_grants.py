@@ -287,10 +287,42 @@ class TestAnOldReplicasDuplicateDuringARollingUpgrade:
         self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="churn", permission="READ", prompt=False)
         self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="churn", permission="EDIT", prompt=False)
 
-        store.update_group_model_permission("team", "churn", "MANAGE")  # the newest row
+        store.update_group_model_permission("team", "churn", "MANAGE")  # applies to both copies
         _clear_cache()
 
         assert model_permission("churn") == "MANAGE"
+
+    def test_without_a_default_grant_the_lookup_keeps_what_the_backfill_keeps(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission, SqlUser
+        from mlflow_oidc_auth.grant_workspace_backfill import backfill_grant_workspaces
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        with store.ManagedSessionMaker() as session:
+            alice_id = session.query(SqlUser.id).filter(SqlUser.username == ALICE).scalar()
+        for permission in ("READ", "MANAGE"):
+            self._duplicate(store, SqlRegisteredModelPermission, "user_id", alice_id, name="churn", permission=permission)
+        _clear_cache()
+        before = store.get_registered_model_permission("churn", ALICE).permission
+
+        backfill_grant_workspaces(store)
+        _clear_cache()
+
+        assert before == store.get_registered_model_permission("churn", ALICE).permission == "READ"
+
+    def test_a_group_revoke_removes_copies_with_either_prompt_flag(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlGroup
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        store.create_group_model_permission("team", "churn", "MANAGE")
+        with store.ManagedSessionMaker() as session:
+            team_id = session.query(SqlGroup.id).filter(SqlGroup.group_name == "team").scalar()
+        self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="churn", permission="READ", prompt=True)
+
+        store.delete_group_model_permission("team", "churn")
+        _clear_cache()
+
+        assert model_permission("churn") == "NO_PERMISSIONS"
 
     def test_revoking_removes_every_copy_so_none_keeps_granting(self, store, monkeypatch):
         from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlRegisteredModelPermission, SqlGroup, SqlUser

@@ -66,8 +66,8 @@ class _GrantWorkspaceScope:
         unassigned rows (``workspace IS NULL``): a replica still on a release before the column
         existed can add one beside an existing grant during a rolling upgrade. Those rows match only
         with workspaces disabled, alongside ``default``'s, and the startup backfill merges them.
-        Until then the lookup picks one deterministically — the ``default`` grant, else the newest —
-        instead of failing the request.
+        Until then the lookup picks the one the backfill will keep — the ``default`` grant, else the
+        oldest — instead of failing the request.
 
         Parameters:
             query: A query on ``model_class`` filtered to one resource and principal.
@@ -86,7 +86,7 @@ class _GrantWorkspaceScope:
             if not self.workspace_scoped:
                 raise
         column = self.model_class.workspace
-        return query.order_by(case((column == DEFAULT_WORKSPACE_NAME, 0), else_=1), self.model_class.id.desc()).first()
+        return query.order_by(case((column == DEFAULT_WORKSPACE_NAME, 0), else_=1), self.model_class.id).first()
 
     def _same_grant(self, session: Session, row) -> list:
         """``row`` and any unassigned duplicate of it (see :meth:`_one_in_scope`).
@@ -111,8 +111,8 @@ class _GrantWorkspaceScope:
             getattr(model, principal) == getattr(row, principal),
             self._in_scope(),
         )
-        if hasattr(model, "prompt"):
-            query = query.filter(model.prompt == row.prompt)
+        # No ``prompt`` filter: permission checks count every row of the principal on this name,
+        # whatever its ``prompt`` flag, so every such row is the same grant.
         return [row, *query.all()]
 
 
