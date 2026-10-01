@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getPermissionUrl } from "./permission-utils";
+import { getPermissionUrl, patternWorkspaceLabel } from "./permission-utils";
 
 describe("getPermissionUrl", () => {
   const entityName = "testEntity";
@@ -614,5 +614,16 @@ describe("getPermissionUrl", () => {
         }),
       ).toThrow("Unknown permission type");
     });
+  });
+});
+
+describe("patternWorkspaceLabel", () => {
+  it("names the workspace a pattern applies in", () => {
+    expect(patternWorkspaceLabel("team-a")).toBe("team-a");
+  });
+
+  it("reads every workspace, and an older server's missing value, as all workspaces", () => {
+    expect(patternWorkspaceLabel("*")).toBe("All workspaces");
+    expect(patternWorkspaceLabel(undefined)).toBe("All workspaces");
   });
 });

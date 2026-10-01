@@ -8,6 +8,7 @@ import type {
   PermissionLevel,
   PermissionType,
 } from "../../../shared/types/entity";
+import { useSelectedWorkspace } from "../../../shared/context/use-workspace";
 
 interface AddRegexRuleModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   const workspacesEnabled = Boolean(
     use(RuntimeConfigContext)?.workspaces_enabled,
   );
+  const selectedWorkspace = useSelectedWorkspace();
   const [regex, setRegex] = useState("");
   const [priority, setPriority] = useState<number>(100);
   const [permission, setPermission] = useState<PermissionLevel>("READ");
@@ -75,9 +77,21 @@ export const AddRegexRuleModal: React.FC<AddRegexRuleModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Regex Rule">
       {workspacesEnabled && (
-        <p className="mb-4 text-sm text-ui-text-muted dark:text-ui-text-muted-dark">
-          A pattern matches resource names in every workspace, unlike a grant on
-          a single resource, which belongs to one workspace.
+        <p
+          role="status"
+          className="mb-4 text-sm text-ui-text-muted dark:text-ui-text-muted-dark"
+        >
+          {selectedWorkspace ? (
+            <>
+              This pattern will apply only in workspace{" "}
+              <span className="font-semibold">{selectedWorkspace}</span>.
+            </>
+          ) : (
+            <>
+              This pattern will apply in <strong>every</strong> workspace.
+              Choose a workspace in the header to limit it to one.
+            </>
+          )}
         </p>
       )}
       <Input

@@ -235,7 +235,9 @@ When workspaces are enabled, a workspace selector appears in the UI header. Swit
   and each of those pages — the matching tabs of a user or group, and your own User Page — names
   the workspace. With **All Workspaces** selected they show the `default` workspace's grants
   read-only: choose a workspace to add, change or remove one. Experiment grants are unaffected.
-- The "Add New Regex Rule" dialog notes that a pattern matches resource names in every workspace.
+- A pattern (regex rule) applies in the workspace selected when it is created, or in every workspace
+  under **All Workspaces**; the "Add New Regex Rule" dialog says which, and pattern lists show each
+  pattern's workspace ([details](workspaces#pattern-regex-grants)).
 
 ## Search and Filtering
 

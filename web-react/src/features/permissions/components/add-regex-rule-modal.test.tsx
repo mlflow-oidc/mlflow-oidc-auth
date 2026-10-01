@@ -105,7 +105,7 @@ describe("AddRegexRuleModal", () => {
     });
   });
 
-  it("says a pattern matches every workspace when workspaces are enabled", () => {
+  it("with a workspace selected, says the pattern applies only there", () => {
     render(
       <AddRegexRuleModal
         isOpen={true}
@@ -115,9 +115,24 @@ describe("AddRegexRuleModal", () => {
       />,
       { wrapper: workspaceScopeWrapper(true, "team-a") },
     );
-    expect(
-      screen.getByText(/matches resource names in every workspace/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This pattern will apply only in workspace team-a.",
+    );
+  });
+
+  it("under All Workspaces, says the pattern applies in every workspace", () => {
+    render(
+      <AddRegexRuleModal
+        isOpen={true}
+        type="models"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />,
+      { wrapper: workspaceScopeWrapper(true, null) },
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "This pattern will apply in every workspace.",
+    );
   });
 
   it("says nothing about workspaces when they are disabled", () => {

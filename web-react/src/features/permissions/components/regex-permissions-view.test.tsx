@@ -23,6 +23,7 @@ import type {
 } from "../../../shared/types/entity";
 import type { ToastContextType } from "../../../shared/components/toast/toast-context-val";
 import { getRuntimeConfig } from "../../../shared/services/runtime-config";
+import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
 
 vi.mock("../../../core/services/http");
 vi.mock("../../../shared/services/runtime-config", () => ({
@@ -64,7 +65,13 @@ describe("RegexPermissionsView", () => {
 
   const mockExpPatternPermissions: ExperimentPatternPermission[] = [
     { regex: "^test_.*", permission: "READ", priority: 100, id: 1 },
-    { regex: "^prod_.*", permission: "MANAGE", priority: 0, id: 2 },
+    {
+      regex: "^prod_.*",
+      permission: "MANAGE",
+      priority: 0,
+      id: 2,
+      workspace: "team-a",
+    },
   ];
 
   const mockModelPatternPermissions: ModelPatternPermission[] = [
@@ -374,6 +381,31 @@ describe("RegexPermissionsView", () => {
         expect.objectContaining({ method: "DELETE" }),
       );
     });
+  });
+
+  it("with workspaces enabled, shows the workspace each pattern applies in", () => {
+    render(
+      <RegexPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />,
+      { wrapper: workspaceScopeWrapper(true, "team-a") },
+    );
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.getByText("All workspaces")).toBeInTheDocument();
+    expect(screen.getByText("team-a")).toBeInTheDocument();
+  });
+
+  it("with workspaces disabled, shows no workspace column", () => {
+    render(
+      <RegexPermissionsView
+        type="experiments"
+        entityKind="user"
+        entityName="user1"
+      />,
+    );
+    expect(screen.queryByText("Workspace")).toBeNull();
   });
 
   it("renders loading and error", () => {
