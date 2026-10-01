@@ -550,7 +550,18 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             # has been written for it yet.
             if not username and not is_unprotected_route(path) and not _dispatches_to_flask_mount(request):
                 return _authentication_required()
-            return await call_next(request)
+            # Routes without a validator authorize in their own dependencies (this plugin's
+            # permission API, among others). Bridge the caller's AuthContext for them as for the
+            # validators, so a resource without a grant of its own falls back to the caller's
+            # permission on the request's workspace rather than the global default. Flask reads
+            # the same context from its environ, so bridging it for the mount changes nothing.
+            auth_context = request.scope.get(AUTH_CONTEXT_KEY)
+            auth_context_token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
+            try:
+                return await call_next(request)
+            finally:
+                if auth_context_token is not None:
+                    clear_auth_context(auth_context_token)
 
         # Check authentication context (already set by AuthMiddleware)
         if not username:
