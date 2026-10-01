@@ -711,6 +711,11 @@ class UserRepository:
             if after_cascade is not None:
                 after_cascade(session)
 
+        # A cached bearer identity decision about this account must not outlive it: its identities
+        # went with it, and a user later created under the same name is somebody else.
+        from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+        flush_bearer_identity_cache()
         # Emitted after the commit, for the same reason as in ``update``.
         if permitted_conflict is not None:
             _audit_ownership_conflict(username, permitted_conflict, written_by, allowed=True, operation="delete", actor=actor)

@@ -132,6 +132,121 @@ def normalize_workspace_header(raw_workspace: Optional[str]) -> Optional[str]:
     return raw_workspace.strip() or None
 
 
+def _bearer_identity(provider, payload, username: str) -> Tuple[Optional[str], bool]:
+    """The local user a bearer token may act as, or None to refuse it.
+
+    With a single provider in the registry there is one identity space, and the username the claims
+    produce is the user — as it always was, at no cost. With more than one — of any type, since a
+    SAML login binds identities too — a token is held to what interactive login decides for the
+    same provider (``routers/auth.py``, issue #309): the identity ``(provider, sub)`` decides, a
+    bound identity reaches only its own user, and a name another provider's identity owns is
+    refused — so a provider cannot reach an account by asserting its email or username. Read-only:
+    unlike login it binds nothing (provisioning on first bearer authentication binds the account it
+    creates). Fails closed.
+
+    Parameters:
+        provider: The provider that validated the token, or None if it could not be identified.
+        payload: The validated claims.
+        username: The username the configured claim fields produce.
+
+    Returns:
+        ``(username, creating)``: the username to authenticate as, or None when the token must be
+        refused; and whether that is a user the identity would *create* — the caller accepts such
+        a token only once the account exists and is bound to this identity
+        (:func:`_bound_to_identity`).
+    """
+    from mlflow_oidc_auth.utils.bearer_identity_cache import bearer_identity_cache
+
+    if len(config.AUTH_PROVIDERS.providers) <= 1:
+        return username, False
+    if provider is None:
+        logger.warning("Refusing a bearer token: the provider that validated it could not be identified")
+        return None, False
+
+    subject = payload.get("sub")
+    subject = subject.strip() if isinstance(subject, str) else ""
+    key = "\x1f".join((provider.id, subject, username, str(payload.get("email")), str(payload.get("email_verified") is True)))
+    cache = bearer_identity_cache()
+    cached = cache.get(key)
+    if cached is not None:
+        return cached or None, False
+    resolved, creating = _resolve_bearer_identity(provider, subject, payload, username)
+    if not creating:
+        cache.set(key, resolved or "")
+    return resolved, creating
+
+
+def _bound_to_identity(provider, payload, username: str) -> bool:
+    """Whether the token's identity is now bound to ``username``.
+
+    Checked after provisioning for a token whose identity would create its user: only an account
+    this identity owns is accepted. Without provisioning nothing creates it, so the token is refused
+    (the user would not exist anyway); with it, a failed bind — or another identity claiming the
+    name in between — is refused rather than served.
+    """
+    from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+
+    subject = payload.get("sub")
+    if not isinstance(subject, str) or not subject.strip():
+        # Only the deployment's own provider gets here without a subject; it names accounts by
+        # the configured claim fields, as it always did.
+        return provider.id == DEFAULT_PROVIDER_ID
+    try:
+        return store.user_identity_repo.get_username_by_identity(provider.id, subject.strip()) == username
+    except Exception as e:
+        logger.warning("Refusing a bearer token from provider '%s': the identity binding could not be read (%s)", provider.id, type(e).__name__)
+        return False
+
+
+def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> Tuple[Optional[str], bool]:
+    """The uncached decision behind :func:`_bearer_identity`.
+
+    Returns:
+        ``(username or None, creating)``. A decision to reach an existing user, and a refusal, are
+        cached by the caller. One that would *create* a user is not: until the account exists the
+        name is free, and once another identity claims it the answer must change at once.
+    """
+    from mlflow_oidc_auth.identity_resolution import IdentityDecision, Resolution, resolve_identity
+    from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+    from mlflow_oidc_auth.provisioning_policy import apply_provisioning_policy
+
+    try:
+        if not subject:
+            if provider.id != DEFAULT_PROVIDER_ID:
+                logger.warning("Refusing a bearer token from provider '%s': it asserts no subject", provider.id)
+                return None, False
+            # As on login: the deployment's own provider without a subject names accounts by the
+            # configured claim fields, as it always did.
+            decision = IdentityDecision(Resolution.CREATE, reason="no subject asserted")
+        else:
+            decision = resolve_identity(provider, subject, payload, store.user_identity_repo, user_lookup=store.has_user, username=username)
+
+        def providers_bound_to(name: str) -> list:
+            try:
+                return list(store.user_identity_repo.list_providers_for_username(name))
+            except Exception:
+                # An unknown binding set must not read as "bound to nobody".
+                return ["<unknown>"]
+
+        outcome = apply_provisioning_policy(provider, decision, derived_username=username, user_exists=store.has_user, providers_bound_to=providers_bound_to)
+    except Exception as e:
+        logger.warning("Refusing a bearer token from provider '%s': identity could not be resolved (%s)", provider.id, type(e).__name__)
+        # Not cached: a transient failure must not refuse the identity for a whole TTL.
+        return None, True
+    if not outcome.allowed:
+        logger.warning("Refusing a bearer token from provider '%s': %s", provider.id, outcome.reason)
+        emit_audit_event(
+            "auth.identity_refused",
+            actor=username,
+            resource_type="user",
+            resource_id=username,
+            detail={"provider": provider.id, "reason": outcome.reason, "method": "bearer"},
+            status="denied",
+        )
+        return None, False
+    return outcome.username or username, bool(outcome.create)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware for user authentication.
@@ -302,6 +417,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # who is writing and the memberships are owned by that provider rather than ``manual``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
+            # Bound like a login binds it, so this account answers to this provider's subject
+            # alone and another provider cannot later adopt it by asserting the same name.
+            subject = payload.get("sub")
+            if isinstance(subject, str) and subject.strip():
+                store.user_identity_repo.link(provider.id, subject.strip(), username)
             if groups is not None:
                 arrived = user_module.populate_groups(group_names=groups, written_by=written_by)
                 user_module.update_user(username=username, group_names=groups, written_by=written_by)
@@ -459,7 +579,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if error_msg:
                 return False, None, error_msg
 
+            username, creating = _bearer_identity(provider, payload, username)
+            if username is None:
+                return False, None, "This account cannot be used here"
+
             self._maybe_provision_bearer_user(username, token, payload)
+            if creating and not _bound_to_identity(provider, payload, username):
+                return False, None, "This account cannot be used here"
             logger.debug(f"User {username} authenticated via bearer token")
             return True, username, ""
         except Exception as e:

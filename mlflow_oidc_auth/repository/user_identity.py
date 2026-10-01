@@ -110,7 +110,11 @@ class UserIdentityRepository:
 
             session.add(SqlUserIdentity(provider_id=provider_id, subject=subject, user_id=user.id))
             session.flush()
-            return True
+        # A new binding changes what a bearer token of either provider may reach.
+        from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+        flush_bearer_identity_cache()
+        return True
 
     def touch_last_login(self, provider_id: str, subject: str) -> None:
         """Record that this identity was just used.
