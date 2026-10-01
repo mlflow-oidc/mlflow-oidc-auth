@@ -5,8 +5,9 @@ IdPs asserting the same email would silently share an account. This module decid
 ``(provider_id, subject, claims)``, whether an existing user is reached, a new one should be
 created, or the attempt is refused.
 
-**Nothing calls this yet.** Wiring it into login and bearer authentication is #316; this lands
-the decision and its tests.
+Interactive login (``routers/auth.py``, SAML included) applies it and binds the identity; bearer
+authentication applies it read-only when the registry holds more than one provider of any type
+(``middleware/auth_middleware._bearer_identity``).
 
 The rule that matters:
 

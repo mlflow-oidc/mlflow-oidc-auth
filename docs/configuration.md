@@ -37,6 +37,20 @@ Per-provider fields set on an entry in `AUTH_PROVIDERS` / `AUTH_PROVIDERS_FILE` 
 | `interactive` | Boolean | `true` for `oidc` and `saml`, `false` for `k8s` | Whether the provider carries a browser login and appears on the login page. Set `false` on an `oidc` provider that only issues tokens to workloads — a service principal's client-credentials tokens or a CI workload-identity issuer. A bearer token from a non-interactive provider authenticates normally but is refused (`403`) by every endpoint that issues an access token. Must be a JSON boolean; `true` on a `k8s` provider is refused at load. See [Programmatic access](programmatic-access#idp-client-credentials-and-workload-identity) |
 | `allow_tokens_without_expiry` | Boolean | `false` | Accept a bearer token that carries no `exp` claim. By default every provider — including the synthesised `default` one — refuses such a token, because nothing else would ever make it stop working. Accepted only on token providers (`oidc`, `k8s`); set on `saml` or any other type the entry is refused at load. Must be a JSON boolean (`"true"` is refused). Waives only a *missing* `exp`: a present `exp` in the past, the issuer, the audience and the signature are all still enforced. Setting it logs a warning at startup. Intended for legacy Kubernetes service-account tokens — see [Kubernetes service accounts](kubernetes-auth#tokens-without-an-expiry) |
 
+**Bearer tokens with more than one provider.** When the registry holds more than one provider of
+any type — two OIDC providers, SAML beside an OIDC provider, or the `default` provider beside a
+Kubernetes one — a bearer token is held to the same identity decision as a browser login from its
+provider: the identity `(provider, sub)` decides which user it reaches, never the email or
+username it carries. A bound identity reaches only its own user; an account another provider's
+identity owns is refused; an account from before identities were recorded can be reached only
+through the `default` provider; and a token from any other provider without a `sub` is refused.
+A token whose identity has no account yet is accepted only once `OIDC_PROVISION_ON_BEARER_AUTH`
+has created the account and bound it to that identity, as a login binds it. Decisions are cached
+for `PERMISSION_CACHE_TTL_SECONDS` (not a decision to create an account) and flushed when a user
+is deleted or an identity is bound — on every replica with the Redis cache backend, on the replica
+that made the change with the local one, where other replicas' entries expire with the TTL. With a single provider, bearer
+authentication is unchanged.
+
 ### SAML provider fields
 
 Fields for an entry with `"type": "saml"` (requires the `[saml]` extra). They are refused on any other type, and a SAML entry refuses the bearer-token fields (`audience`, `issuer`, `discovery_url`, `client_id`, `allowed_algorithms`, `allow_tokens_without_expiry`, and the Kubernetes key fields) as well as `identity_binding: email`. See [SAML Authentication](saml-auth).
