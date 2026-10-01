@@ -24,7 +24,7 @@ import { IconButton } from "../../../shared/components/icon-button";
 import { Button } from "../../../shared/components/button";
 import { faEdit, faTrash, faPlus } from "@fortawesome/free-solid-svg-icons";
 import type {
-  PermissionType,
+  RegexPermissionType,
   PatternPermissionItem,
   PermissionLevel,
 } from "../../../shared/types/entity";
@@ -32,7 +32,7 @@ import type { ColumnConfig } from "../../../shared/types/table";
 import { useSearch } from "../../../core/hooks/use-search";
 
 interface RegexPermissionsViewProps {
-  type: PermissionType;
+  type: RegexPermissionType;
   entityKind: "user" | "group";
   entityName: string;
 }

@@ -107,6 +107,17 @@ export function usePermissionsManagement({
                   editingItem.name,
                   resourceId,
                 );
+        } else if (resourceType === "mcp-servers") {
+          url =
+            editingItem.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -200,6 +211,17 @@ export function usePermissionsManagement({
                   item.name,
                   resourceId,
                 );
+        } else if (resourceType === "mcp-servers") {
+          url =
+            item.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
+                  item.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(
+                  item.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -280,6 +302,17 @@ export function usePermissionsManagement({
                   resourceId,
                 )
               : DYNAMIC_API_ENDPOINTS.USER_GATEWAY_MODEL_PERMISSION(
+                  name,
+                  resourceId,
+                );
+        } else if (resourceType === "mcp-servers") {
+          url =
+            kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
+                  name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION(
                   name,
                   resourceId,
                 );

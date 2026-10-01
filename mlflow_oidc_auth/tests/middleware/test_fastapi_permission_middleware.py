@@ -347,146 +347,79 @@ class TestRequireAuthenticationValidator:
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: MCP server registry validator
+# MCP server registry through this middleware (full coverage: test_mcp_server_registry.py)
 # ---------------------------------------------------------------------------
 
 
-class TestMCPServerRegistryValidator:
-    """The MCP server registry: writes admin-only; reads scoped to the request's workspace when workspaces are on."""
-
-    def _validator(self):
-        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import (
-            _get_mcp_server_registry_validator,
-        )
-
-        return _get_mcp_server_registry_validator()
+class TestMCPServerRegistryThroughTheMiddleware:
+    """The registry's per-server checks run here, on the routed path, whatever MLflow's version."""
 
     @staticmethod
-    def _request(method):
-        request = MagicMock(spec=Request)
-        request.method = method
-        return request
-
-    @staticmethod
-    def _workspaces(grants, workspace):
-        """Workspaces on, the request naming ``workspace``, and workspace grants from ``grants``."""
-        from contextlib import ExitStack
-
-        from mlflow_oidc_auth.config import config
-
-        stack = ExitStack()
-        stack.enter_context(patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True))
-        stack.enter_context(patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value=workspace))
-        stack.enter_context(
-            patch(
-                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
-                side_effect=lambda username, ws: grants.get((username, ws)),
-            )
-        )
-        return stack
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("method", ["GET", "HEAD"])
-    async def test_reads_open_without_workspaces(self, method):
-        """With workspaces off there is one registry and no tenant boundary: any user may read."""
-        from mlflow_oidc_auth.config import config
-
-        with patch.object(config, "MLFLOW_ENABLE_WORKSPACES", False):
-            assert await self._validator()("user@example.com", self._request(method)) is True
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("method", ["POST", "PATCH", "DELETE", "PUT"])
-    @pytest.mark.parametrize("workspaces", [False, True])
-    async def test_writes_denied_for_non_admin(self, method, workspaces):
-        """A non-admin may never mutate the registry — admins never reach this validator."""
-        from mlflow_oidc_auth.config import config
-        from mlflow_oidc_auth.permissions import MANAGE
-
-        with (
-            patch.object(config, "MLFLOW_ENABLE_WORKSPACES", workspaces),
-            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=MANAGE),
-        ):
-            assert await self._validator()("user@example.com", self._request(method)) is False
-
-    @pytest.mark.asyncio
-    async def test_read_allowed_with_workspace_read(self):
-        from mlflow_oidc_auth.permissions import READ
-
-        with self._workspaces({("user@example.com", "team-a"): READ}, "team-a"):
-            assert await self._validator()("user@example.com", self._request("GET")) is True
-
-    @pytest.mark.asyncio
-    async def test_read_denied_in_a_workspace_the_user_has_no_grant_on(self):
-        """Naming another tenant's workspace must not expose its registry."""
-        from mlflow_oidc_auth.permissions import MANAGE
-
-        with self._workspaces({("user@example.com", "team-a"): MANAGE}, "team-b"):
-            assert await self._validator()("user@example.com", self._request("GET")) is False
-
-    @pytest.mark.asyncio
-    async def test_explicit_no_permissions_denies_a_read(self):
-        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
-
-        with self._workspaces({("user@example.com", "team-a"): NO_PERMISSIONS}, "team-a"):
-            assert await self._validator()("user@example.com", self._request("GET")) is False
-
-    @pytest.mark.asyncio
-    async def test_no_workspace_named_is_judged_against_the_default_workspace(self):
-        """MLflow serves the default workspace's registry when no workspace is named."""
-        from mlflow_oidc_auth.permissions import READ
-
-        with self._workspaces({("user@example.com", "default"): READ}, None):
-            assert await self._validator()("user@example.com", self._request("GET")) is True
-        with self._workspaces({("user@example.com", "team-a"): READ}, None):
-            assert await self._validator()("user@example.com", self._request("GET")) is False
-
-
-class TestMCPServerRegistryEndToEnd:
-    """Through the real middleware: the workspace comes from the AuthContext AuthMiddleware set."""
-
-    @staticmethod
-    def _app(username, is_admin, workspace):
+    def _app(username, is_admin, workspace, prefix=""):
         app = _create_app_with_auth(username=username, is_admin=is_admin, workspace=workspace)
 
-        @app.get("/api/3.0/mlflow/mcp-servers")
-        async def search_mcp_servers():
-            return {"servers": []}
+        @app.api_route(prefix + "/api/3.0/mlflow/mcp-servers", methods=["GET", "POST"])
+        async def mcp_root():
+            return {"mcp_servers": [{"name": "com.example/a"}, {"name": "com.example/b"}], "next_page_token": None}
 
-        # Route order matters: the catch-all Flask mount was added first, so move this route ahead of it.
+        @app.api_route(prefix + "/api/3.0/mlflow/mcp-servers/{name:path}", methods=["GET", "PATCH", "DELETE"])
+        async def mcp_server(name: str):
+            return {"name": name}
+
+        # Route order matters: the catch-all Flask mount was added first, so move these routes ahead of it.
+        app.router.routes.insert(0, app.router.routes.pop())
         app.router.routes.insert(0, app.router.routes.pop())
         return app
 
     @staticmethod
-    def _grants(grants):
+    def _grants(workspace_grants, server_grants=None):
+        """Workspaces on; workspace grants by (user, workspace); server permissions by name."""
         from contextlib import ExitStack
 
         from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 
+        server_grants = server_grants or {}
         stack = ExitStack()
         stack.enter_context(patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True))
         stack.enter_context(
             patch(
                 "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
-                side_effect=lambda username, ws: grants.get((username, ws)),
+                side_effect=lambda username, ws: workspace_grants.get((username, ws)),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "mlflow_oidc_auth.utils.permissions.effective_mcp_server_permission",
+                side_effect=lambda name, username: PermissionResult(server_grants.get(name, NO_PERMISSIONS), "user"),
             )
         )
         return stack
 
-    def test_member_of_the_workspace_reads_its_registry(self):
-        from mlflow_oidc_auth.permissions import READ
-
-        with self._grants({("user@example.com", "team-a"): READ}):
-            response = TestClient(self._app("user@example.com", False, "team-a")).get("/api/3.0/mlflow/mcp-servers")
-
-        assert response.status_code == 200
-
-    def test_another_tenants_workspace_is_403(self):
+    def test_another_tenants_server_is_403(self):
         from mlflow_oidc_auth.permissions import MANAGE
 
         with self._grants({("user@example.com", "team-a"): MANAGE}):
-            response = TestClient(self._app("user@example.com", False, "team-b")).get("/api/3.0/mlflow/mcp-servers")
+            client = TestClient(self._app("user@example.com", False, "team-b"))
+            response = client.get("/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.patch("/api/3.0/mlflow/mcp-servers/com.example/a", json={})
+            assert response.status_code == 403
+            response = client.delete("/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.post("/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"})
+            assert response.status_code == 403
 
-        assert response.status_code == 403
+    def test_the_search_is_narrowed_to_readable_servers(self):
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+
+        # A member of team-a (searching a registry needs READ on its workspace).
+        with self._grants({("user@example.com", "team-a"): READ}, {"com.example/a": READ, "com.example/b": NO_PERMISSIONS}):
+            response = TestClient(self._app("user@example.com", False, "team-a")).get("/api/3.0/mlflow/mcp-servers")
+
+        assert response.status_code == 200
+        assert [s["name"] for s in response.json()["mcp_servers"]] == ["com.example/a"]
 
     def test_static_prefix_does_not_bypass_the_check(self, monkeypatch):
         """With ``--static-prefix`` the registry is mounted under it: reads and writes are still judged."""
@@ -495,23 +428,21 @@ class TestMCPServerRegistryEndToEnd:
         from mlflow_oidc_auth.permissions import MANAGE
 
         monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
-        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-b")
-
-        @app.api_route("/mlflow/api/3.0/mlflow/mcp-servers", methods=["GET", "POST"])
-        async def prefixed_mcp_servers():
-            return {"servers": []}
-
-        app.router.routes.insert(0, app.router.routes.pop())
-        client = TestClient(app)
+        client = TestClient(self._app("user@example.com", False, "team-b", prefix="/mlflow"))
         with self._grants({("user@example.com", "team-a"): MANAGE}):
-            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers").status_code == 403
-            assert client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={}).status_code == 403
+            response = client.get("/mlflow/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"})
+            assert response.status_code == 403
+            response = client.get("/mlflow/api/3.0/mlflow/mcp-servers")
+            assert response.status_code == 403
 
-    def test_admin_reads_any_workspace(self):
+    def test_admin_reads_any_workspace_unfiltered(self):
         with self._grants({}):
             response = TestClient(self._app("admin@example.com", True, "team-b")).get("/api/3.0/mlflow/mcp-servers")
 
         assert response.status_code == 200
+        assert len(response.json()["mcp_servers"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -861,7 +792,7 @@ class TestWorkspaceFallbackEndToEnd:
     """
 
     @staticmethod
-    def _workspace_env(workspace_grants: dict):
+    def _workspace_env(workspace_grants: dict, experiment_in_workspace: bool = True):
         from contextlib import ExitStack
 
         from mlflow_oidc_auth.models import PermissionResult
@@ -871,6 +802,8 @@ class TestWorkspaceFallbackEndToEnd:
         stack = ExitStack()
         stack.enter_context(patch.object(perms.config, "MLFLOW_ENABLE_WORKSPACES", True))
         stack.enter_context(patch.object(perms, "get_permission_from_store_or_default", return_value=PermissionResult(NO_PERMISSIONS, "fallback")))
+        # Experiment 42 is (or is not) one of the request workspace's experiments.
+        stack.enter_context(patch.object(perms, "_experiment_in_request_workspace", return_value=experiment_in_workspace))
         stack.enter_context(
             patch(
                 "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
@@ -889,6 +822,16 @@ class TestWorkspaceFallbackEndToEnd:
             response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
 
         assert response.status_code == 200
+
+    def test_workspace_manage_does_not_reach_another_workspaces_experiment(self):
+        """Experiment ids are global: MANAGE on the header's workspace reaches only its experiments."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        app = _create_app_with_auth(username="user@example.com", is_admin=False, workspace="team-ws")
+        with self._workspace_env({("user@example.com", "team-ws"): MANAGE}, experiment_in_workspace=False):
+            response = TestClient(app).get("/v1/traces", headers={"X-Mlflow-Experiment-Id": "42"})
+
+        assert response.status_code == 403
 
     def test_no_workspace_grant_is_denied_on_otel_route(self):
         """Negative path: the same request against a workspace the user has no grant on is 403."""

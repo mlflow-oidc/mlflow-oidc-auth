@@ -108,6 +108,7 @@ class TestUserPermissionsRoutes:
                 "priority": 1,
                 "user_id": 123,
                 "permission": "READ",
+                "workspace": None,
                 "prompt": True,
             },
             {
@@ -116,6 +117,7 @@ class TestUserPermissionsRoutes:
                 "priority": 2,
                 "user_id": 123,
                 "permission": "MANAGE",
+                "workspace": None,
                 "prompt": True,
             },
         ]
@@ -161,5 +163,6 @@ class TestUserPermissionsRoutes:
                 "priority": 1,
                 "user_id": 123,
                 "permission": "READ",
+                "workspace": None,
             }
         ]

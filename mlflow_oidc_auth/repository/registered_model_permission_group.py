@@ -21,6 +21,7 @@ from mlflow_oidc_auth.repository.utils import get_user, list_user_groups
 class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
     model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
+    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     def __init__(self, session_maker):
         super().__init__(session_maker)
@@ -44,7 +45,7 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
 
     def rename(self, old_name: str, new_name: str):
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self.model_class.name == old_name).all()
+            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
             if not perms:
                 raise MlflowException(
                     f"No registered model group permissions found for name: {old_name}",
@@ -65,7 +66,7 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
             rows = (
                 session.query(SqlGroup.group_name, self.model_class.permission)
                 .join(self.model_class, self.model_class.group_id == SqlGroup.id)
-                .filter(self.model_class.name == name)
+                .filter(self._resource_is(name))
                 .filter(self.model_class.prompt == False)
                 .all()
             )
@@ -83,7 +84,7 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
                 .join(SqlUser, SqlUser.id == SqlUserGroup.user_id)
                 .filter(
                     SqlUser.username == username,
-                    SqlRegisteredModelGroupPermission.name == name,
+                    self._resource_is(name),
                 )
                 .order_by(SqlRegisteredModelGroupPermission.group_id)
                 .all()
@@ -118,5 +119,5 @@ class RegisteredModelPermissionGroupRepository(BaseGroupPermissionRepository[Sql
         with self._Session() as session:
             user = get_user(session, username=username)
             user_groups = list_user_groups(session, user)
-            perms = session.query(self.model_class).filter(self.model_class.group_id.in_([ug.group_id for ug in user_groups])).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id.in_([ug.group_id for ug in user_groups]), self._in_scope()).all()
             return [p.to_mlflow_entity() for p in perms]

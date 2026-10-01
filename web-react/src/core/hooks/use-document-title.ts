@@ -11,6 +11,7 @@ const SECTIONS: Record<string, string> = {
   auth: "Sign in",
   experiments: "Experiments",
   groups: "Groups",
+  "mcp-servers": "MCP servers",
   models: "Models",
   prompts: "Prompts",
   scim: "SCIM",
@@ -41,6 +42,7 @@ const PERMISSION_TABS: Record<string, string> = {
   "ai-endpoints": "AI endpoints",
   "ai-secrets": "AI secrets",
   "ai-models": "AI models",
+  "mcp-servers": "MCP servers",
 };
 
 function decodeSegment(segment: string): string {

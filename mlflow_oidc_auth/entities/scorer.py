@@ -58,6 +58,9 @@ class ScorerPermission:
 
 
 class ScorerRegexPermission:
+    #: The workspace the pattern applies in, or "*" for every workspace; None when unknown.
+    workspace = None
+
     def __init__(
         self,
         id_,
@@ -107,6 +110,7 @@ class ScorerRegexPermission:
             "priority": self.priority,
             "user_id": self.user_id,
             "permission": self.permission,
+            **({"workspace": self.workspace} if self.workspace is not None else {}),
         }
 
     @classmethod
@@ -121,6 +125,9 @@ class ScorerRegexPermission:
 
 
 class ScorerGroupRegexPermission:
+    #: The workspace the pattern applies in, or "*" for every workspace; None when unknown.
+    workspace = None
+
     def __init__(
         self,
         id_,
@@ -170,6 +177,7 @@ class ScorerGroupRegexPermission:
             "priority": self.priority,
             "group_id": self.group_id,
             "permission": self.permission,
+            **({"workspace": self.workspace} if self.workspace is not None else {}),
         }
 
     @classmethod

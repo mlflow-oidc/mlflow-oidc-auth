@@ -267,3 +267,87 @@ class TestAdoptingAnAccountFromBeforeIdentitiesWereRecorded:
         )
 
         assert outcome.allowed is False
+
+
+class TestAProviderCannotSquatAnotherProvidersDomain:
+    """A provider other than ``default`` creating an account named by an address binds it for good,
+    so it may not create one in a domain whose accounts belong to another provider."""
+
+    def create(self, username, owners, **provider_fields):
+        return apply_provisioning_policy(
+            provider(provisioning="jit", **provider_fields),
+            IdentityDecision(Resolution.CREATE),
+            derived_username=username,
+            user_exists=nobody_exists,
+            providers_in_domain=lambda domain: owners.get(domain, set()),
+        )
+
+    def test_a_domain_whose_accounts_are_the_default_providers_is_refused(self):
+        outcome = self.create("dave@corp.com", {"corp.com": {"default"}})
+
+        assert outcome.allowed is False
+        assert outcome.reason.startswith("email domain 'corp.com' belongs to accounts of provider(s) default;")
+
+    def test_a_domain_another_partner_owns_is_refused(self):
+        assert self.create("eve@other.example", {"other.example": {"okta"}}).allowed is False
+
+    def test_its_own_domain_and_an_unused_one_are_allowed(self):
+        assert self.create("bob@partner.example", {"partner.example": {"entra"}}).allowed is True
+        assert self.create("new@fresh.example", {}).allowed is True
+
+    def test_a_domain_listed_in_its_allowed_email_domains_is_allowed(self):
+        outcome = self.create("dave@corp.com", {"corp.com": {"default"}}, allowed_email_domains=["corp.com"])
+
+        assert outcome.allowed is True
+
+    def test_a_username_that_is_not_an_address_is_unaffected(self):
+        """Providers without domains — a workload issuer, Kubernetes — keep creating accounts."""
+        assert self.create("ci-runner-42", {}).allowed is True
+
+    def test_the_default_provider_is_unaffected(self):
+        outcome = apply_provisioning_policy(
+            provider(id="default", provisioning="jit"),
+            IdentityDecision(Resolution.CREATE),
+            derived_username="dave@corp.com",
+            user_exists=nobody_exists,
+            providers_in_domain=lambda domain: {"entra"},
+        )
+
+        assert outcome.allowed is True
+
+    def test_unreadable_owners_refuse(self):
+        def broken(domain):
+            raise RuntimeError("db down")
+
+        outcome = apply_provisioning_policy(
+            provider(provisioning="jit"),
+            IdentityDecision(Resolution.CREATE),
+            derived_username="dave@corp.com",
+            user_exists=nobody_exists,
+            providers_in_domain=broken,
+        )
+
+        assert outcome.allowed is False
+
+
+class TestWhoOwnsAnEmailDomain:
+    def test_bound_and_unbound_accounts_are_counted(self, tmp_path):
+        from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        store.create_user("legacy@corp.com", "Legacy")
+        store.create_user("bob@partner.example", "Bob")
+        store.user_identity_repo.link("entra", "sub-bob", "bob@partner.example")
+        store.create_user("x@notcorp.com", "Another domain")
+        repo = store.user_identity_repo
+
+        assert repo.providers_in_email_domain("corp.com") == {"default"}
+        with store.ManagedSessionMaker(read_only=False) as session:  # a row from before usernames were lowercased
+            from mlflow_oidc_auth.db.models import SqlUser
+
+            session.add(SqlUser(username="Old@Legacy.COM", display_name="Old", is_admin=False, is_service_account=False, active=True, managed_by="manual"))
+        assert repo.providers_in_email_domain("legacy.com") == {"default"}
+        assert repo.providers_in_email_domain("PARTNER.example") == {"entra"}
+        assert repo.providers_in_email_domain("unused.example") == set()
+        store.engine.dispose()

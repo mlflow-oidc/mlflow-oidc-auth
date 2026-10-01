@@ -50,6 +50,7 @@ from mlflow_oidc_auth.utils import (
 )
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
+from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
@@ -996,6 +997,7 @@ async def get_group_experiment_pattern_permissions(
                         priority=payload["priority"],
                         group_id=payload.get("group_id"),
                         permission=payload["permission"],
+                        workspace=payload.get("workspace"),
                     )
                 )
             else:
@@ -1006,6 +1008,7 @@ async def get_group_experiment_pattern_permissions(
                         priority=pattern.priority,
                         group_id=getattr(pattern, "group_id", None),
                         permission=pattern.permission,
+                        workspace=pattern_workspace_of(pattern),
                     )
                 )
 
@@ -1073,6 +1076,7 @@ async def get_group_experiment_pattern_permission(
                 priority=payload["priority"],
                 group_id=payload.get("group_id"),
                 permission=payload["permission"],
+                workspace=payload.get("workspace"),
             )
         else:
             item = GroupExperimentRegexPermissionItem(
@@ -1081,6 +1085,7 @@ async def get_group_experiment_pattern_permission(
                 priority=pattern.priority,
                 group_id=getattr(pattern, "group_id", None),
                 permission=pattern.permission,
+                workspace=pattern_workspace_of(pattern),
             )
 
         return item
@@ -1179,6 +1184,7 @@ async def get_group_registered_model_pattern_permissions(
                         priority=payload["priority"],
                         group_id=payload.get("group_id"),
                         permission=payload["permission"],
+                        workspace=payload.get("workspace"),
                         prompt=bool(payload.get("prompt", False)),
                     )
                 )
@@ -1190,6 +1196,7 @@ async def get_group_registered_model_pattern_permissions(
                         priority=pattern.priority,
                         group_id=getattr(pattern, "group_id", None),
                         permission=pattern.permission,
+                        workspace=pattern_workspace_of(pattern),
                         prompt=bool(getattr(pattern, "prompt", False)),
                     )
                 )
@@ -1258,6 +1265,7 @@ async def get_group_registered_model_pattern_permission(
                 priority=payload["priority"],
                 group_id=payload.get("group_id"),
                 permission=payload["permission"],
+                workspace=payload.get("workspace"),
                 prompt=bool(payload.get("prompt", False)),
             )
         else:
@@ -1267,6 +1275,7 @@ async def get_group_registered_model_pattern_permission(
                 priority=pattern.priority,
                 group_id=getattr(pattern, "group_id", None),
                 permission=pattern.permission,
+                workspace=pattern_workspace_of(pattern),
                 prompt=bool(getattr(pattern, "prompt", False)),
             )
 
@@ -1366,6 +1375,7 @@ async def get_group_prompt_pattern_permissions(
                         priority=payload["priority"],
                         group_id=payload.get("group_id"),
                         permission=payload["permission"],
+                        workspace=payload.get("workspace"),
                         prompt=bool(payload.get("prompt", False)),
                     )
                 )
@@ -1377,6 +1387,7 @@ async def get_group_prompt_pattern_permissions(
                         priority=pattern.priority,
                         group_id=getattr(pattern, "group_id", None),
                         permission=pattern.permission,
+                        workspace=pattern_workspace_of(pattern),
                         prompt=bool(getattr(pattern, "prompt", False)),
                     )
                 )
@@ -1445,6 +1456,7 @@ async def get_group_prompt_pattern_permission(
                 priority=payload["priority"],
                 group_id=payload.get("group_id"),
                 permission=payload["permission"],
+                workspace=payload.get("workspace"),
                 prompt=bool(payload.get("prompt", False)),
             )
         else:
@@ -1454,6 +1466,7 @@ async def get_group_prompt_pattern_permission(
                 priority=pattern.priority,
                 group_id=getattr(pattern, "group_id", None),
                 permission=pattern.permission,
+                workspace=pattern_workspace_of(pattern),
                 prompt=bool(getattr(pattern, "prompt", False)),
             )
 
@@ -1685,6 +1698,7 @@ async def get_group_scorer_pattern_permissions(
                         priority=payload["priority"],
                         group_id=payload.get("group_id"),
                         permission=payload["permission"],
+                        workspace=payload.get("workspace"),
                     )
                 )
             else:
@@ -1695,6 +1709,7 @@ async def get_group_scorer_pattern_permissions(
                         priority=pattern.priority,
                         group_id=getattr(pattern, "group_id", None),
                         permission=pattern.permission,
+                        workspace=pattern_workspace_of(pattern),
                     )
                 )
 
@@ -1759,6 +1774,7 @@ async def get_group_scorer_pattern_permission(
                 priority=payload["priority"],
                 group_id=payload.get("group_id"),
                 permission=payload["permission"],
+                workspace=payload.get("workspace"),
             )
         else:
             item = GroupScorerRegexPermissionItem(
@@ -1767,6 +1783,7 @@ async def get_group_scorer_pattern_permission(
                 priority=pattern.priority,
                 group_id=getattr(pattern, "group_id", None),
                 permission=pattern.permission,
+                workspace=pattern_workspace_of(pattern),
             )
 
         return item
@@ -1988,7 +2005,12 @@ async def get_group_gateway_endpoint_pattern_permissions(
     """List gateway endpoint pattern permissions for a group."""
     try:
         perms = store.list_group_gateway_endpoint_regex_permissions(group_name=group_name)
-        return [GroupGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission) for p in perms]
+        return [
+            GroupGatewayRegexPermissionItem(
+                id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission, workspace=pattern_workspace_of(p)
+            )
+            for p in perms
+        ]
     except Exception as e:
         logger.error(f"Error listing group gateway endpoint pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway endpoint pattern permissions")
@@ -2019,7 +2041,9 @@ async def create_group_gateway_endpoint_pattern_permission(
             resource_id=group_name,
             detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error creating group gateway endpoint pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create group gateway endpoint pattern permission")
@@ -2040,7 +2064,9 @@ async def get_group_gateway_endpoint_pattern_permission(
     """Get a gateway endpoint pattern permission for a group."""
     try:
         perm = store.get_group_gateway_endpoint_regex_permission(id=id, group_name=group_name)
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error getting group gateway endpoint pattern permission: {str(e)}")
         raise HTTPException(status_code=404, detail="Group gateway endpoint pattern permission not found")
@@ -2071,7 +2097,9 @@ async def update_group_gateway_endpoint_pattern_permission(
             resource_id=group_name,
             detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error updating group gateway endpoint pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update group gateway endpoint pattern permission")
@@ -2257,7 +2285,12 @@ async def get_group_gateway_model_definition_pattern_permissions(
     """List gateway model definition pattern permissions for a group."""
     try:
         perms = store.list_group_gateway_model_definition_regex_permissions(group_name=group_name)
-        return [GroupGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission) for p in perms]
+        return [
+            GroupGatewayRegexPermissionItem(
+                id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission, workspace=pattern_workspace_of(p)
+            )
+            for p in perms
+        ]
     except Exception as e:
         logger.error(f"Error listing group gateway model definition pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway model definition pattern permissions")
@@ -2288,7 +2321,9 @@ async def create_group_gateway_model_definition_pattern_permission(
             resource_id=group_name,
             detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error creating group gateway model definition pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create group gateway model definition pattern permission")
@@ -2309,7 +2344,9 @@ async def get_group_gateway_model_definition_pattern_permission(
     """Get a gateway model definition pattern permission for a group."""
     try:
         perm = store.get_group_gateway_model_definition_regex_permission(id=id, group_name=group_name)
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error getting group gateway model definition pattern permission: {str(e)}")
         raise HTTPException(status_code=404, detail="Group gateway model definition pattern permission not found")
@@ -2340,7 +2377,9 @@ async def update_group_gateway_model_definition_pattern_permission(
             resource_id=group_name,
             detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error updating group gateway model definition pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update group gateway model definition pattern permission")
@@ -2526,7 +2565,12 @@ async def get_group_gateway_secret_pattern_permissions(
     """List gateway secret pattern permissions for a group."""
     try:
         perms = store.list_group_gateway_secret_regex_permissions(group_name=group_name)
-        return [GroupGatewayRegexPermissionItem(id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission) for p in perms]
+        return [
+            GroupGatewayRegexPermissionItem(
+                id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission, workspace=pattern_workspace_of(p)
+            )
+            for p in perms
+        ]
     except Exception as e:
         logger.error(f"Error listing group gateway secret pattern permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve group gateway secret pattern permissions")
@@ -2557,7 +2601,9 @@ async def create_group_gateway_secret_pattern_permission(
             resource_id=group_name,
             detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error creating group gateway secret pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create group gateway secret pattern permission")
@@ -2578,7 +2624,9 @@ async def get_group_gateway_secret_pattern_permission(
     """Get a gateway secret pattern permission for a group."""
     try:
         perm = store.get_group_gateway_secret_regex_permission(id=id, group_name=group_name)
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error getting group gateway secret pattern permission: {str(e)}")
         raise HTTPException(status_code=404, detail="Group gateway secret pattern permission not found")
@@ -2609,7 +2657,9 @@ async def update_group_gateway_secret_pattern_permission(
             resource_id=group_name,
             detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
         )
-        return GroupGatewayRegexPermissionItem(id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission)
+        return GroupGatewayRegexPermissionItem(
+            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+        )
     except Exception as e:
         logger.error(f"Error updating group gateway secret pattern permission: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update group gateway secret pattern permission")
