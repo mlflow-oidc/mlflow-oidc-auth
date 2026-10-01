@@ -214,10 +214,13 @@ def can_create_mcp_server(username: str) -> bool:
         return get_permission(config.DEFAULT_MLFLOW_PERMISSION).can_update
 
     from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
     workspace = get_request_workspace()
-    effective = workspace or DEFAULT_WORKSPACE_NAME
+    # MLflow's resolved workspace for a request that names none: its default, which a workspace
+    # provider may call something other than ``default``.
+    effective = workspace or current_grant_workspace()
     if workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
         return False
     if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:

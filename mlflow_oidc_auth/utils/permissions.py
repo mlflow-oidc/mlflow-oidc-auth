@@ -633,19 +633,20 @@ def effective_mcp_server_permission(name: str, user: str) -> PermissionResult:
 
     User grant, then group grants (``PERMISSION_SOURCE_ORDER``), then — with workspaces enabled —
     the caller's permission on the request's workspace. A request that names no workspace is
-    served MLflow's default workspace registry, so it falls back to the caller's permission on the
-    default workspace rather than to ``DEFAULT_MLFLOW_PERMISSION``: the registry was workspace-gated
-    that way before servers had grants of their own, and a permissive global default must not
-    widen it. With workspaces disabled the global default applies, as for every resource.
+    served MLflow's default workspace registry, so it falls back to the caller's permission on that
+    workspace (``current_grant_workspace``) rather than to ``DEFAULT_MLFLOW_PERMISSION``: the
+    registry was workspace-gated that way before servers had grants of their own, and a permissive
+    global default must not widen it. With workspaces disabled the global default applies, as for every resource.
     """
     result = resolve_permission(MCP_SERVER, name, user)
     if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
         return result
-    from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
-
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
-    ws_perm = get_workspace_permission_cached(user, DEFAULT_WORKSPACE_NAME)
+    # The workspace MLflow serves the request from — its default, which a workspace provider may
+    # name differently from ``default`` — the same one the grants were just looked up in.
+    ws_perm = get_workspace_permission_cached(user, current_grant_workspace())
     if ws_perm is not None:
         return PermissionResult(ws_perm, "workspace")
     return PermissionResult(NO_PERMISSIONS, "workspace-deny")

@@ -594,6 +594,23 @@ class TestSearchIsFiltered:
         assert b"com.example" not in result.body
 
 
+class TestHeaderlessFallbackUsesMlflowsWorkspace:
+    def test_the_fallback_is_the_workspace_mlflow_serves_not_the_literal_default(self, store, monkeypatch):
+        """A workspace provider whose default is ``main``: a header-less request is served ``main``'s
+        registry, so MANAGE on a workspace literally named ``default`` must not reach it."""
+        from mlflow_oidc_auth.utils.permissions import effective_mcp_server_permission
+
+        monkeypatch.setattr("mlflow.utils.workspace_context.get_request_workspace", lambda: "main")
+        store.create_workspace_permission("default", ALICE, "MANAGE")
+        store.create_workspace_permission("main", BOB, "READ")
+        _clear_cache()
+
+        with _as(ALICE, None):
+            assert effective_mcp_server_permission(SERVER, ALICE).permission.name == "NO_PERMISSIONS"
+        with _as(BOB, None):
+            assert effective_mcp_server_permission(SERVER, BOB).permission.name == "READ"
+
+
 class TestWorkspacesDisabled:
     def test_one_registry_and_server_grants_still_decide(self, api, store, registry, monkeypatch):
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
