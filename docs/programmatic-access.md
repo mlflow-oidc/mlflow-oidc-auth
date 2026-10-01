@@ -103,9 +103,12 @@ short-lived token and send it as a bearer token. For such a token to authenticat
      on the **Service Accounts** page or with `POST /api/2.0/mlflow/users` and
      `"is_service_account": true` ([API reference](api-reference#user-management)), then grants
      it permissions. This is the usual answer for a service principal, whose token rarely carries
-     a groups claim; or
+     a groups claim. With several providers configured, a token from any of them reaches it as
+     long as it is not an administrator and no identity is bound to it; or
    - **let the first request create it** with `OIDC_PROVISION_ON_BEARER_AUTH=true`. The account
-     is created only when the validating provider pins both audience and issuer and the token's
+     is bound to the token's `(provider, sub)`, so derive the username from a stable subject; with
+     several providers, a provider other than `default` writes its groups as `<provider-id>:<group>`
+     and grants must name them that way. The account is created only when the validating provider pins both audience and issuer and the token's
      own groups claim (`OIDC_GROUPS_ATTRIBUTE`, or `OIDC_GROUP_DETECTION_PLUGIN`) passes the same
      `OIDC_GROUP_NAME` / `OIDC_GROUP_NAME_PATTERN` / `OIDC_ADMIN_GROUP_NAME` gate as a browser login
      from that provider, and only for a provider with `provisioning: jit`. Its groups are written as

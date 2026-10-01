@@ -56,6 +56,49 @@ class UserIdentityRepository:
             rows = session.query(SqlUserIdentity.provider_id).join(SqlUser, SqlUserIdentity.user_id == SqlUser.id).filter(SqlUser.username == username).all()
             return [row[0] for row in rows]
 
+    def list_identities_for_username(self, username: str) -> List[tuple]:
+        """``[(provider_id, subject), ...]`` bound to ``username``, oldest first."""
+        username = normalize_username(username)
+        with self._Session() as session:
+            rows = (
+                session.query(SqlUserIdentity.provider_id, SqlUserIdentity.subject)
+                .join(SqlUser, SqlUserIdentity.user_id == SqlUser.id)
+                .filter(SqlUser.username == username)
+                .order_by(SqlUserIdentity.id)
+                .all()
+            )
+            return [(row[0], row[1]) for row in rows]
+
+    def has_real_binding(self, username: str) -> bool:
+        """Whether an identity a login (or bearer provisioning) bound names ``username``.
+
+        The placeholder the identity migration recorded for every account that existed then —
+        ``default`` with the username as its subject — does not count: it says nothing about
+        which identity the account belongs to.
+        """
+        from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
+
+        name = normalize_username(username)
+        return any(not (provider == DEFAULT_PROVIDER_ID and subject == name) for provider, subject in self.list_identities_for_username(name))
+
+    def unlink(self, provider_id: str, subject: str, username: str) -> bool:
+        """Remove the binding of ``(provider_id, subject)`` to ``username``. Returns whether one was removed."""
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
+            removed = (
+                session.query(SqlUserIdentity)
+                .filter(
+                    SqlUserIdentity.provider_id == provider_id,
+                    SqlUserIdentity.subject == subject,
+                    SqlUserIdentity.user_id.in_(session.query(SqlUser.id).filter(SqlUser.username == username)),
+                )
+                .delete(synchronize_session=False)
+            )
+        from mlflow_oidc_auth.utils.bearer_identity_cache import flush_bearer_identity_cache
+
+        flush_bearer_identity_cache()
+        return bool(removed)
+
     def providers_in_email_domain(self, domain: str) -> Set[str]:
         """The providers whose identities own accounts named by an address in ``domain``.
 

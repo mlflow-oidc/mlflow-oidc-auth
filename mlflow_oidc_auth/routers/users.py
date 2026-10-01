@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
@@ -49,6 +49,7 @@ USERS_DETAILS = "/details"
 USER_ACTIVE = "/{username}/active"
 USER_SESSIONS = "/{username}/sessions"
 USER_SESSION = "/{username}/sessions/{session_pk}"
+USER_IDENTITIES = "/{username}/identities"
 USER_TOKENS = "/current/tokens"
 USER_TOKEN = "/current/tokens/{token_id}"
 USER_TOKENS_OF = "/{username}/tokens"
@@ -898,3 +899,49 @@ async def revoke_user_tokens(username: str, admin_username: str = Depends(check_
         detail={"tokens": count, "reason": "admin_revoke_all"},
     )
     return JSONResponse(content={"revoked": count})
+
+
+@users_router.get(
+    USER_IDENTITIES,
+    summary="List a user's identity bindings",
+    description="Lists the (provider, subject) identities bound to a user. Admin only.",
+)
+async def list_user_identities(username: str, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """The identities that reach ``username``: each ``{"provider_id", "subject"}``, oldest first.
+
+    Raises:
+        HTTPException: 404 for an unknown user.
+    """
+    if not store.has_user(username):
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+    identities = store.user_identity_repo.list_identities_for_username(username)
+    return JSONResponse(content=[{"provider_id": provider_id, "subject": subject} for provider_id, subject in identities])
+
+
+@users_router.delete(
+    USER_IDENTITIES,
+    summary="Remove an identity binding from a user",
+    description="Unbinds one (provider, subject) identity from a user, so a changed subject can be bound "
+    "again on the next login (or first bearer use, for a provider with bearer_adopts_unbound_accounts). Admin only.",
+)
+async def delete_user_identity(
+    username: str,
+    provider_id: str = Query(..., description="The provider the identity belongs to"),
+    subject: str = Query(..., description="The provider's subject (sub) for the principal"),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """Remove one identity binding, audited. The subject goes in the query: it may contain ``/``.
+
+    Raises:
+        HTTPException: 404 when no such binding names the user.
+    """
+    if not store.user_identity_repo.unlink(provider_id, subject, username):
+        raise HTTPException(status_code=404, detail="No such identity is bound to this user")
+    emit_audit_event(
+        "user.identity_unbound",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=username,
+        detail={"provider": provider_id},
+    )
+    return JSONResponse(content={"deleted": 1})

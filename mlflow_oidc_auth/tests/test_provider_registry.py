@@ -742,6 +742,36 @@ class TestPublicClient:
         assert build(app_config=legacy_app_config(OIDC_PUBLIC_CLIENT="true")).providers[0].public_client is False
 
 
+class TestBearerAdoptsUnboundAccounts:
+    """``bearer_adopts_unbound_accounts``: opt-in, strict about its type, OIDC only, never ``default``."""
+
+    def test_it_defaults_to_false_and_may_be_opted_into(self):
+        assert build([valid_entry()]).providers[0].bearer_adopts_unbound_accounts is False
+        result = build([valid_entry(bearer_adopts_unbound_accounts=True)])
+
+        assert result.errors == []
+        assert result.providers[0].bearer_adopts_unbound_accounts is True
+
+    @pytest.mark.parametrize("bad_value", ["true", 1, None, []])
+    def test_a_non_boolean_is_refused(self, bad_value):
+        result = build([valid_entry(bearer_adopts_unbound_accounts=bad_value)])
+
+        assert result.providers == []
+        assert any("'bearer_adopts_unbound_accounts' must be true or false" in error for error in result.errors)
+
+    def test_it_is_refused_on_a_k8s_provider(self):
+        result = build([valid_entry(type="k8s", in_cluster=True, bearer_adopts_unbound_accounts=True)])
+
+        assert result.providers == []
+        assert any("'bearer_adopts_unbound_accounts' applies only to an 'oidc' provider" in error for error in result.errors)
+
+    def test_it_is_refused_on_the_default_provider(self):
+        result = build([valid_entry(id="default", bearer_adopts_unbound_accounts=True)])
+
+        assert result.providers == []
+        assert any("does not apply to the 'default' provider" in error for error in result.errors)
+
+
 class TestUserinfoGroups:
     """``userinfo_groups`` lets UserInfo supply the groups and workspace claims. Opt-in, strict
     about its type, and refused on a provider type that has no UserInfo endpoint."""

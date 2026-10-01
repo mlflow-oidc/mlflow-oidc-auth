@@ -263,3 +263,127 @@ class TestDecisionsAreCached:
         store.create_user(BOB, "Another Bob")  # not bound yet: nothing else flushes the cache
 
         assert authenticate(PARTNER, claims) is None
+
+
+class TestAutomationKeepsWorking:
+    """Automated tokens — a CI job's or a service principal's — reach the service account an
+    administrator created for them, as the programmatic-access guide sets them up, from any provider."""
+
+    def test_a_service_principal_reaches_its_admin_created_service_account(self, store, providers):
+        store.create_user("ci-bot", "CI bot", is_service_account=True)
+
+        assert authenticate(PARTNER, {"sub": "partner-client-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+
+    def test_a_kubernetes_service_account_is_its_cluster_providers_alone(self, store, providers):
+        store.create_user("trainer.ml@serviceaccount.cluster.local", "ml/trainer", is_service_account=True, written_by="oidc:cluster")
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "email": "trainer.ml@serviceaccount.cluster.local"}) is None
+
+    def test_an_admin_service_account_is_not_reachable_this_way(self, store, providers):
+        store.create_user("root-bot", "Root bot", is_admin=True, is_service_account=True)
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "root-bot"}) is None
+
+    def test_a_service_account_bound_to_another_provider_is_refused(self, store, providers):
+        store.create_user("bound-bot", "Bound bot", is_service_account=True)
+        store.user_identity_repo.link("default", "corp-bound-bot", "bound-bot")
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "bound-bot"}) is None
+
+    def test_a_human_account_is_still_refused(self, store, providers):
+        assert authenticate(PARTNER, {"sub": "partner-x", "email": LEGACY}) is None
+
+    def test_a_service_account_from_before_identities_were_recorded_is_reachable(self, store, providers):
+        """The identity migration gave every account then a placeholder (default, username): not a binding."""
+        store.create_user("old-bot", "Old bot", is_service_account=True)
+        store.user_identity_repo.link("default", "old-bot", "old-bot")  # the migration's placeholder
+
+        assert authenticate(PARTNER, {"sub": "partner-client-old", "preferred_username": "old-bot"}) == "old-bot"
+
+    def test_an_email_bound_providers_token_without_email_reaches_its_service_account(self, store, providers):
+        by_email = _provider("partner", identity_binding="email", allowed_email_domains=["partner.example"])
+        providers(DEFAULT, by_email)
+        store.create_user("ci-bot", "CI bot", is_service_account=True)
+
+        assert authenticate(by_email, {"sub": "client-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+
+
+class TestAProviderThatAdoptsUnboundAccounts:
+    """``bearer_adopts_unbound_accounts``: an account this provider's bearer provisioning created before
+    identities were bound (unbound, not a service account) is reached and bound on first use."""
+
+    ADOPTING = _provider("partner", bearer_adopts_unbound_accounts=True)
+
+    def test_without_the_setting_such_an_account_is_refused(self, store, providers):
+        store.create_user("ci-runner@partner.example", "CI runner")
+
+        assert authenticate(PARTNER, {"sub": "partner-ci", "email": "ci-runner@partner.example"}) is None
+
+    def test_with_it_the_account_is_reached_and_bound_to_the_token(self, store, providers):
+        providers(DEFAULT, self.ADOPTING)
+        store.create_user("ci-runner@partner.example", "CI runner")
+
+        assert authenticate(self.ADOPTING, {"sub": "partner-ci", "email": "ci-runner@partner.example"}) == "ci-runner@partner.example"
+        assert store.user_identity_repo.get_username_by_identity("partner", "partner-ci") == "ci-runner@partner.example"
+        # Bound now: another subject asserting the same name is refused.
+        assert authenticate(self.ADOPTING, {"sub": "partner-other", "email": "ci-runner@partner.example"}) is None
+
+    def test_an_account_with_a_real_binding_or_an_admin_is_not_adopted(self, store, providers):
+        providers(DEFAULT, self.ADOPTING)
+
+        assert authenticate(self.ADOPTING, {"sub": "partner-x", "email": ADMIN}) is None  # bound to default, and an admin
+        assert authenticate(self.ADOPTING, {"sub": "partner-y", "email": BOB}) is None  # bound to partner's other subject
+
+
+class TestAnAdministratorUnbindsAnIdentity:
+    """A subject that changed (a re-created client, a workflow moved to an environment) locks its
+    account out; an administrator removes the old binding so the new subject can be bound."""
+
+    @pytest.fixture
+    def users_api(self, store, monkeypatch):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        import mlflow_oidc_auth.dependencies as dependencies
+        import mlflow_oidc_auth.routers.users as users_router
+
+        caller = {"username": "root@corp.example", "admin": True}
+
+        async def username(request=None):
+            return caller["username"]
+
+        async def is_admin(request=None):
+            return caller["admin"]
+
+        monkeypatch.setattr(dependencies, "get_username", username)
+        monkeypatch.setattr(dependencies, "get_is_admin", is_admin)
+        app = FastAPI()
+        app.include_router(users_router.users_router)
+        with TestClient(app) as client:
+            client.caller = caller
+            yield client
+
+    def test_listing_and_unbinding_lets_a_new_subject_bind_on_adoption(self, store, providers, users_api):
+        adopting = _provider("partner", bearer_adopts_unbound_accounts=True)
+        providers(DEFAULT, adopting)
+        github = "repo:org/app:ref:refs/heads/main"
+
+        assert users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities").json() == [{"provider_id": "partner", "subject": "partner-bob-sub"}]
+        response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "partner-bob-sub"})
+        assert response.status_code == 200, response.text
+
+        assert authenticate(adopting, {"sub": github, "email": BOB}) == BOB
+        assert store.user_identity_repo.get_username_by_identity("partner", github) == BOB
+
+    def test_an_unknown_binding_is_404(self, store, providers, users_api):
+        response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "nope"})
+
+        assert response.status_code == 404
+
+    def test_a_non_admin_can_do_neither(self, store, providers, users_api):
+        users_api.caller.update(username=BOB, admin=False)
+
+        assert users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities").status_code == 403
+        response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "partner-bob-sub"})
+        assert response.status_code == 403
+        assert store.user_identity_repo.get_username_by_identity("partner", "partner-bob-sub") == BOB
