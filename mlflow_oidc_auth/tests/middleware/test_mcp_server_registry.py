@@ -353,7 +353,8 @@ class TestCreate:
         store.update_workspace_permission("team-a", BOB, "EDIT")
         _clear_cache()
 
-        assert api.bob.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 403
+        response = api.bob.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 403
         assert registry.servers == {}
 
     def test_read_on_the_workspace_cannot_create(self, api, store, members, registry):
@@ -370,10 +371,12 @@ class TestCreate:
         assert registry.servers == {}
 
     def test_no_workspace_named_is_judged_against_default(self, api, store, members, registry):
-        assert api.alice.post(API, json={"name": SERVER}).status_code == 403
+        response = api.alice.post(API, json={"name": SERVER})
+        assert response.status_code == 403
         store.create_workspace_permission("default", ALICE, "MANAGE")
         _clear_cache()
-        assert api.alice.post(API, json={"name": SERVER}).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER})
+        assert response.status_code == 200
         assert _grants(store) == [(ALICE, SERVER, "default", "MANAGE")]
 
     def test_no_grant_when_mlflow_refuses_the_create(self, api, store, members, registry):
@@ -385,7 +388,8 @@ class TestCreate:
         assert _grants(store) == []
 
     def test_a_version_on_a_new_server_is_a_creation(self, api, store, members, registry):
-        assert api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
+        response = api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
         assert registry.servers == {}
         # Someone manages the name already, so the race recheck below is not the admin-only
         # rule for servers nobody manages (TestServersFromBeforePermissions).
@@ -442,7 +446,8 @@ class TestCreate:
         monkeypatch.setattr(config, "RESTRICT_RESOURCE_CREATION", True)
         _clear_cache()
 
-        assert api.alice.post(API, json={"name": SERVER}).status_code == 403
+        response = api.alice.post(API, json={"name": SERVER})
+        assert response.status_code == 403
         assert registry.servers == {}
 
 
@@ -454,28 +459,41 @@ class TestCreate:
 class TestPerServerChecks:
     @pytest.fixture
     def alices_server(self, api, store, members, registry):
-        assert api.alice.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200
         return SERVER
 
     def test_the_creator_reads_writes_and_deletes(self, api, store, alices_server, registry):
-        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
-        assert api.alice.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a")).status_code == 200
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
-        assert api.alice.delete(f"{API}/{SERVER}/tags/k", headers=ws("team-a")).status_code == 200
-        assert api.alice.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
+        response = api.alice.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.delete(f"{API}/{SERVER}/tags/k", headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.delete(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
         # The grants go with the server.
         assert _grants(store) == []
 
     def test_the_server_carries_allowed_actions(self, api, store, alices_server):
-        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).json()["allowed_actions"] == ["USE", "UPDATE", "DELETE", "MANAGE"]
-        assert api.bob.get(f"{API}/{SERVER}", headers=ws("team-a")).json()["allowed_actions"] == []
+        response = api.alice.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.json()["allowed_actions"] == ["USE", "UPDATE", "DELETE", "MANAGE"]
+        response = api.bob.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.json()["allowed_actions"] == []
 
     def test_workspace_read_reads_but_does_not_write_or_delete(self, api, store, alices_server, registry):
-        assert api.bob.get(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
-        assert api.bob.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a")).status_code == 403
-        assert api.bob.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
-        assert api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
-        assert api.bob.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 403
+        response = api.bob.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.bob.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.delete(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 403
         assert registry.servers[("team-a", SERVER)]["tags"] == {}
 
     def test_edit_writes_but_does_not_delete(self, api, store, alices_server, registry):
@@ -483,10 +501,13 @@ class TestPerServerChecks:
             store.create_mcp_server_permission(SERVER, BOB, "EDIT")
         _clear_cache()
 
-        assert api.bob.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a")).status_code == 200
+        response = api.bob.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a"))
+        assert response.status_code == 200
         # MLflow's own plugin: every DELETE on a server's routes needs MANAGE (can_delete).
-        assert api.bob.delete(f"{API}/{SERVER}/tags/k", headers=ws("team-a")).status_code == 403
-        assert api.bob.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 403
+        response = api.bob.delete(f"{API}/{SERVER}/tags/k", headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.delete(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 403
         assert ("team-a", SERVER) in registry.servers
 
     def test_a_non_member_without_a_grant_gets_nothing(self, api, store, alices_server, monkeypatch):
@@ -500,10 +521,14 @@ class TestPerServerChecks:
         _clear_cache()
         headers = {**basic(carol, "mcp-carol-pw"), **ws("team-a")}
         client = api.alice
-        assert client.get(f"{API}/{SERVER}", headers=headers).status_code == 403
-        assert client.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=headers).status_code == 403
-        assert client.delete(f"{API}/{SERVER}", headers=headers).status_code == 403
-        assert client.get(API, headers=headers).status_code == 403  # searching needs the workspace
+        response = client.get(f"{API}/{SERVER}", headers=headers)
+        assert response.status_code == 403
+        response = client.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=headers)
+        assert response.status_code == 403
+        response = client.delete(f"{API}/{SERVER}", headers=headers)
+        assert response.status_code == 403
+        response = client.get(API, headers=headers)
+        assert response.status_code == 403  # searching needs the workspace
 
     def test_a_grant_shares_a_server_with_a_non_member(self, api, store, alices_server):
         """As for every resource here: a grant on the server applies without workspace membership."""
@@ -518,18 +543,25 @@ class TestPerServerChecks:
         _clear_cache()
         headers = {**basic(carol, "mcp-carol-pw"), **ws("team-a")}
 
-        assert api.alice.get(f"{API}/{SERVER}", headers=headers).status_code == 200
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=headers).status_code == 403
+        response = api.alice.get(f"{API}/{SERVER}", headers=headers)
+        assert response.status_code == 200
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=headers)
+        assert response.status_code == 403
         # Reached by name; searching the workspace's registry is for its members.
-        assert api.alice.get(API, headers=headers).status_code == 403
+        response = api.alice.get(API, headers=headers)
+        assert response.status_code == 403
 
     def test_the_ajax_prefix_is_judged_the_same(self, api, store, alices_server):
-        assert api.bob.patch(f"{AJAX}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
-        assert api.alice.patch(f"{AJAX}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
+        response = api.bob.patch(f"{AJAX}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.alice.patch(f"{AJAX}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
 
     def test_admin_bypasses_and_an_admin_delete_takes_the_grants_too(self, api, store, alices_server, registry):
-        assert api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
-        assert api.admin.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
+        response = api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.admin.delete(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
         assert _grants(store) == []
 
 
@@ -548,11 +580,16 @@ class TestServersFromBeforePermissions:
         _clear_cache()
 
     def test_a_workspace_manager_reads_it_but_cannot_change_delete_or_share_it(self, api, store, curated, registry):
-        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
-        assert api.alice.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a")).status_code == 403
-        assert api.alice.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
-        assert api.alice.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 403
+        response = api.alice.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.alice.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.alice.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.alice.delete(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 403
         grant = api.alice.post(f"{USERS}/{ALICE}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a"))
         assert grant.status_code == 403
         assert _grants(store) == []
@@ -560,38 +597,51 @@ class TestServersFromBeforePermissions:
 
     def test_a_lesser_grant_does_not_open_it_to_the_workspace(self, api, store, curated, registry):
         """READ for one person — or NO_PERMISSIONS to shut one out — must not unlock it for everyone."""
-        assert api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 201
+        response = api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a"))
+        assert response.status_code == 201
         _clear_cache()
 
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
-        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).json()["allowed_actions"] == ["USE"]
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.alice.get(f"{API}/{SERVER}", headers=ws("team-a"))
+        assert response.json()["allowed_actions"] == ["USE"]
 
     def test_admins_still_change_it_and_a_manage_grant_brings_normal_rules(self, api, store, curated, registry):
-        assert api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
-        assert api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a")).status_code == 201
+        response = api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a"))
+        assert response.status_code == 201
         _clear_cache()
 
         # Managed now: Alice's MANAGE on the workspace reaches it like any other server.
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
 
 
 class TestSameNameInAnotherWorkspace:
     def test_a_grant_on_team_as_server_gives_nothing_on_team_bs(self, api, store, members, registry):
-        assert api.alice.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200
         registry.add(SERVER, "someone-else", workspace="team-b")
         _clear_cache()
 
-        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-b")).status_code == 403
-        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-b")).status_code == 403
-        assert api.alice.delete(f"{API}/{SERVER}", headers=ws("team-b")).status_code == 403
-        assert api.alice.get(API, headers=ws("team-b")).status_code == 403  # not a member of team-b
+        response = api.alice.get(f"{API}/{SERVER}", headers=ws("team-b"))
+        assert response.status_code == 403
+        response = api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-b"))
+        assert response.status_code == 403
+        response = api.alice.delete(f"{API}/{SERVER}", headers=ws("team-b"))
+        assert response.status_code == 403
+        response = api.alice.get(API, headers=ws("team-b"))
+        assert response.status_code == 403  # not a member of team-b
         assert ("team-b", SERVER) in registry.servers
 
     def test_deleting_team_bs_namesake_leaves_team_as_grants(self, api, store, members, registry):
-        assert api.alice.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200
         registry.add(SERVER, "someone-else", workspace="team-b")
 
-        assert api.admin.delete(f"{API}/{SERVER}", headers=ws("team-b")).status_code == 200
+        response = api.admin.delete(f"{API}/{SERVER}", headers=ws("team-b"))
+        assert response.status_code == 200
 
         assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
 
@@ -608,8 +658,10 @@ class TestSearchNeedsTheWorkspace:
     def test_a_non_member_cannot_search_another_workspaces_registry(self, api, store, members, registry):
         registry.add(SERVER, "an-admin", workspace="team-b")
 
-        assert api.alice.get(API, headers=ws("team-b")).status_code == 403
-        assert api.alice.get(f"{API}/endpoints", headers=ws("team-b")).status_code == 403
+        response = api.alice.get(API, headers=ws("team-b"))
+        assert response.status_code == 403
+        response = api.alice.get(f"{API}/endpoints", headers=ws("team-b"))
+        assert response.status_code == 403
 
     def test_a_member_searches_and_sees_only_readable_servers(self, api, store, members, registry):
         registry.add(SERVER, "an-admin", workspace="team-a")
@@ -642,14 +694,17 @@ class TestSearchIsFiltered:
             store.create_group_mcp_server_permission("team", "com.example/one", "EDIT")
         _clear_cache()
 
-        assert [s["name"] for s in api.bob.get(API, headers=ws("team-a")).json()["mcp_servers"]] == ["com.example/one"]
-        assert api.bob.patch(f"{API}/com.example/one", json={}, headers=ws("team-a")).status_code == 200
+        response = api.bob.get(API, headers=ws("team-a"))
+        assert [s["name"] for s in response.json()["mcp_servers"]] == ["com.example/one"]
+        response = api.bob.patch(f"{API}/com.example/one", json={}, headers=ws("team-a"))
+        assert response.status_code == 200
 
     def test_admin_sees_everything(self, api, store, registry):
         registry.add("com.example/one", ADMIN, workspace="team-a")
         registry.add("com.example/two", ADMIN, workspace="team-a")
 
-        assert len(api.admin.get(API, headers=ws("team-a")).json()["mcp_servers"]) == 2
+        response = api.admin.get(API, headers=ws("team-a"))
+        assert len(response.json()["mcp_servers"]) == 2
 
     def test_an_unfilterable_body_is_an_error_not_the_list(self):
         import asyncio
@@ -686,12 +741,16 @@ class TestWorkspacesDisabled:
     def test_one_registry_and_server_grants_still_decide(self, api, store, registry, monkeypatch):
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
         _clear_cache()
-        assert api.alice.post(API, json={"name": SERVER}).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER})
+        assert response.status_code == 200
 
         # Bob has no grant and the global default is NO_PERMISSIONS.
-        assert api.bob.get(f"{API}/{SERVER}").status_code == 403
-        assert api.bob.get(API).json()["mcp_servers"] == []
-        assert api.alice.delete(f"{API}/{SERVER}").status_code == 200
+        response = api.bob.get(f"{API}/{SERVER}")
+        assert response.status_code == 403
+        response = api.bob.get(API)
+        assert response.json()["mcp_servers"] == []
+        response = api.alice.delete(f"{API}/{SERVER}")
+        assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -702,7 +761,8 @@ class TestWorkspacesDisabled:
 class TestPermissionApi:
     @pytest.fixture
     def alices_server(self, api, store, members, registry):
-        assert api.alice.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 200
+        response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200
         return SERVER
 
     def test_the_manager_shares_and_revokes(self, api, store, alices_server):
@@ -713,27 +773,41 @@ class TestPermissionApi:
         users = api.alice.get(f"{PERMS}/{SERVER}/users", headers=ws("team-a")).json()
         assert sorted((u["name"], u["permission"]) for u in users) == [(ALICE, "MANAGE"), (BOB, "EDIT")]
 
-        assert api.alice.patch(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 200
-        assert api.alice.get(f"{USERS}/{BOB}/mcp-servers/{SERVER}", headers=ws("team-a")).json()["permission"] == "READ"
-        assert api.alice.delete(f"{USERS}/{BOB}/mcp-servers/{SERVER}", headers=ws("team-a")).status_code == 200
+        response = api.alice.patch(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.get(f"{USERS}/{BOB}/mcp-servers/{SERVER}", headers=ws("team-a"))
+        assert response.json()["permission"] == "READ"
+        response = api.alice.delete(f"{USERS}/{BOB}/mcp-servers/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
         assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
 
     def test_group_grants(self, api, store, alices_server):
-        assert api.alice.post(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 201
+        response = api.alice.post(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a"))
+        assert response.status_code == 201
         groups = api.alice.get(f"{PERMS}/{SERVER}/groups", headers=ws("team-a")).json()
         assert [(g["name"], g["permission"]) for g in groups] == [("team", "READ")]
-        assert api.alice.patch(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "EDIT"}, headers=ws("team-a")).status_code == 200
-        assert api.alice.get(f"{GROUPS}/team/mcp-servers/{SERVER}", headers=ws("team-a")).json()["permission"] == "EDIT"
-        assert [g["name"] for g in api.alice.get(f"{GROUPS}/team/mcp-servers", headers=ws("team-a")).json()] == [SERVER]
-        assert api.alice.delete(f"{GROUPS}/team/mcp-servers/{SERVER}", headers=ws("team-a")).status_code == 200
-        assert api.alice.get(f"{PERMS}/{SERVER}/groups", headers=ws("team-a")).json() == []
+        response = api.alice.patch(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "EDIT"}, headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.get(f"{GROUPS}/team/mcp-servers/{SERVER}", headers=ws("team-a"))
+        assert response.json()["permission"] == "EDIT"
+        response = api.alice.get(f"{GROUPS}/team/mcp-servers", headers=ws("team-a"))
+        assert [g["name"] for g in response.json()] == [SERVER]
+        response = api.alice.delete(f"{GROUPS}/team/mcp-servers/{SERVER}", headers=ws("team-a"))
+        assert response.status_code == 200
+        response = api.alice.get(f"{PERMS}/{SERVER}/groups", headers=ws("team-a"))
+        assert response.json() == []
 
     def test_without_manage_nothing_can_be_granted_or_listed(self, api, store, alices_server):
-        assert api.bob.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a")).status_code == 403
-        assert api.bob.post(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a")).status_code == 403
-        assert api.bob.get(f"{PERMS}/{SERVER}/users", headers=ws("team-a")).status_code == 403
-        assert api.bob.get(f"{PERMS}/{SERVER}/groups", headers=ws("team-a")).status_code == 403
-        assert api.bob.get(PERMS, headers=ws("team-a")).json() == []
+        response = api.bob.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.post(f"{GROUPS}/team/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.get(f"{PERMS}/{SERVER}/users", headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.get(f"{PERMS}/{SERVER}/groups", headers=ws("team-a"))
+        assert response.status_code == 403
+        response = api.bob.get(PERMS, headers=ws("team-a"))
+        assert response.json() == []
         assert (BOB, SERVER, "team-a", "MANAGE") not in _grants(store)
 
     def test_managing_team_as_server_gives_no_say_over_team_bs_namesake(self, api, store, alices_server, registry):
@@ -753,14 +827,18 @@ class TestPermissionApi:
     def test_listing_servers(self, api, store, alices_server, registry):
         registry.add("com.example/other", ADMIN, workspace="team-a")
 
-        assert [s["name"] for s in api.alice.get(PERMS, headers=ws("team-a")).json()] == [SERVER]
-        assert sorted(s["name"] for s in api.admin.get(PERMS, headers=ws("team-a")).json()) == ["com.example/other", SERVER]
+        response = api.alice.get(PERMS, headers=ws("team-a"))
+        assert [s["name"] for s in response.json()] == [SERVER]
+        response = api.admin.get(PERMS, headers=ws("team-a"))
+        assert sorted(s["name"] for s in response.json()) == ["com.example/other", SERVER]
         listed = api.alice.get(f"{USERS}/{ALICE}/mcp-servers", headers=ws("team-a")).json()
         assert {s["name"]: s["permission"] for s in listed} == {SERVER: "MANAGE", "com.example/other": "MANAGE"}
 
     def test_an_invalid_level_is_400_and_a_duplicate_409(self, api, store, alices_server):
-        assert api.alice.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "OWNER"}, headers=ws("team-a")).status_code == 400
-        assert api.alice.post(f"{USERS}/{ALICE}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 409
+        response = api.alice.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "OWNER"}, headers=ws("team-a"))
+        assert response.status_code == 400
+        response = api.alice.post(f"{USERS}/{ALICE}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a"))
+        assert response.status_code == 409
 
 
 # ---------------------------------------------------------------------------

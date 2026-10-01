@@ -368,7 +368,8 @@ class TestAnAdministratorUnbindsAnIdentity:
         providers(DEFAULT, adopting)
         github = "repo:org/app:ref:refs/heads/main"
 
-        assert users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities").json() == [{"provider_id": "partner", "subject": "partner-bob-sub"}]
+        response = users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities")
+        assert response.json() == [{"provider_id": "partner", "subject": "partner-bob-sub"}]
         response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "partner-bob-sub"})
         assert response.status_code == 200, response.text
 
@@ -383,7 +384,8 @@ class TestAnAdministratorUnbindsAnIdentity:
     def test_a_non_admin_can_do_neither(self, store, providers, users_api):
         users_api.caller.update(username=BOB, admin=False)
 
-        assert users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities").status_code == 403
+        response = users_api.get(f"/api/2.0/mlflow/users/{BOB}/identities")
+        assert response.status_code == 403
         response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "partner-bob-sub"})
         assert response.status_code == 403
         assert store.user_identity_repo.get_username_by_identity("partner", "partner-bob-sub") == BOB
