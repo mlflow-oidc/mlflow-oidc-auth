@@ -80,7 +80,7 @@ them and the others change nothing:
 | Workspaces | What happens to an existing grant |
 |---|---|
 | Disabled | It is assigned `default`. |
-| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ`. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there even without a workspace permission. |
+| Enabled | It is kept in each workspace that has a resource of that name **and** where the grantee already has at least `READ`. The `default` workspace is the exception: it holds the resources from before workspaces were enabled, so a grant on a name found there is kept there when the grantee reaches no workspace holding that name. A grantee who reaches another such workspace keeps the grant only there — a tenant who created a same-named resource in their own workspace does not come away owning `default`'s. |
 | Enabled, no such workspace, or the resource no longer exists | It is marked **unresolved**: it matches nothing — with workspaces disabled too — and is never placed later, so a resource created afterwards does not pick it up. It is listed in a startup warning and a `permission.workspace_unresolved` audit event. Re-grant it in the right workspace. |
 
 An old grant reached every workspace's resource of its name — including ones another tenant created

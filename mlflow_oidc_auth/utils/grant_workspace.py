@@ -33,28 +33,28 @@ UNRESOLVED_WORKSPACE = "::unresolved"
 def current_grant_workspace() -> str:
     """The workspace grants are read and written in for the current request.
 
-    The request's ``AuthContext`` names it where one is available — Flask routes, and the FastAPI
-    routes the permission middleware bridges. Elsewhere (this plugin's own permission API routes)
-    it is the workspace MLflow resolved for the request, which ``WorkspaceContextMiddleware`` sets
-    for every request from the same header. Both treat a missing header as the default workspace.
+    A workspace the request names (``X-MLFLOW-WORKSPACE``) comes from its ``AuthContext`` where one
+    is available — Flask routes, and the FastAPI routes the permission middleware bridges. When the
+    request names none, or has no ``AuthContext`` (this plugin's own permission API routes), it is
+    the workspace MLflow serves the request from: the one ``WorkspaceContextMiddleware`` resolved
+    from the same header, else MLflow's own fallback (its default workspace, or ``MLFLOW_WORKSPACE``
+    with a workspace provider that has no default). So a grant is always recorded and looked up in
+    the workspace MLflow reads and writes the resource in.
 
     Returns:
-        The request's workspace, or ``default`` when it names none or workspaces are disabled.
+        The request's workspace, or ``default`` when none resolves or workspaces are disabled.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return DEFAULT_WORKSPACE_NAME
+    from mlflow.utils.workspace_context import get_request_workspace as mlflow_request_workspace
+
     from mlflow_oidc_auth.bridge.user import get_auth_context
 
     try:
-        return get_auth_context().workspace or DEFAULT_WORKSPACE_NAME
+        named = get_auth_context().workspace
     except Exception:
-        pass
-    from mlflow.utils.workspace_context import get_request_workspace as mlflow_request_workspace
-    from mlflow.utils.workspace_context import is_request_workspace_resolved
-
-    if is_request_workspace_resolved():
-        return mlflow_request_workspace() or DEFAULT_WORKSPACE_NAME
-    return DEFAULT_WORKSPACE_NAME
+        named = None
+    return named or mlflow_request_workspace() or DEFAULT_WORKSPACE_NAME
 
 
 def grant_workspace_condition(column) -> ColumnElement:

@@ -372,6 +372,23 @@ class TestThePermissionApiUsesTheRequestsWorkspace:
         assert _rows(store) == [(ALICE, "churn", "team-a", "MANAGE"), (VICTOR, "churn", "team-a", "READ")]
 
 
+class TestRenamingAModelThroughTheHook:
+    def test_group_grants_follow_a_rename_when_the_workspace_has_no_user_grants(self, store):
+        """The user rename finds nothing to move in this workspace; the group rename must still run."""
+        from flask import Flask
+
+        from mlflow_oidc_auth.hooks.after_request import _rename_registered_model_permission
+
+        with in_workspace("team-a"):
+            store.create_group_model_permission("team", "churn", "EDIT")
+            with Flask(__name__).test_request_context(json={"name": "churn", "new_name": "churn-v2"}):
+                _rename_registered_model_permission(None)
+        _clear_cache()
+        with in_workspace("team-a"):
+            assert model_permission("churn-v2") == "EDIT"
+            assert model_permission("churn") == "NO_PERMISSIONS"
+
+
 class TestWorkspaceDeletion:
     def test_deleting_a_workspace_removes_its_resource_grants(self, store):
         with in_workspace("team-a"):
@@ -389,6 +406,55 @@ class TestWorkspaceDeletion:
         _clear_cache()
         with in_workspace("team-b"):
             assert model_permission("churn") == "READ"
+
+    def test_deleting_a_workspace_drops_cached_decisions_on_its_resources(self, store, monkeypatch):
+        """A workspace recreated under the same name must not inherit a decision cached before.
+
+        The store flushes the permission cache on ``wipe_workspace_permissions`` (it is one of the
+        permission CUD methods), so the hook needs no flush of its own."""
+        from flask import Flask, g
+
+        from mlflow_oidc_auth.hooks.after_request import _cascade_delete_workspace_permissions
+
+        with in_workspace("team-a"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+            assert model_permission("churn") == "MANAGE"  # now cached
+            response = Flask(__name__).response_class(status=204)
+            with Flask(__name__).test_request_context():
+                g._deleting_workspace_name = "team-a"
+                _cascade_delete_workspace_permissions(response)
+            assert model_permission("churn") == "NO_PERMISSIONS"
+
+
+class TestTheGrantWorkspaceIsMlflowsWorkspace:
+    def test_a_request_naming_no_workspace_uses_the_one_mlflow_serves_it_from(self, store, monkeypatch):
+        """With a workspace provider that has no default, MLflow serves header-less requests from
+        ``MLFLOW_WORKSPACE``; grants must follow it rather than assume ``default``."""
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        monkeypatch.setenv("MLFLOW_WORKSPACE", "team-a")
+        with in_workspace(None):
+            assert current_grant_workspace() == "team-a"
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+        _clear_cache()
+        with in_workspace("team-a"):
+            assert model_permission("churn") == "MANAGE"
+        _clear_cache()
+        with in_workspace("default"):
+            assert model_permission("churn") == "NO_PERMISSIONS"
+
+    def test_a_workspace_the_request_names_wins(self, store, monkeypatch):
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        monkeypatch.setenv("MLFLOW_WORKSPACE", "team-a")
+        with in_workspace("team-b"):
+            assert current_grant_workspace() == "team-b"
+
+    def test_nothing_resolved_is_the_default_workspace(self, store, monkeypatch):
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        monkeypatch.delenv("MLFLOW_WORKSPACE", raising=False)
+        assert current_grant_workspace() == "default"
 
 
 class TestTheCachedDecisionStaysInItsWorkspace:

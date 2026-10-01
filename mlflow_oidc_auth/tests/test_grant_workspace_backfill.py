@@ -128,6 +128,25 @@ class TestWorkspacesEnabled:
 
         assert rows(store, "SqlRegisteredModelPermission") == [("churn", "default", "EDIT")]
 
+    def test_a_tenant_who_reaches_a_namesake_does_not_keep_defaults_resource(self, store):
+        """A tenant who created ``churn`` in their own workspace got a name-only grant that also
+        reached ``default``'s ``churn``: the backfill places it only in the tenant's workspace."""
+        store.create_workspace_permission("team-b", ALICE, "MANAGE")
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
+        with resources(registered_model={"churn": {"default", "team-b"}}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert rows(store, "SqlRegisteredModelPermission") == [("churn", "team-b", "MANAGE")]
+
+    def test_a_grantee_with_a_permission_on_default_keeps_it_there_too(self, store):
+        store.create_workspace_permission("default", ALICE, "READ")
+        store.create_workspace_permission("team-b", ALICE, "READ")
+        legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE)
+        with resources(registered_model={"churn": {"default", "team-b"}}):
+            grant_workspace_backfill.backfill_grant_workspaces(store)
+
+        assert sorted(rows(store, "SqlRegisteredModelPermission")) == [("churn", "default", "EDIT"), ("churn", "team-b", "EDIT")]
+
     def test_a_name_in_several_workspaces_goes_only_where_the_grantee_reaches(self, store):
         store.create_workspace_permission("team-a", ALICE, "READ")
         legacy(store, "SqlRegisteredModelPermission", "churn", user=ALICE, permission="MANAGE")
