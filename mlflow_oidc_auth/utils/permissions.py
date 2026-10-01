@@ -754,16 +754,34 @@ def can_read_mcp_server(name: str, user: str) -> bool:
     return effective_mcp_server_permission(name, user).permission.can_read
 
 
+def _mcp_server_write_permission(name: str, user: str):
+    """The permission ``user`` may change ``name`` with, or None.
+
+    An MCP server with no grant at all — one registered before servers had permissions, when only
+    administrators could change them — stays that way: a permission that comes only from the
+    workspace (or the global default) does not reach it until someone is granted on it. A server
+    created since gets its creator's ``MANAGE`` grant, so normal rules apply to it at once.
+    Administrators are let through before this is asked.
+    """
+    result = effective_mcp_server_permission(name, user)
+    if result.kind not in ("user", "group") and not store.mcp_server_has_grants(name):
+        return None
+    return result.permission
+
+
 def can_update_mcp_server(name: str, user: str) -> bool:
-    return effective_mcp_server_permission(name, user).permission.can_update
+    permission = _mcp_server_write_permission(name, user)
+    return permission is not None and permission.can_update
 
 
 def can_delete_mcp_server(name: str, user: str) -> bool:
-    return effective_mcp_server_permission(name, user).permission.can_delete
+    permission = _mcp_server_write_permission(name, user)
+    return permission is not None and permission.can_delete
 
 
 def can_manage_mcp_server(name: str, user: str) -> bool:
-    return effective_mcp_server_permission(name, user).permission.can_manage
+    permission = _mcp_server_write_permission(name, user)
+    return permission is not None and permission.can_manage
 
 
 # ---------------------------------------------------------------------------

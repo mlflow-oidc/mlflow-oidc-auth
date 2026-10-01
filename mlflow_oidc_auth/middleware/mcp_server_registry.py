@@ -11,7 +11,7 @@ MLflow keeps MCP servers unique per ``(workspace, name)``; a name is ``<namespac
 ==========================================  ===================================================
 Route                                       Requires
 ==========================================  ===================================================
-``POST   /mcp-servers``                     create rights (see :func:`can_create_mcp_server`);
+``POST   /mcp-servers``                     MANAGE on the workspace (see :func:`can_create_mcp_server`);
                                             the creator is granted ``MANAGE`` once MLflow
                                             returns success
 ``GET    /mcp-servers``                     authentication; the list is narrowed to READ
@@ -194,11 +194,10 @@ def _bridged(auth_context: Any) -> Iterator[None]:
 def can_create_mcp_server(username: str) -> bool:
     """Whether ``username`` may create an MCP server in the request's workspace.
 
-    With workspaces enabled: ``EDIT`` or more on the workspace MLflow serves the request from — the
-    one it names, else the default workspace — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT``
-    and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION`` as for every other creation. (MLflow's own plugin
-    asks for a workspace grant that carries ``can_use``; this plugin's workspace levels put the
-    line at ``EDIT``, the first level that may change resources.)
+    With workspaces enabled: ``MANAGE`` on the workspace MLflow serves the request from — the one it
+    names, else the default workspace — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and
+    ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``, the same threshold as creating experiments, models and
+    gateway resources. (MLflow's own plugin asks for a workspace grant that carries ``can_use``.)
 
     With workspaces disabled: any authenticated user, as in MLflow — unless
     ``RESTRICT_RESOURCE_CREATION`` is set, in which case ``DEFAULT_MLFLOW_PERMISSION`` must grant
@@ -226,7 +225,7 @@ def can_create_mcp_server(username: str) -> bool:
     if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
         return False
     permission = get_workspace_permission_cached(username, effective)
-    return permission is not None and permission.can_update
+    return permission is not None and permission.can_manage
 
 
 def _mcp_server_exists(name: str) -> bool:

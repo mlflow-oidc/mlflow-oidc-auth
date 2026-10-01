@@ -480,10 +480,18 @@ the server:
 A grant on a server applies whether or not the grantee is a member of its workspace: sharing a
 server with a non-member is what a resource grant is for, as for every other resource type.
 
-**Create rights.** With workspaces enabled: `EDIT` or more on the workspace MLflow serves the request
+**Servers nobody is granted on stay admin-only for changes.** A permission that comes only from the
+workspace (or, with workspaces disabled, from `DEFAULT_MLFLOW_PERMISSION`) lets its holder read a
+server, but changing, deleting or sharing one needs someone — anyone — to be granted on it first.
+That keeps servers registered before this release, when only administrators could change them,
+admin-only until an administrator grants someone on them. A server created since carries its
+creator's `MANAGE` grant, so the normal rules apply to it at once.
+
+**Create rights.** With workspaces enabled: `MANAGE` on the workspace MLflow serves the request
 from (the one named in `X-MLFLOW-WORKSPACE`, else `default`), subject to
-`OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`. With workspaces
-disabled: any authenticated user, as in MLflow — unless `RESTRICT_RESOURCE_CREATION` is set, in which
+`OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` — the same
+threshold as creating experiments, models and gateway resources. With workspaces disabled: any
+authenticated user, as in MLflow — unless `RESTRICT_RESOURCE_CREATION` is set, in which
 case `DEFAULT_MLFLOW_PERMISSION` must grant `EDIT`.
 
 Search results and single servers carry MLflow's `allowed_actions` (`USE`, `UPDATE`, `DELETE`,
@@ -491,10 +499,12 @@ Search results and single servers carry MLflow's `allowed_actions` (`USE`, `UPDA
 fewer than `max_results` servers; follow `next_page_token` as usual. Admins are not restricted.
 
 > **Upgrade note:** before this release, registry writes were admin-only and reads needed only
-> `READ` on the workspace. Now any user with `EDIT` on a workspace (any authenticated user with
-> workspaces disabled) can create servers, and reading a server needs `READ` on that server — which
-> workspace members still have through the workspace fallback unless the server carries grants of
-> its own that say otherwise.
+> `READ` on the workspace. Now any user with `MANAGE` on a workspace (any authenticated user with
+> workspaces disabled) can create servers and manages the ones they create. Existing servers stay
+> admin-only for changes until an administrator grants someone on them. Reading a server needs
+> `READ` on it, which workspace members keep through the workspace fallback. With workspaces
+> disabled and the shipped `NO_PERMISSIONS` default, existing servers are no longer readable by
+> non-admins until they are granted.
 
 MCP server permissions are managed through:
 

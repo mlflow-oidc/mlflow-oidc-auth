@@ -993,6 +993,17 @@ class SqlAlchemyStore:
         return self.gateway_endpoint_group_regex_repo.revoke(id, group_name)
 
     # mcp_server_repo — grants on MLflow's MCP server registry, in the request's grant workspace
+    def mcp_server_has_grants(self, name: str) -> bool:
+        """Whether anyone — a user or a group — is granted on MCP server ``name`` in the request's workspace."""
+        from mlflow_oidc_auth.db.models import SqlMCPServerGroupPermission, SqlMCPServerPermission
+        from mlflow_oidc_auth.utils.grant_workspace import grant_workspace_condition
+
+        with self.ManagedSessionMaker() as session:
+            return any(
+                session.query(model.id).filter(model.name == name, grant_workspace_condition(model.workspace)).first() is not None
+                for model in (SqlMCPServerPermission, SqlMCPServerGroupPermission)
+            )
+
     def create_mcp_server_permission(self, name: str, username: str, permission: str):
         return self.mcp_server_repo.grant_permission(name, username, permission)
 

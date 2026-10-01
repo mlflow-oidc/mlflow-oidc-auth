@@ -329,8 +329,8 @@ def _grants(store):
 
 @pytest.fixture
 def members(store):
-    """Alice may create in team-a (EDIT); Bob only reads team-a."""
-    store.create_workspace_permission("team-a", ALICE, "EDIT")
+    """Alice may create in team-a (MANAGE); Bob only reads team-a."""
+    store.create_workspace_permission("team-a", ALICE, "MANAGE")
     store.create_workspace_permission("team-a", BOB, "READ")
     _clear_cache()
 
@@ -341,12 +341,20 @@ def members(store):
 
 
 class TestCreate:
-    def test_edit_on_the_workspace_creates_and_the_creator_gets_manage_there(self, api, store, members, registry):
+    def test_manage_on_the_workspace_creates_and_the_creator_gets_manage_there(self, api, store, members, registry):
         response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
 
         assert response.status_code == 200, response.text
         assert registry.servers[("team-a", SERVER)]["created_by"] == ALICE
         assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
+
+    def test_edit_on_the_workspace_cannot_create(self, api, store, members, registry):
+        """The same threshold as creating experiments, models and gateway resources: MANAGE."""
+        store.update_workspace_permission("team-a", BOB, "EDIT")
+        _clear_cache()
+
+        assert api.bob.post(API, json={"name": SERVER}, headers=ws("team-a")).status_code == 403
+        assert registry.servers == {}
 
     def test_read_on_the_workspace_cannot_create(self, api, store, members, registry):
         response = api.bob.post(API, json={"name": SERVER}, headers=ws("team-a"))
@@ -363,7 +371,7 @@ class TestCreate:
 
     def test_no_workspace_named_is_judged_against_default(self, api, store, members, registry):
         assert api.alice.post(API, json={"name": SERVER}).status_code == 403
-        store.create_workspace_permission("default", ALICE, "EDIT")
+        store.create_workspace_permission("default", ALICE, "MANAGE")
         _clear_cache()
         assert api.alice.post(API, json={"name": SERVER}).status_code == 200
         assert _grants(store) == [(ALICE, SERVER, "default", "MANAGE")]
@@ -379,14 +387,18 @@ class TestCreate:
     def test_a_version_on_a_new_server_is_a_creation(self, api, store, members, registry):
         assert api.bob.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
         assert registry.servers == {}
+        # Someone is granted on the name already, so the race recheck below is not the
+        # admin-only rule for servers nobody is granted on (TestServersFromBeforePermissions).
+        with _as(ADMIN, "team-a"):
+            store.create_mcp_server_permission(SERVER, BOB, "READ")
 
         response = api.alice.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a"))
 
         assert response.status_code == 200, response.text
-        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
+        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE"), (BOB, SERVER, "team-a", "READ")]
         # MLflow's handler is told to create the parent itself; its race recheck resolves in the
         # caller's workspace although it runs after the middleware's bridged context is gone
-        # (Alice's EDIT on team-a).
+        # (Alice's MANAGE on team-a).
         assert registry.parent_flag is True
         assert registry.recheck is True
 
@@ -523,6 +535,35 @@ class TestPerServerChecks:
 # ---------------------------------------------------------------------------
 # Cross-workspace: same name, different servers
 # ---------------------------------------------------------------------------
+
+
+class TestServersFromBeforePermissions:
+    """A server nobody is granted on — registered when only administrators could change servers —
+    stays admin-only for changes until someone is granted on it; reading follows the workspace."""
+
+    @pytest.fixture
+    def curated(self, registry, members):
+        registry.add(SERVER, "an-admin", workspace="team-a")
+        _clear_cache()
+
+    def test_a_workspace_manager_reads_it_but_cannot_change_delete_or_share_it(self, api, store, curated, registry):
+        assert api.alice.get(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 200
+        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 403
+        assert api.alice.post(f"{API}/{SERVER}/tags", json={"key": "k", "value": "v"}, headers=ws("team-a")).status_code == 403
+        assert api.alice.post(f"{API}/{SERVER}/versions", json={}, headers=ws("team-a")).status_code == 403
+        assert api.alice.delete(f"{API}/{SERVER}", headers=ws("team-a")).status_code == 403
+        grant = api.alice.post(f"{USERS}/{ALICE}/mcp-servers/{SERVER}", json={"permission": "MANAGE"}, headers=ws("team-a"))
+        assert grant.status_code == 403
+        assert _grants(store) == []
+        assert ("team-a", SERVER) in registry.servers
+
+    def test_admins_still_change_it_and_a_grant_brings_normal_rules(self, api, store, curated, registry):
+        assert api.admin.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
+        assert api.admin.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "READ"}, headers=ws("team-a")).status_code == 201
+        _clear_cache()
+
+        # Granted on now: Alice's MANAGE on the workspace reaches it like any other server.
+        assert api.alice.patch(f"{API}/{SERVER}", json={}, headers=ws("team-a")).status_code == 200
 
 
 class TestSameNameInAnotherWorkspace:
@@ -685,7 +726,7 @@ class TestPermissionApi:
         assert [s["name"] for s in api.alice.get(PERMS, headers=ws("team-a")).json()] == [SERVER]
         assert sorted(s["name"] for s in api.admin.get(PERMS, headers=ws("team-a")).json()) == ["com.example/other", SERVER]
         listed = api.alice.get(f"{USERS}/{ALICE}/mcp-servers", headers=ws("team-a")).json()
-        assert {s["name"]: s["permission"] for s in listed} == {SERVER: "MANAGE", "com.example/other": "EDIT"}
+        assert {s["name"]: s["permission"] for s in listed} == {SERVER: "MANAGE", "com.example/other": "MANAGE"}
 
     def test_an_invalid_level_is_400_and_a_duplicate_409(self, api, store, alices_server):
         assert api.alice.post(f"{USERS}/{BOB}/mcp-servers/{SERVER}", json={"permission": "OWNER"}, headers=ws("team-a")).status_code == 400
