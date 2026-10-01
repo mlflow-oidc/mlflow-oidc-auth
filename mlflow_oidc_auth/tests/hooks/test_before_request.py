@@ -1039,3 +1039,23 @@ def test_before_request_hook_honours_mlflow_static_prefix(monkeypatch, path, ope
         patch("mlflow_oidc_auth.hooks.before_request.responses.make_auth_required_response", return_value="auth-required"),
     ):
         assert before_request_hook() == (None if open_ else "auth-required")
+
+
+@pytest.mark.parametrize("prefix", ["/healthcheck", "/static", "/metrics-ui", "/docs"])
+def test_before_request_hook_static_prefix_overlapping_the_unprotected_list_opens_nothing(monkeypatch, prefix):
+    """A static prefix beginning like an unprotected route must not open MLflow's routes in Flask."""
+    from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, prefix)
+
+    with (
+        patch("mlflow_oidc_auth.hooks.before_request._get_auth_context", return_value=(None, False)),
+        patch("mlflow_oidc_auth.hooks.before_request.responses.make_auth_required_response", return_value="auth-required"),
+    ):
+        for route in ("/api/2.0/mlflow/experiments/search", "/ajax-api/2.0/mlflow/users/current", "/graphql"):
+            with Flask(__name__).test_request_context(f"{prefix}{route}"):
+                assert before_request_hook() == "auth-required", f"{prefix}{route}"
+        with Flask(__name__).test_request_context(f"{prefix}/health"):
+            assert before_request_hook() is None

@@ -249,6 +249,45 @@ class TestMlflowStaticPrefixDeployment:
         assert response.status_code == 401
 
 
+class TestOverlappingStaticPrefix:
+    """A static prefix that begins like an unprotected route, through the real middleware stack.
+
+    Every MLflow route is registered under the prefix, so ``/healthcheck/...`` must not be
+    mistaken for ``/health``; the plugin's own unprefixed routes stay open.
+    """
+
+    @pytest.fixture(params=["/healthcheck", "/healthcheck/"])
+    def app(self, request, monkeypatch):
+        from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+        monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, request.param)
+        app = _build_app()
+
+        @app.get(f"/healthcheck{ASSISTANT}")
+        async def prefixed_assistant():
+            return {"assistant": "ok"}
+
+        @app.get("/healthcheck/health")
+        async def prefixed_health():
+            return {"status": "ok"}
+
+        # The Flask catch-all mount is added last, so move the prefixed routes in front of it.
+        app.router.routes[:0] = [app.router.routes.pop(), app.router.routes.pop()]
+        return app
+
+    def test_mlflow_routes_under_the_prefix_require_credentials(self, app):
+        client = TestClient(app, follow_redirects=False)
+        assert client.get(f"/healthcheck{ASSISTANT}").status_code == 401
+        assert client.get(f"/healthcheck{FLASK_API}").status_code == 401
+        assert client.get("/healthcheck").status_code == 401
+
+    def test_probes_and_plugin_routes_stay_open(self, app):
+        client = TestClient(app, follow_redirects=False)
+        assert client.get("/healthcheck/health").status_code == 200
+        assert client.get("/health").status_code == 200
+        assert client.get("/login").status_code == 200
+
+
 class TestMountedDeploymentBehindTrustedProxy:
     """A deployment served under /mlflow by a proxy listed in TRUSTED_PROXIES."""
 

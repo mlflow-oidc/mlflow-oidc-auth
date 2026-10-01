@@ -27,6 +27,7 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
+from mlflow_oidc_auth.middleware.route_path import static_prefix_conflicts
 from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
 
@@ -262,6 +263,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)
+
+    conflicts = static_prefix_conflicts()
+    if conflicts:
+        logger.error(
+            "MLflow's static prefix covers the plugin's unauthenticated routes %s; they will require a signed-in user. Choose a static prefix that does not overlap them.",
+            ", ".join(conflicts),
+        )
 
     add_middleware_stack(oidc_app)
 

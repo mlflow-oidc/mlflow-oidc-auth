@@ -68,10 +68,14 @@ These paths bypass authentication:
 - `/oidc/ui/*` — Admin UI static files (the API calls within the SPA are authenticated)
 - `/docs`, `/redoc`, `/openapi.json` — API documentation (if enabled)
 
-When MLflow is started with `--static-prefix`, it mounts its own routes (health, metrics and the
-`/static-files` bundle) under that prefix, and the prefix lands in the path rather than in
-`root_path`. The same probes are matched under the prefix too, so a prefixed deployment's health
-check is answered instead of being redirected to the IdP.
+When MLflow is started with `--static-prefix`, it mounts its routes under that prefix, and the
+prefix lands in the path rather than in `root_path`. A path under the prefix is judged with the
+prefix removed and only MLflow's own probes — `/health`, `/metrics` and the `/static-files`
+bundle — are open there, so a prefixed deployment's health check is answered instead of being
+redirected to the IdP, and a prefix that happens to begin like a listed path (`/healthcheck`,
+`/static`) opens nothing else. The plugin's own routes above are not mounted under the prefix;
+if the prefix covers one of them (`/oidc` covers `/oidc/ui`), that route requires sign-in and
+the server logs an error at startup naming it.
 
 `/scim/v2` is a different kind of carve-out: it bypasses `AuthMiddleware`'s normal chain
 entirely rather than being unauthenticated. Every route under it — including discovery and the
