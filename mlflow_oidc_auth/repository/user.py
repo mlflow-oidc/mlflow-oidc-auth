@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import load_only, raiseload, selectinload
 from sqlalchemy.orm import Session
 
-from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser, SqlUserToken
+from mlflow_oidc_auth.db.models import SqlAuthSession, SqlGroup, SqlUser, SqlUserIdentity, SqlUserToken
 from mlflow_oidc_auth.entities import User
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.config import config
@@ -238,6 +238,34 @@ class UserRepository:
             )
             _audit_ownership_conflict(username, refused, written_by, allowed=False, operation="create")
         raise MlflowException(f"User '{username}' already exists", RESOURCE_ALREADY_EXISTS)
+
+    def provision_workload_identity(
+        self,
+        username: str,
+        display_name: str,
+        provider_id: str,
+        subject: str,
+        managed_by: str,
+    ) -> User:
+        """Atomically create a non-admin service account and bind its external identity."""
+        username = normalize_username(username)
+        _validate_username(username)
+        with self._Session(read_only=False) as session:
+            try:
+                user = SqlUser(
+                    username=username,
+                    display_name=display_name,
+                    is_admin=False,
+                    is_service_account=True,
+                    managed_by=managed_by,
+                )
+                session.add(user)
+                session.flush()
+                session.add(SqlUserIdentity(provider_id=provider_id, subject=subject, user_id=user.id))
+                session.flush()
+                return user.to_mlflow_entity()
+            except IntegrityError as exc:
+                raise MlflowException(f"Workload user '{username}' or its external identity already exists", RESOURCE_ALREADY_EXISTS) from exc
 
     def get(self, username: str) -> User:
         username = normalize_username(username)

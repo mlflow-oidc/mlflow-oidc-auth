@@ -437,6 +437,17 @@ class SqlAlchemyStore:
 
         return self.user_repo.get_profile(username)
 
+    def provision_workload_identity(
+        self,
+        username: str,
+        display_name: str,
+        provider_id: str,
+        subject: str,
+        managed_by: str,
+    ) -> User:
+        """Atomically provision a workload user without creating a local bearer secret."""
+        return self.user_repo.provision_workload_identity(username, display_name, provider_id, subject, managed_by)
+
     def list_users(self, is_service_account: bool = False, all: bool = False) -> List[User]:
         return self.user_repo.list(is_service_account, all)
 

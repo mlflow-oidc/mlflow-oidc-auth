@@ -57,6 +57,7 @@ class ResolvedSession:
         provider_id: Registry id of the provider that authenticated the session, when recorded.
         encrypted_tokens: The session's provider tokens, encrypted (see ``session.token_vault``).
             Kept out of ``repr`` so it cannot reach a log line by accident.
+        managed_by: Source that owns the user row, used to reject workload sessions.
     """
 
     username: str
@@ -67,6 +68,7 @@ class ResolvedSession:
     session_id: Optional[str] = None
     provider_id: Optional[str] = None
     encrypted_tokens: Optional[str] = field(default=None, repr=False)
+    managed_by: str = "manual"
 
 
 #: How much of a session id the admin API shows. Enough to tell a user's handful of sessions
@@ -253,6 +255,7 @@ class AuthSessionRepository:
                     SqlAuthSession.session_id,
                     SqlAuthSession.provider_id,
                     SqlAuthSession.encrypted_tokens,
+                    SqlUser.managed_by,
                 )
                 .join(SqlAuthSession, SqlAuthSession.user_id == SqlUser.id)
                 .filter(
@@ -273,6 +276,7 @@ class AuthSessionRepository:
                 session_id=row[5],
                 provider_id=row[6],
                 encrypted_tokens=row[7],
+                managed_by=row[8],
             )
 
     def store_tokens(self, session_id: str, encrypted_tokens: Optional[str]) -> bool:
