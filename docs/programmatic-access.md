@@ -113,7 +113,8 @@ short-lived token and send it as a bearer token. For such a token to authenticat
      ([API reference](api-reference#user-management)), then grant it permissions. Give the
      token's subject (`"subject": "<sub>"`) to bind it now — for example
      `repo:org/app:ref:refs/heads/main` for a GitHub Actions workflow — or leave it out and the
-     first token from that provider binds its subject. Only that provider's tokens, for that
+     first token from that provider binds its subject (an administrator service account must be
+     given its subject: no first token binds one). Only that provider's tokens, for that
      subject, reach the account, and no access token can be issued for it: its lifecycle lives in
      the IdP. This is the usual answer for a service principal, whose token rarely carries a
      groups claim; or

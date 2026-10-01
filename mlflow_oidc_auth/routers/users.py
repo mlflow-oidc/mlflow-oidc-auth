@@ -190,6 +190,7 @@ async def create_access_token(
     # get_user_profile raises rather than returning None; a mistyped username is a 404, not a 500
     # (issue #338).
     target_username = _require_user(target_username)
+    _refuse_tokens_for_external_service_account(target_username)
     try:
         record, plaintext, replaced = store.replace_user_token(target_username, DEFAULT_TOKEN_NAME, expiration, created_by=current_username)
     except MlflowException as e:
@@ -219,17 +220,25 @@ async def create_access_token(
     )
 
 
-def _issue_token(target_username: str, token_request: CreateUserTokenRequest, actor: str) -> JSONResponse:
-    expiration = _parse_expiration(token_request.expiration)
-    target_username = _require_user(target_username)
+def _refuse_tokens_for_external_service_account(username: str) -> None:
+    """No access token is issued for an external service account: its lifecycle lives in its IdP.
+
+    Raises:
+        HTTPException: 409 for an external service account.
+    """
     from mlflow_oidc_auth.utils.service_accounts import is_external
 
-    profile = store.get_user_profile(target_username)
+    profile = store.get_user_profile(username)
     if profile.is_service_account is True and is_external(profile.service_account_source):
-        # Its lifecycle lives in its identity provider: it signs in with that provider's tokens.
         raise HTTPException(
             status_code=409, detail="An external service account signs in with its identity provider's tokens; no access token is issued for it"
         )
+
+
+def _issue_token(target_username: str, token_request: CreateUserTokenRequest, actor: str) -> JSONResponse:
+    expiration = _parse_expiration(token_request.expiration)
+    target_username = _require_user(target_username)
+    _refuse_tokens_for_external_service_account(target_username)
     try:
         record, plaintext = store.create_user_token(target_username, token_request.name, expiration, created_by=actor)
     except MlflowException as e:
@@ -412,9 +421,13 @@ async def create_new_user(
     source = None
     if user_request.is_service_account:
         try:
-            source = validate_source(user_request.service_account_source or INTERNAL_SOURCE, user_request.subject)
+            source = validate_source(user_request.service_account_source or INTERNAL_SOURCE, user_request.subject, is_admin=user_request.is_admin)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        if (user_request.service_account_source or user_request.subject) and store.has_user(user_request.username):
+            raise HTTPException(status_code=409, detail=f"{user_request.username} already exists; change how it signs in with its service-account-source")
+        if user_request.subject and store.user_identity_repo.get_username_by_identity(source, user_request.subject.strip()):
+            raise HTTPException(status_code=409, detail="That subject is already bound to another account")
     elif user_request.service_account_source or user_request.subject:
         raise HTTPException(status_code=400, detail="service_account_source and subject apply to a service account only")
     try:
@@ -1012,6 +1025,8 @@ async def set_service_account_source(
     except MlflowException as e:
         if e.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE):
             raise HTTPException(status_code=409, detail=f"{username} is not a service account")
+        if e.error_code == ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
+            raise HTTPException(status_code=409, detail="That subject is already bound to another account")
         raise
     emit_audit_event(
         "user.service_account_source",

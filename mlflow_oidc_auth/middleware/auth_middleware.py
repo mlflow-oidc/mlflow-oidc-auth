@@ -208,7 +208,7 @@ def _is_service_account(username: str) -> bool:
         return False
 
 
-def _service_account_denial(username: str, is_service_account: bool, source: Optional[str], method: str, bearer_identity) -> str:
+def _service_account_denial(username: str, is_service_account: bool, source: Optional[str], method: str, bearer_identity, is_admin: bool = False) -> str:
     """Why a service account may not use this credential, or ``""`` when it may.
 
     A service account signs in one way only (``users.service_account_source``):
@@ -228,6 +228,7 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
         source: Its ``service_account_source``.
         method: The credential (``AUTH_METHOD_*``).
         bearer_identity: :data:`_BEARER_IDENTITY` for this request.
+        is_admin: Whether the account is an administrator: one is never bound by a first token.
     """
     if not is_service_account:
         return ""
@@ -237,7 +238,8 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
     if method not in (AUTH_METHOD_BEARER, AUTH_METHOD_WORKLOAD):
         return "a service account does not sign in interactively"
     if bearer_identity == _KUBERNETES_BEARER:
-        return ""
+        # Authorized on its own path, unless an administrator has made the account internal.
+        return "" if source != INTERNAL_SOURCE else "an internal service account signs in with access tokens issued for it only"
     if not isinstance(bearer_identity, tuple) or source == INTERNAL_SOURCE:
         return "an internal service account signs in with access tokens issued for it only"
     provider, subject = bearer_identity
@@ -251,12 +253,21 @@ def _service_account_denial(username: str, is_service_account: bool, source: Opt
     key = "\x1fsa\x1f".join((provider.id, subject, username))
     if cache.get(key):
         return ""
-    subjects = {s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id}
+    subjects = [s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id]
     if subjects and subject not in subjects:
         return "this service account is bound to another subject of its provider"
     if not subjects:
+        if is_admin:
+            # An administrator account is bound when created; whoever could mint a token naming
+            # it first must not get to choose its subject.
+            return "an external administrator service account has no subject bound"
         # The first token from its provider binds the account to that subject.
         store.user_identity_repo.link(provider.id, subject, username, allow_additional_provider=True)
+        # Two first tokens can race: the earliest binding wins, and a later one is taken back.
+        first = next(s for p, s in store.user_identity_repo.list_identities_for_username(username) if p == provider.id)
+        if first != subject:
+            store.user_identity_repo.unlink(provider.id, subject, username)
+            return "this service account is bound to another subject of its provider"
         emit_audit_event(
             "auth.identity_adopted", actor=username, resource_type="user", resource_id=username, detail={"provider": provider.id, "method": "bearer"}
         )
@@ -992,11 +1003,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 # Already read, in the same statement that validated the session.
                 is_admin, is_active = resolved.is_admin, resolved.is_active
                 denial_reason = "" if is_active else DENIAL_INACTIVE
+                if is_active and getattr(resolved, "is_service_account", False) is True:
+                    # A service account never signs in through the browser; a session it holds
+                    # (from before the account became one) is not honoured.
+                    logger.info("Authentication denied for service account %s on %s: a browser session", username, path)
+                    return await self._deny(request, path)
             else:
                 is_admin, is_active, denial_reason, account = self._get_user_auth_facts(username)
                 if is_active:
                     method = _auth_method(request, workload_bearer=workload_bearer)
-                    refusal = _service_account_denial(username, account[0], account[1], method, bearer_identity)
+                    refusal = _service_account_denial(username, account[0], account[1], method, bearer_identity, is_admin)
                     if refusal:
                         logger.info("Authentication denied for service account %s on %s: %s", username, path, refusal)
                         if _should_audit_denial(username, DENIAL_SERVICE_ACCOUNT_SOURCE):
