@@ -148,3 +148,31 @@ def test_orphan_detection_counts_only_patterns_for_the_resources_workspace():
     assert _regex_permission([rule], "churn", False, "team-a") == "MANAGE"
     assert _regex_permission([rule], "churn", False, "team-b") is None
     assert _regex_permission([rule], "churn", False, None) == "MANAGE"  # workspace not known: may apply
+
+
+class TestOrphanDetection:
+    """Who else still manages a resource is replayed with the patterns that apply in its workspace."""
+
+    def test_a_pattern_for_another_workspace_does_not_keep_a_resource_held(self, store):
+        from mlflow_oidc_auth.orphans import find_orphaned_resources
+        from mlflow_oidc_auth.tests.test_workspace_scoped_grants import VICTOR
+
+        with in_workspace("team-a"):
+            # As a model and as a prompt, so the verdict does not hinge on which ``churn`` is.
+            store.create_registered_model_regex_permission("^churn", 1, "MANAGE", VICTOR)
+            store.create_prompt_regex_permission("^churn", 1, "MANAGE", VICTOR)
+        with in_workspace("team-b"):
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+
+        assert find_orphaned_resources(ALICE, store=store) == [("registered_model", "team-b/churn")]
+
+    def test_a_pattern_for_its_own_workspace_keeps_it_held(self, store):
+        from mlflow_oidc_auth.orphans import find_orphaned_resources
+        from mlflow_oidc_auth.tests.test_workspace_scoped_grants import VICTOR
+
+        with in_workspace("team-b"):
+            store.create_registered_model_regex_permission("^churn", 1, "MANAGE", VICTOR)
+            store.create_prompt_regex_permission("^churn", 1, "MANAGE", VICTOR)
+            store.create_registered_model_permission("churn", ALICE, "MANAGE")
+
+        assert find_orphaned_resources(ALICE, store=store) == []

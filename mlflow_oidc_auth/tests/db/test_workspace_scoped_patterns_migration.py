@@ -85,9 +85,17 @@ class TestUpgrade:
         _upgrade(engine, REVISION)
         _seed(engine)  # one pattern per table, for every workspace
         with engine.begin() as conn:
-            conn.execute(text("INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^x', 1, id, 'EDIT', 'team-a' FROM users"))
+            conn.execute(
+                text(
+                    "INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^x', 1, id, 'EDIT', 'team-a' FROM users"
+                )
+            )
         with pytest.raises(IntegrityError), engine.begin() as conn:
-            conn.execute(text("INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^x', 1, id, 'EDIT', 'team-a' FROM users"))
+            conn.execute(
+                text(
+                    "INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^x', 1, id, 'EDIT', 'team-a' FROM users"
+                )
+            )
 
 
 class TestDowngrade:
@@ -95,7 +103,11 @@ class TestDowngrade:
         _upgrade(engine, REVISION)
         _seed(engine)
         with engine.begin() as conn:
-            conn.execute(text("INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^team', 1, id, 'MANAGE', 'team-a' FROM users"))
+            conn.execute(
+                text(
+                    "INSERT INTO experiment_regex_permissions (regex, priority, user_id, permission, workspace) SELECT '^team', 1, id, 'MANAGE', 'team-a' FROM users"
+                )
+            )
 
         _downgrade(engine, PREVIOUS_REVISION)
 

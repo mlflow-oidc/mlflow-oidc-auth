@@ -241,7 +241,7 @@ class TestOrphans:
 
 
 COLLEAGUE = "colleague@example.com"
-REAL_EXPERIMENT_NAMES = orphans._experiment_names
+REAL_EXPERIMENT_LOCATIONS = orphans._experiment_locations
 
 
 def orphaned_events(audit_events):
@@ -255,7 +255,7 @@ class TestOrphansThroughGroupsAndRegex:
     def mlflow_lookups(self, monkeypatch):
         """No tracking server here: registered models are models, experiment names unknown."""
         monkeypatch.setattr(orphans, "_prompt_kinds", lambda names: {n: {False} for n in names})
-        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {})
+        monkeypatch.setattr(orphans, "_experiment_locations", lambda ids: {})
 
     @pytest.fixture
     def colleague(self, bound_store):
@@ -376,7 +376,9 @@ class TestOrphansThroughGroupsAndRegex:
         bound_store.create_experiment_permission("2", ALICE, "MANAGE")
         bound_store.create_experiment_permission("3", ALICE, "MANAGE")
         bound_store.create_experiment_regex_permission("^team/", 1, "MANAGE", COLLEAGUE)
-        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {k: v for k, v in {"1": "team/churn", "2": "personal/scratch"}.items() if k in ids})
+        monkeypatch.setattr(
+            orphans, "_experiment_locations", lambda ids: {k: (v, "default") for k, v in {"1": "team/churn", "2": "personal/scratch"}.items() if k in ids}
+        )
 
         self.deactivate(client, scim)
 
@@ -513,7 +515,7 @@ class TestOrphansThroughGroupsAndRegex:
                 raise MlflowException("No Experiment exists")
             return SimpleNamespace(name="team/churn")
 
-        monkeypatch.setattr(orphans, "_experiment_names", REAL_EXPERIMENT_NAMES)  # exercise the real lookup
+        monkeypatch.setattr(orphans, "_experiment_locations", REAL_EXPERIMENT_LOCATIONS)  # exercise the real lookup
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         bound_store.create_experiment_permission("1", ALICE, "MANAGE")
         bound_store.create_experiment_regex_permission("^team/", 1, "MANAGE", COLLEAGUE)
@@ -538,7 +540,7 @@ class TestOrphansThroughGroupsAndRegex:
         def get_experiment(experiment_id):
             raise MlflowException("No Experiment exists in the active workspace")
 
-        monkeypatch.setattr(orphans, "_experiment_names", REAL_EXPERIMENT_NAMES)  # exercise the real lookup
+        monkeypatch.setattr(orphans, "_experiment_locations", REAL_EXPERIMENT_LOCATIONS)  # exercise the real lookup
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         bound_store.create_user("steward@example.com", "Steward")
         monkeypatch.setattr(config, "ORPHAN_FALLBACK_PRINCIPAL", "steward@example.com")
@@ -597,7 +599,7 @@ class TestOrphansThroughGroupsAndRegex:
         many resources, grants and patterns there are."""
         from sqlalchemy import event
 
-        monkeypatch.setattr(orphans, "_experiment_names", lambda ids: {i: f"exp-{i}" for i in ids})
+        monkeypatch.setattr(orphans, "_experiment_locations", lambda ids: {i: (f"exp-{i}", "default") for i in ids})
         bound_store.create_user(ALICE, "Alice")
         bound_store.create_user(COLLEAGUE, "Colleague")
         bound_store.populate_groups(["team", "solo"])
