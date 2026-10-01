@@ -402,10 +402,14 @@ class TestMCPServerRegistryThroughTheMiddleware:
 
         with self._grants({("user@example.com", "team-a"): MANAGE}):
             client = TestClient(self._app("user@example.com", False, "team-b"))
-            assert client.get("/api/3.0/mlflow/mcp-servers/com.example/a").status_code == 403
-            assert client.patch("/api/3.0/mlflow/mcp-servers/com.example/a", json={}).status_code == 403
-            assert client.delete("/api/3.0/mlflow/mcp-servers/com.example/a").status_code == 403
-            assert client.post("/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"}).status_code == 403
+            response = client.get("/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.patch("/api/3.0/mlflow/mcp-servers/com.example/a", json={})
+            assert response.status_code == 403
+            response = client.delete("/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.post("/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"})
+            assert response.status_code == 403
 
     def test_the_search_is_narrowed_to_readable_servers(self):
         from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
@@ -426,9 +430,12 @@ class TestMCPServerRegistryThroughTheMiddleware:
         monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
         client = TestClient(self._app("user@example.com", False, "team-b", prefix="/mlflow"))
         with self._grants({("user@example.com", "team-a"): MANAGE}):
-            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers/com.example/a").status_code == 403
-            assert client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"}).status_code == 403
-            assert client.get("/mlflow/api/3.0/mlflow/mcp-servers").status_code == 403
+            response = client.get("/mlflow/api/3.0/mlflow/mcp-servers/com.example/a")
+            assert response.status_code == 403
+            response = client.post("/mlflow/api/3.0/mlflow/mcp-servers", json={"name": "com.example/new"})
+            assert response.status_code == 403
+            response = client.get("/mlflow/api/3.0/mlflow/mcp-servers")
+            assert response.status_code == 403
 
     def test_admin_reads_any_workspace_unfiltered(self):
         with self._grants({}):
