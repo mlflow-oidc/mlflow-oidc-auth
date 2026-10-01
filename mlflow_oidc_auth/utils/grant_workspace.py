@@ -33,9 +33,10 @@ UNRESOLVED_WORKSPACE = "::unresolved"
 def current_grant_workspace() -> str:
     """The workspace grants are read and written in for the current request.
 
-    A workspace the request names (``X-MLFLOW-WORKSPACE``) comes from its ``AuthContext`` where one
-    is available — Flask routes, and the FastAPI routes the permission middleware bridges. When the
-    request names none, or has no ``AuthContext`` (this plugin's own permission API routes), it is
+    A workspace the request names (``X-MLFLOW-WORKSPACE``) comes from its ``AuthContext``, which
+    Flask reads from its environ and FastAPI routes from the context the permission middleware
+    bridges. When the request names none, or there is no ``AuthContext`` (outside a request, or on
+    an unprotected route), it is
     the workspace MLflow serves the request from: the one ``WorkspaceContextMiddleware`` resolved
     from the same header, else MLflow's own fallback (its default workspace, or ``MLFLOW_WORKSPACE``
     with a workspace provider that has no default). So a grant is always recorded and looked up in

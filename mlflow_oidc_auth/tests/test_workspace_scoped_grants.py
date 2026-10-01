@@ -287,6 +287,7 @@ ADMIN_PASSWORD = "scoped-grants-admin"  # not a credential: only ever seeded int
 ALICE_PASSWORD = "scoped-grants-alice"  # likewise
 USERS_API = "/api/2.0/mlflow/permissions/users"
 MODELS_API = "/api/2.0/mlflow/permissions/registered-models"
+GROUPS_API = "/api/2.0/mlflow/permissions/groups"
 
 
 @pytest.fixture
@@ -297,6 +298,7 @@ def api(store, monkeypatch):
     from fastapi.testclient import TestClient
 
     from mlflow_oidc_auth.exceptions import register_exception_handlers
+    from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
     from mlflow_oidc_auth.routers.registered_model_permissions import registered_model_permissions_router
     from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
     from mlflow_oidc_auth.tests.scim.conftest import basic
@@ -316,6 +318,7 @@ def api(store, monkeypatch):
     register_exception_handlers(app)
     app.include_router(user_permissions_router)
     app.include_router(registered_model_permissions_router)
+    app.include_router(group_permissions_router)
     # The production order: Proxy -> Session -> WorkspaceContext -> Auth -> Permission.
     add_middleware_stack(app)
     return SimpleNamespace(
@@ -358,8 +361,8 @@ class TestThePermissionApiUsesTheRequestsWorkspace:
         assert _rows(store) == [(VICTOR, "churn", "default", "READ")]
 
     def test_managing_a_model_in_one_workspace_gives_no_say_over_its_namesake(self, api, store):
-        """Alice manages team-a's churn: she may grant on it, but not on team-b's — even though the
-        manage check runs on a route without an AuthContext, and its decision is cached."""
+        """Alice manages team-a's churn: she may grant on it, but not on team-b's — and the decision
+        cached for one is not served for the other."""
         with in_workspace("team-a"):
             store.create_registered_model_permission("churn", ALICE, "MANAGE")
         _clear_cache()
@@ -370,6 +373,72 @@ class TestThePermissionApiUsesTheRequestsWorkspace:
         assert allowed.status_code == 201, allowed.text
         assert denied.status_code == 403, denied.text
         assert _rows(store) == [(ALICE, "churn", "team-a", "MANAGE"), (VICTOR, "churn", "team-a", "READ")]
+
+
+class TestThePermissionApiFallsBackToTheWorkspacePermission:
+    """With no grant on the resource itself, the permission API's manage check uses the caller's
+    permission on the request's workspace — as every other route does — not the global default."""
+
+    def test_no_permission_on_the_workspace_is_denied_whatever_the_global_default(self, api, store, monkeypatch):
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{ALICE}/registered-models/churn", json={"permission": "MANAGE"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert response.status_code == 403, response.text
+        assert _rows(store) == []
+
+    def test_manage_on_the_workspace_allows_managing_its_resources(self, api, store):
+        store.create_workspace_permission("team-a", ALICE, "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-a"})
+
+        assert response.status_code == 201, response.text
+        assert _rows(store) == [(VICTOR, "churn", "team-a", "READ")]
+
+    def test_the_group_routes_fall_back_the_same_way(self, api, store, monkeypatch):
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{GROUPS_API}/team/registered-models/churn", json={"permission": "MANAGE"}, headers={"X-MLFLOW-WORKSPACE": "team-b"})
+
+        assert response.status_code == 403, response.text
+
+    def test_a_request_naming_no_workspace_keeps_the_global_default(self, api, store, monkeypatch):
+        """As on every route: with no workspace named there is no workspace permission to defer to."""
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"})
+
+        assert response.status_code == 201, response.text
+        assert _rows(store) == [(VICTOR, "churn", "default", "READ")]
+
+    def test_with_workspaces_disabled_the_global_default_applies(self, api, store, monkeypatch):
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"})
+
+        assert response.status_code == 201, response.text
+
+    def test_the_bridged_context_does_not_outlive_the_request(self, api, store):
+        from mlflow_oidc_auth.bridge.user import _auth_context_var
+
+        api.alice.get(f"{MODELS_API}/churn/users", headers={"X-MLFLOW-WORKSPACE": "team-a"})
+
+        assert _auth_context_var.get() is None
+
+    def test_read_on_the_workspace_does_not_allow_managing(self, api, store, monkeypatch):
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        store.create_workspace_permission("team-a", ALICE, "READ")
+        _clear_cache()
+
+        response = api.alice.post(f"{USERS_API}/{VICTOR}/registered-models/churn", json={"permission": "READ"}, headers={"X-MLFLOW-WORKSPACE": "team-a"})
+
+        assert response.status_code == 403, response.text
 
 
 class TestRenamingAModelThroughTheHook:
