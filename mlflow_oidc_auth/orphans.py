@@ -51,6 +51,7 @@ REGISTERED_MODEL = "registered_model"  # prompts are registered models and share
 SCORER = "scorer"
 GATEWAY_ENDPOINT = "gateway_endpoint"
 GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
+MCP_SERVER = "mcp_server"
 WORKSPACE = "workspace"
 
 #: Upper bound on MLflow store lookups (experiment names, prompt flags) per resource type and run.
@@ -67,6 +68,7 @@ class _Spec(NamedTuple):
     user_model: Any
     group_model: Any
     key_columns: Tuple[str, ...]
+    #: ``None`` for a kind with no pattern grants (MCP servers).
     user_regex_model: Any
     group_regex_model: Any
     #: Index into the key tuple of the value a regex is matched against. ``None`` for experiments,
@@ -97,6 +99,8 @@ def _specs() -> List[_Spec]:
         SqlGatewaySecretGroupRegexPermission,
         SqlGatewaySecretPermission,
         SqlGatewaySecretRegexPermission,
+        SqlMCPServerGroupPermission,
+        SqlMCPServerPermission,
         SqlRegisteredModelGroupPermission,
         SqlRegisteredModelGroupRegexPermission,
         SqlRegisteredModelPermission,
@@ -169,6 +173,8 @@ def _specs() -> List[_Spec]:
             0,
             True,
         ),
+        # MCP servers have user and group grants only — no pattern tables.
+        _Spec(MCP_SERVER, SqlMCPServerPermission, SqlMCPServerGroupPermission, ("name",), None, None, 0, True),
         _Spec(WORKSPACE, SqlWorkspacePermission, SqlWorkspaceGroupPermission, ("workspace",), SqlWorkspaceRegexPermission, SqlWorkspaceGroupRegexPermission, 0),
     ]
 
@@ -477,11 +483,13 @@ def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Ho
         .join(SqlUser, SqlUser.id == spec.user_regex_model.user_id)
         .filter(SqlUser.active.is_(True), SqlUser.id != ctx.user_id)
         .all()
+        if spec.user_regex_model is not None
+        else []
     )
     for row in rows:
         own[row.user_id][_prompt_flag(row)].append(row)
     per_group: Dict[int, Dict[bool, List[Any]]] = defaultdict(lambda: defaultdict(list))
-    if managed:
+    if managed and spec.group_regex_model is not None:
         for row in ctx.session.query(spec.group_regex_model.group_id, *_rule_columns(spec.group_regex_model)).all():
             if row.group_id in managed:
                 per_group[row.group_id][_prompt_flag(row)].append(row)

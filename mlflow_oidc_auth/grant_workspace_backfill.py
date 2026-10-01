@@ -76,6 +76,7 @@ def _mlflow_resource_workspaces() -> Optional[Dict[str, Dict[str, Set[str]]]]:
             "gateway_endpoint": defaultdict(set),
             "gateway_secret": defaultdict(set),
             "gateway_model_definition": defaultdict(set),
+            "mcp_server": defaultdict(set),
         }
         with registry.ManagedSessionMaker() as session:
             for workspace, name in session.query(SqlRegisteredModel.workspace, SqlRegisteredModel.name).all():
@@ -90,6 +91,17 @@ def _mlflow_resource_workspaces() -> Optional[Dict[str, Dict[str, Set[str]]]]:
                 for workspace, name in session.query(model.workspace, column).all():
                     if name:
                         found[kind][name].add(workspace)
+            # MLflow 3.15+: the MCP server registry. Its grant tables are created with the workspace
+            # column already written, so they only hold unassigned rows if written by hand; older
+            # MLflow releases have no registry, and such rows are left with no candidate workspace.
+            try:
+                from mlflow.store.tracking.dbmodels.models import SqlMCPServer
+            except ImportError:
+                SqlMCPServer = None
+            if SqlMCPServer is not None:
+                for workspace, name in session.query(SqlMCPServer.workspace, SqlMCPServer.name).all():
+                    if name:
+                        found["mcp_server"][name].add(workspace)
         return found
     except Exception as exc:
         logger.warning("Grant workspace backfill: MLflow's resources could not be read (%s); legacy grants stay unassigned", type(exc).__name__)
@@ -174,7 +186,7 @@ def _backfill(store) -> BackfillReport:
                 if not workspaces_enabled:
                     targets = [DEFAULT_WORKSPACE_NAME]
                 else:
-                    candidates = sorted(resources[kind].get(name, set()))
+                    candidates = sorted(resources.get(kind, {}).get(name, set()))
                     targets = [ws for ws in candidates if can_reach(principal_col, principal_id, ws)]
                     if not targets and DEFAULT_WORKSPACE_NAME in candidates:
                         targets = [DEFAULT_WORKSPACE_NAME]

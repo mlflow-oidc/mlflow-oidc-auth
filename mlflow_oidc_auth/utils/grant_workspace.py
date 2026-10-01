@@ -1,7 +1,7 @@
 """The workspace a name-keyed grant belongs to.
 
 MLflow keeps registered models (and prompts, which are registered models), gateway endpoints,
-gateway secrets and gateway model definitions unique per ``(workspace, name)``. A grant on one of
+gateway secrets, gateway model definitions and MCP servers unique per ``(workspace, name)``. A grant on one of
 them names the resource by name, so it must also say which workspace's resource it is — otherwise
 a grant on ``churn`` in one workspace would apply to another workspace's ``churn``.
 
@@ -111,6 +111,8 @@ def workspace_scoped_grant_tables():
         SqlGatewayModelDefinitionPermission,
         SqlGatewaySecretGroupPermission,
         SqlGatewaySecretPermission,
+        SqlMCPServerGroupPermission,
+        SqlMCPServerPermission,
         SqlRegisteredModelGroupPermission,
         SqlRegisteredModelPermission,
     )
@@ -124,4 +126,6 @@ def workspace_scoped_grant_tables():
         (SqlGatewaySecretGroupPermission, "secret_id", "group_id", "gateway_secret"),
         (SqlGatewayModelDefinitionPermission, "model_definition_id", "user_id", "gateway_model_definition"),
         (SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
+        (SqlMCPServerPermission, "name", "user_id", "mcp_server"),
+        (SqlMCPServerGroupPermission, "name", "group_id", "mcp_server"),
     )

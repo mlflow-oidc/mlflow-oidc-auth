@@ -31,6 +31,7 @@ from mlflow_oidc_auth.entities.gateway_secret import (
     GatewaySecretRegexPermission,
     GatewaySecretGroupRegexPermission,
 )
+from mlflow_oidc_auth.entities.mcp_server import MCPServerPermission
 from mlflow_oidc_auth.entities.workspace import (
     WorkspacePermission,
     WorkspaceGroupPermission,
@@ -62,6 +63,7 @@ __all__ = [
     "GatewaySecretPermission",
     "GatewaySecretRegexPermission",
     "GatewaySecretGroupRegexPermission",
+    "MCPServerPermission",
     "WorkspacePermission",
     "WorkspaceGroupPermission",
     "WorkspaceRegexPermission",

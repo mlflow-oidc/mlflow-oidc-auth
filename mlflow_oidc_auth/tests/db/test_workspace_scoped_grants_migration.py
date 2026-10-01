@@ -58,8 +58,10 @@ class TestRevisionChain:
         assert script.down_revision == PREVIOUS_REVISION
 
     def test_single_head(self, tmp_path):
-        heads = ScriptDirectory.from_config(_get_alembic_config(_sqlite_uri(tmp_path))).get_heads()
-        assert heads == [REVISION], f"expected a single head, got {heads}"
+        script = ScriptDirectory.from_config(_get_alembic_config(_sqlite_uri(tmp_path)))
+        heads = script.get_heads()
+        assert len(heads) == 1, f"expected a single head, got {heads}"
+        assert REVISION in {rev.revision for rev in script.iterate_revisions(heads[0], "base")}
 
 
 class TestUpgrade:
