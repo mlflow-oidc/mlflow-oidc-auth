@@ -14,7 +14,9 @@ describe("API Endpoints", () => {
   });
 
   it("SCIM status and activity endpoints", () => {
-    expect(STATIC_API_ENDPOINTS.SCIM_STATUS).toBe("/api/2.0/mlflow/scim/status");
+    expect(STATIC_API_ENDPOINTS.SCIM_STATUS).toBe(
+      "/api/2.0/mlflow/scim/status",
+    );
     expect(STATIC_API_ENDPOINTS.SCIM_ACTIVITY).toBe(
       "/api/2.0/mlflow/scim/activity",
     );
@@ -140,12 +142,16 @@ describe("API Endpoints", () => {
         "/api/2.0/mlflow/permissions/mcp-servers",
       );
       expect(
-        DYNAMIC_API_ENDPOINTS.MCP_SERVER_USER_PERMISSIONS("com.example/weather"),
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_USER_PERMISSIONS(
+          "com.example/weather",
+        ),
       ).toBe(
         "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/users",
       );
       expect(
-        DYNAMIC_API_ENDPOINTS.MCP_SERVER_GROUP_PERMISSIONS("com.example/weather"),
+        DYNAMIC_API_ENDPOINTS.MCP_SERVER_GROUP_PERMISSIONS(
+          "com.example/weather",
+        ),
       ).toBe(
         "/api/2.0/mlflow/permissions/mcp-servers/com.example%2Fweather/groups",
       );
@@ -154,12 +160,17 @@ describe("API Endpoints", () => {
       );
       expect(
         DYNAMIC_API_ENDPOINTS.USER_MCP_SERVER_PERMISSION("u1", "com.example/w"),
-      ).toBe("/api/2.0/mlflow/permissions/users/u1/mcp-servers/com.example%2Fw");
+      ).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/mcp-servers/com.example%2Fw",
+      );
       expect(DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSIONS("g1")).toBe(
         "/api/2.0/mlflow/permissions/groups/g1/mcp-servers",
       );
       expect(
-        DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION("g1", "com.example/w"),
+        DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSION(
+          "g1",
+          "com.example/w",
+        ),
       ).toBe(
         "/api/2.0/mlflow/permissions/groups/g1/mcp-servers/com.example%2Fw",
       );

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faIdCard, faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { IconButton } from "../../shared/components/icon-button";
 import { EntityNameLink } from "../../shared/components/entity-name-link";
 import { buildEntityRoute } from "../../shared/utils/string-utils";
@@ -13,6 +13,7 @@ import PageStatus from "../../shared/components/page/page-status";
 import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
+import { UserIdentitiesModal } from "../users/components/user-identities-modal";
 import {
   createUser,
   deleteUser,
@@ -22,6 +23,7 @@ import { useToast } from "../../shared/components/toast/use-toast";
 
 export default function ServiceAccountsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [identitiesUser, setIdentitiesUser] = useState<string | null>(null);
   const {
     searchTerm,
     submittedTerm,
@@ -93,14 +95,22 @@ export default function ServiceAccountsPage() {
           {
             header: "Actions",
             render: ({ username }: { username: string }) => (
-              <IconButton
-                icon={faTrash}
-                title="Remove service account"
-                muted
-                onClick={() => {
-                  void handleRemoveServiceAccount(username);
-                }}
-              />
+              <div className="flex space-x-2">
+                <IconButton
+                  icon={faIdCard}
+                  title="Identities"
+                  muted
+                  onClick={() => setIdentitiesUser(username)}
+                />
+                <IconButton
+                  icon={faTrash}
+                  title="Remove service account"
+                  muted
+                  onClick={() => {
+                    void handleRemoveServiceAccount(username);
+                  }}
+                />
+              </div>
             ),
             className: "w-24",
           },
@@ -158,6 +168,10 @@ export default function ServiceAccountsPage() {
           />
         </>
       )}
+      <UserIdentitiesModal
+        username={identitiesUser}
+        onClose={() => setIdentitiesUser(null)}
+      />
     </PageContainer>
   );
 }

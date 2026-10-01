@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   faCheck,
   faDesktop,
+  faIdCard,
   faUserCheck,
   faUserSlash,
 } from "@fortawesome/free-solid-svg-icons";
@@ -27,6 +28,7 @@ import {
 } from "../../core/services/user-service";
 import { DeactivateUserModal } from "./components/deactivate-user-modal";
 import { UserSessionsModal } from "./components/user-sessions-modal";
+import { UserIdentitiesModal } from "./components/user-identities-modal";
 import type { ColumnConfig } from "../../shared/types/table";
 import type { UserDetails } from "../../shared/types/user";
 
@@ -134,6 +136,7 @@ function AdminUsersView() {
   );
   const [isReactivating, setIsReactivating] = useState(false);
   const [sessionsUser, setSessionsUser] = useState<string | null>(null);
+  const [identitiesUser, setIdentitiesUser] = useState<string | null>(null);
 
   const filteredUsers = useMemo(() => {
     return users
@@ -266,6 +269,12 @@ function AdminUsersView() {
               onClick={() => setSessionsUser(user.username)}
               muted
             />
+            <IconButton
+              icon={faIdCard}
+              title="Identities"
+              onClick={() => setIdentitiesUser(user.username)}
+              muted
+            />
             {user.active ? (
               <IconButton
                 icon={faUserSlash}
@@ -346,6 +355,10 @@ function AdminUsersView() {
           <UserSessionsModal
             username={sessionsUser}
             onClose={() => setSessionsUser(null)}
+          />
+          <UserIdentitiesModal
+            username={identitiesUser}
+            onClose={() => setIdentitiesUser(null)}
           />
         </>
       )}

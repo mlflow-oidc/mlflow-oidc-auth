@@ -49,6 +49,8 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
   USER_SESSIONS: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
+  USER_IDENTITIES: (userName: string) =>
+    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/identities`,
   USER_SESSION: (userName: string, sessionPk: number | string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions/${encodeURIComponent(String(sessionPk))}`,
   CURRENT_USER_TOKEN: (tokenId: number | string) =>
