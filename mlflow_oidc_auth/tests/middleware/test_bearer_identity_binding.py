@@ -141,7 +141,7 @@ class TestTheIdentityDecides:
 
         monkeypatch.setattr(AuthMiddleware, "_maybe_provision_bearer_user", someone_else_claims_it)
 
-        assert authenticate(PARTNER, {"sub": "partner-racer", "email": "raced@corp.example"}) is None
+        assert authenticate(PARTNER, {"sub": "partner-racer", "email": "raced@fresh.example"}) is None
 
     def test_a_failed_bind_on_provisioning_refuses_the_token(self, store, providers, monkeypatch):
         _enable_provisioning(monkeypatch)
@@ -196,6 +196,14 @@ class TestASingleProviderDeploymentIsUnchanged:
         lookup.assert_not_called()
 
 
+class TestAPartnerCannotClaimAddressesInAnotherProvidersDomain:
+    def test_provisioning_an_account_in_the_corporate_domain_is_refused(self, store, providers, monkeypatch):
+        _enable_provisioning(monkeypatch)
+
+        assert authenticate(PARTNER, {"sub": "partner-dave", "email": "dave@corp.example", "groups": ["mlflow-users"]}) is None
+        assert not store.has_user("dave@corp.example")
+
+
 class TestProvisioningBindsTheAccountItCreates:
     def test_a_created_user_is_bound_and_its_next_token_matches_on_the_identity(self, store, providers, monkeypatch):
         _enable_provisioning(monkeypatch)
@@ -225,7 +233,7 @@ class TestDecisionsAreCached:
 
     def test_a_decision_to_create_is_not_cached(self, store, providers):
         """Until the account exists the name is free; the answer must follow the moment it is taken."""
-        claims = {"sub": "partner-dave", "email": "dave@corp.example"}
+        claims = {"sub": "partner-dave", "email": "dave@fresh.example"}
         authenticate(PARTNER, claims)
         assert self._lookups(store, claims) >= 1
 

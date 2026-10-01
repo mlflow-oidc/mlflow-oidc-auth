@@ -30,9 +30,9 @@ The ``default`` provider's defaults are today's behaviour exactly — ``jit``, `
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Callable, Iterable, List, Optional, Sequence
 
-from mlflow_oidc_auth.identity_resolution import IdentityDecision, Resolution
+from mlflow_oidc_auth.identity_resolution import IdentityDecision, Resolution, _domain_of
 from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
 from mlflow_oidc_auth.logger import get_logger
 
@@ -63,6 +63,7 @@ def apply_provisioning_policy(
     derived_username: Optional[str],
     user_exists,
     providers_bound_to=None,
+    providers_in_domain: Optional[Callable[[str], Iterable[str]]] = None,
 ) -> ProvisioningOutcome:
     """Turn an identity decision into a provisioning decision for ``provider``.
 
@@ -74,6 +75,10 @@ def apply_provisioning_policy(
         providers_bound_to: Callable ``(username) -> list[str]`` naming the providers already
             bound to that user. Used to tell "this account is mine, from before identities were
             recorded" from "this account belongs to somebody else".
+        providers_in_domain: Callable ``(domain) -> iterable of provider ids`` naming the providers
+            whose identities own accounts in an email domain (an unbound account counts as
+            ``default``'s). Used to keep a provider other than ``default`` from creating an account
+            in a domain whose accounts belong to another provider — see :func:`_squats_a_domain`.
 
     Returns:
         ProvisioningOutcome: Check ``allowed`` before anything else.
@@ -113,6 +118,10 @@ def apply_provisioning_policy(
             allowed=False,
             reason=f"username {derived_username!r} already belongs to another identity; provider '{provider.id}' cannot claim it",
         )
+
+    squatted = _squats_a_domain(provider, derived_username, providers_in_domain)
+    if squatted:
+        return ProvisioningOutcome(allowed=False, reason=squatted)
 
     if provider.provisioning != "jit":
         # The enterprise gate: the directory decides who exists, and login does not.
@@ -182,3 +191,38 @@ def admin_from_claims(provider, claimed_groups: Sequence[str], admin_group_names
     if provider.admin_source != "claims":
         return False
     return any(group in claimed_groups for group in admin_group_names)
+
+
+def _squats_a_domain(provider, username: str, providers_in_domain) -> Optional[str]:
+    """Why ``provider`` may not create ``username``, or None when it may.
+
+    A provider other than ``default`` creating an account named by an email address would otherwise
+    claim it for good — the account is bound to that provider's identity, and the address's real
+    owner signing in later through their own provider is refused as a foreign account. So such a
+    provider may not create an account in a domain whose existing accounts belong to another
+    provider. Needs no configuration: a domain is another provider's because its accounts are.
+
+    Always allowed: the ``default`` provider; a username that is not an email address (a
+    Kubernetes service account, a workload name), so a provider without domains keeps working; a
+    domain listed in the provider's own ``allowed_email_domains``; and a domain with no accounts
+    yet, or only this provider's. Fails closed when the owners cannot be read.
+    """
+    if provider.id == DEFAULT_PROVIDER_ID or providers_in_domain is None or "@" not in (username or ""):
+        return None
+    domain = _domain_of(username.strip().lower())
+    if not domain:
+        return f"username {username!r} is not a single email address; provider '{provider.id}' cannot create it"
+    if domain in {allowed.lower() for allowed in getattr(provider, "allowed_email_domains", ()) or ()}:
+        return None
+    try:
+        owners = set(providers_in_domain(domain))
+    except Exception as e:
+        logger.warning("Could not read which providers own email domain %s: %s", domain, type(e).__name__)
+        return f"could not check who owns email domain {domain!r}; provider '{provider.id}' cannot create {username!r}"
+    foreign = owners - {provider.id}
+    if foreign:
+        return (
+            f"email domain {domain!r} belongs to accounts of provider(s) {', '.join(sorted(foreign))}; provider '{provider.id}' cannot create "
+            f"{username!r} there. List the domain in its allowed_email_domains to permit it"
+        )
+    return None

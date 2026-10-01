@@ -48,8 +48,17 @@ A token whose identity has no account yet is accepted only once `OIDC_PROVISION_
 has created the account and bound it to that identity, as a login binds it. Decisions are cached
 for `PERMISSION_CACHE_TTL_SECONDS` (not a decision to create an account) and flushed when a user
 is deleted or an identity is bound — on every replica with the Redis cache backend, on the replica
-that made the change with the local one, where other replicas' entries expire with the TTL. With a single provider, bearer
-authentication is unchanged.
+that made the change with the local one, where other replicas' entries expire with the TTL.
+With a single provider, bearer authentication is unchanged.
+
+**A provider cannot claim another provider's email domain.** A provider other than `default`
+may not create an account (at login, or on first bearer authentication) named by an email
+address in a domain whose existing accounts belong to another provider — accounts with no bound
+identity count as `default`'s. Creating it would bind the address to that provider for good and
+lock out its real owner. It needs no configuration: a domain belongs to whoever's accounts are in
+it. Always allowed: usernames that are not email addresses (Kubernetes service accounts, workload
+names), a domain listed in the provider's own `allowed_email_domains`, and a domain with no
+accounts yet or only this provider's.
 
 ### SAML provider fields
 
