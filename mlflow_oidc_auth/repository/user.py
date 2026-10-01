@@ -165,6 +165,7 @@ class UserRepository:
         is_service_account: bool = False,
         *,
         written_by: Optional[str] = None,
+        service_account_source: Optional[str] = None,
     ) -> User:
         """Create a user row, owned by ``manual``.
 
@@ -191,6 +192,8 @@ class UserRepository:
             is_admin: Administrator flag.
             is_service_account: Service-account flag.
             written_by: The source asking, for the audit record of a refused create.
+            service_account_source: How a service account signs in (``internal`` or a provider
+                id); ``internal`` when omitted. Ignored for a person's account.
 
         Returns:
             User: The new user.
@@ -210,6 +213,7 @@ class UserRepository:
                     display_name=display_name,
                     is_admin=is_admin,
                     is_service_account=is_service_account,
+                    service_account_source=(service_account_source or "internal") if is_service_account else None,
                 )
                 session.add(u)
                 session.flush()
@@ -247,6 +251,23 @@ class UserRepository:
                 raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
             return u.to_mlflow_entity()
 
+    def set_service_account_source(self, username: str, source: str) -> None:
+        """Record how service account ``username`` signs in.
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` for an unknown user, ``INVALID_PARAMETER_VALUE``
+                for an account that is not a service account.
+        """
+        username = normalize_username(username)
+        with self._Session(read_only=False) as session:
+            user = session.query(SqlUser).filter(SqlUser.username == username).one_or_none()
+            if user is None:
+                raise MlflowException(f"User '{username}' not found", RESOURCE_DOES_NOT_EXIST)
+            if not user.is_service_account:
+                raise MlflowException(f"'{username}' is not a service account", INVALID_PARAMETER_VALUE)
+            user.service_account_source = source
+            session.flush()
+
     def get_profile(self, username: str) -> User:
         """Fetch a lightweight user entity without loading permission relationships.
 
@@ -277,6 +298,9 @@ class UserRepository:
                         # these for free and the #305 budget of 2 statements is unchanged.
                         SqlUser.active,
                         SqlUser.managed_by,
+                        # How a service account signs in, checked on every authenticated request:
+                        # same row, same statement.
+                        SqlUser.service_account_source,
                     ),
                     selectinload(SqlUser.groups).load_only(SqlGroup.id, SqlGroup.group_name),
                     # The User entity below is built by hand with these lists hardcoded to [],
@@ -304,6 +328,7 @@ class UserRepository:
                 is_service_account=u.is_service_account,
                 active=u.active,
                 managed_by=u.managed_by,
+                service_account_source=u.service_account_source,
                 experiment_permissions=[],
                 registered_model_permissions=[],
                 scorer_permissions=[],

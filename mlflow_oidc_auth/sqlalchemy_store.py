@@ -362,9 +362,14 @@ class SqlAlchemyStore:
         is_service_account=False,
         *,
         written_by: Optional[str] = None,
+        service_account_source: Optional[str] = None,
     ):
         """Create a ``manual`` user row. Refused, and never re-owned, if the username exists (#360)."""
-        return self.user_repo.create(username, display_name, is_admin, is_service_account, written_by=written_by)
+        return self.user_repo.create(username, display_name, is_admin, is_service_account, written_by=written_by, service_account_source=service_account_source)
+
+    def set_service_account_source(self, username: str, source: str) -> None:
+        """Record how service account ``username`` signs in (see utils/service_accounts.py)."""
+        self.user_repo.set_service_account_source(username, source)
 
     def create_auth_session(self, username: str, expires_at, provider_id: Optional[str] = None, encrypted_tokens: Optional[str] = None) -> str:
         """Open a server-side session and return its opaque id (issue #310).
@@ -1421,6 +1426,7 @@ class SqlAlchemyStore:
             "is_service_account": bool(row.is_service_account),
             "active": bool(row.active),
             "managed_by": row.managed_by,
+            "service_account_source": row.service_account_source,
             "external_id": row.external_id,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
@@ -1460,6 +1466,7 @@ class SqlAlchemyStore:
             SqlUser.is_service_account,
             SqlUser.active,
             SqlUser.managed_by,
+            SqlUser.service_account_source,
             SqlUser.external_id,
             SqlUser.created_at,
             SqlUser.updated_at,

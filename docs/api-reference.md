@@ -130,13 +130,15 @@ Base path: `/api/2.0/mlflow/users`
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/api/2.0/mlflow/users` | Authenticated | List users. Query param `service=true` to include service accounts |
-| POST | `/api/2.0/mlflow/users` | Admin | Create a new user |
+| POST | `/api/2.0/mlflow/users` | Admin | Create a new user. A service account (`"is_service_account": true`) is internal unless `"service_account_source"` names an OIDC provider; `"subject"` binds that provider's subject now |
 | DELETE | `/api/2.0/mlflow/users` | Admin | Delete a user |
 | GET | `/api/2.0/mlflow/users/current` | Authenticated | Get current user's profile |
 | GET | `/api/2.0/mlflow/users/{username}` | Admin | Get a specific user's profile |
 | GET | `/api/2.0/mlflow/users/current/tokens` | Authenticated | List the caller's access tokens |
 | POST | `/api/2.0/mlflow/users/current/tokens` | Session or IdP bearer token | Create a named access token for the caller |
 | DELETE | `/api/2.0/mlflow/users/current/tokens/{token_id}` | Authenticated | Delete one of the caller's access tokens |
+| GET | `/api/2.0/mlflow/users/service-account-sources` | Admin | The sources a service account can sign in through: `internal` and each OIDC provider |
+| PUT | `/api/2.0/mlflow/users/{username}/service-account-source` | Admin | Set how a service account signs in: `{"source": "internal"}` or `{"source": "<provider-id>", "subject": "<optional sub>"}`. Becoming external revokes its access tokens |
 | GET | `/api/2.0/mlflow/users/{username}/identities` | Admin | List the `(provider, subject)` identities bound to a user |
 | DELETE | `/api/2.0/mlflow/users/{username}/identities?provider_id=…&subject=…` | Admin | Unbind one identity (the subject goes in the query: it may contain `/`), so a changed subject can be bound again |
 | GET | `/api/2.0/mlflow/users/{username}/tokens` | Admin | List a user's or service account's access tokens |

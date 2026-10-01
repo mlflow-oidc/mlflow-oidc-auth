@@ -17,6 +17,7 @@ from mlflow_oidc_auth.models import (
     GroupRecord,
 )
 from mlflow_oidc_auth.models.scim import UserActiveRequest
+from mlflow_oidc_auth.models.user import ServiceAccountSourceRequest
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL, OWNER_PATTERN
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -50,6 +51,8 @@ USER_ACTIVE = "/{username}/active"
 USER_SESSIONS = "/{username}/sessions"
 USER_SESSION = "/{username}/sessions/{session_pk}"
 USER_IDENTITIES = "/{username}/identities"
+USER_SERVICE_ACCOUNT_SOURCE = "/{username}/service-account-source"
+SERVICE_ACCOUNT_SOURCES = "/service-account-sources"
 USER_TOKENS = "/current/tokens"
 USER_TOKEN = "/current/tokens/{token_id}"
 USER_TOKENS_OF = "/{username}/tokens"
@@ -59,7 +62,7 @@ USER_TOKEN_OF = "/{username}/tokens/{token_id}"
 DEFAULT_TOKEN_LIFETIME = timedelta(days=365)
 
 #: Fields of each object returned by ``GET /users/details`` and ``PATCH /users/{username}/active``.
-USER_DETAIL_FIELDS = ("username", "display_name", "is_admin", "is_service_account", "active", "managed_by")
+USER_DETAIL_FIELDS = ("username", "display_name", "is_admin", "is_service_account", "active", "managed_by", "service_account_source")
 
 
 def _parse_expiration(value: Optional[str]) -> datetime:
@@ -116,6 +119,18 @@ def _require_user(username: str) -> str:
     if user is None:
         raise HTTPException(status_code=404, detail=f"User {username} not found")
     return user.username
+
+
+@users_router.get(
+    SERVICE_ACCOUNT_SOURCES,
+    summary="List the sources a service account can sign in through",
+    description="Internal (issued access tokens only) and each OIDC provider. Admin only.",
+)
+async def list_service_account_sources(admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
+    """The choices for :func:`set_service_account_source` and service account creation."""
+    from mlflow_oidc_auth.utils.service_accounts import selectable_sources
+
+    return JSONResponse(content=selectable_sources())
 
 
 @users_router.patch(
@@ -207,6 +222,14 @@ async def create_access_token(
 def _issue_token(target_username: str, token_request: CreateUserTokenRequest, actor: str) -> JSONResponse:
     expiration = _parse_expiration(token_request.expiration)
     target_username = _require_user(target_username)
+    from mlflow_oidc_auth.utils.service_accounts import is_external
+
+    profile = store.get_user_profile(target_username)
+    if profile.is_service_account is True and is_external(profile.service_account_source):
+        # Its lifecycle lives in its identity provider: it signs in with that provider's tokens.
+        raise HTTPException(
+            status_code=409, detail="An external service account signs in with its identity provider's tokens; no access token is issued for it"
+        )
     try:
         record, plaintext = store.create_user_token(target_username, token_request.name, expiration, created_by=actor)
     except MlflowException as e:
@@ -384,6 +407,16 @@ async def create_new_user(
     HTTPException
         If there is an error creating the user.
     """
+    from mlflow_oidc_auth.utils.service_accounts import INTERNAL_SOURCE, apply_source, validate_source
+
+    source = None
+    if user_request.is_service_account:
+        try:
+            source = validate_source(user_request.service_account_source or INTERNAL_SOURCE, user_request.subject)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif user_request.service_account_source or user_request.subject:
+        raise HTTPException(status_code=400, detail="service_account_source and subject apply to a service account only")
     try:
         # Call the user creation implementation
         status, message = create_user(
@@ -392,7 +425,10 @@ async def create_new_user(
             is_admin=user_request.is_admin,
             is_service_account=user_request.is_service_account,
             written_by="manual",
+            service_account_source=source,
         )
+        if status and source and user_request.subject:
+            apply_source(user_request.username, source, user_request.subject)
 
         if status:
             # User was created successfully
@@ -404,6 +440,7 @@ async def create_new_user(
                 detail={
                     "is_admin": user_request.is_admin,
                     "is_service_account": user_request.is_service_account,
+                    **({"service_account_source": source} if source else {}),
                 },
             )
             return JSONResponse(content={"message": message}, status_code=201)
@@ -945,3 +982,42 @@ async def delete_user_identity(
         detail={"provider": provider_id},
     )
     return JSONResponse(content={"deleted": 1})
+
+
+@users_router.put(
+    USER_SERVICE_ACCOUNT_SOURCE,
+    summary="Set how a service account signs in",
+    description="'internal' (issued access tokens only) or an OIDC provider id, with an optional subject to bind now. "
+    "Becoming external revokes the account's access tokens; changing the source unbinds identities that no longer apply. Admin only.",
+)
+async def set_service_account_source(
+    username: str,
+    body: ServiceAccountSourceRequest = Body(...),
+    admin_username: str = Depends(check_admin_permission),
+) -> JSONResponse:
+    """Re-point a service account.
+
+    Raises:
+        HTTPException: 400 for an unknown source or a subject on an internal account; 404 for an
+            unknown user; 409 for an account that is not a service account.
+    """
+    from mlflow_oidc_auth.utils.service_accounts import apply_source
+
+    if not store.has_user(username):
+        raise HTTPException(status_code=404, detail=f"User {username} not found")
+    try:
+        apply_source(username, body.source, body.subject)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE):
+            raise HTTPException(status_code=409, detail=f"{username} is not a service account")
+        raise
+    emit_audit_event(
+        "user.service_account_source",
+        actor=admin_username,
+        resource_type="user",
+        resource_id=username,
+        detail={"source": body.source.strip(), "subject_bound": bool(body.subject)},
+    )
+    return JSONResponse(content={"username": username, "service_account_source": body.source.strip()})

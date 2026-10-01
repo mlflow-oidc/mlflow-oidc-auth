@@ -13,6 +13,7 @@ def create_user(
     is_service_account: bool = False,
     written_by: Optional[str] = None,
     admin_override: bool = False,
+    service_account_source: Optional[str] = None,
 ) -> tuple:
     """Create or refresh a user record.
 
@@ -47,6 +48,7 @@ def create_user(
             is_admin=is_admin,
             is_service_account=is_service_account,
             written_by=written_by,
+            service_account_source=service_account_source,
         )
         return True, f"User {user.username} (ID: {user.id}) successfully created"
 
