@@ -228,6 +228,21 @@ def can_create_mcp_server(username: str) -> bool:
     return permission is not None and permission.can_manage
 
 
+def can_search_mcp_servers(username: str) -> bool:
+    """Whether ``username`` may search the request's workspace's MCP registry: ``READ`` on it.
+
+    With workspaces disabled there is one registry and no tenant boundary: any authenticated user.
+    """
+    if not config.MLFLOW_ENABLE_WORKSPACES:
+        return True
+    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    permission = get_workspace_permission_cached(username, get_request_workspace() or current_grant_workspace())
+    return permission is not None and permission.can_read
+
+
 def _mcp_server_exists(name: str) -> bool:
     """Whether the request's workspace holds an MCP server called ``name``.
 
@@ -256,8 +271,11 @@ def get_mcp_server_validator(path: str) -> Callable[[str, Request], Awaitable[bo
         if route is None:
             return False
         if route.action in (SEARCH, SEARCH_ENDPOINTS):
-            # Any authenticated user; the response is narrowed to readable servers afterwards.
-            return True
+            # The response is narrowed to readable servers afterwards, but MLflow's page token
+            # still tells how many rows matched the caller's filter — an oracle on the hidden
+            # ones. So searching a workspace's registry needs READ on that workspace, as before
+            # per-server permissions; a server shared with a non-member is reached by name.
+            return can_search_mcp_servers(username)
         if route.action == CREATE:
             return can_create_mcp_server(username)
         name = route.name
@@ -313,7 +331,7 @@ def _filter_search_body(username: str, body: bytes, list_key: str, name_key: str
     Raises:
         ValueError: The body is not a list response under ``list_key``.
     """
-    from mlflow_oidc_auth.utils.permissions import effective_mcp_server_permission
+    from mlflow_oidc_auth.utils.permissions import effective_mcp_server_permission, mcp_server_display_permission
 
     data = json.loads(body)
     items = data.get(list_key) if isinstance(data, dict) else None
@@ -335,7 +353,7 @@ def _filter_search_body(username: str, body: bytes, list_key: str, name_key: str
         if permission is None or not permission.can_read:
             continue
         if stamp:
-            item["allowed_actions"] = _allowed_actions(permission)
+            item["allowed_actions"] = _allowed_actions(mcp_server_display_permission(name, username))
         visible.append(item)
     data[list_key] = visible
     return json.dumps(data).encode()
@@ -415,11 +433,11 @@ async def finalize_mcp_response(path: str, username: str, request: Request, resp
     if route.action == READ_SERVER:
         body = await _buffer(response)
         try:
-            from mlflow_oidc_auth.utils.permissions import effective_mcp_server_permission
+            from mlflow_oidc_auth.utils.permissions import mcp_server_display_permission
 
             data = json.loads(body)
             with _bridged(auth_context):
-                data["allowed_actions"] = _allowed_actions(effective_mcp_server_permission(route.name, username).permission)
+                data["allowed_actions"] = _allowed_actions(mcp_server_display_permission(route.name, username))
             return _rebuilt(response, json.dumps(data).encode())
         except Exception as e:
             # Already authorized: an unstamped body exposes nothing the caller may not read.
@@ -439,7 +457,7 @@ async def finalize_mcp_response(path: str, username: str, request: Request, resp
                 _grant_creator_manage(name, username)
         except Exception as e:
             # The server exists; failing the response would make the client retry into a conflict.
-            # The creator keeps their workspace-derived permission until an admin grants MANAGE.
+            # With no MANAGE grant it is admin-only for changes until an admin grants one.
             logger.error("MCP server registry: could not grant the creator MANAGE: %s", type(e).__name__)
         return _rebuilt(response, body)
 
