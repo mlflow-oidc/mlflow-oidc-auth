@@ -8,7 +8,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values, get_run_experiment_id
 
 
 def validate_can_read_metric_history_bulk(username: str, run_ids: Sequence[str] | None = None) -> bool:
@@ -38,8 +38,7 @@ def validate_can_read_metric_history_bulk(username: str, run_ids: Sequence[str] 
 
     tracking_store = _get_tracking_store()
     for run_id in run_ids:
-        run = tracking_store.get_run(run_id)
-        experiment_id = run.info.experiment_id
+        experiment_id = get_run_experiment_id(tracking_store, run_id)
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True

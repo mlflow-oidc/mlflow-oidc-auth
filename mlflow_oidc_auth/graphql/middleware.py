@@ -9,7 +9,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import effective_experiment_permission, effective_registered_model_permission
+from mlflow_oidc_auth.utils import effective_experiment_permission, effective_registered_model_permission, get_run_experiment_id
 
 logger = get_logger()
 
@@ -86,8 +86,7 @@ def _can_read_run(run_id: str, username: str) -> bool:
     """
 
     tracking_store = _get_tracking_store()
-    run = tracking_store.get_run(run_id)
-    return _can_read_experiment(run.info.experiment_id, username)
+    return _can_read_experiment(get_run_experiment_id(tracking_store, run_id), username)
 
 
 def _can_read_model(model_name: str, username: str) -> bool:

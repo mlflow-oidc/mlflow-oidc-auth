@@ -2,15 +2,14 @@ from mlflow.server.handlers import _get_tracking_store
 from flask import request
 
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
-from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values
+from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values, get_run_experiment_id
 from mlflow_oidc_auth.validators._referenced import nested_body_values, referenced_logged_model_permission, referenced_run_permission
 
 
 def _permission_for_run(run_id: str, username: str) -> Permission:
     # run permissions inherit from parent resource (experiment)
     # so we just get the experiment permission
-    run = _get_tracking_store().get_run(run_id)
-    experiment_id = run.info.experiment_id
+    experiment_id = get_run_experiment_id(_get_tracking_store(), run_id)
     return effective_experiment_permission(experiment_id, username).permission
 
 
@@ -123,8 +122,7 @@ def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
     run_ids = all_source_values("run_ids", "run_id")
 
     for run_id in run_ids:
-        run = _get_tracking_store().get_run(run_id)
-        experiment_id = run.info.experiment_id
+        experiment_id = get_run_experiment_id(_get_tracking_store(), run_id)
         if not effective_experiment_permission(experiment_id, username).permission.can_read:
             return False
     return True

@@ -20,7 +20,7 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
-from mlflow_oidc_auth.utils import effective_experiment_permission, request_body_dict
+from mlflow_oidc_auth.utils import effective_experiment_permission, get_run_experiment_id, request_body_dict
 from mlflow_oidc_auth.validators.experiment import get_artifact_experiment
 
 logger = get_logger()
@@ -75,17 +75,26 @@ def referenced_logged_model(model_id: str):
 def referenced_run_permission(run_id: str, username: str) -> Permission:
     """The permission ``username`` holds on the experiment of a referenced run.
 
+    Reads only the run's experiment id, not the whole run (``get_run_experiment_id``).
+
     Parameters:
         run_id: The run the request references.
         username: The authenticated user.
 
     Returns:
         The experiment permission, or ``NO_PERMISSIONS`` when the run does not exist.
+
+    Raises:
+        MlflowException: For any tracking-store error other than "does not exist".
     """
-    run = referenced_run(run_id)
-    if run is None:
-        return NO_PERMISSIONS
-    return effective_experiment_permission(run.info.experiment_id, username).permission
+    try:
+        experiment_id = get_run_experiment_id(_get_tracking_store(), str(run_id))
+    except MlflowException as e:
+        if _is_not_found(e):
+            logger.debug("Referenced run could not be resolved; denying")
+            return NO_PERMISSIONS
+        raise
+    return effective_experiment_permission(experiment_id, username).permission
 
 
 def referenced_logged_model_permission(model_id: str, username: str) -> Permission:
