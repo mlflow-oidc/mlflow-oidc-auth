@@ -255,6 +255,78 @@ class TestWorkspacesDisabled:
             assert model_permission("legacy") == "NO_PERMISSIONS"
 
 
+class TestAnOldReplicasDuplicateDuringARollingUpgrade:
+    """A replica on a release before the column can add an unassigned grant beside an existing one;
+    with workspaces disabled both match. Lookups pick one instead of failing, and the backfill merges."""
+
+    def _duplicate(self, store, model, principal_col, principal_id, **fields):
+        with store.ManagedSessionMaker(read_only=False) as session:
+            session.add(model(**{principal_col: principal_id, "workspace": None, **fields}))
+
+    def test_the_default_grant_wins_and_changes_go_to_it(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission, SqlUser
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        store.create_registered_model_permission("churn", ALICE, "READ")
+        with store.ManagedSessionMaker() as session:
+            alice_id = session.query(SqlUser.id).filter(SqlUser.username == ALICE).scalar()
+        self._duplicate(store, SqlRegisteredModelPermission, "user_id", alice_id, name="churn", permission="MANAGE")
+        _clear_cache()
+
+        assert model_permission("churn") == "READ"
+        store.update_registered_model_permission("churn", ALICE, "EDIT")
+        _clear_cache()
+        assert model_permission("churn") == "EDIT"
+
+    def test_a_group_grant_with_two_unassigned_rows_can_still_be_changed(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlGroup
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        with store.ManagedSessionMaker() as session:
+            team_id = session.query(SqlGroup.id).filter(SqlGroup.group_name == "team").scalar()
+        self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="churn", permission="READ", prompt=False)
+        self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="churn", permission="EDIT", prompt=False)
+
+        store.update_group_model_permission("team", "churn", "MANAGE")  # the newest row
+        _clear_cache()
+
+        assert model_permission("churn") == "MANAGE"
+
+    def test_revoking_removes_every_copy_so_none_keeps_granting(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission, SqlRegisteredModelPermission, SqlGroup, SqlUser
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        store.create_registered_model_permission("churn", ALICE, "READ")
+        store.create_group_model_permission("team", "fraud", "READ")
+        with store.ManagedSessionMaker() as session:
+            alice_id = session.query(SqlUser.id).filter(SqlUser.username == ALICE).scalar()
+            team_id = session.query(SqlGroup.id).filter(SqlGroup.group_name == "team").scalar()
+        self._duplicate(store, SqlRegisteredModelPermission, "user_id", alice_id, name="churn", permission="MANAGE")
+        self._duplicate(store, SqlRegisteredModelGroupPermission, "group_id", team_id, name="fraud", permission="MANAGE", prompt=False)
+
+        store.delete_registered_model_permission("churn", ALICE)
+        store.delete_group_model_permission("team", "fraud")
+        _clear_cache()
+
+        assert model_permission("churn") == "NO_PERMISSIONS"
+        assert model_permission("fraud") == "NO_PERMISSIONS"
+
+    def test_the_backfill_merges_the_duplicates(self, store, monkeypatch):
+        from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission, SqlUser
+        from mlflow_oidc_auth.grant_workspace_backfill import backfill_grant_workspaces
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        with store.ManagedSessionMaker() as session:
+            alice_id = session.query(SqlUser.id).filter(SqlUser.username == ALICE).scalar()
+        for permission in ("READ", "MANAGE"):
+            self._duplicate(store, SqlRegisteredModelPermission, "user_id", alice_id, name="churn", permission=permission)
+
+        backfill_grant_workspaces(store)
+
+        assert [(p.name, p.workspace, p.permission) for p in store.list_registered_model_permissions(ALICE)] == [("churn", "default", "READ")]
+
+
 class TestWhoHasAccessLists:
     def test_the_per_model_user_list_shows_only_this_workspaces_grants(self, store):
         import asyncio
