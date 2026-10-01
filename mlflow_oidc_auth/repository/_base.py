@@ -15,7 +15,7 @@ from mlflow.protos.databricks_pb2 import (
     RESOURCE_ALREADY_EXISTS,
     RESOURCE_DOES_NOT_EXIST,
 )
-from sqlalchemy import and_, true
+from sqlalchemy import and_, case, true
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,8 @@ from mlflow_oidc_auth.repository.utils import (
     get_user,
     validate_regex,
 )
+from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+
 from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace, grant_workspace_condition
 
 ModelT = TypeVar("ModelT")
@@ -57,6 +59,62 @@ class _GrantWorkspaceScope:
     def _new_row_fields(self) -> dict:
         return {"workspace": current_grant_workspace()} if self.workspace_scoped else {}
 
+    def _one_in_scope(self, query, *, required: bool = True):
+        """The single grant ``query`` finds for one resource and principal.
+
+        The unique constraint allows one grant per workspace, resource and principal, but not among
+        unassigned rows (``workspace IS NULL``): a replica still on a release before the column
+        existed can add one beside an existing grant during a rolling upgrade. Those rows match only
+        with workspaces disabled, alongside ``default``'s, and the startup backfill merges them.
+        Until then the lookup picks the one the backfill will keep — the ``default`` grant, else the
+        oldest — instead of failing the request.
+
+        Parameters:
+            query: A query on ``model_class`` filtered to one resource and principal.
+            required: Raise ``NoResultFound`` when there is none (like ``Query.one``), else return None.
+
+        Returns:
+            The grant, or None when there is none and ``required`` is false.
+
+        Raises:
+            NoResultFound: When there is no grant and ``required`` is true.
+            MultipleResultsFound: For a repository that is not workspace-scoped, with more than one match.
+        """
+        try:
+            return query.one() if required else query.one_or_none()
+        except MultipleResultsFound:
+            if not self.workspace_scoped:
+                raise
+        column = self.model_class.workspace
+        return query.order_by(case((column == DEFAULT_WORKSPACE_NAME, 0), else_=1), self.model_class.id).first()
+
+    def _same_grant(self, session: Session, row) -> list:
+        """``row`` and any unassigned duplicate of it (see :meth:`_one_in_scope`).
+
+        Changing or revoking a grant applies to all of them, so a duplicate can never keep granting
+        what was just lowered or revoked.
+
+        Parameters:
+            session: The session ``row`` was loaded in.
+            row: A grant this repository found.
+
+        Returns:
+            The rows that make up this grant, ``row`` included.
+        """
+        if not self.workspace_scoped:
+            return [row]
+        model = self.model_class
+        principal = "user_id" if hasattr(model, "user_id") else "group_id"
+        query = session.query(model).filter(
+            model.id != row.id,
+            getattr(model, self.resource_id_attr) == getattr(row, self.resource_id_attr),
+            getattr(model, principal) == getattr(row, principal),
+            self._in_scope(),
+        )
+        # No ``prompt`` filter: permission checks count every row of the principal on this name,
+        # whatever its ``prompt`` flag, so every such row is the same grant.
+        return [row, *query.all()]
+
 
 class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT]):
     """Base class for user-level permission repositories.
@@ -83,14 +141,13 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         :raises MlflowException: If no or multiple results found.
         """
         try:
-            return (
+            return self._one_in_scope(
                 session.query(self.model_class)
                 .join(SqlUser, self.model_class.user_id == SqlUser.id)
                 .filter(
                     self._resource_is(resource_id),
                     SqlUser.username == username,
                 )
-                .one()
             )
         except NoResultFound:
             raise MlflowException(
@@ -182,7 +239,8 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         _validate_permission(permission)
         with self._Session(read_only=False) as session:
             perm = self._get_permission(session, resource_id, username)
-            perm.permission = permission
+            for row in self._same_grant(session, perm):
+                row.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
 
@@ -194,7 +252,8 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         """
         with self._Session(read_only=False) as session:
             perm = self._get_permission(session, resource_id, username)
-            session.delete(perm)
+            for row in self._same_grant(session, perm):
+                session.delete(row)
             session.flush()
 
     def rename(self, old_name: str, new_name: str) -> None:
@@ -238,14 +297,13 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         :raises MlflowException: If no or multiple results found.
         """
         try:
-            return (
+            return self._one_in_scope(
                 session.query(self.model_class)
                 .join(SqlGroup, self.model_class.group_id == SqlGroup.id)
                 .filter(
                     self._resource_is(resource_id),
                     SqlGroup.group_name == group_name,
                 )
-                .one()
             )
         except NoResultFound:
             raise MlflowException(
@@ -269,13 +327,12 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         group = session.query(SqlGroup).filter(SqlGroup.group_name == group_name).one_or_none()
         if group is None:
             return None
-        return (
-            session.query(self.model_class)
-            .filter(
+        return self._one_in_scope(
+            session.query(self.model_class).filter(
                 self._resource_is(resource_id),
                 self.model_class.group_id == group.id,
-            )
-            .one_or_none()
+            ),
+            required=False,
         )
 
     def _list_user_groups(self, username: str) -> List[str]:
@@ -443,15 +500,14 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         _validate_permission(permission)
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
-            perm = (
-                session.query(self.model_class)
-                .filter(
+            perm = self._one_in_scope(
+                session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
                 )
-                .one()
             )
-            perm.permission = permission
+            for row in self._same_grant(session, perm):
+                row.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
 
@@ -463,15 +519,14 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         """
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
-            perm = (
-                session.query(self.model_class)
-                .filter(
+            perm = self._one_in_scope(
+                session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
                 )
-                .one()
             )
-            session.delete(perm)
+            for row in self._same_grant(session, perm):
+                session.delete(row)
             session.flush()
 
     def rename(self, old_name: str, new_name: str) -> None:

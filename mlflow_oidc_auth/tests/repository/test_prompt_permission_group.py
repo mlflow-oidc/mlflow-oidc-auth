@@ -107,14 +107,11 @@ def test__get_prompt_group_permission_not_found(repo, session):
 
 
 def test__get_prompt_group_permission_multiple_found(repo, session):
-    """Test _get_prompt_group_permission when multiple permissions are found"""
-    session.query().filter().one.side_effect = MultipleResultsFound()
+    """Unassigned duplicates (see _GrantWorkspaceScope._one_in_scope): one is picked deterministically."""
+    query = session.query().filter()
+    query.one.side_effect = MultipleResultsFound()
 
-    with pytest.raises(MlflowException) as exc:
-        repo._get_prompt_group_permission(session, "test_prompt", 1)
-
-    assert "Multiple perms for prompt=test_prompt, group=1" in str(exc.value)
-    assert exc.value.error_code == "INVALID_STATE"
+    assert repo._get_prompt_group_permission(session, "test_prompt", 1) is query.order_by().first()
 
 
 def test__get_prompt_group_permission_database_error(repo, session):

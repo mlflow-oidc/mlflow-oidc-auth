@@ -263,22 +263,34 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.warning("Failed to read groups for bearer provisioning of %s: %s", username, type(e).__name__)
             return
 
+        from mlflow_oidc_auth.provisioning_policy import admin_from_claims, groups_to_apply
+
         # Same authorization gate as interactive login (routers/auth.py): the user must be an
-        # admin-group or allowed-group member. Otherwise do NOT provision — a bearer token must
-        # never be able to create an account that interactive login would reject.
-        is_admin_claim = any(group in user_groups for group in config.OIDC_ADMIN_GROUP_NAME)
-        admission = None if is_admin_claim else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
-        if not is_admin_claim and admission is None:
+        # admin-group member *by this provider's say-so* or an allowed-group member. Otherwise do
+        # NOT provision — a bearer token must never create an account interactive login would
+        # reject. An admin group name only admits when the provider may confer admin (#318): a
+        # provider configured ``admin_source: none`` — a tenant whose group names you do not
+        # control — gets no say through it here either.
+        may_be_admin = admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
+        admission = None if may_be_admin else admitting_rule(user_groups, config.OIDC_GROUP_NAME, config.OIDC_GROUP_NAME_PATTERN)
+        if not may_be_admin and admission is None:
             logger.info("Bearer user %s is in no authorized group; not provisioning (parity with interactive login)", username)
             return
 
-        # Admin is conferred from a token only when the operator has explicitly opted in *and*
-        # the asserting provider is allowed to say so (#318). Without the second half, a provider
-        # configured ``admin_source: none`` — the answer for a tenant whose group names you do
-        # not control — could still mint administrators through this path.
-        from mlflow_oidc_auth.provisioning_policy import admin_from_claims
+        # Login creates an unknown user only for a provider whose provisioning is ``jit``; with
+        # ``scim`` the directory decides who exists, and a token must not either.
+        if provider.provisioning != "jit":
+            logger.info(
+                "Not provisioning %s: provider '%s' has provisioning '%s' (parity with interactive login)", username, provider.id, provider.provisioning
+            )
+            return
 
-        is_admin = is_admin_claim and config.OIDC_TRUST_BEARER_GROUP_CLAIMS and admin_from_claims(provider, user_groups, config.OIDC_ADMIN_GROUP_NAME)
+        # Admin is conferred from a token only when the operator has explicitly opted in as well.
+        is_admin = may_be_admin and config.OIDC_TRUST_BEARER_GROUP_CLAIMS
+        # The membership login would write: namespaced as ``<provider-id>:<group>`` for any provider
+        # but the deployment's own, so another provider's group never joins a local group of the
+        # same name, and nothing at all for a provider configured ``group_sync: none``.
+        groups = groups_to_apply(provider, user_groups, [], is_new_user=True)
         display_name, display_name_error = extract_display_name(payload, source=BEARER_TOKEN_SOURCE)
         if display_name_error:
             logger.debug("Bearer provisioning of %s falling back to username as display name: %s", username, display_name_error)
@@ -290,9 +302,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # who is writing and the memberships are owned by that provider rather than ``manual``.
             written_by = f"oidc:{provider.id}"
             user_module.create_user(username=username, display_name=display_name, is_admin=is_admin, written_by=written_by)
-            user_module.populate_groups(group_names=user_groups, written_by=written_by)
-            user_module.update_user(username=username, group_names=user_groups, written_by=written_by)
-            logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(user_groups))
+            if groups is not None:
+                arrived = user_module.populate_groups(group_names=groups, written_by=written_by)
+                user_module.update_user(username=username, group_names=groups, written_by=written_by)
+                # Groups this created get their workspace group rules (#418), as on login.
+                if arrived:
+                    from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
+
+                    apply_rules_for_groups(arrived, source=written_by)
+            logger.info("Provisioned bearer user %s (admin=%s, groups=%d) on first authentication", username, is_admin, len(groups or []))
             if admission is not None and admission.kind == BY_PATTERN:
                 emit_audit_event(
                     "auth.admitted_by_group_pattern",

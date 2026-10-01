@@ -36,14 +36,12 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
         :return: The prompt permission if it exists, otherwise raises an exception.
         """
         try:
-            return (
-                session.query(SqlRegisteredModelGroupPermission)
-                .filter(
+            return self._one_in_scope(
+                session.query(SqlRegisteredModelGroupPermission).filter(
                     self._resource_is(name),
                     SqlRegisteredModelGroupPermission.group_id == group_id,
                     SqlRegisteredModelGroupPermission.prompt == True,
                 )
-                .one()
             )
         except NoResultFound:
             raise MlflowException(
@@ -104,7 +102,8 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_prompt_group_permission(session, name, group.id)
-            perm.permission = permission
+            for row in self._same_grant(session, perm):
+                row.permission = permission
             session.flush()
             return perm.to_mlflow_entity()
 
@@ -112,5 +111,6 @@ class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegistere
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
             perm = self._get_prompt_group_permission(session, name, group.id)
-            session.delete(perm)
+            for row in self._same_grant(session, perm):
+                session.delete(row)
             session.flush()
