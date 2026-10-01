@@ -93,14 +93,20 @@ UNPROTECTED_PREFIXES = (
 # silently unprotect any later route whose path merely began with it.
 UNPROTECTED_EXACT = ("/providers",)
 
+# The unprotected routes MLflow itself registers under ``--static-prefix``. Only these are
+# matched under the prefix: the plugin's own routes (login, SCIM, SAML, the admin UI) are never
+# mounted there, so prefixing the whole list would only open paths nothing should answer.
+UNPROTECTED_UNDER_STATIC_PREFIX = ("/health", "/metrics", "/static-files")
+
 
 def is_unprotected_route(path: str) -> bool:
     """Return True when ``path`` does not require an authenticated user.
 
     MLflow registers ``/health``, ``/metrics`` and ``/static-files`` under ``--static-prefix``
     when it is set, which puts the prefix in the path rather than in ``root_path``. Match the
-    prefixed forms too; MLflow's own basic auth does the same, or a prefixed deployment would
-    answer its own health probe with a login redirect and never become ready.
+    prefixed forms of those three (:data:`UNPROTECTED_UNDER_STATIC_PREFIX`) too; MLflow's own
+    basic auth does the same, or a prefixed deployment would answer its own health probe with a
+    login redirect and never become ready.
 
     Parameters:
         path: The routed path (see :func:`routed_path`), never the raw request path.
@@ -112,4 +118,4 @@ def is_unprotected_route(path: str) -> bool:
         return True
     if not os.environ.get(STATIC_PREFIX_ENV_VAR):
         return False
-    return path.startswith(tuple(_add_static_prefix(prefix) for prefix in UNPROTECTED_PREFIXES))
+    return path.startswith(tuple(_add_static_prefix(prefix) for prefix in UNPROTECTED_UNDER_STATIC_PREFIX))

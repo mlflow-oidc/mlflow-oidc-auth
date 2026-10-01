@@ -118,6 +118,21 @@ class TestAuthMiddleware:
         assert auth_middleware._is_unprotected_route("/custom-path/api/2.0/mlflow/experiments") is False
         # The prefix must end on a path boundary; a sibling directory is not the prefixed route.
         assert auth_middleware._is_unprotected_route("/custom-pathx/health") is False
+        # The plugin's own unprotected routes are never mounted under the static prefix, so their
+        # prefixed forms are not unprotected either.
+        for path in ("/scim/v2/Users", "/slo/oidc", "/saml/metadata/x", "/login", "/callback", "/oidc/ui/", "/docs", "/openapi.json"):
+            assert auth_middleware._is_unprotected_route(f"/custom-path{path}") is False, path
+        # The prefix is removed once, never repeatedly.
+        assert auth_middleware._is_unprotected_route("/custom-path/custom-path/health") is False
+
+    def test_prefixed_probe_stays_protected_without_a_static_prefix(self, auth_middleware, monkeypatch):
+        """A deployment without ``--static-prefix`` opens nothing new."""
+        from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+        monkeypatch.delenv(STATIC_PREFIX_ENV_VAR, raising=False)
+
+        assert auth_middleware._is_unprotected_route("/custom-path/health") is False
+        assert auth_middleware._is_unprotected_route("/custom-path/static-files/js/app.js") is False
 
     @pytest.mark.asyncio
     async def test_authenticate_basic_auth_success(self, auth_middleware, mock_store):

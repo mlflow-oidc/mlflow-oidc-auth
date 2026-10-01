@@ -1012,17 +1012,30 @@ class TestValidatorRouteCoverage:
         assert _find_validator(req) is None
 
 
-def test_is_unprotected_route_honours_mlflow_static_prefix(monkeypatch):
+@pytest.mark.parametrize(
+    "path, open_",
+    [
+        ("/custom-path/health", True),
+        ("/custom-path/static-files/js/app.js", True),
+        ("/custom-path/metrics", True),
+        ("/custom-path/api/2.0/mlflow/users", False),
+        # The prefix must end on a path boundary; a sibling directory is not the prefixed route.
+        ("/custom-pathx/health", False),
+        # The prefix is removed once, never repeatedly.
+        ("/custom-path/custom-path/health", False),
+    ],
+)
+def test_before_request_hook_honours_mlflow_static_prefix(monkeypatch, path, open_):
     """MLflow mounts /health under ``--static-prefix``; the probe must not require a session."""
     from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 
-    from mlflow_oidc_auth.hooks.before_request import _is_unprotected_route
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
 
     monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/custom-path")
 
-    assert _is_unprotected_route("/custom-path/health") is True
-    assert _is_unprotected_route("/custom-path/static-files/js/app.js") is True
-    assert _is_unprotected_route("/custom-path/metrics") is True
-    assert _is_unprotected_route("/custom-path/api/2.0/mlflow/users") is False
-    # The prefix must end on a path boundary; a sibling directory is not the prefixed route.
-    assert _is_unprotected_route("/custom-pathx/health") is False
+    with (
+        Flask(__name__).test_request_context(path),
+        patch("mlflow_oidc_auth.hooks.before_request._get_auth_context", return_value=(None, False)),
+        patch("mlflow_oidc_auth.hooks.before_request.responses.make_auth_required_response", return_value="auth-required"),
+    ):
+        assert before_request_hook() == (None if open_ else "auth-required")
