@@ -129,6 +129,11 @@ row reveals a **Deactivate** or **Reactivate** action:
   was opened and when it expires. **Revoke** ends one session and **Revoke all** ends every one,
   each after a confirmation; the list refreshes afterwards. The session is signed out on its next
   request. The account, its grants and its access tokens are not affected; use Deactivate for that.
+- On the **Service Accounts** page, **Signs in with** shows how each account signs in — *Internal
+  (tokens)*, only with access tokens issued for it, or the one provider whose tokens reach it —
+  and the key action changes it. Creating a service account asks the same question; choosing a
+  provider can bind its subject now, or leave the provider's first token to bind its own. Moving
+  an account to a provider revokes the access tokens issued for it.
 - **Identities** (also on the Service Accounts page) lists the `(provider, subject)` identities
   that sign in as the account. **Unbind** removes one after a confirmation — for a subject that
   changed, such as a re-created client or a CI workflow issuing a new `sub` — so the new one can be

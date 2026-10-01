@@ -116,10 +116,7 @@ describe("useWebhooks", () => {
     const listSpy = vi
       .spyOn(webhookService, "fetchWebhooksPage")
       .mockResolvedValue({ items: mockWebhooks.webhooks, total: 1 });
-    const workspaceSpy = vi.spyOn(
-      workspaceContext,
-      "useSelectedWorkspace",
-    );
+    const workspaceSpy = vi.spyOn(workspaceContext, "useSelectedWorkspace");
 
     workspaceSpy.mockReturnValue("workspace-a");
     const { result, rerender } = renderHook(() => useWebhooks());

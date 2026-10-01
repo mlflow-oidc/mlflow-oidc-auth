@@ -15,10 +15,7 @@ import { useApi } from "./use-api";
  * `refresh` clears any local overrides and refetches from the server.
  */
 export function useAllUserDetails(service?: boolean) {
-  const fetcher = useMemo(
-    () => fetchAllUserDetails(service),
-    [service],
-  );
+  const fetcher = useMemo(() => fetchAllUserDetails(service), [service]);
 
   const {
     data: response,

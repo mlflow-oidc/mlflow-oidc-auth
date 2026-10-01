@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { Button } from "../../../shared/components/button";
 import { Modal } from "../../../shared/components/modal";
 import { Input } from "../../../shared/components/input";
+import { ServiceAccountSourceFields } from "./service-account-source-fields";
+import {
+  INTERNAL_SOURCE,
+  type ServiceAccountSource,
+} from "../services/service-account-source-service";
 
 interface CreateServiceAccountModalProps {
   isOpen: boolean;
@@ -10,16 +15,22 @@ interface CreateServiceAccountModalProps {
     name: string;
     display_name: string;
     is_admin: boolean;
+    service_account_source: string;
+    subject?: string;
   }) => void | Promise<void>;
+  /** The sources it can sign in through; empty offers internal only. */
+  sources?: ServiceAccountSource[];
 }
 
 export const CreateServiceAccountModal: React.FC<
   CreateServiceAccountModalProps
-> = ({ isOpen, onClose, onSave }) => {
+> = ({ isOpen, onClose, onSave, sources = [] }) => {
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isDisplayNameManual, setIsDisplayNameManual] = useState(false);
+  const [source, setSource] = useState(INTERNAL_SOURCE);
+  const [subject, setSubject] = useState("");
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +61,10 @@ export const CreateServiceAccountModal: React.FC<
       name,
       display_name: displayName,
       is_admin: isAdmin,
+      service_account_source: source,
+      ...(source !== INTERNAL_SOURCE && subject.trim()
+        ? { subject: subject.trim() }
+        : {}),
     });
     onClose();
   };
@@ -77,6 +92,14 @@ export const CreateServiceAccountModal: React.FC<
           onChange={handleDisplayNameChange}
           placeholder="My Service Account"
           required
+        />
+        <ServiceAccountSourceFields
+          sources={sources}
+          source={source}
+          subject={subject}
+          onSourceChange={setSource}
+          onSubjectChange={setSubject}
+          idPrefix="create-sa"
         />
       </div>
 

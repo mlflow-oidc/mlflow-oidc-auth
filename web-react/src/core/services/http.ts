@@ -69,10 +69,7 @@ function triggerReauth(): void {
  * Extract a user-friendly error message from an HTTP error.
  * Falls back to the provided default message if parsing fails.
  */
-export function extractErrorMessage(
-  error: unknown,
-  fallback: string,
-): string {
+export function extractErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
     // Error format from http(): "HTTP 400: {json body}"
     const match = error.message.match(/^HTTP \d+: (.+)$/s);

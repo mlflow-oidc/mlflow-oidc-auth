@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { faIdCard, faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+  faIdCard,
+  faKey,
+  faPlus,
+  faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import { IconButton } from "../../shared/components/icon-button";
 import { EntityNameLink } from "../../shared/components/entity-name-link";
 import { buildEntityRoute } from "../../shared/utils/string-utils";
@@ -14,16 +19,24 @@ import { useCurrentUser } from "../../core/hooks/use-current-user";
 import { Button } from "../../shared/components/button";
 import { CreateServiceAccountModal } from "./components/create-service-account-modal";
 import { UserIdentitiesModal } from "../users/components/user-identities-modal";
+import { ServiceAccountSourceModal } from "./components/service-account-source-modal";
+import { useServiceAccountSources } from "./hooks/use-service-account-sources";
+import { sourceLabel } from "./services/service-account-source-service";
+import { useApi } from "../../core/hooks/use-api";
 import {
   createUser,
   deleteUser,
+  fetchAllUserDetails,
   fetchServiceAccountsPage,
 } from "../../core/services/user-service";
+
+const fetchServiceAccountDetails = fetchAllUserDetails(true);
 import { useToast } from "../../shared/components/toast/use-toast";
 
 export default function ServiceAccountsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [identitiesUser, setIdentitiesUser] = useState<string | null>(null);
+  const [sourceUser, setSourceUser] = useState<string | null>(null);
   const {
     searchTerm,
     submittedTerm,
@@ -43,6 +56,8 @@ export default function ServiceAccountsPage() {
     name: string;
     display_name: string;
     is_admin: boolean;
+    service_account_source: string;
+    subject?: string;
   }) => {
     try {
       await createUser({
@@ -50,7 +65,10 @@ export default function ServiceAccountsPage() {
         display_name: data.display_name,
         is_admin: data.is_admin,
         is_service_account: true,
+        service_account_source: data.service_account_source,
+        ...(data.subject ? { subject: data.subject } : {}),
       });
+      refetchDetails();
       showToast(`Service account ${data.name} created successfully`, "success");
       refresh();
       setIsModalOpen(false);
@@ -72,6 +90,12 @@ export default function ServiceAccountsPage() {
   };
 
   const isAdmin = currentUser?.is_admin === true;
+  const { sources } = useServiceAccountSources();
+  const { data: details, refetch: refetchDetails } = useApi(
+    fetchServiceAccountDetails,
+  );
+  const sourceOf = (username: string) =>
+    details?.find((d) => d.username === username)?.service_account_source;
 
   const tableData = items.map((username) => ({
     id: username,
@@ -93,9 +117,20 @@ export default function ServiceAccountsPage() {
     ...(isAdmin
       ? [
           {
+            header: "Signs in with",
+            render: ({ username }: { username: string }) =>
+              sourceLabel(sourceOf(username), sources),
+          },
+          {
             header: "Actions",
             render: ({ username }: { username: string }) => (
               <div className="flex space-x-2">
+                <IconButton
+                  icon={faKey}
+                  title="How it signs in"
+                  muted
+                  onClick={() => setSourceUser(username)}
+                />
                 <IconButton
                   icon={faIdCard}
                   title="Identities"
@@ -162,6 +197,7 @@ export default function ServiceAccountsPage() {
             key={isModalOpen ? "open" : "closed"}
             isOpen={isModalOpen}
             onClose={() => setIsModalOpen(false)}
+            sources={sources}
             onSave={(data) => {
               void handleCreateServiceAccount(data);
             }}
@@ -171,6 +207,13 @@ export default function ServiceAccountsPage() {
       <UserIdentitiesModal
         username={identitiesUser}
         onClose={() => setIdentitiesUser(null)}
+      />
+      <ServiceAccountSourceModal
+        username={sourceUser}
+        currentSource={sourceUser ? sourceOf(sourceUser) : null}
+        sources={sources}
+        onClose={() => setSourceUser(null)}
+        onSaved={refetchDetails}
       />
     </PageContainer>
   );

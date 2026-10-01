@@ -24,6 +24,8 @@ export type UserDetails = {
   is_service_account: boolean;
   active: boolean;
   managed_by: ManagedBy;
+  /** How a service account signs in: "internal" or a provider id; null for a person. */
+  service_account_source?: string | null;
 };
 
 /**

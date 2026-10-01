@@ -21,6 +21,28 @@ vi.mock("../../core/hooks/use-current-user");
 vi.mock("../../core/services/user-service");
 vi.mock("../../shared/components/toast/use-toast");
 vi.mock("../../core/hooks/use-search");
+vi.mock("../../core/hooks/use-api", () => ({
+  useApi: () => ({
+    data: [{ username: "sa1", service_account_source: "ci" }],
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+    isStale: false,
+  }),
+}));
+vi.mock("./hooks/use-service-account-sources", () => ({
+  useServiceAccountSources: () => ({
+    sources: [
+      {
+        id: "internal",
+        display_name: "Internal (issued access tokens only)",
+        type: "internal",
+      },
+      { id: "ci", display_name: "CI workloads", type: "oidc" },
+    ],
+    isLoading: false,
+  }),
+}));
 
 vi.mock("../../shared/components/page/page-container", () => ({
   default: ({
@@ -51,13 +73,21 @@ vi.mock("./components/create-service-account-modal", () => ({
       name: string;
       display_name: string;
       is_admin: boolean;
+      service_account_source: string;
+      subject?: string;
     }) => void;
   }) =>
     isOpen ? (
       <div data-testid="create-modal">
         <button
           onClick={() =>
-            onSave({ name: "newsa", display_name: "New SA", is_admin: false })
+            onSave({
+              name: "newsa",
+              display_name: "New SA",
+              is_admin: false,
+              service_account_source: "ci",
+              subject: "repo:org/app:ref:refs/heads/main",
+            })
           }
         >
           Confirm Create
@@ -161,12 +191,23 @@ describe("ServiceAccountsPage", () => {
         display_name: "New SA",
         is_admin: false,
         is_service_account: true,
+        service_account_source: "ci",
+        subject: "repo:org/app:ref:refs/heads/main",
       });
       expect(mockShowToast).toHaveBeenCalledWith(
         "Service account newsa created successfully",
         "success",
       );
     });
+  });
+
+  it("shows how each service account signs in, and opens the change dialog", () => {
+    renderPage();
+
+    expect(screen.getByText("Signs in with")).toBeInTheDocument();
+    expect(screen.getByText("CI workloads")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("How it signs in"));
+    expect(screen.getByText("How sa1 signs in")).toBeInTheDocument();
   });
 
   it("handles creation error", async () => {

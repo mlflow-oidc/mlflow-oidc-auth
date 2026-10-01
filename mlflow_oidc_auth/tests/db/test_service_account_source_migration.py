@@ -24,10 +24,7 @@ def _seed(engine) -> None:
             ("trainer.ml@serviceaccount.cluster.local", True),
         ):
             conn.execute(
-                text(
-                    "INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) "
-                    "VALUES (:u, :u, :f, :sa, :t, 'manual')"
-                ),
+                text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) " "VALUES (:u, :u, :f, :sa, :t, 'manual')"),
                 {"u": username, "f": False, "sa": is_service_account, "t": True},
             )
 

@@ -35,9 +35,13 @@ def upgrade() -> None:
     users = sa.table("users", sa.column("username", sa.String), sa.column("is_service_account", sa.Boolean), sa.column("service_account_source", sa.String))
     connection = op.get_bind()
     connection.execute(
-        users.update().where(users.c.is_service_account == sa.true(), users.c.username.like(f"%{KUBERNETES_SUFFIX}")).values(service_account_source="kubernetes")
+        users.update()
+        .where(users.c.is_service_account == sa.true(), users.c.username.like(f"%{KUBERNETES_SUFFIX}"))
+        .values(service_account_source="kubernetes")
     )
-    connection.execute(users.update().where(users.c.is_service_account == sa.true(), users.c.service_account_source.is_(None)).values(service_account_source="internal"))
+    connection.execute(
+        users.update().where(users.c.is_service_account == sa.true(), users.c.service_account_source.is_(None)).values(service_account_source="internal")
+    )
 
 
 def downgrade() -> None:

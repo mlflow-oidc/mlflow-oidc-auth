@@ -17,11 +17,12 @@ import type {
   WorkspaceMemberCounts,
 } from "../../shared/types/entity";
 
-export const fetchAllWorkspaces =
-  createStaticApiFetcher<WorkspaceListResponse>({
+export const fetchAllWorkspaces = createStaticApiFetcher<WorkspaceListResponse>(
+  {
     endpointKey: "ALL_WORKSPACES",
     responseType: {} as WorkspaceListResponse,
-  });
+  },
+);
 
 export const fetchWorkspaceUsers = createDynamicApiFetcher<
   WorkspaceUserPermission[],
@@ -70,12 +71,9 @@ export const updateWorkspace = async (
 };
 
 export const deleteWorkspace = async (workspace: string): Promise<void> => {
-  await request<void>(
-    DYNAMIC_API_ENDPOINTS.WORKSPACE_DETAIL(workspace),
-    {
-      method: "DELETE",
-    },
-  );
+  await request<void>(DYNAMIC_API_ENDPOINTS.WORKSPACE_DETAIL(workspace), {
+    method: "DELETE",
+  });
 };
 
 export const fetchWorkspaceMemberCounts = async (
