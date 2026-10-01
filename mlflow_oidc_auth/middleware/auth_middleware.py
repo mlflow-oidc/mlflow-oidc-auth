@@ -176,6 +176,31 @@ def _bearer_identity(provider, payload, username: str) -> Tuple[Optional[str], b
     return resolved, creating
 
 
+def _automation_account(username: str, providers_bound_to) -> bool:
+    """Whether ``username`` is a service account an administrator created for automation.
+
+    The programmatic-access guide has an administrator create a service account named like the
+    workload's token, for a service principal or a CI job whose token comes from any provider. Such
+    an account has no identity bound, so the identity decision alone would refuse every provider
+    but ``default`` — breaking automation that worked before. It stays reachable by name, as it
+    always was, while a human account, an administrator, a Kubernetes service account (its
+    cluster provider's alone; it never reaches this path) and an account already bound to an
+    identity do not.
+    """
+    from mlflow_oidc_auth.kubernetes import USERNAME_TEMPLATE
+
+    kubernetes_suffix = USERNAME_TEMPLATE[USERNAME_TEMPLATE.index("@") :]
+    if username.endswith(kubernetes_suffix):
+        return False
+    try:
+        profile = store.get_user_profile(username)
+    except Exception:
+        return False
+    if not getattr(profile, "is_service_account", False) or getattr(profile, "is_admin", False) or not getattr(profile, "active", True):
+        return False
+    return not providers_bound_to(username)
+
+
 def _bound_to_identity(provider, payload, username: str) -> bool:
     """Whether the token's identity is now bound to ``username``.
 
@@ -228,6 +253,11 @@ def _resolve_bearer_identity(provider, subject: str, payload, username: str) -> 
                 # An unknown binding set must not read as "bound to nobody".
                 return ["<unknown>"]
 
+        if decision.resolution is Resolution.CREATE and _automation_account(username, providers_bound_to):
+            # A service principal's or CI job's token reaching the service account an administrator
+            # created for it (docs/programmatic-access.md): unbound, so the identity decision alone
+            # would refuse it for any provider but ``default``.
+            return username, False
         outcome = apply_provisioning_policy(
             provider,
             decision,

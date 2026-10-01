@@ -43,7 +43,11 @@ Kubernetes one — a bearer token is held to the same identity decision as a bro
 provider: the identity `(provider, sub)` decides which user it reaches, never the email or
 username it carries. A bound identity reaches only its own user; an account another provider's
 identity owns is refused; an account from before identities were recorded can be reached only
-through the `default` provider; and a token from any other provider without a `sub` is refused.
+through the `default` provider — except a non-admin **service account an administrator created**
+with no identity bound, which a service principal's or CI job's token from any provider still
+reaches by name, as the [programmatic-access guide](programmatic-access) sets it up (a Kubernetes
+service account is its cluster provider's alone); and a token from any other provider without a
+`sub` is refused.
 A token whose identity has no account yet is accepted only once `OIDC_PROVISION_ON_BEARER_AUTH`
 has created the account and bound it to that identity, as a login binds it. Decisions are cached
 for `PERMISSION_CACHE_TTL_SECONDS` (not a decision to create an account) and flushed when a user

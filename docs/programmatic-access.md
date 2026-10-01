@@ -100,6 +100,8 @@ short-lived token and send it as a bearer token. For such a token to authenticat
 3. **An active account with that username must exist** (usernames are case-insensitive). A bearer token whose username has no
    account is refused. Either:
    - **create it ahead of time** — an admin creates a service account with exactly that username
+     (with several providers configured, it is reached by a token from any of them as long as it
+     is not an administrator and no identity is bound to it)
      on the **Service Accounts** page or with `POST /api/2.0/mlflow/users` and
      `"is_service_account": true` ([API reference](api-reference#user-management)), then grants
      it permissions. This is the usual answer for a service principal, whose token rarely carries

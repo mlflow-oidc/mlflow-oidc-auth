@@ -263,3 +263,32 @@ class TestDecisionsAreCached:
         store.create_user(BOB, "Another Bob")  # not bound yet: nothing else flushes the cache
 
         assert authenticate(PARTNER, claims) is None
+
+
+class TestAutomationKeepsWorking:
+    """Automated tokens — a CI job's or a service principal's — reach the service account an
+    administrator created for them, as the programmatic-access guide sets them up, from any provider."""
+
+    def test_a_service_principal_reaches_its_admin_created_service_account(self, store, providers):
+        store.create_user("ci-bot", "CI bot", is_service_account=True)
+
+        assert authenticate(PARTNER, {"sub": "partner-client-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+
+    def test_a_kubernetes_service_account_is_its_cluster_providers_alone(self, store, providers):
+        store.create_user("trainer.ml@serviceaccount.cluster.local", "ml/trainer", is_service_account=True, written_by="oidc:cluster")
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "email": "trainer.ml@serviceaccount.cluster.local"}) is None
+
+    def test_an_admin_service_account_is_not_reachable_this_way(self, store, providers):
+        store.create_user("root-bot", "Root bot", is_admin=True, is_service_account=True)
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "root-bot"}) is None
+
+    def test_a_service_account_bound_to_another_provider_is_refused(self, store, providers):
+        store.create_user("bound-bot", "Bound bot", is_service_account=True)
+        store.user_identity_repo.link("default", "corp-bound-bot", "bound-bot")
+
+        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "bound-bot"}) is None
+
+    def test_a_human_account_is_still_refused(self, store, providers):
+        assert authenticate(PARTNER, {"sub": "partner-x", "email": LEGACY}) is None
