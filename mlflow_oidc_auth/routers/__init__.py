@@ -33,6 +33,11 @@ from mlflow_oidc_auth.routers.gateway_model_definition_permissions import (
     gateway_model_definition_permissions_router,
 )
 from mlflow_oidc_auth.routers.health import health_check_router
+from mlflow_oidc_auth.routers.mcp_server_permissions import (
+    group_mcp_server_permissions_router,
+    mcp_server_permissions_router,
+    user_mcp_server_permissions_router,
+)
 from mlflow_oidc_auth.routers.trash import trash_router
 from mlflow_oidc_auth.routers.ui import ui_router
 from mlflow_oidc_auth.routers.user_permissions import user_permissions_router
@@ -60,6 +65,9 @@ __all__ = [
     "gateway_secret_permissions_router",
     "gateway_model_definition_permissions_router",
     "health_check_router",
+    "mcp_server_permissions_router",
+    "user_mcp_server_permissions_router",
+    "group_mcp_server_permissions_router",
     "trash_router",
     "ui_router",
     "user_permissions_router",
@@ -181,6 +189,11 @@ def get_all_routers() -> List[APIRouter]:
     return [
         auth_router,
         experiment_permissions_router,
+        # Ahead of the group and user routers: their ``/{group_name:path}/users`` and similar
+        # catch-alls would otherwise claim an MCP server path whose slug is ``users`` or ``groups``.
+        mcp_server_permissions_router,
+        user_mcp_server_permissions_router,
+        group_mcp_server_permissions_router,
         group_permissions_router,
         prompt_permissions_router,
         registered_model_permissions_router,
