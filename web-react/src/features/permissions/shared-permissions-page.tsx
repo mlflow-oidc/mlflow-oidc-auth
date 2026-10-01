@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router";
 import PageContainer from "../../shared/components/page/page-container";
-import type { PermissionType } from "../../shared/types/entity";
+import {
+  supportsRegexPermissions,
+  type PermissionType,
+} from "../../shared/types/entity";
 import { Switch } from "../../shared/components/switch";
 import { useUser } from "../../core/hooks/use-user";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
@@ -68,15 +71,20 @@ export const SharedPermissionsPage = ({
           { id: "ai-models", label: "AI\u00A0Models" },
         ]
       : []),
+    { id: "mcp-servers", label: "MCP\u00A0Servers" },
     ...(canManageTokens ? [{ id: "tokens", label: "Tokens" }] : []),
   ];
+
+  // MCP servers have user and group grants only: no regex mode there.
+  const showRegex =
+    isRegexMode && type !== "tokens" && supportsRegexPermissions(type);
 
   return (
     <PageContainer
       title={
         type === "tokens"
           ? `Tokens for ${entityName}`
-          : isRegexMode
+          : showRegex
             ? `Regex Permissions for ${entityName}`
             : `Permissions for ${entityName}`
       }
@@ -97,7 +105,9 @@ export const SharedPermissionsPage = ({
             </Link>
           ))}
         </div>
-        {currentUser?.is_admin && type !== "tokens" && (
+        {currentUser?.is_admin &&
+          type !== "tokens" &&
+          supportsRegexPermissions(type) && (
           <Switch
             checked={isRegexMode}
             onChange={setIsRegexMode}
@@ -114,7 +124,7 @@ export const SharedPermissionsPage = ({
 
       {type === "tokens" ? (
         canManageTokens && <UserTokensPanel username={entityName} />
-      ) : isRegexMode ? (
+      ) : showRegex && supportsRegexPermissions(type) ? (
         <RegexPermissionsView
           type={type}
           entityKind={entityKind}
