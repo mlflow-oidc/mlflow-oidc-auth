@@ -1010,3 +1010,19 @@ class TestValidatorRouteCoverage:
 
         req = MagicMock(path="/api/3.0/mlflow/prompt-optimization/jobs/abc/extra/deep", method="GET")
         assert _find_validator(req) is None
+
+
+def test_is_unprotected_route_honours_mlflow_static_prefix(monkeypatch):
+    """MLflow mounts /health under ``--static-prefix``; the probe must not require a session."""
+    from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
+
+    from mlflow_oidc_auth.hooks.before_request import _is_unprotected_route
+
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/custom-path")
+
+    assert _is_unprotected_route("/custom-path/health") is True
+    assert _is_unprotected_route("/custom-path/static-files/js/app.js") is True
+    assert _is_unprotected_route("/custom-path/metrics") is True
+    assert _is_unprotected_route("/custom-path/api/2.0/mlflow/users") is False
+    # The prefix must end on a path boundary; a sibling directory is not the prefixed route.
+    assert _is_unprotected_route("/custom-pathx/health") is False

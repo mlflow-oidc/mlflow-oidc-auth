@@ -288,6 +288,10 @@ from mlflow_oidc_auth.validators import (
 
 
 def _is_unprotected_route(path: str) -> bool:
+    # MLflow mounts these under ``--static-prefix`` when it is set, so ``request.path`` carries
+    # the prefix on a prefixed deployment. Compare without it, as MLflow's own basic auth does,
+    # or the server would require a session to answer its own health probe.
+    path = strip_static_prefix(path)
     return path.startswith(
         (
             "/static",

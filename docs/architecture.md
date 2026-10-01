@@ -68,6 +68,11 @@ These paths bypass authentication:
 - `/oidc/ui/*` — Admin UI static files (the API calls within the SPA are authenticated)
 - `/docs`, `/redoc`, `/openapi.json` — API documentation (if enabled)
 
+When MLflow is started with `--static-prefix`, it mounts its own routes (health, metrics and the
+`/static-files` bundle) under that prefix, and the prefix lands in the path rather than in
+`root_path`. The same probes are matched under the prefix too, so a prefixed deployment's health
+check is answered instead of being redirected to the IdP.
+
 `/scim/v2` is a different kind of carve-out: it bypasses `AuthMiddleware`'s normal chain
 entirely rather than being unauthenticated. Every route under it — including discovery and the
 catch-all for unknown paths — requires its own bearer credential (a SCIM token issued at

@@ -8,7 +8,10 @@ sub-path). Deciding on anything else lets the middleware and the router disagree
 endpoint a request reaches, so every check in this package goes through :func:`routed_path`.
 """
 
+import os
 from typing import Any, Mapping
+
+from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR, _add_static_prefix
 
 try:  # pragma: no cover - exercised implicitly on every supported Starlette version
     from starlette._utils import get_route_path as _starlette_get_route_path
@@ -94,10 +97,19 @@ UNPROTECTED_EXACT = ("/providers",)
 def is_unprotected_route(path: str) -> bool:
     """Return True when ``path`` does not require an authenticated user.
 
+    MLflow registers ``/health``, ``/metrics`` and ``/static-files`` under ``--static-prefix``
+    when it is set, which puts the prefix in the path rather than in ``root_path``. Match the
+    prefixed forms too; MLflow's own basic auth does the same, or a prefixed deployment would
+    answer its own health probe with a login redirect and never become ready.
+
     Parameters:
         path: The routed path (see :func:`routed_path`), never the raw request path.
 
     Returns:
         True if the route is unprotected, False otherwise.
     """
-    return path in UNPROTECTED_EXACT or path.startswith(UNPROTECTED_PREFIXES)
+    if path in UNPROTECTED_EXACT or path.startswith(UNPROTECTED_PREFIXES):
+        return True
+    if not os.environ.get(STATIC_PREFIX_ENV_VAR):
+        return False
+    return path.startswith(tuple(_add_static_prefix(prefix) for prefix in UNPROTECTED_PREFIXES))
