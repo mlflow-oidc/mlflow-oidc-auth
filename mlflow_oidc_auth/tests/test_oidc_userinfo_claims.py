@@ -74,6 +74,9 @@ class _Identities:
     def list_providers_for_username(self, username):
         return []
 
+    def providers_in_email_domain(self, domain):
+        return set()
+
     def link(self, provider_id, subject, username, **kwargs):
         self.links.append((provider_id, subject, username))
         return True

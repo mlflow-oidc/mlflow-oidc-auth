@@ -221,7 +221,8 @@ class TestWhereGroupsArrive:
         """A partner provider asserting ``team-acme`` arrives as ``partner:team-acme``: the tenant's
         rule must not match it, and only a rule written for the partner's namespace does."""
         create_rule(client)
-        partner = provider("partner")
+        # Allowed to create accounts in example.com, where the deployment's own accounts are.
+        partner = provider("partner", allowed_email_domains=["example.com"])
 
         username, errors = login(ALICE, ["mlflow-users", "team-acme"], prov=partner)
 
