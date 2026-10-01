@@ -131,7 +131,16 @@ def _users(stack, mock_store):
 
 def _user_details(stack, mock_store):
     rows = [
-        {"username": n, "display_name": n, "is_admin": False, "is_service_account": False, "active": True, "managed_by": "manual", "id": i}
+        {
+            "username": n,
+            "display_name": n,
+            "is_admin": False,
+            "is_service_account": False,
+            "active": True,
+            "managed_by": "manual",
+            "service_account_source": None,
+            "id": i,
+        }
         for i, n in enumerate(NAMES)
     ]
     mock_store.list_user_details.return_value = (len(rows), rows)

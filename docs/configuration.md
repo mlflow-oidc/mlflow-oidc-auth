@@ -44,11 +44,9 @@ Kubernetes one — a bearer token is held to the same identity decision as a bro
 provider: the identity `(provider, sub)` decides which user it reaches, never the email or
 username it carries. A bound identity reaches only its own user; an account another provider's
 identity owns is refused; an account from before identities were recorded can be reached only
-through the `default` provider — except a non-admin **service account an administrator created**
-with no identity bound, which a service principal's or CI job's token from any provider still
-reaches by name, as the [programmatic-access guide](programmatic-access) sets it up (a Kubernetes
-service account is its cluster provider's alone); and a token from any other provider without a
-`sub` is refused.
+through the `default` provider; and a token from any other provider without a `sub` is refused.
+A service account is reached only the way its sign-in source says, with one provider or with none
+(see [Programmatic access](programmatic-access#automation-oidc-service-accounts)).
 A token whose identity has no account yet is accepted only once `OIDC_PROVISION_ON_BEARER_AUTH`
 has created the account and bound it to that identity, as a login binds it. An account this provider's
 bearer provisioning created before this release is unbound and is refused, unless the provider sets
@@ -575,6 +573,18 @@ from proxied ones. The simplest setup is a proxy on its own, non-loopback addres
 with the client's address, which the plugin does not trust unless that address is itself inside
 `TRUSTED_PROXIES`; for such a deployment set `OIDC_REDIRECT_URI` and serve the application at the
 same path the proxy exposes rather than relying on `X-Forwarded-Prefix`.
+
+## Upgrading: service accounts sign in one way
+
+**Breaking.** Every existing service account becomes **internal** on upgrade: it signs in only with
+access tokens issued for it, and an identity provider's token that used to reach it by naming it —
+a service principal's client-credentials token, a CI job's workload-identity token — is refused.
+For each service account a workload reaches with an IdP token, an administrator sets its sign-in
+source to that provider (**Service Accounts** page, or
+`PUT /api/2.0/mlflow/users/{username}/service-account-source` with `{"source": "<provider-id>"}`,
+optionally with `"subject"`). Becoming external revokes the access tokens issued for it. Kubernetes
+service accounts keep working: they are their cluster provider's. No service account signs in
+through the browser.
 
 ## Upgrading to this release
 

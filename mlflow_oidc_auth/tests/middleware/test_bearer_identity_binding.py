@@ -265,47 +265,94 @@ class TestDecisionsAreCached:
         assert authenticate(PARTNER, claims) is None
 
 
-class TestAutomationKeepsWorking:
-    """Automated tokens — a CI job's or a service principal's — reach the service account an
-    administrator created for them, as the programmatic-access guide sets them up, from any provider."""
+class TestServiceAccountsSignInOneWay:
+    """A service account is internal — access tokens this plugin issues, never an IdP token — or
+    external to one provider, whose tokens alone reach it, for the subject bound to it."""
 
-    def test_a_service_principal_reaches_its_admin_created_service_account(self, store, providers):
+    @pytest.fixture
+    def through_middleware(self, store, providers, monkeypatch):
+        """Requests through the real AuthMiddleware; a bearer token is validated as ``claims`` from ``provider``."""
+        from fastapi import FastAPI, Request
+        from fastapi.testclient import TestClient
+
+        app = FastAPI()
+
+        @app.get("/api/2.0/mlflow/whoami")
+        async def whoami(request: Request):
+            return {"username": request.state.username}
+
+        app.add_middleware(AuthMiddleware)
+        client = TestClient(app)
+
+        def call(provider=None, claims=None, basic=None):
+            headers = {}
+            if basic:
+                from mlflow_oidc_auth.tests.scim.conftest import basic as basic_header
+
+                headers = basic_header(*basic)
+            else:
+                headers = {"Authorization": "Bearer token"}
+            with (
+                patch.object(auth_middleware, "validate_token", return_value=claims or {}),
+                patch.object(AuthMiddleware, "_provider_for", return_value=provider),
+            ):
+                response = client.get("/api/2.0/mlflow/whoami", headers=headers)
+            return response.json().get("username") if response.status_code == 200 else None
+
+        return call
+
+    def test_an_internal_service_account_takes_no_idp_token(self, store, providers, through_middleware):
         store.create_user("ci-bot", "CI bot", is_service_account=True)
 
-        assert authenticate(PARTNER, {"sub": "partner-client-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+        assert through_middleware(PARTNER, {"sub": "partner-ci", "preferred_username": "ci-bot"}) is None
+        assert through_middleware(DEFAULT, {"sub": "corp-ci", "preferred_username": "ci-bot"}) is None
 
-    def test_a_kubernetes_service_account_is_its_cluster_providers_alone(self, store, providers):
-        store.create_user("trainer.ml@serviceaccount.cluster.local", "ml/trainer", is_service_account=True, written_by="oidc:cluster")
+    def test_an_internal_service_account_takes_its_issued_token(self, store, providers, through_middleware):
+        from mlflow_oidc_auth.tests.token_helpers import set_known_token
 
-        assert authenticate(PARTNER, {"sub": "partner-x", "email": "trainer.ml@serviceaccount.cluster.local"}) is None
+        store.create_user("ci-bot", "CI bot", is_service_account=True)
+        set_known_token(store, "ci-bot", "ci-bot-token")
 
-    def test_an_admin_service_account_is_not_reachable_this_way(self, store, providers):
-        store.create_user("root-bot", "Root bot", is_admin=True, is_service_account=True)
+        assert through_middleware(basic=("ci-bot", "ci-bot-token")) == "ci-bot"
 
-        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "root-bot"}) is None
-
-    def test_a_service_account_bound_to_another_provider_is_refused(self, store, providers):
-        store.create_user("bound-bot", "Bound bot", is_service_account=True)
-        store.user_identity_repo.link("default", "corp-bound-bot", "bound-bot")
-
-        assert authenticate(PARTNER, {"sub": "partner-x", "preferred_username": "bound-bot"}) is None
-
-    def test_a_human_account_is_still_refused(self, store, providers):
-        assert authenticate(PARTNER, {"sub": "partner-x", "email": LEGACY}) is None
-
-    def test_a_service_account_from_before_identities_were_recorded_is_reachable(self, store, providers):
-        """The identity migration gave every account then a placeholder (default, username): not a binding."""
-        store.create_user("old-bot", "Old bot", is_service_account=True)
-        store.user_identity_repo.link("default", "old-bot", "old-bot")  # the migration's placeholder
-
-        assert authenticate(PARTNER, {"sub": "partner-client-old", "preferred_username": "old-bot"}) == "old-bot"
-
-    def test_an_email_bound_providers_token_without_email_reaches_its_service_account(self, store, providers):
-        by_email = _provider("partner", identity_binding="email", allowed_email_domains=["partner.example"])
-        providers(DEFAULT, by_email)
+    def test_a_single_provider_deployment_is_held_to_it_too(self, store, providers, through_middleware):
+        providers(DEFAULT)
         store.create_user("ci-bot", "CI bot", is_service_account=True)
 
-        assert authenticate(by_email, {"sub": "client-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+        assert through_middleware(DEFAULT, {"sub": "corp-ci", "preferred_username": "ci-bot"}) is None
+
+    def test_an_external_service_account_binds_its_first_subject_and_takes_only_it(self, store, providers, through_middleware):
+        store.create_user("ci-bot", "CI bot", is_service_account=True, service_account_source="partner")
+
+        assert through_middleware(PARTNER, {"sub": "partner-ci", "preferred_username": "ci-bot"}) == "ci-bot"
+        assert store.user_identity_repo.get_username_by_identity("partner", "partner-ci") == "ci-bot"
+        assert through_middleware(PARTNER, {"sub": "partner-other", "preferred_username": "ci-bot"}) is None
+        assert through_middleware(DEFAULT, {"sub": "corp-ci", "preferred_username": "ci-bot"}) is None
+
+    def test_a_pre_bound_subject_is_the_only_one_accepted(self, store, providers, through_middleware):
+        store.create_user("ci-bot", "CI bot", is_service_account=True, service_account_source="partner")
+        store.user_identity_repo.link("partner", "repo:org/app:ref:refs/heads/main", "ci-bot", allow_additional_provider=True)
+
+        assert through_middleware(PARTNER, {"sub": "repo:org/app:ref:refs/heads/main", "preferred_username": "ci-bot"}) == "ci-bot"
+        assert through_middleware(PARTNER, {"sub": "repo:org/app:ref:refs/heads/dev", "preferred_username": "ci-bot"}) is None
+
+    def test_an_external_service_account_takes_no_issued_token(self, store, providers, through_middleware):
+        from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
+        store.create_user("ci-bot", "CI bot", is_service_account=True, service_account_source="partner")
+        set_known_token(store, "ci-bot", "ci-bot-token")
+
+        assert through_middleware(basic=("ci-bot", "ci-bot-token")) is None
+
+    def test_a_person_is_not_judged_by_it(self, store, providers, through_middleware):
+        assert through_middleware(PARTNER, {"sub": "partner-bob-sub", "email": BOB}) == BOB
+
+
+def test_a_kubernetes_token_was_authorized_on_its_own_path():
+    from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_WORKLOAD
+    from mlflow_oidc_auth.middleware.auth_middleware import _KUBERNETES_BEARER, _service_account_denial
+
+    assert _service_account_denial("t.ns@serviceaccount.cluster.local", True, "cluster", AUTH_METHOD_WORKLOAD, _KUBERNETES_BEARER) == ""
 
 
 class TestAProviderThatAdoptsUnboundAccounts:
@@ -389,3 +436,90 @@ class TestAnAdministratorUnbindsAnIdentity:
         response = users_api.delete(f"/api/2.0/mlflow/users/{BOB}/identities", params={"provider_id": "partner", "subject": "partner-bob-sub"})
         assert response.status_code == 403
         assert store.user_identity_repo.get_username_by_identity("partner", "partner-bob-sub") == BOB
+
+
+@pytest.fixture
+def admin_api(store, monkeypatch):
+    """The users router as an administrator."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import mlflow_oidc_auth.dependencies as dependencies
+    import mlflow_oidc_auth.routers.users as users_router
+
+    async def username(request=None):
+        return "root@corp.example"
+
+    async def is_admin(request=None):
+        return True
+
+    monkeypatch.setattr(dependencies, "get_username", username)
+    monkeypatch.setattr(dependencies, "get_is_admin", is_admin)
+    app = FastAPI()
+    app.include_router(users_router.users_router)
+    app.dependency_overrides[dependencies.require_interactive_login] = lambda: None  # an admin's browser session
+    with TestClient(app) as client:
+        yield client
+
+
+USERS = "/api/2.0/mlflow/users"
+
+
+class TestManagingAServiceAccountsSource:
+    def test_the_sources_are_internal_and_each_oidc_provider(self, store, providers, admin_api):
+        assert [s["id"] for s in admin_api.get(f"{USERS}/service-account-sources").json()] == ["internal", "default", "partner"]
+
+    def test_a_service_account_is_internal_unless_told_otherwise(self, store, providers, admin_api):
+        response = admin_api.post(USERS, json={"username": "ci-bot", "display_name": "CI", "is_service_account": True})
+        assert response.status_code == 201, response.text
+
+        assert store.get_user_profile("ci-bot").service_account_source == "internal"
+
+    def test_creating_an_external_one_binds_the_given_subject(self, store, providers, admin_api):
+        response = admin_api.post(
+            USERS,
+            json={"username": "ci-bot", "display_name": "CI", "is_service_account": True, "service_account_source": "partner", "subject": "repo:o/a:ref:main"},
+        )
+        assert response.status_code == 201, response.text
+
+        assert store.get_user_profile("ci-bot").service_account_source == "partner"
+        assert store.user_identity_repo.list_identities_for_username("ci-bot") == [("partner", "repo:o/a:ref:main")]
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"username": "x", "display_name": "X", "is_service_account": True, "service_account_source": "nope"},
+            {"username": "x", "display_name": "X", "is_service_account": True, "service_account_source": "internal", "subject": "s"},
+            {"username": "x", "display_name": "X", "service_account_source": "partner"},
+        ],
+    )
+    def test_bad_requests_are_refused(self, store, providers, admin_api, body):
+        assert admin_api.post(USERS, json=body).status_code == 400
+        assert not store.has_user("x")
+
+    def test_going_external_revokes_issued_tokens_and_none_can_be_issued(self, store, providers, admin_api):
+        from mlflow_oidc_auth.tests.token_helpers import set_known_token
+
+        store.create_user("ci-bot", "CI", is_service_account=True)
+        set_known_token(store, "ci-bot", "ci-bot-token")
+
+        response = admin_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "partner"})
+        assert response.status_code == 200, response.text
+
+        assert store.list_user_tokens("ci-bot") == []
+        from datetime import datetime, timedelta, timezone
+
+        expiration = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        issue = admin_api.post(f"{USERS}/ci-bot/tokens", json={"name": "t", "expiration": expiration})
+        assert issue.status_code == 409, issue.text
+
+    def test_going_internal_unbinds_identities(self, store, providers, admin_api):
+        store.create_user("ci-bot", "CI", is_service_account=True, service_account_source="partner")
+        store.user_identity_repo.link("partner", "s1", "ci-bot", allow_additional_provider=True)
+
+        assert admin_api.put(f"{USERS}/ci-bot/service-account-source", json={"source": "internal"}).status_code == 200
+
+        assert store.user_identity_repo.list_identities_for_username("ci-bot") == []
+
+    def test_a_person_has_no_source(self, store, providers, admin_api):
+        assert admin_api.put(f"{USERS}/{BOB}/service-account-source", json={"source": "internal"}).status_code == 409
