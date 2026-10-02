@@ -5,7 +5,8 @@ This middleware passes FastAPI authentication information to Flask via WSGI envi
 It acts as a bridge between FastAPI's authentication middleware and Flask's WSGI application.
 """
 
-from asgiref.wsgi import WsgiToAsgi as WSGIMiddleware
+from asgiref.sync import sync_to_async
+from asgiref.wsgi import WsgiToAsgi, WsgiToAsgiInstance
 
 from starlette.types import Receive, Scope, Send
 import asyncio
@@ -14,6 +15,32 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
+
+
+class _ThreadPoolWsgiToAsgiInstance(WsgiToAsgiInstance):
+    """asgiref's per-request WSGI adapter, with the WSGI call on a thread pool.
+
+    asgiref decorates ``WsgiToAsgiInstance.run_wsgi_app`` with a bare ``@sync_to_async``, which is
+    ``thread_sensitive=True``. Outside Django nothing sets a thread-sensitive context, so every call
+    in the process runs on ``SyncToAsync.single_thread_executor``: one thread for all Flask requests
+    of a uvicorn worker. A long request then delays every other request of that worker, for its
+    whole run and for as long as its response takes to drain to a slow client.
+
+    ``thread_sensitive=False`` runs each request on the event loop's default executor instead, as
+    Starlette's WSGI adapter (anyio's thread pool) did before asgiref replaced it.
+    """
+
+    run_wsgi_app = sync_to_async(WsgiToAsgiInstance.__dict__["run_wsgi_app"].func, thread_sensitive=False)
+
+
+class WSGIMiddleware(WsgiToAsgi):
+    """``asgiref.wsgi.WsgiToAsgi`` that runs the WSGI application on a thread pool.
+
+    See ``_ThreadPoolWsgiToAsgiInstance`` for why the stock adapter is not used.
+    """
+
+    async def __call__(self, scope, receive, send):
+        await _ThreadPoolWsgiToAsgiInstance(self.wsgi_application, self.duplicate_header_limit)(scope, receive, send)
 
 
 class AuthInjectingWSGIApp:
@@ -62,8 +89,8 @@ class AuthAwareWSGIMiddleware:
             # Create auth-injecting wrapper for this request
             auth_injecting_app = AuthInjectingWSGIApp(self.flask_app, scope)
 
-            # Use asgiref's WsgiToAsgi adapter to handle ASGI-to-WSGI conversion.
-            # This avoids depending on Starlette's deprecated WSGI adapter.
+            # asgiref's WsgiToAsgi adapter (on a thread pool, see WSGIMiddleware) handles the
+            # ASGI-to-WSGI conversion. This avoids depending on Starlette's deprecated WSGI adapter.
             wsgi_adapter = WSGIMiddleware(auth_injecting_app)
             await wsgi_adapter(scope, receive, send)
         else:
