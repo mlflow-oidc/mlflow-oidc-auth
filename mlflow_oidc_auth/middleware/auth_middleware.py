@@ -1009,6 +1009,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # IdP login. We can only see path + query server-side; the SPA layer
         # also forwards the URL fragment for hash-routed apps like MLflow.
         target = request.url.path
+        # Behind a prefix-stripping proxy the routed path lacks the forwarded prefix, and the
+        # callback redirects to ``next`` verbatim, so add it unless the path already carries it.
+        if base_path and target != base_path and not target.startswith(f"{base_path}/"):
+            target = f"{base_path}{target}"
         query = request.url.query
         if query and isinstance(query, str):
             target = f"{target}?{query}"
