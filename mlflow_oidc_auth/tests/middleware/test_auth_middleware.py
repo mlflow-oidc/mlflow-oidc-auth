@@ -1230,3 +1230,43 @@ class TestLoginRedirectSchemeRelative:
         location = response.headers["location"]
         assert location.startswith("/mlflow/login")
         assert "http://" not in location and "https://" not in location
+
+
+class TestLoginRedirectNextKeepsForwardedPrefix:
+    """``next`` must carry the forwarded prefix, or the callback lands the user outside the app (#444).
+
+    A prefix-stripping proxy routes ``/mlstore/x`` to ``/x`` and sends ``X-Forwarded-Prefix``, which
+    becomes the base path. The callback redirects to ``next`` verbatim, so ``next`` has to be the
+    browser-visible path. A proxy that keeps the prefix must not get it twice.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "base_path, path, query, expected_next",
+        [
+            ("/mlstore", "/", "", "/mlstore/"),
+            ("/mlstore", "/", "x=1", "/mlstore/?x=1"),
+            ("/mlstore", "/experiments", "", "/mlstore/experiments"),
+            ("/mlstore", "/mlstore/experiments", "", "/mlstore/experiments"),
+            ("/mlstore", "/mlstore", "", "/mlstore"),
+            ("/mlstore", "/mlstorefront", "", "/mlstore/mlstorefront"),
+            ("", "/experiments", "", "/experiments"),
+        ],
+    )
+    async def test_next_is_browser_visible_path(self, base_path, path, query, expected_next):
+        from unittest.mock import AsyncMock
+        from urllib.parse import parse_qs, urlparse
+
+        middleware = AuthMiddleware.__new__(AuthMiddleware)
+        request = MagicMock(url=MagicMock(scheme="http", path=path, query=query), headers={}, scope={})
+
+        with (
+            patch("mlflow_oidc_auth.middleware.auth_middleware.config") as cfg,
+            patch("mlflow_oidc_auth.utils.get_base_path", new=AsyncMock(return_value=base_path)),
+        ):
+            cfg.AUTOMATIC_LOGIN_REDIRECT = True
+            response = await middleware._handle_auth_redirect(request)
+
+        location = urlparse(response.headers["location"])
+        assert location.path == f"{base_path}/login"
+        assert parse_qs(location.query)["next"] == [expected_next]
