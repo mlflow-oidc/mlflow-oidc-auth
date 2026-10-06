@@ -30,9 +30,11 @@ never makes a client public — see ``_credentials_usable``.
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth, StarletteOAuth2App
+from joserfc.errors import JoseError
+from joserfc.jwk import JWKRegistry
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.config_providers import config_manager
@@ -51,7 +53,62 @@ class PKCEUnsupportedError(Exception):
     """The provider advertises PKCE methods and the configured one is not among them (#312)."""
 
 
-oauth: OAuth = OAuth()
+def usable_jwks(jwks: Any, label: str = "") -> Any:
+    """``jwks`` without the keys joserfc cannot import, so one such key does not void the set.
+
+    RFC 7517 §4.2 allows ``use`` values other than ``sig`` and ``enc`` ("Other values MAY be
+    used"), and §5 says implementations SHOULD ignore keys whose values are out of the supported
+    range. joserfc's ``KeySet.import_key_set`` skips only an unknown ``kty`` and raises on any
+    other bad key, failing the whole set — so an IdP that publishes SAML keys next to its
+    signing keys (Zitadel: ``use: saml_response_sig``) broke every OIDC login (#446).
+
+    Nothing is accepted that was not accepted before: each kept key is one joserfc imports on
+    its own, and a dropped key could never have verified anything. A set left with no keys still
+    fails closed in joserfc.
+
+    Parameters:
+        jwks: The provider's JWK Set as fetched.
+        label: Provider name for the log line.
+
+    Returns:
+        The set with unusable keys removed, or ``jwks`` unchanged if it is not a JWK Set.
+    """
+    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
+        return jwks
+
+    kept = []
+    for key in jwks["keys"]:
+        try:
+            JWKRegistry.import_key(key)
+        except (JoseError, ValueError, TypeError, KeyError) as exc:
+            kid = key.get("kid") if isinstance(key, dict) else None
+            logger.debug("Ignoring JWK %r from %s JWKS: %s", kid, label or "OIDC", exc)
+            continue
+        kept.append(key)
+
+    if len(kept) == len(jwks["keys"]):
+        return jwks
+    return {**jwks, "keys": kept}
+
+
+class _OAuth2App(StarletteOAuth2App):
+    """authlib's Starlette client, with the JWK Set reduced to keys joserfc can import."""
+
+    async def fetch_jwk_set(self, force: bool = False) -> Any:
+        jwks = usable_jwks(await super().fetch_jwk_set(force=force), self.name)
+        # authlib caches what it fetched here and returns it on the next call. Cache the reduced
+        # set so nothing reads the raw one; it still passes through the filter on every call,
+        # which is cheap and keeps the result right whichever path filled the cache.
+        if isinstance(getattr(self, "server_metadata", None), dict) and "jwks" in self.server_metadata:
+            self.server_metadata["jwks"] = jwks
+        return jwks
+
+
+class _OAuth(OAuth):
+    oauth2_client_cls = _OAuth2App
+
+
+oauth: OAuth = _OAuth()
 
 # Registration state per provider id. A one-shot global flag could not express "provider A is
 # registered, provider B failed", which is the state that matters once there is more than one.
@@ -440,6 +497,6 @@ def reset_oauth() -> None:
     """Reset the OAuth instance and all registration state (primarily for tests)."""
 
     global oauth
-    oauth = OAuth()
+    oauth = _OAuth()
     _registered.clear()
     _refusals_logged.clear()
