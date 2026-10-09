@@ -91,7 +91,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[full,test]' 'scim2-tester[httpx2]==0.4.0' psycopg2-binary
+          pip install -e '.[full,test]' 'scim2-tester[httpx2]==0.5.2' psycopg2-binary
 
       - name: Wait for Keycloak
         run: |
