@@ -5,7 +5,7 @@
 ## Languages
 
 **Primary:**
-- Python 3.12 - Backend server, auth plugin, CLI, database models, API routers (`.python-version`, CI uses `python-version: 3.12`)
+- Python 3.14 - Backend server, auth plugin, CLI, database models, API routers (`.python-version`, CI uses `python-version: 3.14`)
 - TypeScript ~5.9 - React frontend UI (`web-react/package.json`)
 
 **Secondary:**
@@ -16,7 +16,7 @@
 ## Runtime
 
 **Python Environment:**
-- Python >=3.10 (declared in `pyproject.toml`), 3.12 used in development/CI
+- Python >=3.10 (declared in `pyproject.toml`), 3.14 used in development/CI
 - Tox test matrix targets `py314` (`tox.ini` envlist)
 
 **Node Environment:**
@@ -149,13 +149,13 @@
 ## Platform Requirements
 
 **Development:**
-- Python 3.12 (via `.python-version`)
+- Python 3.14 (via `.python-version`)
 - Node.js 24 (per CI config)
 - Yarn package manager
 - Optional: Docker Compose for Redis testing
 
 **Production:**
-- Python >=3.10 (>=3.12 recommended)
+- Python >=3.10 (>=3.14 recommended)
 - No Node.js required (frontend is pre-built into `mlflow_oidc_auth/ui/`)
 - ASGI server: uvicorn (bundled dependency)
 - Database: SQLite (default) or PostgreSQL/MySQL

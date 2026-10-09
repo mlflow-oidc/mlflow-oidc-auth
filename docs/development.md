@@ -6,12 +6,12 @@ This guide covers setting up a local development environment, running tests, and
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Python | 3.12 (via `.python-version`) | Backend server, tests |
+| Python | 3.14 (via `.python-version`) | Backend server, tests |
 | Node.js | 24+ | Frontend build and tests |
 | Yarn | Latest | Frontend package manager |
 | Git | Latest | Version control |
 
-The project uses Python 3.12 for development and CI. The minimum supported Python version for end users is 3.10.
+The project uses Python 3.14 for development and CI. The minimum supported Python version for end users is 3.10.
 
 ## Getting Started
 

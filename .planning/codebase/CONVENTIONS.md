@@ -50,7 +50,7 @@
 **Python Formatting:**
 - **Black** formatter with line-length 160 (configured in `pyproject.toml` `[tool.black]`)
 - Enforced via pre-commit hook (`.pre-commit-config.yaml`)
-- Python 3.12 target (`.python-version`)
+- Python 3.14 target (`.python-version`)
 
 **TypeScript/React Formatting:**
 - **Prettier** with configuration in `web-react/.prettierrc`:
