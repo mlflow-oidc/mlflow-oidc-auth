@@ -43,7 +43,7 @@ WORKDIR /src
 RUN pip install --only-binary xmlsec,lxml -e '.[full,test,cache]' psycopg2-binary
 
 # Frontend: install, then build the admin UI into mlflow_oidc_auth/ui/ as a release does.
-RUN cd web-react && yarn install --frozen-lockfile && yarn build
+RUN cd web-react && yarn install --frozen-lockfile && yarn build && yarn cache clean
 
 # A local PostgreSQL for the migration tests (MLFLOW_OIDC_TEST_POSTGRES_URI). Trust auth on the
 # loopback only; there is no secret here.
@@ -60,12 +60,12 @@ RUN pg_ctlcluster 18 main start \
 RUN pg_ctlcluster 18 main start \
     && cp -a /src /tmp/testrun && cd /tmp/testrun \
     && export MLFLOW_OIDC_TEST_POSTGRES_URI=postgresql+psycopg2://mlflow_oidc@localhost:5432/mlflow_oidc_test \
-    && (timeout 3600 python -m pytest -q -p no:cacheprovider -m "not integration and not e2e" \
+    && (timeout -k 30 3600 python -m pytest -q -p no:cacheprovider -m "not integration and not e2e" \
           --ignore=mlflow_oidc_auth/tests/hooks mlflow_oidc_auth/tests \
         || echo "WARNING: python tests reported failures") \
     && for f in mlflow_oidc_auth/tests/hooks/test_*.py; do \
-         timeout 600 python -m pytest -q -p no:cacheprovider "$f" || echo "WARNING: $f reported failures"; \
+         timeout -k 30 600 python -m pytest -q -p no:cacheprovider "$f" || echo "WARNING: $f reported failures"; \
        done \
-    && (cd web-react && timeout 900 yarn test || echo "WARNING: frontend tests reported failures") \
+    && (cd web-react && timeout -k 30 900 yarn test || echo "WARNING: frontend tests reported failures") \
     && cd / && rm -rf /tmp/testrun \
     && pg_ctlcluster 18 main stop

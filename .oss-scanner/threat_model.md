@@ -96,7 +96,8 @@ Less important but in scope: `cache/`, `config_providers/`, `audit.py`, migratio
 
 ## How to exercise it
 
-- Unit and security tests: `pytest -m "not integration and not e2e" mlflow_oidc_auth/tests`.
+- Unit and security tests: `pytest -m "not integration and not e2e" --ignore=mlflow_oidc_auth/tests/hooks mlflow_oidc_auth/tests`,
+  then the hook tests as below.
   Adversarial token/authorization-response suite: `mlflow_oidc_auth/tests/adversarial/` and
   `mlflow_oidc_auth/tests/test_token_algorithm_pinning.py`. `mlflow_oidc_auth/tests/jose_helpers.py`
   builds signed test JWTs and a local JWKS without any network.
