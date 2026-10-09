@@ -1,0 +1,19 @@
+# Local state that must never end up in an image built from this checkout
+# (e.g. .oss-scanner/Dockerfile, whose build context is the repository root).
+.env
+.env.*
+*.db
+*.pem
+*.key
+venv/
+.venv/
+**/node_modules
+**/__pycache__
+scripts/postgresql/postgres_data/
+mlruns/
+mlruns.old/
+mlartifacts/
+instance/
+dist/
+*.egg-info/
+mlflow_oidc_auth/ui/
