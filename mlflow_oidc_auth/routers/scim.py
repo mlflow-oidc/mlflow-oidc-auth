@@ -1301,12 +1301,23 @@ class _AnyMethodScimRoute(ScimRoute):
         await self.app(scope, receive, send)
 
 
-async def scim_not_found(unsupported: str) -> JSONResponse:
+# The discovery endpoints (RFC 7644 §4) are read-only. Their GET routes match only GET, so any
+# other method on them lands in the catch-all below, which answers 405 for these paths.
+_DISCOVERY_ENDPOINTS = ("ServiceProviderConfig", "ResourceTypes", "Schemas")
+
+
+async def scim_not_found(request: Request, unsupported: str) -> JSONResponse:
     """Everything else under the prefix — ``/Bulk``, ``/Me``, ``/.search`` — is a SCIM 404.
+
+    A method other than GET on a discovery endpoint is a 405 instead, as RFC 7644 expects. Either
+    way the request has already passed ``require_scim_token``.
 
     Also what guarantees nothing under ``/scim/v2`` reaches the Flask mount, which would see a
     request that ``AuthMiddleware`` never authenticated.
     """
+    endpoint, _, rest = unsupported.partition("/")
+    if request.method != "GET" and endpoint in _DISCOVERY_ENDPOINTS and not (endpoint == "ServiceProviderConfig" and rest):
+        raise ScimHTTPError(405, f"{SCIM_ROUTER_PREFIX}/{unsupported} supports only GET", headers={"Allow": "GET"})
     raise ScimHTTPError(404, f"{SCIM_ROUTER_PREFIX}/{unsupported} is not supported")
 
 
