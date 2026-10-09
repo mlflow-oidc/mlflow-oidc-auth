@@ -1,0 +1,30 @@
+# Local state that must never end up in an image built from this checkout
+# (e.g. .oss-scanner/Dockerfile, whose build context is the repository root). A local .git can hold
+# unpublished branches; the image needs the working tree, not the history.
+.git
+.claude/worktrees/
+.claude/settings.local.json
+**/.env
+**/.env.*
+**/*.db
+**/basic_auth
+**/*.pem
+**/*.key
+**/venv/
+**/.venv/
+**/.tox/
+**/node_modules
+**/__pycache__
+**/.pytest_cache/
+**/.ruff_cache/
+**/.coverage
+**/.DS_Store
+scripts/postgresql/postgres_data/
+scripts/mysql/mysql_data/
+**/mlruns/
+**/mlruns.old/
+**/mlartifacts/
+instance/
+dist/
+*.egg-info/
+mlflow_oidc_auth/ui/
