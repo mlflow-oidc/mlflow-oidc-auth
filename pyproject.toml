@@ -21,6 +21,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.14",
 ]
 requires-python = ">=3.10"
 dependencies = [

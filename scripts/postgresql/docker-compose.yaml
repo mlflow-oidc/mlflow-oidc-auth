@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: mlflow-db
     volumes:
+      # postgres:18 keeps its cluster in 18/docker under this mount. A postgres_data/ left by an older
+      # image is not reused: delete it, or migrate with pg_upgrade or a dump first.
       - ./postgres_data:/var/lib/postgresql
   pgadmin:
     image: dpage/pgadmin4:9.2
