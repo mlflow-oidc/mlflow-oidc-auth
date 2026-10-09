@@ -299,7 +299,7 @@ answers:
 
 ```bash
 tox -e e2e
-# or, in an environment with '.[full,test]' and 'scim2-tester[httpx2]==0.5.2' installed:
+# or, in an environment with '.[full,test]' and 'scim2-tester[httpx2]==0.5.2' 'scim2-client==0.13.2' 'scim2-models==0.12.1' installed:
 pytest -m e2e mlflow_oidc_auth/tests/e2e -rs
 ```
 
