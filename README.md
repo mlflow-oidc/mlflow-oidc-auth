@@ -1,7 +1,7 @@
 # MLflow Access Control (`mlflow-oidc-auth`)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI Downloads](https://static.pepy.tech/badge/mlflow-oidc-auth/month)](https://pepy.tech/projects/mlflow-oidc-auth)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mlflow-oidc/mlflow-oidc-auth)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/mlflow-oidc/mlflow-oidc-auth)
 
 Authentication and access control for MLflow tracking servers: single sign-on (OIDC, SAML 2.0), SCIM user and group provisioning, service accounts, and per-resource permissions for users, groups and workspaces.
 
