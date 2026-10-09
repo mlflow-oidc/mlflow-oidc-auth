@@ -12,7 +12,7 @@ Thank you for contributing.
 
 ### Prerequisites
 
-- Python 3.12
+- Python 3.14
 - Node.js 24+
 - Yarn
 - Git

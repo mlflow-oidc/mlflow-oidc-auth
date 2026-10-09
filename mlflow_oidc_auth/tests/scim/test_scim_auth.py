@@ -143,6 +143,26 @@ class TestUnmatchedScimPaths:
         assert_scim_401(client.get("/scim/v2/Groups"))
         assert_scim_401(client.post("/scim/v2/Bulk", json={}))
 
+    @pytest.mark.parametrize("path", ["/scim/v2/ServiceProviderConfig", "/scim/v2/ResourceTypes", "/scim/v2/ResourceTypes/User", "/scim/v2/Schemas"])
+    @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+    def test_writing_a_discovery_endpoint_is_a_scim_405(self, client, scim, method, path):
+        response = client.request(method, path, json={}, headers=scim)
+        assert response.status_code == 405
+        assert response.headers["allow"] == "GET"
+        assert response.json()["schemas"] == [ERROR_SCHEMA]
+
+    @pytest.mark.parametrize("method", ["POST", "DELETE"])
+    def test_writing_a_discovery_endpoint_still_requires_the_token(self, client, bound_store, method):
+        """The 405 is for authenticated clients only: without a token it stays a 401."""
+        assert_scim_401(client.request(method, "/scim/v2/ServiceProviderConfig", json={}))
+        assert_scim_401(client.request(method, "/scim/v2/Schemas", json={}))
+
+    def test_paths_that_only_resemble_discovery_stay_404(self, client, scim):
+        assert client.post("/scim/v2/ServiceProviderConfig/extra", json={}, headers=scim).status_code == 404
+        assert client.post("/scim/v2/ResourceTypes/User/extra", json={}, headers=scim).status_code == 404
+        assert client.post("/scim/v2/ServiceProviderConfigs", json={}, headers=scim).status_code == 404
+        assert client.post("/scim/v2/schemas", json={}, headers=scim).status_code == 404
+
 
 class TestRateLimit:
     def test_exhausted_budget_returns_429(self, client, scim, monkeypatch):
