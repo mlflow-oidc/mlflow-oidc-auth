@@ -42,7 +42,8 @@ SCIM_JSON = "application/scim+json"
 # scim2-tester tags for features the endpoint does not implement, by design (docs/scim.md):
 # attribute projection (``attributes`` / ``excludedAttributes``) and POST ``/.search`` are not
 # supported, and PATCH supports ``add`` / ``replace`` only. The checks still run; their results are
-# set aside here.
+# set aside here. The discovery checks (405 for a write to /ServiceProviderConfig, /ResourceTypes,
+# /Schemas) run since scim2-tester 0.5 and must pass.
 UNSUPPORTED_TAGS = {"crud:read:attributes", "patch:remove"}
 # Individual checks inside otherwise-supported tags. ``name.givenName`` / ``familyName`` are
 # accepted and not stored, so the tester reads back a different ``name`` than it wrote.
