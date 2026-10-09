@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python >=3.10 (3.12 recommended)
+- Python >=3.10 (3.14 recommended)
 - MLflow >=3.16.0, <4
 - An OIDC-compatible identity provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.)
 
@@ -180,7 +180,7 @@ curl http://localhost:8080/auth/status
 ### Basic Docker
 
 ```dockerfile
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 RUN pip install mlflow-oidc-auth
 
