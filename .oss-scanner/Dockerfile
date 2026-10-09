@@ -18,12 +18,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     # Never read a .env from the checkout or the environment the scanner runs in.
     PYTHON_DOTENV_DISABLED=1
 
-# libxmlsec1 is only a fallback for python-xmlsec if no binary wheel matches. PostgreSQL 18 (as in
-# CI) comes from the PGDG repository, set up with the key Debian's postgresql-common ships; it lets
-# the migration tests run against both backends offline.
+# PostgreSQL 18 (as in CI) comes from the PGDG repository, set up with the key Debian's
+# postgresql-common ships; it lets the migration tests run against both backends offline.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates git build-essential pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl \
-      postgresql-common procps \
+      ca-certificates git build-essential postgresql-common procps \
     && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
     && apt-get install -y --no-install-recommends postgresql-18 \
     && rm -rf /var/lib/apt/lists/*
@@ -38,8 +36,11 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 COPY . /src
 WORKDIR /src
 
-# Python: the same install tox does (tox.ini [testenv]), plus the test-only deps it lists.
-RUN pip install -e '.[full,test,cache]' coverage psycopg2-binary
+# Python: the extras tox installs (tox.ini [testenv]) plus redis for the cache backend, and the
+# PostgreSQL driver the migration tests use. xmlsec and lxml must both be binary wheels: one built
+# from source against Debian's libxml2 next to the other's bundled copy fails at import, so a
+# missing wheel fails the build here instead of quietly disabling SAML.
+RUN pip install --only-binary xmlsec,lxml -e '.[full,test,cache]' psycopg2-binary
 
 # Frontend: install, then build the admin UI into mlflow_oidc_auth/ui/ as a release does.
 RUN cd web-react && yarn install --frozen-lockfile && yarn build
@@ -53,10 +54,18 @@ RUN pg_ctlcluster 18 main start \
     && sed -i -E 's/^(host .*)scram-sha-256$/\1trust/' /etc/postgresql/18/main/pg_hba.conf
 
 # Run the suites once so a broken image is visible in the build log, without failing the build.
-# The python suite is what CI runs (tox.ini), minus the Keycloak/browser e2e markers.
+# The python suite is what CI runs (tox.ini), minus the Keycloak/browser e2e markers. It runs in a
+# throwaway copy so the databases and mlruns/ it writes never land in /src, and hooks/ runs file by
+# file because the whole directory in one process can hang (AGENTS.md).
 RUN pg_ctlcluster 18 main start \
-    && (MLFLOW_OIDC_TEST_POSTGRES_URI=postgresql+psycopg2://mlflow_oidc@localhost:5432/mlflow_oidc_test \
-        timeout 3600 python -m pytest -q -p no:cacheprovider -m "not integration and not e2e" mlflow_oidc_auth/tests \
-      || echo "WARNING: python tests reported failures") \
-    && pg_ctlcluster 18 main stop \
-    && (cd web-react && timeout 900 yarn test || echo "WARNING: frontend tests reported failures")
+    && cp -a /src /tmp/testrun && cd /tmp/testrun \
+    && export MLFLOW_OIDC_TEST_POSTGRES_URI=postgresql+psycopg2://mlflow_oidc@localhost:5432/mlflow_oidc_test \
+    && (timeout 3600 python -m pytest -q -p no:cacheprovider -m "not integration and not e2e" \
+          --ignore=mlflow_oidc_auth/tests/hooks mlflow_oidc_auth/tests \
+        || echo "WARNING: python tests reported failures") \
+    && for f in mlflow_oidc_auth/tests/hooks/test_*.py; do \
+         timeout 600 python -m pytest -q -p no:cacheprovider "$f" || echo "WARNING: $f reported failures"; \
+       done \
+    && (cd web-react && timeout 900 yarn test || echo "WARNING: frontend tests reported failures") \
+    && cd / && rm -rf /tmp/testrun \
+    && pg_ctlcluster 18 main stop
