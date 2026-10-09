@@ -159,6 +159,7 @@ class TestUnmatchedScimPaths:
 
     def test_paths_that_only_resemble_discovery_stay_404(self, client, scim):
         assert client.post("/scim/v2/ServiceProviderConfig/extra", json={}, headers=scim).status_code == 404
+        assert client.post("/scim/v2/ResourceTypes/User/extra", json={}, headers=scim).status_code == 404
         assert client.post("/scim/v2/ServiceProviderConfigs", json={}, headers=scim).status_code == 404
         assert client.post("/scim/v2/schemas", json={}, headers=scim).status_code == 404
 
