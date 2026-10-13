@@ -70,7 +70,7 @@ from mlflow_oidc_auth.utils.permissions import (
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.validators.review import is_review_queue_member
-from mlflow_oidc_auth.validators.scorers import scorer_has_versions
+from mlflow_oidc_auth.validators.scorers import NON_EXPLICIT_PERMISSION_KINDS, scorer_has_versions
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -574,10 +574,12 @@ def _set_can_manage_scorer_permission(resp: Response):
     try:
         store.create_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
     except MlflowException as e:
-        # A grant set on the name before it was registered is kept as it is: the
-        # registration was authorized against it, and it says what this user may do.
         if e.error_code != ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
             raise
+        # A grant left on the name from before this scorer existed. The registration was
+        # authorized against it (UPDATE or better), and the creator owns what they create.
+        get_logger().warning("Scorer created over an existing grant for its creator; raising it to MANAGE")
+        store.update_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
 
 
 def _delete_scorer_permissions_cascade(resp: Response):
@@ -650,9 +652,6 @@ def _set_can_manage_gateway_model_definition_permission(resp: Response):
 
 # Permission kinds that come from a grant on the scorer itself (user, group, regex or
 # group-regex), as opposed to the default or workspace fallback.
-_NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
-
-
 def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
     """Whether a ``ListScorers`` row is visible to ``username``.
 
@@ -664,7 +663,7 @@ def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str)
         if not _cached_can_read_experiment(experiment_id, username):
             return False
         result = effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username)
-        if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
+        if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
             return True
         return bool(result.permission.can_read)
     except Exception:

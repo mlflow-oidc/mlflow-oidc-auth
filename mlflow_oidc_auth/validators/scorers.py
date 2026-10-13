@@ -2,10 +2,13 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
 from mlflow_oidc_auth.utils import all_source_values, effective_scorer_permission, get_request_param_values
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import validate_can_update_experiment
+
+logger = get_logger()
 
 
 def _scorer_permission(username: str, name_field: str) -> Permission:
@@ -29,13 +32,23 @@ def _get_permission_from_scorer_permission_request(username: str) -> Permission:
     return _scorer_permission(username, "scorer_name")
 
 
+# Kinds of a resolved permission that are not a grant on the scorer itself: a scorer with
+# none of its own follows its experiment, as the ListScorers filter does.
+NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
+
+# Sources that name this exact scorer. A regex grant also matches names nobody has
+# registered yet, so it binds an existing scorer but not the creation of a new one.
+_EXACT_SCORER_GRANT_KINDS = frozenset({"user", "group"})
+
+
 def scorer_has_versions(experiment_id: str, name: str) -> bool:
     """Whether MLflow still holds at least one version of the scorer.
 
     A scorer record outlives its versions when they are deleted one at a time, so the
     record alone is not existence: ``get_scorer`` without a version raises
     RESOURCE_DOES_NOT_EXIST once none is left. Any other failure answers True, which
-    keeps both callers on their stricter path (require scorer UPDATE; keep grants).
+    keeps both callers on their stricter path (apply the scorer grant; keep grants), and
+    is logged so a skipped cleanup is visible.
 
     Parameters:
         experiment_id: The scorer's experiment.
@@ -47,34 +60,38 @@ def scorer_has_versions(experiment_id: str, name: str) -> bool:
     try:
         _get_tracking_store().get_scorer(str(experiment_id), str(name))
     except MlflowException as e:
-        return e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST)
-    except Exception:
-        return True
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return False
+        logger.warning(f"Scorer version lookup failed ({e.error_code}); treating the scorer as existing")
+    except Exception as e:
+        logger.warning(f"Scorer version lookup failed ({type(e).__name__}); treating the scorer as existing")
     return True
-
-
-# Sources that name this exact scorer. A regex grant also matches names nobody has
-# registered yet, so it does not by itself gate the creation of a new one.
-_EXACT_SCORER_GRANT_KINDS = frozenset({"user", "group"})
 
 
 def _can_register(experiment_id: str, name: str, username: str) -> bool:
     result = effective_scorer_permission(experiment_id=str(experiment_id), scorer_name=str(name), user=username)
+    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
+        return True
     if result.kind in _EXACT_SCORER_GRANT_KINDS or scorer_has_versions(experiment_id, name):
         return result.permission.can_update
     return True
 
 
 def validate_can_register_scorer(username: str) -> bool:
-    """UPDATE on the experiment; UPDATE on the scorer too when it exists or is granted.
+    """Authorize ``RegisterScorer``: UPDATE on the experiment, and a scorer grant decides.
 
     ``RegisterScorer`` on an existing (experiment_id, name) appends a version that becomes
-    the scorer's current definition, so it is an update of that scorer and scorer-level
-    grants apply as they do to every other scorer write. A user or group grant on the
-    name binds even before the first version exists, so a grant set up ahead of creation
-    cannot be stepped around by registering first. Otherwise a new name needs only the
-    experiment permission. Every experiment id and name the request carries, in any
-    source, is checked.
+    the scorer's current definition. A grant on the scorer itself, when there is one,
+    decides as it does for listing: below UPDATE refuses. A scorer with no grant of its
+    own follows its experiment. A user or group grant on the name binds even before the
+    first version exists; a regex grant binds only a scorer that exists. Every experiment
+    id and name the request carries, in any source, is checked.
+
+    Parameters:
+        username: The caller.
+
+    Returns:
+        True if the request may proceed.
     """
     if not validate_can_update_experiment(username):
         return False

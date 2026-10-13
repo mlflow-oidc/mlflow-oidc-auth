@@ -5,9 +5,10 @@ the UI does this to edit a judge, and to re-create a guardrail whose scorer outl
 
 * only version 1 is a creation and grants the creator MANAGE; a later version grants nothing
   and must not fail on the creator's existing grant ("Scorer permission already exists");
-* a later version is an update of that scorer and needs UPDATE on it, not only on the
-  experiment;
-* a user or group grant on a name binds its first registration too;
+* a later version needs UPDATE on the experiment, and a grant on the scorer itself, when
+  there is one, decides — a scorer without one follows its experiment, as listing does;
+* a user or group grant on a name binds its first registration too; a regex grant binds
+  only a scorer that exists;
 * ``DeleteScorer`` with a ``version`` removes that version only, so the grants stay until the
   last version is gone — and only the scorer MLflow acted on is considered.
 
@@ -40,6 +41,7 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
 
     def __init__(self):
         self.versions = {}
+        self.fail_lookups = False
 
     def register_scorer(self, experiment_id, name, serialized_scorer):
         versions = self.versions.setdefault((str(experiment_id), name), [])
@@ -54,6 +56,8 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
         )
 
     def get_scorer(self, experiment_id, name, version=None):
+        if self.fail_lookups:
+            raise RuntimeError("tracking store unavailable")
         if not self.versions.get((str(experiment_id), name)):
             raise MlflowException(f"Scorer with name '{name}' not found", RESOURCE_DOES_NOT_EXIST)
         return SimpleNamespace()
@@ -66,11 +70,20 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
             versions.remove(int(version))
 
 
+TRACKING_STORE = None
+
+
+def permission_store_versions(experiment_id, name):
+    return TRACKING_STORE.versions.get((str(experiment_id), name))
+
+
 @pytest.fixture(autouse=True)
 def permission_store(tmp_path, monkeypatch):
     from mlflow_oidc_auth.utils.permissions import flush_permission_cache
 
-    s = install_permission_store(tmp_path, monkeypatch, _FakeTrackingStore())
+    global TRACKING_STORE
+    TRACKING_STORE = _FakeTrackingStore()
+    s = install_permission_store(tmp_path, monkeypatch, TRACKING_STORE)
     monkeypatch.setattr("mlflow_oidc_auth.hooks.after_request.store", s, raising=False)
     yield s
     flush_permission_cache()
@@ -192,9 +205,11 @@ def test_delete_leaves_grants_on_a_pair_mlflow_did_not_act_on(permission_store, 
     with mlflow_app.test_request_context(
         f"{prefix}/3.0/mlflow/scorers/delete", method="DELETE", json=body, query_string={"experiment_id": OWN}, environ_base=environ
     ):
-        if before_request_hook() is None:
-            view = mlflow_app.view_functions[request.url_rule.endpoint]
-            after_request_hook(mlflow_app.make_response(view(**(request.view_args or {}))))
+        assert before_request_hook() is None
+        view = mlflow_app.view_functions[request.url_rule.endpoint]
+        resp = after_request_hook(mlflow_app.make_response(view(**(request.view_args or {}))))
+    assert resp.status_code == 200, resp.get_data()
+    assert not permission_store_versions(VICTIM, "judge")
     assert permission_store.get_scorer_permission(OWN, "judge", EDITOR).permission == "NO_PERMISSIONS"
 
 
@@ -206,8 +221,37 @@ def test_grant_set_before_creation_binds_the_first_registration(permission_store
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_first_registration_keeps_a_grant_set_before_creation(permission_store, prefix):
+def test_first_registration_over_an_existing_grant_makes_the_creator_manager(permission_store, prefix):
     permission_store.create_scorer_permission(VICTIM, "judge", EDITOR, "EDIT")
     resp = _register(prefix, EDITOR)
     assert resp.status_code == 200, resp.get_data()
-    assert _grant(permission_store, EDITOR) == "EDIT"
+    assert _grant(permission_store, EDITOR) == "MANAGE"
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_scorer_without_a_grant_follows_its_experiment_under_deny_by_default(permission_store, monkeypatch, prefix):
+    from mlflow_oidc_auth.config import config
+
+    monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+    assert _register(prefix, MANAGER).status_code == 200
+    # EDITOR: EDIT on the experiment, no grant on the scorer — may save a new version.
+    resp = _register(prefix, EDITOR)
+    assert resp.status_code == 200, resp.get_data()
+    # READER: READ on the experiment — may not.
+    assert _register(prefix, READER).status_code == 403
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_regex_grant_binds_an_existing_scorer_only(permission_store, prefix):
+    permission_store.create_scorer_regex_permission("^judge", 1, "READ", EDITOR)
+    assert _register(prefix, EDITOR, name="judge-new").status_code == 200  # a new name: the experiment decides
+    assert _register(prefix, MANAGER).status_code == 200
+    assert _register(prefix, EDITOR).status_code == 403  # it exists: the regex grant decides
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_delete_keeps_grants_when_the_version_lookup_fails(permission_store, prefix):
+    assert _register(prefix, MANAGER).status_code == 200
+    TRACKING_STORE.fail_lookups = True
+    assert _delete(prefix, MANAGER).status_code == 200
+    assert _grant(permission_store, MANAGER) == "MANAGE"
