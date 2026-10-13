@@ -27,7 +27,7 @@ The permission system covers these MLflow resource types:
 | Experiments | Per experiment ID | Includes runs within the experiment |
 | Registered Models | Per model name | Includes model versions |
 | Prompts | Per prompt name | Uses the model permission infrastructure |
-| Scorers | Per experiment + scorer name | Compound key |
+| Scorers | Per experiment + scorer name | Compound key. A scorer with no grant of its own inherits its experiment's permission (and so, in turn, the workspace permission or `DEFAULT_MLFLOW_PERMISSION`) |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions. Creating a job needs EDIT on the experiment and on the prompt in `source_prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`; the job registers a new version of it), and READ on every experiment linked to `config.dataset_id` when one is given |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
 | Job API jobs (`ajax-api/3.0/jobs/…`) | Per job creator | See [Job API](#job-api) |
@@ -137,7 +137,7 @@ When a user creates a resource, the plugin automatically grants them `MANAGE` pe
 
 - `CreateExperiment` → MANAGE on the new experiment
 - `CreateRegisteredModel` → MANAGE on the new model
-- `RegisterScorer` → MANAGE on the new scorer
+- `RegisterScorer` → MANAGE on the new scorer (its first version only; registering a new version of an existing scorer grants nothing, and a grant the creator already held on the name keeps its level)
 - `CreateGatewayEndpoint` → MANAGE on the new endpoint
 - `CreateGatewaySecret` → MANAGE on the new secret
 - `CreateGatewayModelDefinition` → MANAGE on the new model definition
@@ -313,7 +313,7 @@ and as the reviewer of an item.
 | Scorer online scoring (`3.0/mlflow/scorers/online-config(s)`) | `PUT online-config` | EDIT on the experiment and on the scorer (`name`) |
 | | `GET online-configs` | READ on the experiment and on the scorer of every configuration returned for `scorer_ids` |
 | Scorer list (`3.0/mlflow/scorers/list`) | with `experiment_id` | READ on the experiment; the result then omits every scorer the caller holds `NO_PERMISSIONS` on |
-| | without `experiment_id` (all active experiments) | any authenticated user; each scorer is listed only with READ on its experiment and, when the scorer has a grant of its own, READ on the scorer. A scorer whose permission cannot be resolved is omitted |
+| | without `experiment_id` (all active experiments) | any authenticated user; each scorer is listed only with READ on its experiment and READ on the scorer (its own grant, or its experiment's when it has none). A scorer whose permission cannot be resolved is omitted |
 | Gateway budgets (`3.0/mlflow/gateway/budgets/get`, `list`, `windows`) | read | admin only (writes already were) |
 | Demo data (`ajax-api/3.0/mlflow/demo/generate`, `demo/delete`) | `POST` | admin only |
 
@@ -406,7 +406,7 @@ When resources are deleted or renamed, associated permissions are automatically 
 | Event | Action |
 |-------|--------|
 | Delete registered model | All user and group permissions for that model are deleted |
-| Delete scorer | All scorer permissions are deleted |
+| Delete scorer | All scorer permissions are deleted once the scorer has no version left. Deleting a single version keeps them |
 | Delete gateway endpoint/secret/model definition | All associated permissions are deleted |
 | Rename registered model | All permission records are updated to the new name |
 | Rename gateway endpoint | All endpoint permission records are updated to the new name |

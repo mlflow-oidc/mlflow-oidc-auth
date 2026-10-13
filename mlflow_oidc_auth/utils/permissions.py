@@ -514,7 +514,9 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     # Recorded here rather than where the fallback is constructed, because this is the
     # only layer that knows WHICH resource and user it was for. Checked after the
     # workspace fallback, which may already have replaced it with a real decision.
-    if result.kind == "fallback":
+    # A scorer's fallback is not final: effective_scorer_permission hands it to the experiment,
+    # whose own resolution records a fallback if the default does decide.
+    if result.kind == "fallback" and resource_type != SCORER:
         record_permission_fallback(resource_type, resource_id, username, result.permission)
 
     cache.set(cache_key, result)
@@ -611,13 +613,29 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     return resolve_permission(PROMPT, prompt_name, user)
 
 
+# Kinds of a resolved permission that are not a grant on the resource itself.
+NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
+
+
 def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
     """Resolve effective permission for a scorer.
 
-    This mirrors the behavior of `effective_experiment_permission` / `effective_registered_model_permission`
-    but uses scorer-specific permission sources.
+    A grant on the scorer itself (user, group, regex or group-regex) decides. A scorer with
+    none inherits its experiment's effective permission, which in turn falls back to the
+    workspace permission or ``DEFAULT_MLFLOW_PERMISSION`` as for the experiment itself.
+
+    Parameters:
+        experiment_id: The scorer's experiment.
+        scorer_name: The scorer name.
+        user: The caller.
+
+    Returns:
+        The scorer's grant, or the experiment's effective permission when there is none.
     """
-    return resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
+    result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
+    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
+        return effective_experiment_permission(experiment_id, user)
+    return result
 
 
 def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:

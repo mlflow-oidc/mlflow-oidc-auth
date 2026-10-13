@@ -32,11 +32,6 @@ def _get_permission_from_scorer_permission_request(username: str) -> Permission:
     return _scorer_permission(username, "scorer_name")
 
 
-# Kinds of a resolved permission that are not a grant on the scorer itself: a scorer with
-# none of its own follows its experiment, as the ListScorers filter does.
-NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
-
-
 def scorer_has_versions(experiment_id: str, name: str) -> bool:
     """Whether MLflow still holds at least one version of the scorer.
 
@@ -65,10 +60,7 @@ def scorer_has_versions(experiment_id: str, name: str) -> bool:
 
 
 def _can_register(experiment_id: str, name: str, username: str) -> bool:
-    result = effective_scorer_permission(experiment_id=str(experiment_id), scorer_name=str(name), user=username)
-    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
-        return True
-    return result.permission.can_update
+    return effective_scorer_permission(experiment_id=str(experiment_id), scorer_name=str(name), user=username).permission.can_update
 
 
 def validate_can_register_scorer(username: str) -> bool:

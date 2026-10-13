@@ -27,6 +27,7 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.tests.hooks.authz_harness import (
     EDITOR,
     MANAGER,
+    OUTSIDER,
     OWN,
     PREFIXES,
     READER,
@@ -272,3 +273,59 @@ def test_delete_keeps_grants_when_the_version_lookup_fails(permission_store, pre
     TRACKING_STORE.fail_lookups = True
     assert _delete(prefix, MANAGER).status_code == 200
     assert _grant(permission_store, MANAGER) == "MANAGE"
+
+
+# ---------------------------------------------------------------------------
+# A scorer with no grant of its own inherits its experiment's permission, for every scorer
+# route; the experiment in turn falls back to DEFAULT_MLFLOW_PERMISSION. Run under the
+# shipped deny-by-default so the inheritance, not the default, is what opens access.
+# ---------------------------------------------------------------------------
+
+
+def _authorized(path, method, username, *, query=None, body=None):
+    """Whether the real before_request_hook lets the request through."""
+    from mlflow_oidc_auth.hooks.before_request import before_request_hook
+    from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+    flush_permission_cache()
+    environ = {AUTH_CONTEXT_KEY: AuthContext(username=username, is_admin=False)}
+    kwargs = {"query_string": query} if query is not None else {"json": body}
+    with mlflow_app.test_request_context(path, method=method, environ_base=environ, **kwargs):
+        return before_request_hook() is None
+
+
+@pytest.fixture
+def deny_by_default(monkeypatch):
+    from mlflow_oidc_auth.config import config
+
+    monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+@pytest.mark.parametrize(
+    "username, can_read, can_update, can_delete",
+    [
+        (MANAGER, True, True, True),  # MANAGE on the experiment
+        (EDITOR, True, True, False),  # EDIT
+        (READER, True, False, False),  # READ
+        (OUTSIDER, False, False, False),  # NO_PERMISSIONS on the experiment
+        ("ghost@example.com", False, False, False),  # nothing anywhere: the default decides
+    ],
+)
+def test_scorer_without_a_grant_inherits_its_experiment(permission_store, deny_by_default, prefix, username, can_read, can_update, can_delete):
+    TRACKING_STORE.register_scorer(VICTIM, "judge", "{}")  # someone else's scorer, no grants on it
+    scorer = {"experiment_id": VICTIM, "name": "judge"}
+    assert _authorized(f"{prefix}/3.0/mlflow/scorers/get", "GET", username, query=scorer) is can_read
+    assert _authorized(f"{prefix}/3.0/mlflow/scorers/versions", "GET", username, query=scorer) is can_read
+    assert _authorized(f"{prefix}/3.0/mlflow/scorers/register", "POST", username, body={**scorer, "serialized_scorer": "{}"}) is can_update
+    assert _authorized(f"{prefix}/3.0/mlflow/scorers/delete", "DELETE", username, body=scorer) is can_delete
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_a_grant_on_the_scorer_overrides_its_experiment(permission_store, deny_by_default, prefix):
+    TRACKING_STORE.register_scorer(VICTIM, "judge", "{}")
+    scorer = {"experiment_id": VICTIM, "name": "judge"}
+    permission_store.create_scorer_permission(VICTIM, "judge", EDITOR, "NO_PERMISSIONS")  # EDIT on the experiment
+    permission_store.create_scorer_permission(VICTIM, "judge", READER, "MANAGE")  # READ on the experiment
+    assert not _authorized(f"{prefix}/3.0/mlflow/scorers/get", "GET", EDITOR, query=scorer)
+    assert _authorized(f"{prefix}/3.0/mlflow/scorers/delete", "DELETE", READER, body=scorer)

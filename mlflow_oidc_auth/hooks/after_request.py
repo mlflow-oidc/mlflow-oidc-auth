@@ -70,7 +70,7 @@ from mlflow_oidc_auth.utils.permissions import (
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.validators.review import is_review_queue_member
-from mlflow_oidc_auth.validators.scorers import NON_EXPLICIT_PERMISSION_KINDS, scorer_has_versions
+from mlflow_oidc_auth.validators.scorers import scorer_has_versions
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -659,10 +659,7 @@ def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str)
     try:
         if not _cached_can_read_experiment(experiment_id, username):
             return False
-        result = effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username)
-        if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
-            return True
-        return bool(result.permission.can_read)
+        return bool(effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username).permission.can_read)
     except Exception:
         get_logger().debug("Scorer permission lookup failed while filtering ListScorers")
         return False
