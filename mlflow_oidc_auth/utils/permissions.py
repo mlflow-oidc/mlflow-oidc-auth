@@ -356,6 +356,21 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 _KNOWN_PERMISSION_SOURCES = frozenset(("user", "group", "regex", "group-regex"))
 
 
+def _source_label(source_name: str) -> str:
+    """The plugin's own name for a configured permission source, safe to log.
+
+    ``PERMISSION_SOURCE_ORDER`` can be read from a secret store, so a configured value is
+    never written to the log as such; the matching constant is.
+
+    Parameters:
+        source_name: A configured permission source.
+
+    Returns:
+        The known source it names, or ``"unrecognized"``.
+    """
+    return next((known for known in sorted(_KNOWN_PERMISSION_SOURCES) if known == source_name), "unrecognized")
+
+
 def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
     """Defer a generic ``fallback`` result to the user's workspace permission.
 
@@ -879,16 +894,16 @@ def get_permission_from_store_or_default(
                 permission_func = PERMISSION_SOURCES_CONFIG[source_name]
                 # Call the function to get the permission
                 perm = permission_func()
-                logger.debug(f"Permission found using source: {source_name}")
+                logger.debug(f"Permission found using source: {_source_label(source_name)}")
                 return PermissionResult(get_permission(perm), source_name)
             except MlflowException as e:
                 if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
                     raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
                 # Not the exception text: it names the resource, and a gateway secret's name is
                 # not for the log.
-                logger.debug(f"Permission not found using source: {source_name}")
+                logger.debug(f"Permission not found using source: {_source_label(source_name)}")
         elif source_name not in _KNOWN_PERMISSION_SOURCES:
-            logger.warning(f"Invalid permission source configured: {source_name}")
+            logger.warning("Invalid permission source configured in PERMISSION_SOURCE_ORDER; it is ignored")
 
     # If no permission is found, use the default
     perm = config.DEFAULT_MLFLOW_PERMISSION
