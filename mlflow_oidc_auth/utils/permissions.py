@@ -866,7 +866,9 @@ def get_permission_from_store_or_default(
             except MlflowException as e:
                 if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
                     raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
-                logger.debug(f"Permission not found using source {source_name}: {e}")
+                # Not the exception text: it names the resource, and a gateway secret's name is
+                # not for the log.
+                logger.debug(f"Permission not found using source: {source_name}")
         elif source_name not in _KNOWN_PERMISSION_SOURCES:
             logger.warning(f"Invalid permission source configured: {source_name}")
 

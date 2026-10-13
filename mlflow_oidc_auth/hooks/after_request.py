@@ -40,7 +40,7 @@ from mlflow.server.handlers import (
     get_endpoints,
 )
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
@@ -60,6 +60,7 @@ from mlflow_oidc_auth.utils import (
     effective_scorer_permission,
     get_experiment_ids,
     get_model_name,
+    get_request_param,
 )
 from mlflow_oidc_auth.utils.permissions import (
     can_read_gateway_endpoint,
@@ -69,6 +70,7 @@ from mlflow_oidc_auth.utils.permissions import (
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.validators.review import is_review_queue_member
+from mlflow_oidc_auth.validators.scorers import scorer_has_versions
 from mlflow_oidc_auth.utils.workspace_cache import (
     flush_workspace_cache,
     get_workspace_permission_cached,
@@ -554,23 +556,44 @@ def _rename_registered_model_permission(resp: Response):
 
 
 def _set_can_manage_scorer_permission(resp: Response):
-    """Create MANAGE scorer permission for the scorer creator."""
+    """Create MANAGE scorer permission for the scorer creator.
+
+    ``RegisterScorer`` on an existing (experiment_id, name) appends a new version — that is how
+    the UI edits a judge or guardrail scorer. Only version 1 is a creation; a later version is
+    an update and must neither grant MANAGE to the caller nor fail on the creator's existing
+    grant (issue #453).
+    """
 
     response_message = RegisterScorer.Response()  # type: ignore
     parse_dict(resp.json, response_message)
+    if response_message.version != 1:
+        return
     experiment_id = response_message.experiment_id
     scorer_name = response_message.name
     username = get_fastapi_username()
-    store.create_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
+    try:
+        store.create_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
+    except MlflowException as e:
+        # A grant set on the name before it was registered is kept as it is: the
+        # registration was authorized against it, and it says what this user may do.
+        if e.error_code != ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
+            raise
 
 
 def _delete_scorer_permissions_cascade(resp: Response):
-    """Delete all scorer permissions when a scorer is deleted."""
+    """Delete all scorer permissions once a scorer has no version left.
 
-    data = request.get_json(force=True, silent=True) or {}
-    experiment_id = data.get("experiment_id")
-    scorer_name = data.get("name")
-    if experiment_id and scorer_name:
+    ``DeleteScorer`` with a ``version`` removes only that version and the scorer stays, so
+    its grants — denials included — must stay with it. They go when the last version does,
+    whether by a delete of every version or of the last one, so a later registration of
+    the name starts clean (issue #453). Only the pair MLflow acted on is considered: it
+    was resolved in the request's workspace, so "no version left" means deleted there,
+    not merely out of view.
+    """
+
+    experiment_id = get_request_param("experiment_id")
+    scorer_name = get_request_param("name")
+    if not scorer_has_versions(experiment_id, scorer_name):
         store.delete_scorer_permissions_for_scorer(str(experiment_id), str(scorer_name))
 
 

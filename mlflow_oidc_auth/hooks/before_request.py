@@ -223,6 +223,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_traces_from_experiment_id,
     validate_can_start_trace_v3,
     validate_can_delete_scorer,
+    validate_can_register_scorer,
     validate_can_list_scorers,
     validate_can_read_scorer,
     validate_can_read_run_artifact,
@@ -438,7 +439,7 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
     # Routes for scorers
-    RegisterScorer: validate_can_update_experiment,
+    RegisterScorer: validate_can_register_scorer,
     ListScorers: validate_can_list_scorers,
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
