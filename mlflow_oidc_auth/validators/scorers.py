@@ -36,19 +36,15 @@ def _get_permission_from_scorer_permission_request(username: str) -> Permission:
 # none of its own follows its experiment, as the ListScorers filter does.
 NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
 
-# Sources that name this exact scorer. A regex grant also matches names nobody has
-# registered yet, so it binds an existing scorer but not the creation of a new one.
-_EXACT_SCORER_GRANT_KINDS = frozenset({"user", "group"})
-
 
 def scorer_has_versions(experiment_id: str, name: str) -> bool:
     """Whether MLflow still holds at least one version of the scorer.
 
     A scorer record outlives its versions when they are deleted one at a time, so the
     record alone is not existence: ``get_scorer`` without a version raises
-    RESOURCE_DOES_NOT_EXIST once none is left. Any other failure answers True, which
-    keeps both callers on their stricter path (apply the scorer grant; keep grants), and
-    is logged so a skipped cleanup is visible.
+    RESOURCE_DOES_NOT_EXIST once none is left. Any other failure answers True and is
+    logged: the delete cascade then keeps the grants rather than strip the grants (and
+    denials) of a scorer that may still exist; an admin can remove leftovers.
 
     Parameters:
         experiment_id: The scorer's experiment.
@@ -72,20 +68,18 @@ def _can_register(experiment_id: str, name: str, username: str) -> bool:
     result = effective_scorer_permission(experiment_id=str(experiment_id), scorer_name=str(name), user=username)
     if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
         return True
-    if result.kind in _EXACT_SCORER_GRANT_KINDS or scorer_has_versions(experiment_id, name):
-        return result.permission.can_update
-    return True
+    return result.permission.can_update
 
 
 def validate_can_register_scorer(username: str) -> bool:
     """Authorize ``RegisterScorer``: UPDATE on the experiment, and a scorer grant decides.
 
     ``RegisterScorer`` on an existing (experiment_id, name) appends a version that becomes
-    the scorer's current definition. A grant on the scorer itself, when there is one,
-    decides as it does for listing: below UPDATE refuses. A scorer with no grant of its
-    own follows its experiment. A user or group grant on the name binds even before the
-    first version exists; a regex grant binds only a scorer that exists. Every experiment
-    id and name the request carries, in any source, is checked.
+    the scorer's current definition. A grant on the scorer itself — user, group, regex or
+    group-regex — when there is one, decides as it does for listing: below UPDATE refuses.
+    It binds the first registration too, since the creator's MANAGE would otherwise
+    outrank it from then on. A scorer with no grant of its own follows its experiment.
+    Every experiment id and name the request carries, in any source, is checked.
 
     Parameters:
         username: The caller.

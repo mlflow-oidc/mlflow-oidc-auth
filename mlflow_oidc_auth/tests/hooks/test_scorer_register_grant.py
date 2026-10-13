@@ -221,11 +221,11 @@ def test_grant_set_before_creation_binds_the_first_registration(permission_store
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_first_registration_over_an_existing_grant_makes_the_creator_manager(permission_store, prefix):
+def test_first_registration_keeps_a_grant_set_before_creation(permission_store, prefix):
     permission_store.create_scorer_permission(VICTIM, "judge", EDITOR, "EDIT")
     resp = _register(prefix, EDITOR)
     assert resp.status_code == 200, resp.get_data()
-    assert _grant(permission_store, EDITOR) == "MANAGE"
+    assert _grant(permission_store, EDITOR) == "EDIT"  # not raised to MANAGE
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
@@ -242,11 +242,28 @@ def test_scorer_without_a_grant_follows_its_experiment_under_deny_by_default(per
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)
-def test_regex_grant_binds_an_existing_scorer_only(permission_store, prefix):
-    permission_store.create_scorer_regex_permission("^judge", 1, "READ", EDITOR)
-    assert _register(prefix, EDITOR, name="judge-new").status_code == 200  # a new name: the experiment decides
+@pytest.mark.parametrize("source", ["regex", "group-regex"])
+def test_regex_grant_binds_creation_and_new_versions(permission_store, prefix, source):
+    if source == "regex":
+        permission_store.create_scorer_regex_permission("^judge", 1, "READ", EDITOR)
+    else:
+        permission_store.populate_groups(["analysts"])
+        permission_store.add_user_to_group(EDITOR, "analysts")
+        permission_store.create_group_scorer_regex_permission("analysts", "^judge", 1, "NO_PERMISSIONS")
+    # A new matching name: creating it would hand EDITOR a user MANAGE that outranks the regex.
+    assert _register(prefix, EDITOR, name="judge-new").status_code == 403
     assert _register(prefix, MANAGER).status_code == 200
-    assert _register(prefix, EDITOR).status_code == 403  # it exists: the regex grant decides
+    assert _register(prefix, EDITOR).status_code == 403
+    assert _register(prefix, EDITOR, name="other").status_code == 200  # no match: the experiment decides
+
+
+@pytest.mark.parametrize("prefix", PREFIXES)
+def test_user_without_a_record_may_add_a_version_but_not_create(permission_store, prefix):
+    ghost = "ghost@example.com"  # authenticated, never provisioned; default MANAGE gives experiment UPDATE
+    assert _register(prefix, MANAGER).status_code == 200
+    resp = _register(prefix, ghost)
+    assert resp.status_code == 200, resp.get_data()
+    assert _register(prefix, ghost, name="brand-new").status_code == 403
 
 
 @pytest.mark.parametrize("prefix", PREFIXES)

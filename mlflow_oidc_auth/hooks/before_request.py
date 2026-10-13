@@ -864,6 +864,32 @@ def _requires_existing_user(path: str, method: str) -> bool:
     return (path, method) in _get_create_grant_paths()
 
 
+def _is_new_version_of_existing_scorer() -> bool:
+    """True for a ``RegisterScorer`` that adds a version to a scorer MLflow already holds.
+
+    Such a request grants nothing afterwards (only version 1 does), so it needs no
+    permission record. Only consulted for a caller without one; any lookup failure
+    answers False, keeping the guard.
+    """
+    from mlflow.server.handlers import _get_tracking_store
+
+    from mlflow_oidc_auth.utils import get_request_param
+
+    register_paths = {
+        (path, method)
+        for path, handler, methods in get_endpoints(lambda rc: rc if rc is RegisterScorer else None)
+        if handler is RegisterScorer
+        for method in methods
+    }
+    if (request.path, request.method) not in register_paths:
+        return False
+    try:
+        _get_tracking_store().get_scorer(get_request_param("experiment_id"), get_request_param("name"))
+    except Exception:
+        return False  # not found, or unknown: treat as a creation and keep the guard
+    return True
+
+
 def _is_workspace_gated_creation(path: str, method: str) -> bool:
     """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
     return (path, method) in _get_workspace_gated_creation_paths()
@@ -1050,7 +1076,7 @@ def before_request_hook():
     # pre-commit. This runs before the admin early-out because an API-first admin hits the
     # identical failure. When bearer provisioning (OIDC_PROVISION_ON_BEARER_AUTH) is enabled,
     # the user is created in auth middleware before this runs, so has_user is already True.
-    if _requires_existing_user(request.path, request.method) and not store.has_user(username):
+    if _requires_existing_user(request.path, request.method) and not store.has_user(username) and not _is_new_version_of_existing_scorer():
         logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
         return responses.make_forbidden_response()
     if is_admin:

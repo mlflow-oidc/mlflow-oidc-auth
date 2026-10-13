@@ -576,10 +576,9 @@ def _set_can_manage_scorer_permission(resp: Response):
     except MlflowException as e:
         if e.error_code != ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
             raise
-        # A grant left on the name from before this scorer existed. The registration was
-        # authorized against it (UPDATE or better), and the creator owns what they create.
-        get_logger().warning("Scorer created over an existing grant for its creator; raising it to MANAGE")
-        store.update_scorer_permission(experiment_id, scorer_name, username, MANAGE.name)
+        # A grant set on the name before this scorer existed stays at the level it was given;
+        # the registration does not raise it.
+        get_logger().warning("Scorer created over an existing grant for its creator; keeping that grant")
 
 
 def _delete_scorer_permissions_cascade(resp: Response):
@@ -650,8 +649,6 @@ def _set_can_manage_gateway_model_definition_permission(resp: Response):
     store.create_gateway_model_definition_permission(name, username, MANAGE.name)
 
 
-# Permission kinds that come from a grant on the scorer itself (user, group, regex or
-# group-regex), as opposed to the default or workspace fallback.
 def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
     """Whether a ``ListScorers`` row is visible to ``username``.
 
