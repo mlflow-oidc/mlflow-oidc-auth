@@ -7,8 +7,9 @@ the UI does this to edit a judge, and to re-create a guardrail whose scorer outl
   and must not fail on the creator's existing grant ("Scorer permission already exists");
 * a later version needs UPDATE on the experiment, and a grant on the scorer itself, when
   there is one, decides — a scorer without one follows its experiment, as listing does;
-* a user or group grant on a name binds its first registration too; a regex grant binds
-  only a scorer that exists;
+* a grant on a name (user, group, regex or group-regex) binds its first registration too,
+  since the creator's MANAGE would otherwise outrank it; one already held by the creator
+  keeps its level;
 * ``DeleteScorer`` with a ``version`` removes that version only, so the grants stay until the
   last version is gone — and only the scorer MLflow acted on is considered.
 

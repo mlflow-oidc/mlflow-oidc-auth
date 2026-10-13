@@ -368,7 +368,7 @@ def _source_label(source_name: str) -> str:
     Returns:
         The known source it names, or ``"unrecognized"``.
     """
-    return next((known for known in sorted(_KNOWN_PERMISSION_SOURCES) if known == source_name), "unrecognized")
+    return next((known for known in _KNOWN_PERMISSION_SOURCES if known == source_name), "unrecognized")
 
 
 def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
@@ -629,7 +629,7 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
 
 
 # Kinds of a resolved permission that are not a grant on the resource itself.
-NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
+_NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
 
 
 def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
@@ -648,7 +648,7 @@ def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str)
         The scorer's grant, or the experiment's effective permission when there is none.
     """
     result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
-    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
+    if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
         return effective_experiment_permission(experiment_id, user)
     return result
 

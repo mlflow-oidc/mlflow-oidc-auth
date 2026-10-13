@@ -1076,6 +1076,7 @@ def before_request_hook():
     # pre-commit. This runs before the admin early-out because an API-first admin hits the
     # identical failure. When bearer provisioning (OIDC_PROVISION_ON_BEARER_AUTH) is enabled,
     # the user is created in auth middleware before this runs, so has_user is already True.
+    # A RegisterScorer that adds a version to an existing scorer grants nothing, so it is exempt.
     if _requires_existing_user(request.path, request.method) and not store.has_user(username) and not _is_new_version_of_existing_scorer():
         logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
         return responses.make_forbidden_response()
