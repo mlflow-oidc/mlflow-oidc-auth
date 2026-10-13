@@ -403,6 +403,7 @@ _UNION_SPECS = {
     "validate_can_read_scorer": ("experiment_id", False, {"name": "scorer"}),
     "validate_can_update_scorer": ("experiment_id", False, {"name": "scorer"}),
     "validate_can_delete_scorer": ("experiment_id", False, {"name": "scorer"}),
+    "validate_can_register_scorer": ("experiment_id", False, {"name": "scorer", "serialized_scorer": "{}"}),
     "validate_can_manage_scorer": ("experiment_id", False, {"name": "scorer"}),
     "validate_can_read_trace": ("trace_id", False, {}),
     "validate_can_update_trace": ("trace_id", False, {}),

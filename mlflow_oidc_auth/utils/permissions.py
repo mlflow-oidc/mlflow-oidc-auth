@@ -356,6 +356,21 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
 _KNOWN_PERMISSION_SOURCES = frozenset(("user", "group", "regex", "group-regex"))
 
 
+def _source_label(source_name: str) -> str:
+    """The plugin's own name for a configured permission source, safe to log.
+
+    ``PERMISSION_SOURCE_ORDER`` can be read from a secret store, so a configured value is
+    never written to the log as such; the matching constant is.
+
+    Parameters:
+        source_name: A configured permission source.
+
+    Returns:
+        The known source it names, or ``"unrecognized"``.
+    """
+    return next((known for known in _KNOWN_PERMISSION_SOURCES if known == source_name), "unrecognized")
+
+
 def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
     """Defer a generic ``fallback`` result to the user's workspace permission.
 
@@ -514,7 +529,9 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     # Recorded here rather than where the fallback is constructed, because this is the
     # only layer that knows WHICH resource and user it was for. Checked after the
     # workspace fallback, which may already have replaced it with a real decision.
-    if result.kind == "fallback":
+    # A scorer's fallback is not final: effective_scorer_permission hands it to the experiment,
+    # whose own resolution records a fallback if the default does decide.
+    if result.kind == "fallback" and resource_type != SCORER:
         record_permission_fallback(resource_type, resource_id, username, result.permission)
 
     cache.set(cache_key, result)
@@ -611,13 +628,29 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     return resolve_permission(PROMPT, prompt_name, user)
 
 
+# Kinds of a resolved permission that are not a grant on the resource itself.
+_NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
+
+
 def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
     """Resolve effective permission for a scorer.
 
-    This mirrors the behavior of `effective_experiment_permission` / `effective_registered_model_permission`
-    but uses scorer-specific permission sources.
+    A grant on the scorer itself (user, group, regex or group-regex) decides. A scorer with
+    none inherits its experiment's effective permission, which in turn falls back to the
+    workspace permission or ``DEFAULT_MLFLOW_PERMISSION`` as for the experiment itself.
+
+    Parameters:
+        experiment_id: The scorer's experiment.
+        scorer_name: The scorer name.
+        user: The caller.
+
+    Returns:
+        The scorer's grant, or the experiment's effective permission when there is none.
     """
-    return resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
+    result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
+    if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
+        return effective_experiment_permission(experiment_id, user)
+    return result
 
 
 def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:
@@ -861,14 +894,16 @@ def get_permission_from_store_or_default(
                 permission_func = PERMISSION_SOURCES_CONFIG[source_name]
                 # Call the function to get the permission
                 perm = permission_func()
-                logger.debug(f"Permission found using source: {source_name}")
+                logger.debug(f"Permission found using source: {_source_label(source_name)}")
                 return PermissionResult(get_permission(perm), source_name)
             except MlflowException as e:
                 if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
                     raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
-                logger.debug(f"Permission not found using source {source_name}: {e}")
+                # Not the exception text: it names the resource, and a gateway secret's name is
+                # not for the log.
+                logger.debug(f"Permission not found using source: {_source_label(source_name)}")
         elif source_name not in _KNOWN_PERMISSION_SOURCES:
-            logger.warning(f"Invalid permission source configured: {source_name}")
+            logger.warning("Invalid permission source configured in PERMISSION_SOURCE_ORDER; it is ignored")
 
     # If no permission is found, use the default
     perm = config.DEFAULT_MLFLOW_PERMISSION

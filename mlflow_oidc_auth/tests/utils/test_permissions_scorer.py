@@ -147,6 +147,70 @@ class TestEffectiveScorerPermission:
         assert "group-regex" in args
 
 
+class TestEffectiveScorerPermissionInheritsExperiment:
+    """A scorer with no grant of its own takes its experiment's effective permission.
+
+    The experiment's resolution brings its own workspace fallback, so with workspaces enabled a
+    scorer reaches exactly what its experiment reaches — never more.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _workspaces(self):
+        from flask import Flask
+
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        app = Flask(__name__)
+        with app.test_request_context("/"):
+            flush_permission_cache()
+            with patch(f"{_MOD}.config") as config, patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value="team-a"):
+                config.MLFLOW_ENABLE_WORKSPACES = True
+                config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+                config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
+                yield
+            flush_permission_cache()
+
+    @staticmethod
+    def _resolve(scorer_grant, experiment_grant, workspace_permission, in_workspace):
+        from mlflow_oidc_auth.models.permission import PermissionResult
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, get_permission
+
+        def store_or_default(sources):
+            # The scorer's sources carry no "experiment" builder; tell them apart by call order.
+            grant = experiment_grant if store_or_default.calls else scorer_grant
+            store_or_default.calls += 1
+            return PermissionResult(get_permission(grant), "user") if grant else PermissionResult(NO_PERMISSIONS, "fallback")
+
+        store_or_default.calls = 0
+        ws = get_permission(workspace_permission) if workspace_permission else None
+        with (
+            patch(f"{_MOD}.get_permission_from_store_or_default", side_effect=store_or_default),
+            patch(f"{_MOD}._experiment_in_request_workspace", return_value=in_workspace),
+            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=ws),
+        ):
+            return effective_scorer_permission("exp-1", "judge", "alice")
+
+    def test_no_grants_inherit_the_workspace_permission_through_the_experiment(self) -> None:
+        result = self._resolve(None, None, "EDIT", in_workspace=True)
+        assert (result.kind, result.permission.can_update) == ("workspace", True)
+
+    def test_experiment_of_another_workspace_gives_nothing(self) -> None:
+        result = self._resolve(None, None, "MANAGE", in_workspace=False)
+        assert (result.kind, result.permission.can_read) == ("workspace-deny", False)
+
+    def test_explicit_experiment_grant_decides_as_on_experiment_routes(self) -> None:
+        result = self._resolve(None, "READ", "MANAGE", in_workspace=True)
+        assert (result.kind, result.permission.can_read, result.permission.can_update) == ("user", True, False)
+
+    def test_explicit_experiment_no_permissions_overrides_the_workspace(self) -> None:
+        result = self._resolve(None, "NO_PERMISSIONS", "EDIT", in_workspace=True)
+        assert result.permission.can_read is False
+
+    def test_a_scorer_grant_wins_over_its_experiment(self) -> None:
+        result = self._resolve("NO_PERMISSIONS", "MANAGE", "MANAGE", in_workspace=True)
+        assert result.permission.can_read is False
+
+
 # ---------------------------------------------------------------------------
 # can_manage_scorer
 # ---------------------------------------------------------------------------

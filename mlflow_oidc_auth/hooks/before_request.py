@@ -223,6 +223,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_delete_traces_from_experiment_id,
     validate_can_start_trace_v3,
     validate_can_delete_scorer,
+    validate_can_register_scorer,
     validate_can_list_scorers,
     validate_can_read_scorer,
     validate_can_read_run_artifact,
@@ -438,7 +439,7 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
     # Routes for scorers
-    RegisterScorer: validate_can_update_experiment,
+    RegisterScorer: validate_can_register_scorer,
     ListScorers: validate_can_list_scorers,
     GetScorer: validate_can_read_scorer,
     DeleteScorer: validate_can_delete_scorer,
@@ -863,6 +864,32 @@ def _requires_existing_user(path: str, method: str) -> bool:
     return (path, method) in _get_create_grant_paths()
 
 
+def _is_new_version_of_existing_scorer() -> bool:
+    """True for a ``RegisterScorer`` that adds a version to a scorer MLflow already holds.
+
+    Such a request grants nothing afterwards (only version 1 does), so it needs no
+    permission record. Only consulted for a caller without one; any lookup failure
+    answers False, keeping the guard.
+    """
+    from mlflow.server.handlers import _get_tracking_store
+
+    from mlflow_oidc_auth.utils import get_request_param
+
+    register_paths = {
+        (path, method)
+        for path, handler, methods in get_endpoints(lambda rc: rc if rc is RegisterScorer else None)
+        if handler is RegisterScorer
+        for method in methods
+    }
+    if (request.path, request.method) not in register_paths:
+        return False
+    try:
+        _get_tracking_store().get_scorer(get_request_param("experiment_id"), get_request_param("name"))
+    except Exception:
+        return False  # not found, or unknown: treat as a creation and keep the guard
+    return True
+
+
 def _is_workspace_gated_creation(path: str, method: str) -> bool:
     """Check if a request path/method corresponds to a workspace-gated creation endpoint."""
     return (path, method) in _get_workspace_gated_creation_paths()
@@ -1049,7 +1076,8 @@ def before_request_hook():
     # pre-commit. This runs before the admin early-out because an API-first admin hits the
     # identical failure. When bearer provisioning (OIDC_PROVISION_ON_BEARER_AUTH) is enabled,
     # the user is created in auth middleware before this runs, so has_user is already True.
-    if _requires_existing_user(request.path, request.method) and not store.has_user(username):
+    # A RegisterScorer that adds a version to an existing scorer grants nothing, so it is exempt.
+    if _requires_existing_user(request.path, request.method) and not store.has_user(username) and not _is_new_version_of_existing_scorer():
         logger.warning(f"Denying {request.method} {request.path} for {username}: no permission record yet, cannot own the created resource (issue #262)")
         return responses.make_forbidden_response()
     if is_admin:
