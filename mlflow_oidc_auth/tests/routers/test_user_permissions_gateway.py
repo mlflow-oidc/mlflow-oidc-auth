@@ -12,6 +12,8 @@ This module tests all 30 gateway-related endpoints in the user_permissions route
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -133,7 +135,7 @@ class TestUserGatewayEndpointPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_endpoint_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_endpoint_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/endpoints/missing")
         assert resp.status_code == 404
@@ -194,7 +196,7 @@ class TestUserGatewayEndpointPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_endpoint_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_endpoint_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/endpoints-patterns/999")
         assert resp.status_code == 404
@@ -246,7 +248,7 @@ class TestUserGatewayModelDefinitionPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_model_definition_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_model_definition_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/model-definitions/missing")
         assert resp.status_code == 404
@@ -307,7 +309,7 @@ class TestUserGatewayModelDefinitionPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_model_definition_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_model_definition_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/model-definitions-patterns/999")
         assert resp.status_code == 404
@@ -359,7 +361,7 @@ class TestUserGatewaySecretPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_secret_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_secret_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/secrets/missing")
         assert resp.status_code == 404
@@ -420,7 +422,7 @@ class TestUserGatewaySecretPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_secret_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_secret_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/secrets-patterns/999")
         assert resp.status_code == 404

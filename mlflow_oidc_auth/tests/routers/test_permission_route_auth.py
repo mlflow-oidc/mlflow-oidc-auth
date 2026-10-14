@@ -8,20 +8,24 @@ route by route, which gate each one has, from the explicit table below. It fails
 * a route is added, removed or moved without updating the table,
 * a route's gate dependency is removed or swapped for another,
 * a ``check_*_manage_permission`` gate reads its target from anything but the route's own path,
-* an inline check (the group registered-model and prompt routes) stops refusing a non-manager.
+* a caller-only (FILTERED) route addresses one grant instead of a collection,
+* the group model/prompt gates stop refusing a non-manager, or check the wrong resource,
+* the factory accepts a route on one grant without a gate dependency.
 """
 
-import inspect
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.routing import APIRoute
 
+from mlflow_oidc_auth import dependencies
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
     check_experiment_manage_permission,
+    check_group_prompt_manage_permission,
+    check_group_registered_model_manage_permission,
     check_registered_model_manage_permission,
 )
 from mlflow_oidc_auth.routers import group_permissions, user_permissions
@@ -31,8 +35,8 @@ from mlflow_oidc_auth.utils import get_is_admin, get_username
 ADMIN = "admin"  # check_admin_permission
 EXPERIMENT = "experiment"  # check_experiment_manage_permission, target experiment_id from the path
 MODEL = "model"  # check_registered_model_manage_permission, target name from the path
-INLINE_MODEL = "inline-model"  # get_username + get_is_admin, then an inline can-manage check on the model
-INLINE_PROMPT = "inline-prompt"  # the same, on the prompt
+GROUP_MODEL = "group-model"  # check_group_registered_model_manage_permission, target name from the path
+GROUP_PROMPT = "group-prompt"  # check_group_prompt_manage_permission, target prompt_name from the path
 FILTERED = "filtered"  # a read-only listing any signed-in user may call; filtered by the caller's rights
 SIGNED_IN = "signed-in"  # get_username only (list_groups)
 
@@ -40,6 +44,8 @@ GATES = {
     ADMIN: check_admin_permission,
     EXPERIMENT: check_experiment_manage_permission,
     MODEL: check_registered_model_manage_permission,
+    GROUP_MODEL: check_group_registered_model_manage_permission,
+    GROUP_PROMPT: check_group_prompt_manage_permission,
 }
 
 U = "/{username}"
@@ -115,13 +121,13 @@ GROUP_ROUTES = {
     ("PATCH", G + "/experiments/{experiment_id}"): EXPERIMENT,
     ("DELETE", G + "/experiments/{experiment_id}"): EXPERIMENT,
     ("GET", G + "/registered-models"): FILTERED,
-    ("POST", G + "/registered-models/{name:path}"): INLINE_MODEL,
-    ("PATCH", G + "/registered-models/{name:path}"): INLINE_MODEL,
-    ("DELETE", G + "/registered-models/{name:path}"): INLINE_MODEL,
+    ("POST", G + "/registered-models/{name:path}"): GROUP_MODEL,
+    ("PATCH", G + "/registered-models/{name:path}"): GROUP_MODEL,
+    ("DELETE", G + "/registered-models/{name:path}"): GROUP_MODEL,
     ("GET", G + "/prompts"): FILTERED,
-    ("POST", G + "/prompts/{prompt_name:path}"): INLINE_PROMPT,
-    ("PATCH", G + "/prompts/{prompt_name:path}"): INLINE_PROMPT,
-    ("DELETE", G + "/prompts/{prompt_name:path}"): INLINE_PROMPT,
+    ("POST", G + "/prompts/{prompt_name:path}"): GROUP_PROMPT,
+    ("PATCH", G + "/prompts/{prompt_name:path}"): GROUP_PROMPT,
+    ("DELETE", G + "/prompts/{prompt_name:path}"): GROUP_PROMPT,
     ("GET", G + "/scorers"): FILTERED,
     ("POST", G + "/scorers/{experiment_id}/{scorer_name:path}"): EXPERIMENT,
     ("PATCH", G + "/scorers/{experiment_id}/{scorer_name:path}"): EXPERIMENT,
@@ -212,11 +218,10 @@ def test_route_has_its_gate(item):
         assert dependency in direct, f"{method} {route.path} ({route.name}) lost its {dependency.__name__} dependency"
         if gate != ADMIN:
             _assert_reads_target_from_path(route, dependency)
-    elif gate in (INLINE_MODEL, INLINE_PROMPT, FILTERED):
-        if gate == FILTERED:
-            # Only a collection may be an ungated, caller-filtered listing; one grant needs a gate.
-            resource_params = {param.name for param in route.dependant.path_params} - SUBJECT_PARAMS
-            assert method == "GET" and not resource_params, f"{method} {route.path} ({route.name}) is labelled FILTERED but addresses one resource"
+    elif gate == FILTERED:
+        # Only a collection may be an ungated, caller-filtered listing; one grant needs a gate.
+        resource_params = {param.name for param in route.dependant.path_params} - SUBJECT_PARAMS
+        assert method == "GET" and not resource_params, f"{method} {route.path} ({route.name}) is labelled FILTERED but addresses one resource"
         assert get_username in direct and get_is_admin in direct, f"{route.name} must resolve the caller and whether they are an admin"
     elif gate == SIGNED_IN:
         assert direct[0] is get_username and method == "GET"
@@ -226,100 +231,63 @@ def test_route_has_its_gate(item):
     assert not unexpected, f"{route.name} has gates the table does not list: {unexpected}"
 
 
-INLINE_ROUTES = [item for item in ROUTES if EXPECTED[(item[0], item[1].path)] in (INLINE_MODEL, INLINE_PROMPT)]
+GROUP_GATES = [
+    (check_group_registered_model_manage_permission, "name", "effective_registered_model_permission"),
+    (check_group_prompt_manage_permission, "prompt_name", "effective_prompt_permission"),
+]
 
 
-def _inline_kwargs(route, is_admin):
-    values = {
-        "group_name": "team",
-        "name": "model-a",
-        "prompt_name": "prompt-a",
-        "permission_data": SimpleNamespace(permission="MANAGE"),
-        "current_username": "mallory",
-        "is_admin": is_admin,
-        "audit_actor": "mallory",
-    }
-    return {name: values[name] for name in inspect.signature(route.endpoint).parameters}
-
-
-def _effective(can_manage):
-    return MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=can_manage)))
-
-
-def test_inline_routes_are_the_group_model_and_prompt_writes():
-    assert len(INLINE_ROUTES) == 6
-
-
-@pytest.mark.parametrize("item", INLINE_ROUTES, ids=_route_id)
-async def test_inline_route_refuses_a_non_manager(item):
-    """A non-admin without MANAGE on the model or prompt gets a 403 and the store is not touched."""
-    _, route = item
-    store = MagicMock()
-    effective = _effective(can_manage=False)
-    target = "effective_prompt_permission" if EXPECTED[(item[0], route.path)] == INLINE_PROMPT else "effective_registered_model_permission"
-    with patch.object(group_permissions, "store", store), patch.object(group_permissions, target, effective):
+@pytest.mark.parametrize("gate, target, resolver", GROUP_GATES, ids=["model", "prompt"])
+async def test_group_gate_refuses_a_non_manager(gate, target, resolver):
+    """A non-admin without MANAGE gets a 403, decided on the route's own resource for that caller."""
+    effective = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=False)))
+    with patch.object(dependencies, resolver, effective):
         with pytest.raises(HTTPException) as raised:
-            await route.endpoint(**_inline_kwargs(route, is_admin=False))
+            await gate(**{target: "res-a"}, current_username="mallory", is_admin=False)
     assert raised.value.status_code == 403
-    target_name = "prompt-a" if EXPECTED[(item[0], route.path)] == INLINE_PROMPT else "model-a"
-    assert effective.call_args.args == (target_name, "mallory"), "the guard must check the caller on the route's own resource"
-    assert store.mock_calls == []
+    assert effective.call_args.args == ("res-a", "mallory")
 
 
-@pytest.mark.parametrize("item", INLINE_ROUTES, ids=_route_id)
-async def test_inline_route_lets_a_manager_through(item):
-    """The positive twin: the refusal above comes from the permission check, not from a broken call."""
-    _, route = item
-    store = MagicMock()
-    target = "effective_prompt_permission" if EXPECTED[(item[0], route.path)] == INLINE_PROMPT else "effective_registered_model_permission"
-    with patch.object(group_permissions, "store", store), patch.object(group_permissions, target, _effective(can_manage=True)):
-        await route.endpoint(**_inline_kwargs(route, is_admin=False))
-    assert len(store.mock_calls) == 1
+@pytest.mark.parametrize("gate, target, resolver", GROUP_GATES, ids=["model", "prompt"])
+async def test_group_gate_lets_a_manager_and_an_admin_through(gate, target, resolver):
+    effective = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=True)))
+    with patch.object(dependencies, resolver, effective):
+        assert await gate(**{target: "res-a"}, current_username="alice", is_admin=False) is None
+    refusing = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=False)))
+    with patch.object(dependencies, resolver, refusing):
+        assert await gate(**{target: "res-a"}, current_username="root", is_admin=True) is None
+    refusing.assert_not_called()
 
 
-def test_factory_refuses_a_guarded_list_route():
-    """A guard checks one resource; a generated listing behind one would be unguarded and unfiltered."""
-    from fastapi import APIRouter
+def _route(op, auth, path="/x/{name}", params=(("name", str, "n"),)):
+    from mlflow_oidc_auth.routers._permission_routes import Route
 
-    from mlflow_oidc_auth.routers._permission_routes import CALLER, GROUP, exact_routes
-
-    with pytest.raises(ValueError, match="list"):
-        exact_routes(
-            APIRouter(),
-            GROUP,
-            "registered model",
-            "t",
-            "/{group_name:path}/m/{name:path}",
-            ops=("list",),
-            list_path="/{group_name:path}/m",
-            keys=(("name", "n"),),
-            auth=CALLER,
-            call={"list": lambda a: []},
-            body=None,
-            guard=lambda a: None,
-        )
-
-
-@pytest.mark.parametrize("op", ["create", "update", "delete"])
-def test_factory_refuses_an_ungated_write(op):
-    """auth=CALLER only identifies the caller: a write generated with it and no guard would be open to anyone."""
-    from fastapi import APIRouter
-
-    from mlflow_oidc_auth.routers._permission_routes import CALLER, Route, add_route
-
-    route = Route(
+    return Route(
         name=f"{op}_x",
         op=op,
-        path="/x",
+        path=path,
         summary="s",
         description="d",
         tag="t",
-        params=(),
-        auth=CALLER,
+        params=params,
+        auth=auth,
         call=lambda a: None,
         respond=lambda a, r: r,
         response_model=None,
     )
-    with pytest.raises(ValueError, match="authorization dependency or a guard"):
-        add_route(APIRouter(), route)
-    add_route(APIRouter(), Route(**{**route.__dict__, "guard": lambda a: None}))  # a guard makes it valid
+
+
+@pytest.mark.parametrize("op", ["get", "create", "update", "delete"])
+def test_factory_refuses_a_route_on_one_grant_without_a_gate(op):
+    """auth=CALLER only identifies the caller: a route on one grant generated with it would be open to anyone."""
+    from mlflow_oidc_auth.routers._permission_routes import ADMIN, CALLER, add_route
+
+    with pytest.raises(ValueError, match="needs an authorization dependency"):
+        add_route(APIRouter(), _route(op, CALLER))
+    add_route(APIRouter(), _route(op, ADMIN))  # a gate makes it valid
+
+
+def test_factory_allows_a_caller_only_collection_listing():
+    from mlflow_oidc_auth.routers._permission_routes import CALLER, add_route
+
+    add_route(APIRouter(), _route("list", CALLER, path="/x", params=()))

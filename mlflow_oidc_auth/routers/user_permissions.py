@@ -214,7 +214,6 @@ exact_routes(
         "delete": "Experiment permission has been deleted.",
     },
     created=None,
-    unhandled=("create", "update", "delete"),
     text={
         "create": {
             "description": "Creates a permission for a user to access a specific experiment.",
@@ -333,7 +332,6 @@ exact_routes(
     },
     models={"get": PromptPermissionResponse},
     respond={"get": lambda a, rmp: PromptPermissionResponse(prompt_permission=RegisteredModelPermissionRecord(**rmp.to_json()))},
-    conflicts=True,
 )
 
 regex_routes(
@@ -436,7 +434,6 @@ exact_routes(
     },
     models={"get": RegisteredModelPermissionResponse},
     respond={"get": lambda a, rmp: RegisteredModelPermissionResponse(registered_model_permission=RegisteredModelPermissionRecord(**rmp.to_json()))},
-    conflicts=True,
 )
 
 
@@ -490,7 +487,6 @@ exact_routes(
     },
     models={"create": ScorerPermissionResponse, "get": ScorerPermissionResponse},
     respond={op: lambda a, sp: ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json())) for op in ("create", "get")},
-    conflicts=True,
 )
 
 regex_routes(
@@ -502,7 +498,6 @@ regex_routes(
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
     names={"list": "get_user_scorer_regex_permissions", "create": "create_user_scorer_regex_permission"},
     specific=("get", "update", "delete"),
-    conflicts=True,
     body=ScorerRegexCreate,
     item=lambda p: ScorerRegexPermissionRecord(**p.to_json()),
     item_model=ScorerRegexPermissionRecord,
@@ -605,7 +600,7 @@ def _gateway_routes(
             call=list_permissions,
             respond=lambda a, results: results,
             response_model=List[NamedPermissionSummary],
-            failure=Failure(f"Error listing {label} permissions", 500, f"Failed to retrieve {label} permissions"),
+            failure=Failure(f"Error listing {label} permissions", f"{label[:1].upper()}{label[1:]} permission", f"Failed to retrieve {label} permissions"),
         ),
     )
     exact_routes(

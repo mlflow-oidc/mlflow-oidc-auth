@@ -34,13 +34,14 @@ from mlflow_oidc_auth.models.user import (
 )
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL, OWNER_PATTERN
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
 from mlflow_oidc_auth.repository.user_token import DEFAULT_TOKEN_NAME, MAX_TOKEN_LIFETIME
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageParams, PageQuery, paginate_with_headers
 
+from ._errors import has_error_code, mlflow_error_status
 from ._prefix import USERS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -108,16 +109,16 @@ def _parse_expiration(value: Optional[str]) -> datetime:
 
 
 _TOKEN_ERROR_STATUS = {
-    ErrorCode.Name(INVALID_PARAMETER_VALUE): 400,
-    ErrorCode.Name(RESOURCE_DOES_NOT_EXIST): 404,
-    ErrorCode.Name(RESOURCE_ALREADY_EXISTS): 409,
-    ErrorCode.Name(INVALID_STATE): 409,
+    INVALID_PARAMETER_VALUE: 400,
+    RESOURCE_DOES_NOT_EXIST: 404,
+    RESOURCE_ALREADY_EXISTS: 409,
+    INVALID_STATE: 409,
 }
 
 
 def _token_http_error(e: MlflowException) -> HTTPException:
     """Map a token repository refusal to its HTTP status. Anything unexpected is a 500."""
-    status = _TOKEN_ERROR_STATUS.get(e.error_code)
+    status = mlflow_error_status(e, _TOKEN_ERROR_STATUS)
     if status is None:
         logger.error("Access token operation failed: %s", type(e).__name__)
         return HTTPException(status_code=500, detail="Access token operation failed")
@@ -642,7 +643,7 @@ async def delete_user(
         except MlflowException as e:
             # The ownership guard (INVALID_PARAMETER_VALUE) and the last-active-admin invariant
             # (INVALID_STATE): both a refusal, never a 500.
-            if e.error_code in (ErrorCode.Name(INVALID_STATE), ErrorCode.Name(INVALID_PARAMETER_VALUE)):
+            if has_error_code(e, INVALID_STATE, INVALID_PARAMETER_VALUE):
                 raise HTTPException(status_code=409, detail=e.message)
             raise
         emit_audit_event(
@@ -1069,9 +1070,9 @@ async def set_service_account_source(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except MlflowException as e:
-        if e.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE):
+        if has_error_code(e, INVALID_PARAMETER_VALUE):
             raise HTTPException(status_code=409, detail=f"{username} is not a service account")
-        if e.error_code == ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
+        if has_error_code(e, RESOURCE_ALREADY_EXISTS):
             raise HTTPException(status_code=409, detail="That subject is already bound to another account")
         raise
     emit_audit_event(

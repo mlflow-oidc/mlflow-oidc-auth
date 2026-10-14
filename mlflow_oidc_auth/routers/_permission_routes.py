@@ -9,13 +9,13 @@ A spec carries everything that differs between two routes:
 
 * the path and the route name (the name is the OpenAPI operation id),
 * the request and response models and the parameter texts (the OpenAPI contract),
-* the authorization dependency ``auth`` and, for the routes that check inline, a ``guard``,
+* the authorization dependency ``auth`` (every route on one grant has a gate dependency),
 * the audit ``resource_type``,
 * the store call, the response, the messages and how a failure is reported.
 
-The generated routes must stay indistinguishable from the hand-written ones they replace: the
-committed ``openapi.json`` is unchanged, and so are status codes, bodies, log lines and audit
-events. That is why the text and error templates below look as irregular as they do.
+The generated routes keep the committed ``openapi.json`` byte for byte, which is why the text
+templates below look as irregular as they do. Failures map the same way on every route: see
+:class:`Failure`.
 
 Security: ``auth`` is the only thing between a caller and a grant change, and the factory never
 supplies a default for an exact grant. ``tests/routers/test_permission_route_auth.py`` pins the gate
@@ -31,14 +31,14 @@ from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import StatusMessageResponse, StatusOnlyResponse
 from mlflow_oidc_auth.utils import get_is_admin, get_username
+
+from ._errors import mlflow_error_status
 
 logger = get_logger()
 
@@ -53,7 +53,7 @@ AUDIT_ACTOR = "audit_actor"
 
 ADMIN: Auth = (("admin_username", check_admin_permission),)
 CALLER: Auth = (("current_username", get_username), ("is_admin", get_is_admin))
-"""The caller and whether they are an admin, for a route that checks permission inline with a ``guard``."""
+"""The caller and whether they are an admin: only for a ``list`` route that filters by the caller's own rights."""
 
 ALL_OPS = ("list", "create", "get", "update", "delete")
 
@@ -100,48 +100,38 @@ def _snake(label: str) -> str:
 class Failure:
     """How a route reports an exception raised by its store call, audit or response.
 
+    Every generated route maps a store refusal by its ``MlflowException`` error code: an existing
+    grant is a 409 and a missing one a 404, both naming ``noun``; an invalid value is a 400 with
+    the store's own message. Anything else is logged and becomes a 500 with ``detail``.
+
     Parameters:
         log: Prefix of the error line logged as ``f"{log}: {error}"``.
-        status: Status of the HTTPException any other exception becomes.
-        detail: Detail of that HTTPException.
-        bad_id: Report a ``ValueError`` (a pattern id that is not an integer) as a 400.
-        mlflow: ``(error_code, status, detail)`` for an ``MlflowException``, with the proto
-            constant as ``error_code``; a ``None`` detail echoes the exception.
-        reraise: Re-raise an ``MlflowException`` matching none of ``mlflow``, rather than report it
-            like any other exception.
+        noun: The grant as the 404 and 409 details name it, e.g. ``"Prompt permission"``.
+        detail: Detail of the 500.
     """
 
     log: str
-    status: int
+    noun: str
     detail: str
-    bad_id: bool = False
-    mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
-    reraise: bool = True
 
-    def translate(self, error: Exception) -> Optional[HTTPException]:
-        """Return the HTTPException to raise for ``error``, or ``None`` to re-raise it unchanged.
+    def translate(self, error: Exception) -> HTTPException:
+        """Return the HTTPException to raise for ``error``.
 
         Parameters:
             error: The exception the route raised.
 
         Returns:
-            The HTTPException to raise instead, or ``None``.
+            The HTTPException to raise instead.
         """
-        if self.mlflow and isinstance(error, MlflowException):
-            logger.error(f"{self.log}: {str(error)}")
-            # MlflowException.error_code is the code's NAME ("RESOURCE_ALREADY_EXISTS"), not the
-            # proto int; comparing it with the int never matched (#475).
-            code = getattr(error, "error_code", None)
-            for error_code, status, detail in self.mlflow:
-                if code == ErrorCode.Name(error_code):
-                    return HTTPException(status_code=status, detail=str(error) if detail is None else detail)
-            if self.reraise:
-                return None
-            return HTTPException(status_code=self.status, detail=self.detail)
-        if self.bad_id and isinstance(error, ValueError):
-            return HTTPException(status_code=400, detail=BAD_PATTERN_ID)
         logger.error(f"{self.log}: {str(error)}")
-        return HTTPException(status_code=self.status, detail=self.detail)
+        status = mlflow_error_status(error)
+        if status == 409:
+            return HTTPException(status_code=409, detail=f"{self.noun} already exists")
+        if status == 404:
+            return HTTPException(status_code=404, detail=f"{self.noun} not found")
+        if status == 400:
+            return HTTPException(status_code=400, detail=str(error))
+        return HTTPException(status_code=500, detail=self.detail)
 
 
 @dataclass(frozen=True)
@@ -165,7 +155,9 @@ class Route:
         exclude_none: ``response_model_exclude_none``.
         audit: ``(resource_type, resource_id, detail)`` of the audit event a write emits.
         failure: How exceptions are reported; ``None`` lets them propagate.
-        guard: An inline authorization check that runs before anything else.
+        parse_id: The ``id`` path parameter is a string; one that is not an integer is a 400.
+        restate_params: Re-declare the path parameters after ``auth``, so a gate dependency's own
+            parameter text does not replace the route's in the OpenAPI document.
     """
 
     name: str
@@ -184,7 +176,8 @@ class Route:
     exclude_none: bool = False
     audit: Optional[Tuple[str, Callable[[Args], Any], Callable[[Args], Dict[str, Any]]]] = None
     failure: Optional[Failure] = None
-    guard: Optional[Callable[[Args], None]] = None
+    parse_id: bool = False
+    restate_params: bool = False
 
 
 def _perform(route: Route, a: Args) -> Any:
@@ -197,17 +190,35 @@ def _perform(route: Route, a: Args) -> Any:
 
 
 def _execute(route: Route, a: Args) -> Any:
-    if route.guard is not None:
-        route.guard(a)
+    if route.parse_id:
+        # Only the path id failing to parse is a bad pattern id; any other ValueError is mapped below.
+        try:
+            int(a.id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=BAD_PATTERN_ID)
     if route.failure is None:
         return _perform(route, a)
     try:
         return _perform(route, a)
     except Exception as error:
-        translated = route.failure.translate(error)
-        if translated is None:
-            raise
-        raise translated
+        raise route.failure.translate(error)
+
+
+def _restating(route: Route) -> Callable[..., Any]:
+    """A dependency that does nothing but re-declare ``route``'s path parameters with its own texts.
+
+    FastAPI documents a path parameter with the last declaration it sees, so a gate dependency's
+    generic text (``"Prompt name"``) would otherwise replace the route's in the OpenAPI document.
+    """
+    kind = inspect.Parameter.POSITIONAL_OR_KEYWORD
+    signature = inspect.Signature([inspect.Parameter(name, kind, default=Path(..., description=text), annotation=type_) for name, type_, text in route.params])
+
+    async def restate(**_: Any) -> None:
+        return None
+
+    restate.__signature__ = signature  # type: ignore[attr-defined]
+    restate.__name__ = restate.__qualname__ = f"restate_{route.name}_path_params"
+    return restate
 
 
 def add_route(router: APIRouter, route: Route) -> Callable[..., Any]:
@@ -222,17 +233,22 @@ def add_route(router: APIRouter, route: Route) -> Callable[..., Any]:
 
     Returns:
         The endpoint coroutine function.
+
+    Raises:
+        ValueError: If a route on one grant (anything but ``list``) has no gate dependency, only
+            ``get_username`` / ``get_is_admin``, which identify the caller without checking anything.
     """
     gates = [dependency for _, dependency in route.auth if dependency not in (get_username, get_is_admin)]
-    if route.op in _PAST and not gates and route.guard is None:
-        # get_username and get_is_admin only identify the caller; a write needs a gate or a guard.
-        raise ValueError(f"{route.name}: a {route.op} route needs an authorization dependency or a guard")
+    if route.op != "list" and not gates:
+        raise ValueError(f"{route.name}: a {route.op} route on one grant needs an authorization dependency")
     kind = inspect.Parameter.POSITIONAL_OR_KEYWORD
     parameters = [inspect.Parameter(name, kind, default=Path(..., description=text), annotation=type_) for name, type_, text in route.params]
     if route.body is not None:
         name, model, text = route.body
         parameters.append(inspect.Parameter(name, kind, default=Body(..., description=text), annotation=model))
     parameters += [inspect.Parameter(name, kind, default=Depends(dependency), annotation=Any) for name, dependency in route.auth]
+    if route.restate_params:
+        parameters.append(inspect.Parameter("restated_path_params", kind, default=Depends(_restating(route)), annotation=Any))
     if route.audit is not None:
         # The audit actor is the signed-in caller, resolved after the gate. It is not the gate's return
         # value: the manage checks return None (#474). FastAPI caches get_username per request.
@@ -303,9 +319,7 @@ def exact_routes(
     messages: Optional[Mapping[str, str]] = None,
     message_model: Any = StatusMessageResponse,
     created: Optional[int] = 201,
-    guard: Optional[Callable[[Args], None]] = None,
-    conflicts: bool = False,
-    unhandled: Sequence[str] = (),
+    restate_params: bool = False,
     text: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Add the routes managing exact grants of one resource kind for a user or a group.
@@ -329,16 +343,13 @@ def exact_routes(
         messages: A message of an op, replacing the generated one.
         message_model: Model of the create, update and delete messages.
         created: Success status of create.
-        guard: An inline authorization check run before every route's store call.
-        conflicts: Map MlflowException error codes of create and update, as the prompt,
-            registered-model and scorer routes do.
-        unhandled: Ops whose exceptions propagate instead of becoming a 404/500.
+        restate_params: See :class:`Route`; for a gate dependency that declares a path parameter.
         text: OpenAPI text overrides, by op and then by ``summary``, ``description``,
             ``subject``, ``body`` or a key name.
+
+    Raises:
+        ValueError: From :func:`add_route`, if ``auth`` holds no gate dependency.
     """
-    if guard is not None and "list" in ops:
-        # A guard checks one resource; a listing has none, so it would run unguarded and unfiltered.
-        raise ValueError("an inline guard cannot protect a list route; write a filtering listing instead")
     who, noun, snake = subject.who, f"{subject.prefix}{label} permission", _snake(label)
     resource_key = keys[-1][0]
     on = on or "{" + resource_key + "}"
@@ -372,19 +383,10 @@ def exact_routes(
                 return values
 
             audit = (f"{_snake(subject.prefix)}{snake}_permission", lambda a: getattr(a, resource_key), detail)
-        failure = None
-        if op not in unhandled:
-            mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
-            if conflicts and op == "create":
-                mlflow = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"), (INVALID_PARAMETER_VALUE, 400, None))
-            if conflicts and op == "update":
-                mlflow = ((RESOURCE_DOES_NOT_EXIST, 404, f"{_cap(noun)} does not exist"), (INVALID_PARAMETER_VALUE, 400, None))
-            if op == "get":
-                failure = Failure(f"Error getting {noun}", 404, f"{_cap(noun)} not found")
-            elif op == "list":
-                failure = Failure(f"Error listing {noun}s", 500, f"Failed to retrieve {noun}s")
-            else:
-                failure = Failure(f"Error {_GERUND[op]} {noun}", 500, f"Failed to {op} {noun}", mlflow=mlflow)
+        if op == "list":
+            failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
+        else:
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
         message = (messages or {}).get(op, f"{_cap(label)} permission {_PAST.get(op)} for {subject.message} on {on}")
         add_route(
             router,
@@ -408,7 +410,7 @@ def exact_routes(
                 status_code=created if op == "create" else None,
                 audit=audit,
                 failure=failure,
-                guard=guard,
+                restate_params=restate_params,
             ),
         )
 
@@ -435,7 +437,6 @@ def regex_routes(
     plural: str = "",
     lab: Optional[str] = None,
     group_failures: bool = False,
-    conflicts: bool = False,
     text: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Add the admin-only routes managing regex (pattern) grants of one kind for a user or a group.
@@ -452,7 +453,7 @@ def regex_routes(
         item: Turns one stored pattern into ``item_model``; used by list and get.
         item_model: Response model of get (and of each element of list).
         ops: The routes to add, in registration order.
-        id_type: ``str`` ids are converted by the store call, and a bad one is a 400.
+        id_type: ``str`` ids are parsed up front, and one that is not an integer is a 400.
         names: Endpoint name of an op, where not ``{verb}_{subject}_{kind}_pattern_permission``.
         models: Response model of an op, where not the default.
         respond: Builds the response of an op, where not the default.
@@ -460,9 +461,11 @@ def regex_routes(
         specific: Ops documented in the "specific ... regex pattern permission" wording.
         plural: The kind in the plural, for that wording of create.
         lab: How the parameter texts in the regex-based wording name the kind ("" omits it).
-        group_failures: Report list and get failures as "Failed to get ..." 500s.
-        conflicts: Map MlflowException error codes of create.
+        group_failures: Word the list 500 as "Failed to get ...".
         text: OpenAPI text overrides, by op and then by ``summary``.
+
+    Raises:
+        ValueError: Never for the routes this adds, which are all admin-only; see :func:`add_route`.
     """
     who, noun, snake = subject.who, f"{subject.prefix}{label} pattern permission", _snake(label)
     lab = f"{label} " if lab is None else lab
@@ -505,24 +508,12 @@ def regex_routes(
                 "delete": lambda a: {"id": a.id},
             }
             audit = (f"{_snake(subject.prefix)}{snake}_regex_permission", lambda a: getattr(a, subject.param), details[op])
-        bad_id = id_type is str and op in ("get", "update", "delete")
         if op == "list" and group_failures:
-            failure = Failure(f"Error getting {noun}s", 500, f"Failed to get {noun}s")
+            failure = Failure(f"Error getting {noun}s", _cap(noun), f"Failed to get {noun}s")
         elif op == "list":
-            failure = Failure(f"Error listing {noun}s", 500, f"Failed to retrieve {noun}s")
-        elif op == "get" and group_failures:
-            failure = Failure(f"Error getting {noun}", 500, f"Failed to get {noun}", bad_id=bad_id)
-        elif op == "get":
-            failure = Failure(f"Error getting {noun}", 404, f"{_cap(noun)} not found", bad_id=bad_id)
+            failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
         else:
-            mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
-            reraise = True
-            if conflicts and op == "create":
-                mlflow = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"), (INVALID_PARAMETER_VALUE, 400, None))
-            if op == "update":
-                # A pattern renamed onto another pattern's regex is a conflict; any other failure stays a 500.
-                mlflow, reraise = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"),), False
-            failure = Failure(f"Error {_GERUND[op]} {noun}", 500, f"Failed to {op} {noun}", bad_id=bad_id, mlflow=mlflow, reraise=reraise)
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
         if op == "list":
             default_model, default_respond = List[item_model], lambda a, r: [item(p) for p in r]
         elif op == "get":
@@ -551,5 +542,6 @@ def regex_routes(
                 exclude_none=op == "delete" and quiet_delete,
                 audit=audit,
                 failure=failure,
+                parse_id=id_type is str and op in ("get", "update", "delete"),
             ),
         )

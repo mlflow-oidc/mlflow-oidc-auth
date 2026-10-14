@@ -1,9 +1,16 @@
-"""Grant routes map MlflowException error codes to HTTP statuses (#475).
+"""Every generated grant route maps store failures the same way (#475, #473 review).
 
-``MlflowException.error_code`` is the code's NAME (``"RESOURCE_ALREADY_EXISTS"``), so the old
-comparison with the proto int never matched: a duplicate grant came back as an unhandled error
-instead of a 409. These tests raise a real ``MlflowException(error_code=...)`` from the store and
-check the status and detail each generated route answers.
+``MlflowException.error_code`` holds the code's NAME (``"RESOURCE_ALREADY_EXISTS"``); the old
+comparison with the proto int never matched. Now every generated route, user and group, exact and
+pattern, all kinds, answers:
+
+* ``RESOURCE_ALREADY_EXISTS`` -> 409 "<Grant> already exists",
+* ``INVALID_PARAMETER_VALUE`` -> 400 with the store's message,
+* ``RESOURCE_DOES_NOT_EXIST`` -> 404 "<Grant> not found",
+* anything else -> 500 "Failed to <verb> <grant>".
+
+A string pattern id that is not an integer is a 400 "Invalid pattern ID format"; no other
+``ValueError`` is. The tests raise real exceptions from the store and assert status and detail.
 """
 
 from unittest.mock import patch
@@ -23,6 +30,40 @@ U = USER_PERMISSIONS_ROUTER_PREFIX + "/bob"
 G = GROUP_PERMISSIONS_ROUTER_PREFIX + "/team"
 GRANT = {"permission": "READ"}
 PATTERN = {"regex": "^x", "priority": 1, "permission": "READ"}
+VERB = {"post": "create", "get": "get", "patch": "update", "delete": "delete"}
+
+GATEWAYS = {"endpoints": "gateway endpoint", "model-definitions": "gateway model definition", "secrets": "gateway secret"}
+
+# (path of one grant, the grant as details name it, methods the route family serves)
+EXACT = [
+    (U + "/experiments/7", "experiment permission", ("post", "get", "patch", "delete")),
+    (U + "/prompts/p", "prompt permission", ("post", "get", "patch", "delete")),
+    (U + "/registered-models/m", "registered model permission", ("post", "get", "patch", "delete")),
+    (U + "/scorers/7/s", "scorer permission", ("post", "get", "patch", "delete")),
+    (G + "/experiments/7", "group experiment permission", ("post", "patch", "delete")),
+    (G + "/registered-models/m", "group registered model permission", ("post", "patch", "delete")),
+    (G + "/prompts/p", "group prompt permission", ("post", "patch", "delete")),
+    (G + "/scorers/7/s", "group scorer permission", ("post", "patch", "delete")),
+    *[(U + f"/gateways/{kind}/n", f"{label} permission", ("post", "get", "patch", "delete")) for kind, label in GATEWAYS.items()],
+    *[(G + f"/gateways/{kind}/n", f"group {label} permission", ("post", "get", "patch", "delete")) for kind, label in GATEWAYS.items()],
+]
+
+PATTERN_KINDS = {
+    "experiment-patterns": "experiment",
+    "registered-models-patterns": "registered model",
+    "prompts-patterns": "prompt",
+    "scorer-patterns": "scorer",
+    **{f"gateways/{kind}-patterns": label for kind, label in GATEWAYS.items()},
+}
+# (path the method is sent to, the grant as details name it, method)
+PATTERNS = [
+    (f"{subject}/{segment}" + ("" if method == "post" else "/5"), f"{prefix}{label} pattern permission", method)
+    for subject, prefix in ((U, ""), (G, "group "))
+    for segment, label in PATTERN_KINDS.items()
+    for method in ("post", "get", "patch", "delete")
+]
+
+CASES = [(path, noun, method) for path, noun, methods in EXACT for method in methods] + PATTERNS
 
 
 class RaisingStore:
@@ -56,55 +97,45 @@ def http():
     return TestClient(app, raise_server_exceptions=False)
 
 
-def _send(http, method, path, body, code):
-    error = MlflowException("store says no", error_code=code)
+def _send(http, method, path, error):
+    body = None if method in ("get", "delete") else (PATTERN if "-patterns" in path else GRANT)
     with patch.object(user_permissions, "store", RaisingStore(error)), patch.object(group_permissions, "store", RaisingStore(error)):
-        return getattr(http, method)(path, json=body)
+        return http.request(method.upper(), path, json=body)
 
 
-@pytest.mark.parametrize(
-    "method, path, body, code, status, detail",
-    [
-        ("post", U + "/prompts/p", GRANT, RESOURCE_ALREADY_EXISTS, 409, "Prompt permission already exists"),
-        ("post", U + "/prompts/p", GRANT, INVALID_PARAMETER_VALUE, 400, "store says no"),
-        ("patch", U + "/prompts/p", GRANT, RESOURCE_DOES_NOT_EXIST, 404, "Prompt permission does not exist"),
-        ("patch", U + "/prompts/p", GRANT, INVALID_PARAMETER_VALUE, 400, "store says no"),
-        ("post", U + "/registered-models/m", GRANT, RESOURCE_ALREADY_EXISTS, 409, "Registered model permission already exists"),
-        ("patch", U + "/registered-models/m", GRANT, RESOURCE_DOES_NOT_EXIST, 404, "Registered model permission does not exist"),
-        ("post", U + "/scorers/7/s", GRANT, RESOURCE_ALREADY_EXISTS, 409, "Scorer permission already exists"),
-        ("patch", U + "/scorers/7/s", GRANT, RESOURCE_DOES_NOT_EXIST, 404, "Scorer permission does not exist"),
-        ("post", U + "/scorer-patterns", PATTERN, RESOURCE_ALREADY_EXISTS, 409, "Scorer pattern permission already exists"),
-        ("post", U + "/scorer-patterns", PATTERN, INVALID_PARAMETER_VALUE, 400, "store says no"),
-    ],
-)
-def test_error_code_maps_to_status(http, method, path, body, code, status, detail):
-    response = _send(http, method, path, body, code)
-    assert (response.status_code, response.json()["detail"]) == (status, detail)
+def _cap(noun):
+    return noun[:1].upper() + noun[1:]
 
 
-def test_unmapped_error_code_is_not_a_conflict(http):
-    """An MlflowException with no mapping keeps propagating, as before."""
-    response = _send(http, "post", U + "/prompts/p", GRANT, INTERNAL_ERROR)
-    assert response.status_code == 500
+def test_cases_cover_every_generated_route_on_one_grant():
+    """User exact 4 kinds x 4, group exact 4 kinds x 3, gateway exact 6 x 4, pattern 14 kinds x 4 (create/get/update/delete)."""
+    assert len(CASES) == len(set(CASES)) == 4 * 4 + 3 * 4 + 4 * 6 + 4 * 14
 
 
-PATTERN_KINDS = {
-    "experiment-patterns": "experiment",
-    "registered-models-patterns": "registered model",
-    "prompts-patterns": "prompt",
-    "scorer-patterns": "scorer",
-    "gateways/endpoints-patterns": "gateway endpoint",
-    "gateways/model-definitions-patterns": "gateway model definition",
-    "gateways/secrets-patterns": "gateway secret",
-}
+@pytest.mark.parametrize("path, noun, method", CASES, ids=[f"{m.upper()} {p}" for p, _, m in CASES])
+def test_store_failures_map_the_same_on_every_route(http, path, noun, method):
+    exists = _send(http, method, path, MlflowException("already there", error_code=RESOURCE_ALREADY_EXISTS))
+    assert (exists.status_code, exists.json()["detail"]) == (409, f"{_cap(noun)} already exists")
+    invalid = _send(http, method, path, MlflowException("store says no", error_code=INVALID_PARAMETER_VALUE))
+    assert (invalid.status_code, invalid.json()["detail"]) == (400, "store says no")
+    missing = _send(http, method, path, MlflowException("no such grant", error_code=RESOURCE_DOES_NOT_EXIST))
+    assert (missing.status_code, missing.json()["detail"]) == (404, f"{_cap(noun)} not found")
+    other = _send(http, method, path, MlflowException("boom", error_code=INTERNAL_ERROR))
+    assert (other.status_code, other.json()["detail"]) == (500, f"Failed to {VERB[method]} {noun}")
+    plain = _send(http, method, path, RuntimeError("boom"))
+    assert (plain.status_code, plain.json()["detail"]) == (500, f"Failed to {VERB[method]} {noun}")
 
 
-@pytest.mark.parametrize("subject, prefix", [(U, ""), (G, "group ")], ids=["user", "group"])
-@pytest.mark.parametrize("segment", PATTERN_KINDS)
-def test_pattern_update_onto_an_existing_regex_is_409(http, subject, prefix, segment):
-    """A pattern updated onto another pattern's regex is a conflict; any other store failure stays a 500."""
-    noun = f"{prefix}{PATTERN_KINDS[segment]} pattern permission"
-    conflict = _send(http, "patch", f"{subject}/{segment}/5", PATTERN, RESOURCE_ALREADY_EXISTS)
-    assert (conflict.status_code, conflict.json()["detail"]) == (409, f"{noun[0].upper()}{noun[1:]} already exists")
-    other = _send(http, "patch", f"{subject}/{segment}/5", PATTERN, RESOURCE_DOES_NOT_EXIST)
-    assert (other.status_code, other.json()["detail"]) == (500, f"Failed to update {noun}")
+STRING_ID_PATTERNS = [f"{U}/{segment}/abc" for segment in ("experiment-patterns", "registered-models-patterns", "prompts-patterns")]
+
+
+@pytest.mark.parametrize("path", STRING_ID_PATTERNS)
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
+def test_only_an_unparseable_pattern_id_is_a_bad_id(http, path, method):
+    """A non-integer id is a 400 before the store is called; a ValueError from the store is not."""
+    bad = _send(http, method, path, AssertionError("the store must not be called"))
+    assert (bad.status_code, bad.json()["detail"]) == (400, "Invalid pattern ID format. Expected an integer.")
+    good_path = path.replace("/abc", "/5")
+    store_error = _send(http, method, good_path, ValueError("bad regex"))
+    assert store_error.status_code == 500
+    assert store_error.json()["detail"].startswith("Failed to ")

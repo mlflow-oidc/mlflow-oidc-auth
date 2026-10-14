@@ -7,6 +7,8 @@ Scorer and prompt tests in test_user_permissions.py are not duplicated here.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
@@ -211,7 +213,7 @@ class TestUserExperimentPatterns:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent pattern."""
-        mock_store.get_experiment_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_experiment_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/experiment-patterns/1")
         assert resp.status_code == 404
 
@@ -325,7 +327,7 @@ class TestUserRegisteredModelCRUD:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent permission."""
-        mock_store.get_registered_model_permission.side_effect = Exception("Not found")
+        mock_store.get_registered_model_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/registered-models/my-model")
         assert resp.status_code == 404
 
@@ -417,7 +419,7 @@ class TestUserRegisteredModelPatterns:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent pattern."""
-        mock_store.get_registered_model_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_registered_model_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/registered-models-patterns/1")
         assert resp.status_code == 404
 
@@ -560,7 +562,7 @@ class TestUserPromptPatterns:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent pattern."""
-        mock_store.get_prompt_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_prompt_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/prompts-patterns/1")
         assert resp.status_code == 404
 
@@ -658,7 +660,7 @@ class TestUserScorerCRUD:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent scorer permission."""
-        mock_store.get_scorer_permission.side_effect = Exception("Not found")
+        mock_store.get_scorer_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/scorers/1/s1")
         assert resp.status_code == 404
 
@@ -737,7 +739,7 @@ class TestUserScorerPatterns:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test getting non-existent pattern."""
-        mock_store.get_scorer_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_scorer_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         resp = authenticated_client.get(f"{USER_BASE}/user@example.com/scorer-patterns/1")
         assert resp.status_code == 404
 

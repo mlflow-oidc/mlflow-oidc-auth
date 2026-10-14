@@ -11,6 +11,8 @@ from mlflow_oidc_auth.utils import (
     can_manage_experiment,
     can_manage_registered_model,
     can_manage_scorer,
+    effective_prompt_permission,
+    effective_registered_model_permission,
     get_is_admin,
     get_username,
 )
@@ -162,6 +164,51 @@ async def check_prompt_manage_permission(
         raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {prompt_name}")
 
     return None
+
+
+async def check_group_registered_model_manage_permission(
+    name: str = Path(..., description="Registered model name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Gate of the group registered-model grant routes: an admin, or MANAGE on the model.
+
+    Resolves through ``effective_registered_model_permission``, exactly as these routes did
+    inline before they were generated (#459).
+
+    Parameters:
+        name: The registered model, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the model.
+    """
+    if not is_admin and not effective_registered_model_permission(name, current_username).permission.can_manage:
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {name}")
+
+
+async def check_group_prompt_manage_permission(
+    prompt_name: str = Path(..., description="Prompt name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Gate of the group prompt grant routes: an admin, or MANAGE on the prompt.
+
+    Resolves through ``effective_prompt_permission``, exactly as these routes did inline. Unlike
+    :func:`check_prompt_manage_permission`, which resolves prompts as registered models; whether
+    the two should agree is an open maintainer decision, so neither is changed here.
+
+    Parameters:
+        prompt_name: The prompt, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the prompt.
+    """
+    if not is_admin and not effective_prompt_permission(prompt_name, current_username).permission.can_manage:
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {prompt_name}")
 
 
 async def check_gateway_endpoint_manage_permission(

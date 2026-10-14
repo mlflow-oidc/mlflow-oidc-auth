@@ -13,7 +13,12 @@ from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.audit import emit_audit_event
-from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
+from mlflow_oidc_auth.dependencies import (
+    check_admin_permission,
+    check_experiment_manage_permission,
+    check_group_prompt_manage_permission,
+    check_group_registered_model_manage_permission,
+)
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.responses import GroupDetail
 from mlflow_oidc_auth.models import (
@@ -54,7 +59,7 @@ from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validat
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
-from ._permission_routes import ADMIN, ALL_OPS, CALLER, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
+from ._permission_routes import ADMIN, ALL_OPS, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -137,23 +142,6 @@ GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name:path}/gateways/secrets"
 GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets/{name:path}"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/secrets-patterns"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets-patterns/{id}"
-
-
-def _can_manage_model(a) -> None:
-    """Inline gate of the group registered-model grant routes: admin, or MANAGE on the model.
-
-    Not ``Depends(check_registered_model_manage_permission)``: FastAPI documents a path parameter
-    with the last declaration it sees, so that dependency's ``name`` text would replace this
-    route's in openapi.json. Semantics are the same (``can_manage_registered_model``).
-    """
-    if not a.is_admin and not effective_registered_model_permission(a.name, a.current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {a.name}")
-
-
-def _can_manage_prompt(a) -> None:
-    """Inline gate of the group prompt grant routes: admin, or MANAGE on the prompt."""
-    if not a.is_admin and not effective_prompt_permission(a.prompt_name, a.current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {a.prompt_name}")
 
 
 def _group_pattern(model, prompt: bool = False):
@@ -521,8 +509,8 @@ exact_routes(
     GROUP_REGISTERED_MODEL_PERMISSION_DETAIL,
     ops=("create", "update", "delete"),
     keys=(("name", "The registered model name to {purpose} permissions for"),),
-    auth=CALLER,
-    guard=_can_manage_model,
+    auth=(("current_username", check_group_registered_model_manage_permission),),
+    restate_params=True,
     body=RegisteredModelPermission,
     call={
         "create": lambda a: store.create_group_model_permission(group_name=a.group_name, name=a.name, permission=a.permission_data.permission),
@@ -593,8 +581,8 @@ exact_routes(
     GROUP_PROMPT_PERMISSION_DETAIL,
     ops=("create", "update", "delete"),
     keys=(("prompt_name", "The prompt name to {purpose} permissions for"),),
-    auth=CALLER,
-    guard=_can_manage_prompt,
+    auth=(("current_username", check_group_prompt_manage_permission),),
+    restate_params=True,
     body=PromptPermission,
     call={
         "create": lambda a: store.create_group_prompt_permission(group_name=a.group_name, name=a.prompt_name, permission=a.permission_data.permission),
