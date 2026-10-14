@@ -744,12 +744,11 @@ def _filter_list_gateway_secrets(resp: Response) -> None:
     response_message = ListGatewaySecretInfos.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     ctx = _request_grant_context(get_fastapi_username())
-    logger = get_logger()
 
     for secret in list(response_message.secrets):
         if not _can_read_gateway_secret(ctx, secret.secret_name):
             response_message.secrets.remove(secret)
-            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{ctx.username}'")
+            # The secret's name is not logged: it can identify the credential.
 
     resp.data = message_to_json(response_message)
 

@@ -134,7 +134,7 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     if errored:
         return None
     target = grants if perm is not None else denials
-    _GUARD.store_unless_raced(target, key, perm if perm is not None else True, generation, current=lambda: _current_generation())
+    _GUARD.store_unless_raced(target, key, perm if perm is not None else True, generation, current=_current_generation)
     return perm
 
 

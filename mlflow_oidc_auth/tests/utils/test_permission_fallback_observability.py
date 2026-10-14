@@ -52,7 +52,7 @@ def grant_store(monkeypatch, tmp_path):
     monkeypatch.setattr(grant_context, "_store", lambda: store)
     monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
     # No pattern grants: a pattern source never needs an experiment's name.
-    monkeypatch.setattr(P, "_get_tracking_store", lambda: MagicMock())
+    monkeypatch.setattr(P, "_get_tracking_store", MagicMock)
     P.flush_permission_cache()
     yield store
     store.engine.dispose()
