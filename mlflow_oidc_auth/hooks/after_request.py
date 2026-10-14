@@ -30,6 +30,7 @@ from mlflow.protos.service_pb2 import (
     SearchExperiments,
     SearchLoggedModels,
     UpdateGatewayEndpoint,
+    UpdateGatewayModelDefinition,
 )
 from mlflow.server.handlers import (
     _get_ajax_path,
@@ -641,11 +642,16 @@ def _set_can_manage_gateway_secret_permission(resp: Response):
 
 
 def _set_can_manage_gateway_model_definition_permission(resp: Response):
-    """Create MANAGE gateway model definition permission for the model definition creator."""
+    """Create MANAGE gateway model definition permission for the model definition creator.
+
+    The model definition is new, so any grant already stored under its name belongs to an earlier
+    one with that name and is removed before the creator's grant is written.
+    """
     response_message = CreateGatewayModelDefinition.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     name = response_message.model_definition.name
     username = get_fastapi_username()
+    store.wipe_gateway_model_definition_permissions(name)
     store.create_gateway_model_definition_permission(name, username, MANAGE.name)
 
 
@@ -760,6 +766,29 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
         store.wipe_gateway_secret_permissions(name)
     except Exception:
         get_logger().warning("Failed to cascade-delete permissions for gateway secret")
+
+
+def _rename_gateway_model_definition_permission(resp: Response):
+    """Propagate model definition name changes to all user and group permission records.
+
+    The old name was stashed in ``flask.g`` by the before-request hook.
+    The new name is read from the response.
+    """
+    old_name = getattr(g, "_updating_gateway_model_definition_old_name", None)
+    if not old_name:
+        return
+
+    response_message = UpdateGatewayModelDefinition.Response()  # type: ignore
+    parse_dict(resp.json, response_message)
+    new_name = response_message.model_definition.name
+
+    if not new_name or new_name == old_name:
+        return
+
+    try:
+        store.rename_gateway_model_definition_permissions(old_name, new_name)
+    except Exception:
+        get_logger().warning("Failed to rename gateway model definition permissions")
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
@@ -1006,6 +1035,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     CreateGatewaySecret: _set_can_manage_gateway_secret_permission,
     CreateGatewayModelDefinition: _set_can_manage_gateway_model_definition_permission,
     UpdateGatewayEndpoint: _rename_gateway_endpoint_permission,
+    UpdateGatewayModelDefinition: _rename_gateway_model_definition_permission,
     DeleteGatewayEndpoint: _delete_gateway_endpoint_permissions_cascade,
     DeleteGatewaySecret: _delete_gateway_secret_permissions_cascade,
     DeleteGatewayModelDefinition: _delete_gateway_model_definition_permissions_cascade,

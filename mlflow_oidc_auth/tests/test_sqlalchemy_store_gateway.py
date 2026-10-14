@@ -69,8 +69,15 @@ class TestGatewayEndpointPermissions:
 
     def test_rename(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
         store_with_mocked_repos.rename_gateway_endpoint_permissions("old-ep", "new-ep")
+        store_with_mocked_repos.gateway_endpoint_repo.wipe.assert_called_once_with("new-ep")
+        store_with_mocked_repos.gateway_endpoint_group_repo.wipe.assert_called_once_with("new-ep")
         store_with_mocked_repos.gateway_endpoint_repo.rename.assert_called_once_with("old-ep", "new-ep")
         store_with_mocked_repos.gateway_endpoint_group_repo.rename.assert_called_once_with("old-ep", "new-ep")
+
+    def test_rename_to_same_name_is_a_no_op(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        store_with_mocked_repos.rename_gateway_endpoint_permissions("ep", "ep")
+        store_with_mocked_repos.gateway_endpoint_repo.wipe.assert_not_called()
+        store_with_mocked_repos.gateway_endpoint_repo.rename.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +136,18 @@ class TestGatewayModelDefinitionPermissions:
     def test_delete(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
         store_with_mocked_repos.delete_gateway_model_definition_permission("m-1", "alice")
         store_with_mocked_repos.gateway_model_definition_repo.revoke_permission.assert_called_once_with("m-1", "alice")
+
+    def test_rename_model_definition_to_same_name_is_a_no_op(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        store_with_mocked_repos.rename_gateway_model_definition_permissions("m", "m")
+        store_with_mocked_repos.gateway_model_definition_repo.wipe.assert_not_called()
+        store_with_mocked_repos.gateway_model_definition_group_repo.rename.assert_not_called()
+
+    def test_rename_gateway_model_definition_permissions(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        store_with_mocked_repos.rename_gateway_model_definition_permissions("old-m", "new-m")
+        store_with_mocked_repos.gateway_model_definition_repo.wipe.assert_called_once_with("new-m")
+        store_with_mocked_repos.gateway_model_definition_group_repo.wipe.assert_called_once_with("new-m")
+        store_with_mocked_repos.gateway_model_definition_repo.rename.assert_called_once_with("old-m", "new-m")
+        store_with_mocked_repos.gateway_model_definition_group_repo.rename.assert_called_once_with("old-m", "new-m")
 
 
 # ---------------------------------------------------------------------------

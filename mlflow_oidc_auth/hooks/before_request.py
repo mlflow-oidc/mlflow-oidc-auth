@@ -1209,6 +1209,16 @@ def _stash_gateway_context(validator) -> None:
             g._deleting_gateway_secret_name = secret_name
         return
 
+    # --- Gateway model definition: update (rename) ---
+    if validator is validate_can_update_gateway_model_definition:
+        data = request.get_json(force=True, silent=True) or {}
+        model_definition_id = data.get("model_definition_id")
+        if model_definition_id:
+            name = _resolve_model_definition_name_from_id(model_definition_id)
+            if name:
+                g._updating_gateway_model_definition_old_name = name
+        return
+
     # --- Gateway model definition: delete ---
     if validator is validate_can_delete_gateway_model_definition:
         data = request.get_json(force=True, silent=True) or {}

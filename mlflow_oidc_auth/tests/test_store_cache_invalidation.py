@@ -362,6 +362,7 @@ class TestComprehensiveCUDCoverage:
             "create_gateway_model_definition_permission": ("model1", "user1", "READ"),
             "update_gateway_model_definition_permission": ("model1", "user1", "MANAGE"),
             "delete_gateway_model_definition_permission": ("model1", "user1"),
+            "rename_gateway_model_definition_permissions": ("old", "new"),
             "wipe_gateway_model_definition_permissions": ("model1",),
             # MCP servers
             "create_mcp_server_permission": ("com.example/server", "user1", "READ"),

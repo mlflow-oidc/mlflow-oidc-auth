@@ -929,7 +929,16 @@ class SqlAlchemyStore:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
     def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
-        """Rename all user and group permissions for a gateway endpoint."""
+        """Move all user and group permissions of a renamed gateway endpoint to its new name.
+
+        MLflow only renames onto a free name, so rows already on ``new_name`` are left over from an
+        earlier endpoint. They are removed first: the move would otherwise collide with them on the
+        unique key and leave the endpoint's own grants behind.
+        """
+        if old_name == new_name:
+            return
+        self.gateway_endpoint_repo.wipe(new_name)
+        self.gateway_endpoint_group_repo.wipe(new_name)
         self.gateway_endpoint_repo.rename(old_name, new_name)
         self.gateway_endpoint_group_repo.rename(old_name, new_name)
 
@@ -1074,6 +1083,19 @@ class SqlAlchemyStore:
 
     def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
+
+    def rename_gateway_model_definition_permissions(self, old_name: str, new_name: str) -> None:
+        """Move all user and group permissions of a renamed gateway model definition to its new name.
+
+        MLflow only renames onto a free name, so rows already on ``new_name`` are left over from an
+        earlier model definition and are removed first, as for endpoints.
+        """
+        if old_name == new_name:
+            return
+        self.gateway_model_definition_repo.wipe(new_name)
+        self.gateway_model_definition_group_repo.wipe(new_name)
+        self.gateway_model_definition_repo.rename(old_name, new_name)
+        self.gateway_model_definition_group_repo.rename(old_name, new_name)
 
     def wipe_gateway_model_definition_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway model definition."""
@@ -1765,6 +1787,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_model_definition_permission",
     "update_gateway_model_definition_permission",
     "delete_gateway_model_definition_permission",
+    "rename_gateway_model_definition_permissions",
     "wipe_gateway_model_definition_permissions",
     # Gateway model definition permissions (group-scoped)
     "create_group_gateway_model_definition_permission",

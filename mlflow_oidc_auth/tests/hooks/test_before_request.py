@@ -566,6 +566,27 @@ class TestStashGatewayContext:
                 assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
                 assert not hasattr(g, "_deleting_gateway_endpoint_name")
 
+    def test_stash_update_model_definition_old_name(self):
+        """UpdateGatewayModelDefinition stashes the current name for the rename cascade."""
+        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
+        from mlflow.protos.service_pb2 import UpdateGatewayModelDefinition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/update",
+            method="POST",
+            json={"model_definition_id": "md-uuid-123", "name": "new-name"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                return_value="old-model-def",
+            ):
+                _stash_gateway_context(BEFORE_REQUEST_HANDLERS[UpdateGatewayModelDefinition])
+                assert g._updating_gateway_model_definition_old_name == "old-model-def"
+                assert not hasattr(g, "_deleting_gateway_model_definition_name")
+
     def test_stash_delete_endpoint_name(self):
         """Stashes endpoint name on delete via endpoint_id resolution."""
         from mlflow_oidc_auth.validators.gateway import (
