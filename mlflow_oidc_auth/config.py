@@ -219,6 +219,10 @@ class AppConfig:
         # any 401 response, so expired sessions trigger the IdP redirect flow instead
         # of leaving the user staring at empty SPA pages.
         self.EXTEND_MLFLOW_REAUTH = config_manager.get_bool("EXTEND_MLFLOW_REAUTH", default=True)
+        # Inject a small script into MLflow's index.html that sends MLflow's built-in admin
+        # pages (#/admin, #/admin/users/<u>, #/admin/ws, #/account) to the plugin's UI. Those
+        # pages target MLflow's basic-auth RBAC APIs, which this plugin does not implement.
+        self.EXTEND_MLFLOW_REDIRECT_ADMIN = config_manager.get_bool("EXTEND_MLFLOW_REDIRECT_ADMIN", default=True)
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
         self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
 

@@ -140,6 +140,7 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 |----------|------|---------|-------------|
 | `EXTEND_MLFLOW_MENU` | Boolean | `true` | Inject sign-in/sign-out links and permission management navigation into MLflow's built-in UI |
 | `EXTEND_MLFLOW_REAUTH` | Boolean | `true` | Inject a small script into MLflow's UI that triggers a full page reload on any 401 response. Without this, an expired session leaves the SPA rendering empty pages until a manual force-reload, because React Router intercepts URL-bar navigations as soft routing |
+| `EXTEND_MLFLOW_REDIRECT_ADMIN` | Boolean | `true` | Inject a small script into MLflow's UI that sends MLflow's built-in admin pages (`#/admin`, `#/admin/users/<name>`, `#/admin/roles/...`, `#/admin/ws?workspace=<name>`, `#/account`) to the matching page of this plugin's UI under `oidc/ui/`. Those pages are built for MLflow's own basic-auth RBAC and fail against this plugin. The redirect grants nothing: the target page applies its own authorization. It is injected only while `EXTEND_MLFLOW_MENU` or `EXTEND_MLFLOW_REAUTH` is on, so turning both off leaves MLflow's `index.html` untouched |
 | `DEFAULT_LANDING_PAGE_IS_PERMISSIONS` | Boolean | `true` | Use the permissions management page as the default landing page in the admin UI |
 
 ### Feature Flags
