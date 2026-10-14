@@ -169,6 +169,8 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 
 > **Note:** Permission caches are automatically invalidated when permissions are created, updated, or deleted through the plugin's API. The TTL acts as a safety net, not the primary invalidation mechanism.
 
+> **Multiple replicas:** invalidation reaches every replica only with `CACHE_BACKEND=redis`. With `local`, each replica has its own cache, and a write invalidates only the replica that served it. Elsewhere, a revoked or changed permission can be served until its entry expires: up to `PERMISSION_CACHE_TTL_SECONDS` for resource decisions and `WORKSPACE_CACHE_TTL_SECONDS` for workspace grants. A *new* workspace grant can likewise be refused on another replica while that replica still holds a cached denial for the user and workspace. Denials are therefore kept no longer than `PERMISSION_CACHE_TTL_SECONDS` (default 30 s). A workspace lookup that fails (for example on a database error) is refused and not cached.
+
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 
 ### Workspace Settings
@@ -182,8 +184,8 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `OIDC_WORKSPACE_DETECTION_PLUGIN` | String | None | Python module path for a custom workspace detection plugin. Used to extract workspace assignments from the OIDC token |
 | `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` | Boolean | `false` | Reject workspace-gated create requests when no workspace context is present |
 | `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` | Boolean | `false` | Reject non-admin workspace-gated create requests that resolve to the `default` workspace, including requests that send no workspace context |
-| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache |
-| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for workspace permission cache entries |
+| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache. Grants and denials are kept in two separate caches of this size, so denials can never evict a grant |
+| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for cached workspace grants. Cached denials expire after the smaller of this and `PERMISSION_CACHE_TTL_SECONDS` |
 | `WORKSPACE_RULES_MAX_PERMISSION` | String | `EDIT` | Highest permission a [workspace group rule](workspaces#group-rules) may grant: `READ`, `USE`, `EDIT` or `MANAGE`. `MANAGE` logs a startup warning; an unrecognised value is treated as `READ`. Grants held by a rule above it are removed at startup |
 
 ### SCIM

@@ -12,6 +12,8 @@ GRANTED direction through the same invalidation paths — a stale denial fails c
 it must not outlive the grant that lifts it.
 """
 
+import json
+
 import pytest
 
 from mlflow_oidc_auth.config import config
@@ -196,9 +198,11 @@ class TestCachedDenialIsCleared:
 
     def _deny_warm(self, ws_store, username, workspace):
         assert _cached(username, workspace) is None, "precondition: no grant"
-        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _make_cache_key
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _get_denial_cache, _make_cache_key
 
-        assert _get_cache().get(_make_cache_key(username, workspace)) is not None, "precondition: denial cached"
+        key = _make_cache_key(username, workspace)
+        assert _get_denial_cache().get(key) is not None, "precondition: denial cached"
+        assert _get_cache().get(key) is None, "a denial must never sit in the grant cache"
 
     def test_user_grant_clears_cached_denial(self, ws_store):
         ws_store.create_user("ivy@example.com", "Ivy")
@@ -237,3 +241,106 @@ class TestCachedDenialIsCleared:
 
         assert _cached("mia@example.com", "ws-prod").name == "READ"
         assert _cached("liam@example.com", "ws-dev").name == "EDIT"
+
+
+class TestLookupErrorsAreNotCached:
+    """A failed source walk denies the request but caches nothing (PR #464 review)."""
+
+    def test_error_denies_and_is_not_cached(self, ws_store, monkeypatch):
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _get_denial_cache, _make_cache_key
+
+        ws_store.create_user("quinn@example.com", "Quinn")
+        ws_store.create_workspace_permission("ws-prod", "quinn@example.com", "READ")
+
+        def _db_down(*args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        monkeypatch.setattr(ws_store, "get_workspace_permission", _db_down)
+        assert _cached("quinn@example.com", "ws-prod") is None, "a failed lookup must deny (fail closed)"
+
+        key = _make_cache_key("quinn@example.com", "ws-prod")
+        assert _get_denial_cache().get(key) is None, "an error was cached as a denial"
+        assert _get_cache().get(key) is None
+
+        del ws_store.get_workspace_permission  # the store recovers
+        assert _cached("quinn@example.com", "ws-prod").name == "READ", "the grant is served once the store recovers"
+
+    def test_error_in_a_higher_source_does_not_fall_through_to_a_lower_grant(self, ws_store, monkeypatch):
+        """Fail closed: the failed source might hold a narrower answer than the one below it."""
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _get_denial_cache, _make_cache_key
+
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group", "regex", "group-regex"])
+        ws_store.create_user("rita@example.com", "Rita")
+        ws_store.populate_groups(["team-r"])
+        ws_store.set_user_groups("rita@example.com", ["team-r"])
+        ws_store.create_workspace_group_permission("ws-prod", "team-r", "MANAGE")
+
+        def _db_down(*args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        monkeypatch.setattr(ws_store, "get_workspace_permission", _db_down)
+        assert _cached("rita@example.com", "ws-prod") is None
+        key = _make_cache_key("rita@example.com", "ws-prod")
+        assert _get_cache().get(key) is None and _get_denial_cache().get(key) is None
+
+    def test_list_workspaces_drops_a_workspace_whose_lookup_failed(self, ws_store, monkeypatch):
+        from flask import Flask, Response
+
+        from mlflow_oidc_auth.hooks import after_request as ar
+        from mlflow_oidc_auth.utils.workspace_cache import _get_denial_cache, _make_cache_key
+
+        ws_store.create_user("sam@example.com", "Sam")
+        ws_store.create_workspace_permission("ws-prod", "sam@example.com", "READ")
+
+        def _db_down(*args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        monkeypatch.setattr(ws_store, "get_workspace_permission", _db_down)
+        monkeypatch.setattr(ar, "get_auth_context", lambda: type("Ctx", (), {"username": "sam@example.com", "is_admin": False})())
+
+        resp = Response(json.dumps({"workspaces": [{"name": "ws-prod"}]}), mimetype="application/json")
+        with Flask(__name__).test_request_context("/"):
+            ar._filter_list_workspaces(resp)
+
+        assert json.loads(resp.get_data(as_text=True))["workspaces"] == []
+        assert _get_denial_cache().get(_make_cache_key("sam@example.com", "ws-prod")) is None
+
+
+class TestDenialsCannotEvictGrants:
+    """Denials live in their own bounded cache (PR #464 review)."""
+
+    def test_listing_many_workspaces_cannot_evict_another_users_grant(self, ws_store, monkeypatch):
+        from flask import Flask, Response
+
+        from mlflow_oidc_auth.hooks import after_request as ar
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        # A tiny cache, built fresh at that size.
+        monkeypatch.setattr(config, "WORKSPACE_CACHE_MAX_SIZE", 4)
+        monkeypatch.setattr(wsc, "_cache", None)
+        monkeypatch.setattr(wsc, "_denial_cache", None)
+
+        ws_store.create_user("tess@example.com", "Tess")
+        ws_store.create_user("ugo@example.com", "Ugo")
+        ws_store.create_workspace_permission("ws-prod", "tess@example.com", "READ")
+        assert _cached("tess@example.com", "ws-prod").name == "READ"
+
+        # Ugo lists 50 workspaces he cannot read: 50 denials.
+        monkeypatch.setattr(ar, "get_auth_context", lambda: type("Ctx", (), {"username": "ugo@example.com", "is_admin": False})())
+        names = [{"name": f"ws-{i}"} for i in range(50)]
+        resp = Response(json.dumps({"workspaces": names}), mimetype="application/json")
+        with Flask(__name__).test_request_context("/"):
+            ar._filter_list_workspaces(resp)
+        assert json.loads(resp.get_data(as_text=True))["workspaces"] == []
+
+        assert wsc._get_cache().get(wsc._make_cache_key("tess@example.com", "ws-prod")) is not None, "a denial flood evicted a grant"
+        # The denial cache stayed within its bound.
+        assert len(wsc._get_denial_cache()._cache) <= 4
+
+    def test_made_up_workspace_names_never_enter_the_grant_cache(self, ws_store):
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("vera@example.com", "Vera")
+        for i in range(20):
+            assert _cached("vera@example.com", f"no-such-ws-{i}") is None
+        assert len(wsc._get_cache()._cache) == 0

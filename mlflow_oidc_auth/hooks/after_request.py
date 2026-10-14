@@ -259,21 +259,29 @@ def _search_scope_workspace() -> str:
     """Return the workspace the current request's search ran in.
 
     With workspaces enabled MLflow's stores scope every search to the request's active
-    workspace, so every row of a first page lives there. Registered-model and model-version
-    protos carry no ``workspace`` field; this is what ``.workspace`` on the matching entity
-    resolves to, without a per-row store lookup (issue #456). Never None, so a row is never
-    mistaken for a pre-workspace-era resource and waved through.
+    workspace: registered models and model versions by their ``workspace`` column, logged
+    models through their experiment. Every row of every page — first page and top-up alike —
+    lives there. Registered-model, model-version and logged-model protos carry no
+    ``workspace`` field; this is what the matching entity's ``.workspace`` resolves to,
+    without a per-row store lookup (issue #456). Never None, so a row is never mistaken for
+    a pre-workspace-era resource and waved through.
     """
     return resolve_entity_workspace_name(None)
 
 
+def _search_scope_denied(username: str) -> bool:
+    """Whether workspaces are on and ``username`` cannot read the workspace the search ran in.
+
+    One check covers a whole registry or logged-model search, both halves of the page: when
+    it is denied, every row the search can ever return is denied with it.
+    """
+    return bool(config.MLFLOW_ENABLE_WORKSPACES) and not _can_access_workspace(username, _search_scope_workspace())
+
+
 def _experiment_proto_workspace(experiment: Any) -> str:
     """Return the workspace of a first-page experiment proto: its own field, else the search scope."""
-    try:
-        if experiment.HasField("workspace") and experiment.workspace:
-            return experiment.workspace
-    except ValueError:
-        pass
+    if experiment.HasField("workspace") and experiment.workspace:
+        return experiment.workspace
     return _search_scope_workspace()
 
 
@@ -328,16 +336,18 @@ def _filter_search_registered_models(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-02). Every row of the search, on this page and
+    # on any top-up page, lives in the workspace it was scoped to, so one check covers all.
+    if _search_scope_denied(username):
+        del response_message.registered_models[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable models from the current response page.
     for rm in list(response_message.registered_models):
         if not _cached_can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
-
-    # Filter by workspace permission (WSSEC-02). Every first-page row lives in the
-    # workspace the search was scoped to, so one check covers the page.
-    if config.MLFLOW_ENABLE_WORKSPACES and len(response_message.registered_models):
-        if not _can_access_workspace(username, _search_scope_workspace()):
-            del response_message.registered_models[:]
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
@@ -351,7 +361,7 @@ def _filter_search_registered_models(resp: Response):
             order_by=request_message.order_by,
             page_token=token,
         ),
-        keep=lambda rm: _cached_can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace),
+        keep=lambda rm: _cached_can_read_registered_model(rm.name, username),
     )
 
     resp.data = message_to_json(response_message)
@@ -368,16 +378,19 @@ def _filter_search_model_versions(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their
+    # model). Every row of the search, on this page and on any top-up page, lives in the
+    # workspace it was scoped to, so one check covers all; no row depends on a field of its own.
+    if _search_scope_denied(username):
+        del response_message.model_versions[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable model versions from the current response page.
     for mv in list(response_message.model_versions):
         if not _cached_can_read_registered_model(mv.name, username):
             response_message.model_versions.remove(mv)
-
-    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their
-    # model). Every first-page row lives in the workspace the search was scoped to.
-    if config.MLFLOW_ENABLE_WORKSPACES and len(response_message.model_versions):
-        if not _can_access_workspace(username, _search_scope_workspace()):
-            del response_message.model_versions[:]
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
@@ -391,13 +404,13 @@ def _filter_search_model_versions(resp: Response):
             order_by=request_message.order_by,
             page_token=token,
         ),
-        keep=lambda mv: _cached_can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)),
+        keep=lambda mv: _cached_can_read_registered_model(mv.name, username),
     )
 
     resp.data = message_to_json(response_message)
 
 
-def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws_map: dict[str, str | None]) -> bool:
+def _search_logged_models_needs_no_filtering(payload: Any, username: str) -> bool:
     """Report whether the already-decoded response body can be passed through untouched.
 
     Rewriting the body costs a `parse_dict` into protobuf plus a full re-serialisation
@@ -412,9 +425,8 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
     payload returns False and leaves the filtering below to do its work.
 
     ``payload`` is ``resp.json`` decoded once by the caller — werkzeug does not cache
-    ``Response.get_json``, and the body is large. Workspace lookups performed here are
-    recorded in ``exp_ws_map`` so the full filter can reuse them instead of repeating
-    the store round-trips when this returns False.
+    ``Response.get_json``, and the body is large. The workspace has already been checked
+    by the caller, once for the whole search.
     """
     if not isinstance(payload, dict):
         return False
@@ -430,7 +442,6 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
     if not isinstance(models, list):
         return False
 
-    workspaces_enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
     for model in models:
         if not isinstance(model, dict):
             return False
@@ -442,14 +453,6 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
             return False
         if not _cached_can_read_experiment(experiment_id, username):
             return False
-        if workspaces_enabled:
-            if experiment_id not in exp_ws_map:
-                try:
-                    exp_ws_map[experiment_id] = _get_tracking_store().get_experiment(experiment_id).workspace
-                except Exception:
-                    exp_ws_map[experiment_id] = None
-            if not _can_access_workspace(username, exp_ws_map[experiment_id]):
-                return False
 
     return True
 
@@ -462,10 +465,19 @@ def _filter_search_logged_models(resp: Response) -> None:
         return
 
     username = get_fastapi_username()
-    payload = resp.json
-    exp_ws_map: dict[str, str | None] = {}
 
-    if _search_logged_models_needs_no_filtering(payload, username, exp_ws_map):
+    # Filter by workspace permission (WSSEC-03). MLflow scopes a logged-model search to the
+    # experiments of the request's workspace, so one check covers every row of every page.
+    payload = resp.json
+    if _search_scope_denied(username):
+        response_message = SearchLoggedModels.Response()  # type: ignore
+        parse_dict(payload, response_message)
+        del response_message.models[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
+    if _search_logged_models_needs_no_filtering(payload, username):
         return
 
     response_message = SearchLoggedModels.Response()  # type: ignore
@@ -476,21 +488,6 @@ def _filter_search_logged_models(resp: Response) -> None:
     for m in list(response_message.models):
         if not _cached_can_read_experiment(m.info.experiment_id, username):
             response_message.models.remove(m)
-
-    # Filter by workspace permission (WSSEC-03); exp_ws_map may already hold lookups
-    # made by the shortcut above.
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        tracking_store_ws = _get_tracking_store()
-        for m in list(response_message.models):
-            exp_id = m.info.experiment_id
-            if exp_id not in exp_ws_map:
-                try:
-                    exp_ws_map[exp_id] = tracking_store_ws.get_experiment(exp_id).workspace
-                except Exception:
-                    exp_ws_map[exp_id] = None
-        for m in list(response_message.models):
-            if not _can_access_workspace(username, exp_ws_map.get(m.info.experiment_id)):
-                response_message.models.remove(m)
 
     from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
 
@@ -525,17 +522,6 @@ def _filter_search_logged_models(resp: Response) -> None:
         for index, model in enumerate(batch):
             if not _cached_can_read_experiment(model.experiment_id, username):
                 continue
-
-            # Workspace filtering for refetch path (WSSEC-03)
-            if config.MLFLOW_ENABLE_WORKSPACES:
-                exp_id = model.experiment_id
-                if exp_id not in exp_ws_map:
-                    try:
-                        exp_ws_map[exp_id] = tracking_store.get_experiment(exp_id).workspace
-                    except Exception:
-                        exp_ws_map[exp_id] = None
-                if not _can_access_workspace(username, exp_ws_map.get(exp_id)):
-                    continue
 
             response_message.models.append(model.to_proto())
             if len(response_message.models) >= max_results:

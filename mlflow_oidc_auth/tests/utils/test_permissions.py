@@ -500,6 +500,11 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
     """Tests for resolve_permission() workspace fallback logic (WSAUTH-C/WSAUTH-04)."""
 
     def setUp(self) -> None:
+        # The tests below replace ``config`` with a MagicMock; build the cache from the real
+        # config first so its size is a real integer.
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        perms._get_permission_cache()
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
         self.app_context = self.app.app_context()
@@ -830,18 +835,26 @@ class TestPermissionCacheMaxSize:
         import mlflow_oidc_auth.utils.permissions as perms
         from mlflow_oidc_auth.config import config
 
-        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", 123, raising=False)
+        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", 123)
         assert perms._get_permission_cache()._cache.maxsize == 123
 
-    def test_default_is_ten_thousand(self):
+    def test_default_is_ten_thousand(self, monkeypatch):
         from mlflow_oidc_auth.config import AppConfig
 
+        monkeypatch.delenv("PERMISSION_CACHE_MAX_SIZE", raising=False)
         assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 10000
 
-    @pytest.mark.parametrize("bad", [0, -5, "big", None])
-    def test_unusable_value_falls_back_to_default(self, monkeypatch, bad):
-        import mlflow_oidc_auth.utils.permissions as perms
-        from mlflow_oidc_auth.config import config
+    def test_env_value_is_read(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
 
-        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", bad, raising=False)
-        assert perms._get_permission_cache()._cache.maxsize == 10000
+        monkeypatch.setenv("PERMISSION_CACHE_MAX_SIZE", "250")
+        assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 250
+
+    @pytest.mark.parametrize("bad", ["0", "-5", "big", "1.5"])
+    def test_invalid_value_warns_and_uses_default(self, monkeypatch, bad):
+        import mlflow_oidc_auth.config as config_module
+
+        monkeypatch.setenv("PERMISSION_CACHE_MAX_SIZE", bad)
+        with patch.object(config_module.logger, "warning") as warn:
+            assert config_module.AppConfig().PERMISSION_CACHE_MAX_SIZE == 10000
+        assert any("PERMISSION_CACHE_MAX_SIZE" in str(call.args[1]) for call in warn.call_args_list if len(call.args) > 1)

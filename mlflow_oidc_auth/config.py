@@ -43,6 +43,29 @@ def get_bool_env_variable(variable: str, default_value: bool) -> bool:
     return config_manager.get_bool(variable, default=default_value)
 
 
+def _positive_int_setting(raw, name: str, default: int) -> int:
+    """Parse a setting that must be a positive integer, warning and using ``default`` otherwise.
+
+    Parameters:
+        raw: The configured value, or None when unset.
+        name: The setting's name, for the warning.
+        default: The value used when unset or invalid.
+
+    Returns:
+        The configured value, or ``default``.
+    """
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = None
+    if value is None or value <= 0:
+        logger.warning("%s must be a positive integer; ignoring %r and using %d.", name, raw, default)
+        return default
+    return value
+
+
 class AppConfig:
     """Application configuration container.
 
@@ -186,7 +209,7 @@ class AppConfig:
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
         # Entries in the permission resolution cache (issue #456). Each entry is one small
         # (user, resource, decision) tuple; a single list page can fill hundreds of slots.
-        self.PERMISSION_CACHE_MAX_SIZE = config_manager.get_int("PERMISSION_CACHE_MAX_SIZE", default=10000)
+        self.PERMISSION_CACHE_MAX_SIZE = _positive_int_setting(config_manager.get("PERMISSION_CACHE_MAX_SIZE"), "PERMISSION_CACHE_MAX_SIZE", default=10000)
 
         # username source
         self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
