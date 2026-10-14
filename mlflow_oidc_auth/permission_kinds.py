@@ -73,12 +73,23 @@ class GrantKind:
             cache rather than through ``PERMISSION_REGISTRY``.
         extra_filter: Column values that pick this kind's rows out of tables it shares with another
             kind — prompts are registered models, told apart by the ``prompt`` flag. It applies to
-            every table of the kind that has those columns (:meth:`filter_for`): the repositories
-            bound to such a table filter on it and write it into every row they create; see
-            ``repository/_base.py``. The user grant table has no ``prompt`` column, so user grants
-            on a prompt and on a registered model of the same name are one grant.
+            every table of the kind that has those columns, except ``unfiltered_roles``
+            (:meth:`filter_for`): the repositories bound to such a table filter every query on it
+            and write it into every row they create; see ``repository/_base.py``. The user grant
+            table has no ``prompt`` column, so user grants on a prompt and on a registered model of
+            the same name are one grant.
+        unfiltered_roles: Roles whose table has the ``extra_filter`` columns but is deliberately not
+            filtered. The registered model group grant table: permission checks count its rows
+            whatever their ``prompt`` flag, so managing registered model group grants must see
+            every row a check counts — or a grant that authorizes a model could not be seen or
+            revoked from the model side. Prompts and registered models share one name space per
+            workspace, so this cannot reach a different resource.
         shares_tables_of: The kind whose tables these grants are stored in, or None when the kind
             owns its tables. Code that walks every table walks only the owners.
+
+    Raises:
+        ValueError: On creation, when a table has only some of the ``extra_filter`` columns, when no
+            table has them, or when ``unfiltered_roles`` names a role that would not be filtered.
     """
 
     name: str
@@ -91,6 +102,7 @@ class GrantKind:
     workspace_scoped: bool = False
     workspace_level: bool = False
     extra_filter: Mapping[str, Any] = _NO_FILTER
+    unfiltered_roles: Tuple[str, ...] = ()
     shares_tables_of: Optional[str] = None
 
     def __post_init__(self):
@@ -100,11 +112,20 @@ class GrantKind:
             if present and len(present) != len(self.extra_filter):
                 # Filtering on part of the columns would match the other kind's rows on the rest.
                 raise ValueError(f"{self.name}: {model.__name__} has only {present} of extra_filter {dict(self.extra_filter)}")
+        for role in self.unfiltered_roles:
+            if not self._has_filter_columns(role):
+                raise ValueError(f"{self.name}: unfiltered role {role!r} has no extra_filter columns to leave unfiltered")
         if self.extra_filter and not any(self.filter_for(role) for role in ROLES):
-            raise ValueError(f"{self.name}: no table of the kind has the extra_filter columns {list(self.extra_filter)}")
+            raise ValueError(f"{self.name}: no table of the kind is filtered on extra_filter {list(self.extra_filter)}")
 
     def model_for(self, role: str) -> Optional[type]:
-        """The table playing ``role`` (one of :data:`ROLES`), or None for an absent pattern table.
+        """The table playing ``role`` for this kind.
+
+        Parameters:
+            role: One of :data:`ROLES`.
+
+        Returns:
+            The SQLAlchemy model, or None for a pattern table the kind does not have.
 
         Raises:
             ValueError: For an unknown role.
@@ -113,10 +134,24 @@ class GrantKind:
             raise ValueError(f"unknown grant role {role!r}")
         return getattr(self, f"{role}_model")
 
-    def filter_for(self, role: str) -> Mapping[str, Any]:
-        """``extra_filter`` if the table playing ``role`` has its columns, else no filter."""
+    def _has_filter_columns(self, role: str) -> bool:
         model = self.model_for(role)
-        if model is None or not self.extra_filter or not all(hasattr(model, column) for column in self.extra_filter):
+        return bool(self.extra_filter) and model is not None and all(hasattr(model, column) for column in self.extra_filter)
+
+    def filter_for(self, role: str) -> Mapping[str, Any]:
+        """The filter the repository of the table playing ``role`` applies to every query.
+
+        Parameters:
+            role: One of :data:`ROLES`.
+
+        Returns:
+            ``extra_filter`` when that table has its columns and ``role`` is not in
+            ``unfiltered_roles``; otherwise an empty mapping (no filter).
+
+        Raises:
+            ValueError: For an unknown role.
+        """
+        if role in self.unfiltered_roles or not self._has_filter_columns(role):
             return _NO_FILTER
         return self.extra_filter
 
@@ -149,6 +184,7 @@ REGISTERED_MODEL = GrantKind(
     SqlRegisteredModelGroupRegexPermission,
     workspace_scoped=True,
     extra_filter=MappingProxyType({"prompt": False}),
+    unfiltered_roles=("group",),
 )
 PROMPT = GrantKind(
     "prompt",
@@ -213,26 +249,66 @@ WORKSPACE = GrantKind(
     workspace_level=True,
 )
 
-#: Every kind. Code walking the tables walks them in this order: the grant-workspace backfill, the
-#: workspace cascade and the orphan report (``tests/test_permission_kinds.py`` pins it).
+#: Every kind, in the order the orphan report walks them.
 GRANT_KINDS: Tuple[GrantKind, ...] = (
     EXPERIMENT,
     REGISTERED_MODEL,
     PROMPT,
     SCORER,
     GATEWAY_ENDPOINT,
-    GATEWAY_VAULT,
     GATEWAY_MODEL_DEFINITION,
+    GATEWAY_VAULT,
     MCP_SERVER,
     WORKSPACE,
 )
 
+#: The order the grant-workspace backfill and the workspace cascade walk the table-owning resource
+#: kinds — the order their hand-maintained lists had, so the backfill's order and logs are unchanged.
+#: Checked at import to hold exactly the table-owning kinds other than workspaces.
+_WORKSPACE_TABLE_ORDER: Tuple[GrantKind, ...] = (
+    EXPERIMENT,
+    REGISTERED_MODEL,
+    SCORER,
+    GATEWAY_ENDPOINT,
+    GATEWAY_VAULT,
+    GATEWAY_MODEL_DEFINITION,
+    MCP_SERVER,
+)
+
 
 def table_owning_kinds() -> Tuple[GrantKind, ...]:
-    """The kinds that own their tables: each grant table appears under exactly one of them."""
+    """The kinds that own their tables, in the order the orphan report walks them.
+
+    Each grant table belongs to exactly one of them; prompts, which share the registered model
+    tables, are left out.
+
+    Returns:
+        The table-owning kinds, workspaces included.
+    """
     return tuple(kind for kind in GRANT_KINDS if kind.shares_tables_of is None)
 
 
+def workspace_table_kinds() -> Tuple[GrantKind, ...]:
+    """The table-owning kinds whose grants may be recorded in a workspace, in backfill order.
+
+    Returns:
+        Every table-owning kind except workspaces, in the order the grant-workspace backfill and
+        the workspace cascade walk their tables.
+    """
+    return _WORKSPACE_TABLE_ORDER
+
+
 def resource_kinds() -> Tuple[GrantKind, ...]:
-    """The kinds resolved per resource through ``PERMISSION_REGISTRY`` (every kind but workspaces)."""
+    """The kinds resolved per resource through ``PERMISSION_REGISTRY``.
+
+    Returns:
+        Every kind except workspaces (resolved by the workspace cache), prompts included.
+    """
     return tuple(kind for kind in GRANT_KINDS if not kind.workspace_level)
+
+
+if set(_WORKSPACE_TABLE_ORDER) != {kind for kind in table_owning_kinds() if not kind.workspace_level} or len(_WORKSPACE_TABLE_ORDER) != len(
+    set(_WORKSPACE_TABLE_ORDER)
+):
+    # A kind missing here would leave its grants out of the backfill and the workspace cascade.
+    raise RuntimeError("permission_kinds: _WORKSPACE_TABLE_ORDER must list every table-owning resource kind exactly once")

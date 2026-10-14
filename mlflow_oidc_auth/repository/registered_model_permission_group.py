@@ -4,10 +4,10 @@ Uses custom method names (create/get/get_for_user/list_for_user/update/delete)
 and relies on GroupRepository for user-group listing, so methods are individually
 delegated or overridden rather than simply inherited.
 
-Bound to ``permission_kinds.REGISTERED_MODEL``: grant management (create/get/update/delete and
-the per-group and per-resource listings) sees only ``prompt=False`` rows. The permission lookups
-``get_for_user`` and ``list_for_user`` do not filter — a group grant on a name counts for that name
-whatever its flag, for registered models and prompts alike.
+Bound to ``permission_kinds.REGISTERED_MODEL`` with no ``prompt`` filter (its ``group`` role is in
+``unfiltered_roles``): the permission lookups ``get_for_user`` and ``list_for_user`` count a group
+grant on a name whatever its flag, so managing registered model group grants sees, updates and
+revokes exactly those rows. Prompts and registered models share one name space per workspace.
 """
 
 from typing import List, Optional

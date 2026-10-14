@@ -45,14 +45,13 @@ class _KindFilter:
     so a repository can never disagree with the registry.
 
     ``extra_filter`` maps columns to the value this kind's rows hold — ``{"prompt": True}`` for
-    prompts, ``{"prompt": False}`` for registered models, which share their group grant table and
-    their pattern tables. Every row the repository creates carries it, and every grant it looks up,
-    lists, updates or revokes must match it, so a prompt grant is never read, changed or matched
-    as a registered model grant, or the reverse.
+    prompts, ``{"prompt": False}`` for registered model patterns (see ``GrantKind.filter_for``).
+    Every row the repository creates carries it, and every query it runs — lookups, lists, updates,
+    revokes, renames, wipes and permission lookups alike — matches only rows that hold it, so a
+    filtered repository never reads, changes, removes or matches the other kind's rows.
 
-    The exact-grant permission lookups (``get_group_permission_for_user_resource``,
-    ``list_permissions_for_user_groups``, ``_same_grant``) and the per-resource cascades (rename,
-    wipe) do not filter: a grant on a name counts for that name whatever its flag, as it always has.
+    The registered model group grant repository is deliberately unfiltered: permission checks count
+    its rows whatever their ``prompt`` flag, so managing them must see the same rows.
     """
 
     grant_kind: Optional[GrantKind] = None
@@ -76,11 +75,7 @@ class _KindFilter:
             raise TypeError(f"{cls.__name__}: grant kind {kind.name!r} has no {cls.grant_role} table")
         cls.model_class = model
         cls.workspace_scoped = kind.workspace_scoped and cls.grant_role in ("user", "group")
-        cls.extra_filter = kind.filter_for(cls.grant_role)
-        missing = [column for column in cls.extra_filter if not hasattr(model, column)]
-        if missing:
-            # A filter on a column the table lacks would silently match every row of the shared table.
-            raise TypeError(f"{cls.__name__}.extra_filter names columns {missing} that {model.__name__} does not have")
+        cls.extra_filter = kind.filter_for(cls.grant_role)  # GrantKind checked the columns exist
 
     def _kind_is(self) -> list:
         """The ``extra_filter`` conditions, to add to a query's filter."""
@@ -106,13 +101,16 @@ class _GrantWorkspaceScope(_KindFilter):
     """
 
     def _in_scope(self):
-        if not self.workspace_scoped:
+        """The request's grant workspace (for a workspace-scoped kind) and this repository's kind filter."""
+        conditions = [grant_workspace_condition(self.model_class.workspace)] if self.workspace_scoped else []
+        conditions += self._kind_is()
+        if not conditions:
             return true()
-        return grant_workspace_condition(self.model_class.workspace)
+        return conditions[0] if len(conditions) == 1 else and_(*conditions)
 
     def _resource_is(self, resource_id):
         condition = getattr(self.model_class, self.resource_id_attr) == resource_id
-        return and_(condition, self._in_scope()) if self.workspace_scoped else condition
+        return and_(condition, self._in_scope()) if self.workspace_scoped or self.extra_filter else condition
 
     def _new_row_fields(self) -> dict:
         return {"workspace": current_grant_workspace()} if self.workspace_scoped else {}
@@ -169,8 +167,9 @@ class _GrantWorkspaceScope(_KindFilter):
             getattr(model, principal) == getattr(row, principal),
             self._in_scope(),
         )
-        # No ``prompt`` filter: permission checks count every row of the principal on this name,
-        # whatever its ``prompt`` flag, so every such row is the same grant.
+        # ``_in_scope`` carries the kind filter: a filtered repository (prompt group grants) never
+        # rewrites or removes the other kind's row. Unfiltered ones count every row of the principal
+        # on this name, whatever its ``prompt`` flag, as permission checks do.
         return [row, *query.all()]
 
 
@@ -207,7 +206,6 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
                 .filter(
                     self._resource_is(resource_id),
                     SqlUser.username == username,
-                    *self._kind_is(),
                 )
             )
         except NoResultFound:
@@ -279,7 +277,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
             rows = (
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
-                .filter(SqlUser.username == username, self._in_scope(), *self._kind_is())
+                .filter(SqlUser.username == username, self._in_scope())
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]
@@ -291,7 +289,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         :return: A list of permission entities for the resource.
         """
         with self._Session() as session:
-            rows = session.query(self.model_class).filter(self._resource_is(resource_id), *self._kind_is()).all()
+            rows = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_permission(self, resource_id: str, username: str, permission: str) -> EntityT:
@@ -399,7 +397,6 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 .filter(
                     self._resource_is(resource_id),
                     SqlGroup.group_name == group_name,
-                    *self._kind_is(),
                 )
             )
         except NoResultFound:
@@ -428,7 +425,6 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             session.query(self.model_class).filter(
                 self._resource_is(resource_id),
                 self.model_class.group_id == group.id,
-                *self._kind_is(),
             ),
             required=False,
         )
@@ -491,7 +487,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id, self._in_scope(), *self._kind_is()).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id, self._in_scope()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_permissions_for_group_id(self, group_id: int) -> List[EntityT]:
@@ -501,7 +497,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         :return: A list of permission entities for the group.
         """
         with self._Session() as session:
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id, self._in_scope(), *self._kind_is()).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id, self._in_scope()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_groups_for_resource(self, resource_id: str) -> List[tuple[str, str]]:
@@ -514,7 +510,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             rows = (
                 session.query(SqlGroup.group_name, self.model_class.permission)
                 .join(self.model_class, self.model_class.group_id == SqlGroup.id)
-                .filter(self._resource_is(resource_id), *self._kind_is())
+                .filter(self._resource_is(resource_id))
                 .all()
             )
             return [(str(group_name), str(permission)) for group_name, permission in rows]
@@ -603,7 +599,6 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
-                    *self._kind_is(),
                 )
             )
             for row in self._same_grant(session, perm):
@@ -623,7 +618,6 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
-                    *self._kind_is(),
                 )
             )
             for row in self._same_grant(session, perm):

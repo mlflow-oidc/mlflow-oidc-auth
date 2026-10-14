@@ -51,15 +51,6 @@ logger = get_logger()
 
 MANAGE = "MANAGE"
 
-#: ``resource_type`` values used in ``resource.orphaned`` events: the kinds' names.
-EXPERIMENT = permission_kinds.EXPERIMENT.name
-REGISTERED_MODEL = permission_kinds.REGISTERED_MODEL.name  # prompts are registered models and share these grants
-SCORER = permission_kinds.SCORER.name
-GATEWAY_ENDPOINT = permission_kinds.GATEWAY_ENDPOINT.name
-GATEWAY_MODEL_DEFINITION = permission_kinds.GATEWAY_MODEL_DEFINITION.name
-MCP_SERVER = permission_kinds.MCP_SERVER.name
-WORKSPACE = permission_kinds.WORKSPACE.name
-
 #: Upper bound on MLflow store lookups (experiment names, prompt flags) per resource type and run.
 _EXTERNAL_LOOKUP_LIMIT = 1000
 
@@ -69,21 +60,12 @@ VIA_GROUP_PREFIX = "group:"
 VIA_UNRESOLVED = "unresolved"
 
 
-def _specs() -> List[GrantKind]:
-    """Every kind that owns grant tables (``permission_kinds``): its tables, key columns and regex subject.
-
-    Prompts share the registered model tables and are judged with them, under ``registered_model``.
-    A ``workspace_scoped`` kind's grants are on resources MLflow keeps unique per ``(workspace,
-    name)``: with workspaces enabled the grant's ``workspace`` leads the key (see
-    :func:`_effective`); with them disabled the key is the name alone, exactly as before the column
-    existed.
-    """
-    return list(permission_kinds.table_owning_kinds())
-
-
 def _effective(spec: GrantKind) -> GrantKind:
     """``spec`` as this run sees it: a workspace-scoped kind is keyed by ``(workspace, name)`` when
-    workspaces are enabled, so two workspaces' resources of one name are judged separately."""
+    workspaces are enabled, so two workspaces' resources of one name are judged separately.
+
+    The report walks ``permission_kinds.table_owning_kinds()``; prompts share the registered model
+    tables and are judged with them, under ``registered_model``."""
     from mlflow_oidc_auth.config import config
 
     if not spec.workspace_scoped or not getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
@@ -503,7 +485,7 @@ def _judge_all(ctx: _Context, spec: GrantKind, mine: Set[Tuple[str, ...]]) -> Di
     holders = _holders(ctx, spec, mine)
     if not holders:
         return {keys: NOT_HELD for keys in mine}
-    workspace = spec.name == WORKSPACE
+    workspace = spec.name == permission_kinds.WORKSPACE.name
     # Where the resource's workspace is part of its key, only the patterns that apply there count.
     in_workspace = spec.key_columns[:1] == ("workspace",)
 
@@ -519,11 +501,11 @@ def _judge_all(ctx: _Context, spec: GrantKind, mine: Set[Tuple[str, ...]]) -> Di
             return "default"
         if in_workspace:
             return keys[0]
-        if spec.name in (EXPERIMENT, SCORER):
+        if spec.name in (permission_kinds.EXPERIMENT.name, permission_kinds.SCORER.name):
             return experiment_workspaces.get(keys[0])
         return None
 
-    if spec.name == SCORER and any(h.regex[False] or h.group_regex[False] for h in holders):
+    if spec.name == permission_kinds.SCORER.name and any(h.regex[False] or h.group_regex[False] for h in holders):
         experiment_workspaces.update({eid: ws for eid, (_, ws) in _experiment_locations(sorted({keys[0] for keys in mine})).items()})
 
     if spec.regex_key_index is None:  # experiments: patterns match the name, which MLflow holds
@@ -537,7 +519,7 @@ def _judge_all(ctx: _Context, spec: GrantKind, mine: Set[Tuple[str, ...]]) -> Di
                     verdicts[keys] = _judge(holders, keys, located[keys[0]][0], False, workspace, resource_workspace(keys))
         return verdicts
 
-    if spec.name != REGISTERED_MODEL:
+    if spec.name != permission_kinds.REGISTERED_MODEL.name:
         return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace, resource_workspace(keys)) for keys in mine}
 
     # Registered models and prompts share grant rows but not patterns. Ask the registry only when
@@ -582,7 +564,7 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
     ctx = _Context(session, user_id)
     orphans: List[Tuple[str, str, str]] = []
 
-    for spec in map(_effective, _specs()):
+    for spec in map(_effective, permission_kinds.table_owning_kinds()):
         key_names = spec.key_columns
         user_keys = _key_columns(spec.user_model, key_names)
         group_keys = _key_columns(spec.group_model, key_names)
@@ -696,7 +678,7 @@ def _valid_fallback(session, fallback: Optional[str], departing_id: int):
 
 def _transfer_in_session(session, target_id: int, orphans: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     """Grant ``MANAGE`` on each orphan to ``target_id``, raising an existing lower grant."""
-    specs: Dict[str, GrantKind] = {spec.name: _effective(spec) for spec in _specs()}
+    specs: Dict[str, GrantKind] = {spec.name: _effective(spec) for spec in permission_kinds.table_owning_kinds()}
     transferred: List[Tuple[str, str]] = []
     for resource_type, resource_id in orphans:
         user_model, key_names = specs[resource_type].user_model, specs[resource_type].key_columns

@@ -11,7 +11,7 @@ import inspect
 import pytest
 from mlflow.exceptions import MlflowException
 
-import mlflow_oidc_auth.db.models as db_models
+from mlflow_oidc_auth.db import models as db_models
 from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permission_kinds import GRANT_KINDS, resource_kinds, table_owning_kinds
 
@@ -50,14 +50,12 @@ def test_kind_names_are_unique():
 
 
 def test_kind_names_are_the_single_source_of_resource_type_strings():
-    from mlflow_oidc_auth import orphans
     from mlflow_oidc_auth.utils import permissions
 
-    assert permissions.EXPERIMENT == orphans.EXPERIMENT == permission_kinds.EXPERIMENT.name == "experiment"
-    assert permissions.REGISTERED_MODEL == orphans.REGISTERED_MODEL == "registered_model"
+    assert permissions.EXPERIMENT == permission_kinds.EXPERIMENT.name == "experiment"
+    assert permissions.REGISTERED_MODEL == "registered_model"
     assert permissions.PROMPT == "prompt"
     assert permissions.GATEWAY_SECRET == permission_kinds.GATEWAY_VAULT.name == "gateway_secret"
-    assert orphans.WORKSPACE == permission_kinds.WORKSPACE.name == "workspace"
     assert permissions._RESOURCE_TYPE_LOG_NAMES == tuple(kind.name for kind in resource_kinds())
 
 
@@ -97,17 +95,20 @@ def test_filtered_repositories_use_the_registry_filter():
 
     for repo in (PromptGroupRegexPermissionRepository, PromptPermissionGroupRepository, PromptPermissionRegexRepository):
         assert repo.extra_filter is permission_kinds.PROMPT.extra_filter, repo.__name__
-    for repo in (RegisteredModelGroupRegexPermissionRepository, RegisteredModelPermissionRegexRepository, RegisteredModelPermissionGroupRepository):
+    for repo in (RegisteredModelGroupRegexPermissionRepository, RegisteredModelPermissionRegexRepository):
         assert repo.extra_filter is permission_kinds.REGISTERED_MODEL.extra_filter, repo.__name__
+    # Managing registered model group grants sees every row permission checks count: unfiltered.
+    assert not RegisteredModelPermissionGroupRepository.extra_filter
     # The user grant table has no prompt column: its grants are shared by both kinds.
     assert {role for role in permission_kinds.ROLES if permission_kinds.PROMPT.filter_for(role)} == {"group", "user_regex", "group_regex"}
-    assert {role for role in permission_kinds.ROLES if permission_kinds.REGISTERED_MODEL.filter_for(role)} == {"group", "user_regex", "group_regex"}
+    assert {role for role in permission_kinds.ROLES if permission_kinds.REGISTERED_MODEL.filter_for(role)} == {"user_regex", "group_regex"}
 
 
 def _repository_classes():
-    import mlflow_oidc_auth.repository  # noqa: F401 - imports every repository module
+    from mlflow_oidc_auth import repository
     from mlflow_oidc_auth.repository._base import _KindFilter
 
+    assert repository.__all__  # importing the package imports every repository module
     found, pending = set(), list(_KindFilter.__subclasses__())
     while pending:
         cls = pending.pop()
@@ -136,10 +137,9 @@ def test_every_permission_repository_is_bound_to_a_kind():
 
 
 def test_hand_set_derived_attributes_are_refused():
-    from mlflow_oidc_auth.db.models import SqlExperimentRegexPermission
     from mlflow_oidc_auth.repository import BaseRegexPermissionRepository
 
-    for attributes in ({"model_class": SqlExperimentRegexPermission}, {"extra_filter": {"prompt": True}}, {"workspace_scoped": True}):
+    for attributes in ({"model_class": db_models.SqlExperimentRegexPermission}, {"extra_filter": {"prompt": True}}, {"workspace_scoped": True}):
         with pytest.raises(TypeError, match="derived from grant_kind"):
             type("Broken", (BaseRegexPermissionRepository,), {"grant_kind": permission_kinds.EXPERIMENT, **attributes})
 
@@ -167,6 +167,20 @@ def test_a_filter_some_tables_only_partly_have_is_refused():
         )
 
 
+def test_unfiltered_roles_must_name_a_filterable_table():
+    with pytest.raises(ValueError, match="unfiltered role 'user'"):
+        permission_kinds.GrantKind(
+            "broken",
+            db_models.SqlRegisteredModelPermission,
+            db_models.SqlRegisteredModelGroupPermission,
+            ("name",),
+            db_models.SqlRegisteredModelRegexPermission,
+            db_models.SqlRegisteredModelGroupRegexPermission,
+            extra_filter={"prompt": True},
+            unfiltered_roles=("user",),
+        )
+
+
 # --- derived lists -----------------------------------------------------------------------------
 
 
@@ -186,19 +200,17 @@ def test_permission_registry_keys_equal_the_registry_kinds():
     }
 
 
-def test_orphan_specs_cover_the_table_owning_kinds():
-    from mlflow_oidc_auth.orphans import _specs
+def test_orphan_report_walks_the_table_owning_kinds_in_mains_order():
+    """The orphan report walks ``table_owning_kinds()``: the order its hand-maintained list had."""
+    specs = table_owning_kinds()
 
-    specs = _specs()
-
-    assert all(isinstance(spec, permission_kinds.GrantKind) for spec in specs)
     assert [spec.name for spec in specs] == [
         "experiment",
         "registered_model",
         "scorer",
         "gateway_endpoint",
-        "gateway_secret",
         "gateway_model_definition",
+        "gateway_secret",
         "mcp_server",
         "workspace",
     ]
@@ -270,9 +282,7 @@ def test_workspace_cascade_deletes_from_the_registry_tables(tmp_path):
         s.group_repo.create_group(GROUP)
         expected = 0
         with s.ManagedSessionMaker(read_only=False) as session:
-            from mlflow_oidc_auth.db.models import SqlGroup
-
-            group_id = session.query(SqlGroup.id).filter(SqlGroup.group_name == GROUP).scalar()
+            group_id = session.query(db_models.SqlGroup.id).filter(db_models.SqlGroup.group_name == GROUP).scalar()
             for kind in table_owning_kinds():
                 if kind.workspace_level:
                     session.add(kind.user_model(workspace="ws", user_id=user_id, permission="READ"))

@@ -112,10 +112,10 @@ def workspace_scoped_grant_tables():
         ``(model, resource column, principal column, resource kind)`` per table; ``kind`` names the
         MLflow resource type (prompts are registered models).
     """
-    from mlflow_oidc_auth.permission_kinds import table_owning_kinds
+    from mlflow_oidc_auth.permission_kinds import workspace_table_kinds
 
     tables = []
-    for kind in table_owning_kinds():
+    for kind in workspace_table_kinds():
         if kind.workspace_scoped:
             (resource_column,) = kind.key_columns
             tables.append((kind.user_model, resource_column, "user_id", kind.name))
@@ -171,9 +171,9 @@ def workspace_scoped_pattern_tables():
         The SQLAlchemy models of the user and group pattern tables of experiments, registered models
         and prompts, scorers and AI Gateway resources. Workspace patterns are not among them.
     """
-    from mlflow_oidc_auth.permission_kinds import table_owning_kinds
+    from mlflow_oidc_auth.permission_kinds import workspace_table_kinds
 
-    return tuple(model for kind in table_owning_kinds() if not kind.workspace_level for model in kind.regex_models)
+    return tuple(model for kind in workspace_table_kinds() for model in kind.regex_models)
 
 
 def pattern_workspace_of(rule) -> str | None:
