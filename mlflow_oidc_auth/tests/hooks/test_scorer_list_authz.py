@@ -123,5 +123,5 @@ def test_scorer_without_own_grant_follows_its_experiment(monkeypatch):
 
 
 def test_lookup_error_drops_the_row():
-    with patch("mlflow_oidc_auth.hooks.after_request.effective_scorer_permission", side_effect=RuntimeError("store down")):
+    with patch("mlflow_oidc_auth.hooks.after_request._scorer_permission", side_effect=RuntimeError("store down")):
         assert _names(_list("/api", OUTSIDER)) == []

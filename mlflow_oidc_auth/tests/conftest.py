@@ -47,6 +47,24 @@ def pytest_collection_modifyitems(session: pytest.Session, config: pytest.Config
 
 
 @pytest.fixture(autouse=True)
+def _fresh_grant_context_cache():
+    """Start every test with an empty grant-context section cache (issue #460).
+
+    Sections are cached per user across requests — and so, in one process, across tests. Two
+    tests that each build their own store with the same usernames must not see each other's
+    grants. Production invalidates through the store wrappers; a test that swaps in a fresh
+    database writes nothing the wrappers could see.
+    """
+    import mlflow_oidc_auth.utils.grant_context as grant_context
+
+    grant_context._section_cache = None
+    grant_context.GUARD.reset()
+    yield
+    grant_context._section_cache = None
+    grant_context.GUARD.reset()
+
+
+@pytest.fixture(autouse=True)
 def _config_module_guard():
     """Fail the test that leaves a second ``mlflow_oidc_auth.config``/``oauth`` in the process.
 

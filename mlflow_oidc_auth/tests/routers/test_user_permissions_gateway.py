@@ -617,6 +617,8 @@ def test_list_other_user_resolves_the_target_only_for_manageable_resources(authe
         patch(f"{_UP}.{fetch}", return_value=items),
         patch(f"{_UP}.{resolver}", resolve),
         patch(f"mlflow_oidc_auth.utils.permissions.{resolver}", resolve),
+        # The caller's filter resolves every row against one bulk grant context (issue #460).
+        patch("mlflow_oidc_auth.utils.batch_permissions.resolve", side_effect=lambda ctx, resource_type, name: resolve(name, ctx.username)),
     ):
         resp = authenticated_client.get(f"{USER_BASE}/other@example.com/gateways/{path}")
     assert resp.status_code == 200

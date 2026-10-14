@@ -545,6 +545,10 @@ class TestSetUserGroupsRealStore:
         store = SqlAlchemyStore()
         store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
         monkeypatch.setattr(perms, "store", store)
+        # The grant context (issue #460) reads the store singleton itself.
+        import mlflow_oidc_auth.store as store_module
+
+        monkeypatch.setattr(store_module, "store", store)
         perms.flush_permission_cache()
         yield store
         perms.flush_permission_cache()

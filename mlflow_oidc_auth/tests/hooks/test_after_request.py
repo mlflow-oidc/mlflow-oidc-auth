@@ -225,7 +225,7 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
                 False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -254,7 +254,8 @@ def test_filter_search_experiments_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_experiments(mock_response)
 
-                mock_can_read.assert_called_once_with("123", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "123")
                 assert len(mock_response_message.experiments) == 1
 
 
@@ -290,7 +291,7 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -355,7 +356,7 @@ def test_filter_search_experiments_no_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -426,7 +427,7 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -451,7 +452,8 @@ def test_filter_search_registered_models_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_registered_models(mock_response)
 
-                mock_can_read.assert_called_once_with("test_model", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "test_model")
                 assert len(mock_response_message.registered_models) == 1
 
 
@@ -486,7 +488,7 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -622,7 +624,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
         headers={"Content-Type": "application/json"},
     ):
 
-        def fake_can_read(exp_id: str, _user: str) -> bool:
+        def fake_can_read(_ctx, exp_id: str) -> bool:
             return exp_id == "123"
 
         with (
@@ -631,7 +633,7 @@ def test_filter_search_logged_models_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 side_effect=fake_can_read,
             ),
             patch(
@@ -703,7 +705,7 @@ def test_filter_search_logged_models_with_pagination(mock_response, mock_bridge)
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -765,7 +767,7 @@ def test_filter_search_logged_models_no_pagination_needed(mock_response, mock_br
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                 return_value=True,
             ),
             patch(
@@ -1000,7 +1002,7 @@ def test_filter_list_gateway_endpoints_non_admin(mock_response, mock_bridge):
     """Test that non-admin users only see endpoints they can read."""
     mock_response.json = {"endpoints": [{"name": "ep1"}, {"name": "ep2"}, {"name": "ep3"}]}
 
-    def can_read_side_effect(name, user):
+    def can_read_side_effect(_ctx, name):
         return name in ("ep1", "ep3")
 
     with (
@@ -1030,7 +1032,7 @@ def test_filter_list_gateway_endpoints_non_admin(mock_response, mock_bridge):
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_endpoint",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_endpoint",
                 side_effect=can_read_side_effect,
             ),
         ):
@@ -1070,7 +1072,7 @@ def test_filter_list_gateway_secrets_non_admin(mock_response, mock_bridge):
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_secret",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_secret",
                 return_value=False,
             ),
         ):
@@ -1108,8 +1110,8 @@ def test_filter_list_gateway_model_definitions_non_admin(mock_response, mock_bri
                 return_value=mock_response_message,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_gateway_model_definition",
-                side_effect=lambda name, user: name == "md2",
+                "mlflow_oidc_auth.hooks.after_request._can_read_gateway_model_definition",
+                side_effect=lambda _ctx, name: name == "md2",
             ),
         ):
             _filter_list_gateway_model_definitions(mock_response)
@@ -1371,7 +1373,7 @@ def test_filter_search_model_versions_non_admin(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ) as mock_can_read,
             patch(
@@ -1396,7 +1398,8 @@ def test_filter_search_model_versions_non_admin(mock_response, mock_bridge):
             ):
                 _filter_search_model_versions(mock_response)
 
-                mock_can_read.assert_called_once_with("model1", "test_user")
+                mock_can_read.assert_called_once()
+                assert (mock_can_read.call_args.args[0].username, mock_can_read.call_args.args[1]) == ("test_user", "model1")
                 assert len(mock_response_message.model_versions) == 1
 
 
@@ -1414,7 +1417,7 @@ def test_filter_search_model_versions_filters_unreadable(mock_response, mock_bri
     mock_request_message.order_by = []
     mock_request_message.max_results = 1000
 
-    def fake_can_read(name: str, _user: str) -> bool:
+    def fake_can_read(_ctx, name: str) -> bool:
         return name == "allowed_model"
 
     with app.test_request_context(
@@ -1428,7 +1431,7 @@ def test_filter_search_model_versions_filters_unreadable(mock_response, mock_bri
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 side_effect=fake_can_read,
             ),
             patch(
@@ -1489,7 +1492,7 @@ def test_filter_search_model_versions_with_pagination(mock_response, mock_bridge
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -1548,7 +1551,7 @@ def test_filter_search_model_versions_no_pagination(mock_response, mock_bridge):
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                 return_value=True,
             ),
             patch(
@@ -1607,7 +1610,7 @@ def _run_filter_logged_models(mock_response, *, can_read, workspaces_enabled=Fal
         with (
             patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_admin_status", return_value=False),
             patch("mlflow_oidc_auth.hooks.after_request.get_fastapi_username", return_value="test_user"),
-            patch("mlflow_oidc_auth.hooks.after_request.can_read_experiment", side_effect=can_read),
+            patch("mlflow_oidc_auth.hooks.after_request._can_read_experiment", side_effect=can_read),
             patch("mlflow_oidc_auth.hooks.after_request._get_request_message", return_value=request_message),
             patch("mlflow_oidc_auth.hooks.after_request._get_tracking_store", return_value=tracking_store),
             patch("mlflow_oidc_auth.hooks.after_request._can_access_workspace", return_value=can_access_workspace),
@@ -1630,7 +1633,7 @@ def test_filter_search_logged_models_passes_through_when_all_visible(mock_respon
     mock_response.json = _logged_models_body(["123", "123"])
     original_data = mock_response.data
 
-    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
 
     assert rewrote is False
     assert mock_response.data == original_data
@@ -1640,7 +1643,7 @@ def test_filter_search_logged_models_rewrites_when_a_model_is_unreadable(mock_re
     """The shortcut must never hide the fact that something has to be removed."""
     mock_response.json = _logged_models_body(["123", "456"])
 
-    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: exp_id == "123")
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: exp_id == "123")
 
     assert rewrote is True
 
@@ -1649,7 +1652,7 @@ def test_filter_search_logged_models_rewrites_when_a_further_page_exists(mock_re
     """A next page token means the filter may still need to top this page up."""
     mock_response.json = _logged_models_body(["123"], next_page_token="tok")
 
-    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
 
     assert rewrote is True
 
@@ -1660,7 +1663,7 @@ def test_filter_search_logged_models_rewrites_when_workspace_denies(mock_respons
 
     rewrote = _run_filter_logged_models(
         mock_response,
-        can_read=lambda exp_id, user: True,
+        can_read=lambda _ctx, exp_id: True,
         workspaces_enabled=True,
         can_access_workspace=False,
     )
@@ -1683,7 +1686,7 @@ def test_filter_search_logged_models_rewrites_on_unexpected_body(mock_response, 
     """Anything the shortcut cannot positively verify falls back to full filtering."""
     mock_response.json = body
 
-    rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
+    rewrote = _run_filter_logged_models(mock_response, can_read=lambda _ctx, exp_id: True)
 
     assert rewrote is True
 

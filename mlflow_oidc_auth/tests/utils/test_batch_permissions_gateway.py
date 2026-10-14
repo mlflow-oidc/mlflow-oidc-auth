@@ -4,13 +4,45 @@ The existing test_batch_permissions.py covers experiments, models, and prompts.
 These tests cover the gateway endpoint, secret, and model definition filter functions.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth.permissions import MANAGE, READ
+from mlflow_oidc_auth.utils import batch_permissions
 from mlflow_oidc_auth.utils.batch_permissions import (
     filter_manageable_gateway_endpoints,
     filter_manageable_gateway_model_definitions,
     filter_manageable_gateway_secrets,
 )
+
+_CHECKS = {
+    "gateway_endpoint": "can_manage_gateway_endpoint",
+    "gateway_secret": "can_manage_gateway_secret",
+    "gateway_model_definition": "can_manage_gateway_model_definition",
+}
+
+
+@pytest.fixture(autouse=True)
+def _decide_through_the_check(monkeypatch):
+    """Since issue #460 the filters resolve each row against one bulk grant context.
+
+    The tests below state each row's outcome as the single-resource ``can_manage_*(name, user)``
+    check; this routes the per-row decision through that (patched) check, so they keep stating
+    exactly which rows are manageable. The context's own reads are covered by the statement-count
+    test in ``tests/perf/test_query_counts.py``.
+    """
+    from mlflow_oidc_auth.utils import permissions
+
+    monkeypatch.setattr(batch_permissions, "load_grant_context", lambda username, *args, **kwargs: SimpleNamespace(username=username))
+
+    def decide(ctx, resource_type, name):
+        allowed = getattr(permissions, _CHECKS[resource_type])(name, ctx.username)
+        return PermissionResult(MANAGE if allowed else READ, "user")
+
+    monkeypatch.setattr(batch_permissions, "resolve", decide)
 
 
 class TestFilterManageableGatewayEndpoints:

@@ -143,8 +143,18 @@ class _GrantWorkspaceScope(_KindFilter):
         except MultipleResultsFound:
             if not self.workspace_scoped:
                 raise
-        column = self.model_class.workspace
-        return query.order_by(case((column == DEFAULT_WORKSPACE_NAME, 0), else_=1), self.model_class.id).first()
+        return query.order_by(*self._precedence()).first()
+
+    def _precedence(self) -> tuple:
+        """The order that decides between duplicate grants: the ``default`` grant, then the oldest.
+
+        The single rule for picking one of several grants of one principal on one resource — used by
+        :meth:`_one_in_scope` and by :meth:`BaseUserPermissionRepository.list_permissions_for_user_by_precedence`,
+        so the per-resource lookup and the grant context's bulk read cannot disagree.
+        """
+        if not self.workspace_scoped:
+            return (self.model_class.id,)
+        return (case((self.model_class.workspace == DEFAULT_WORKSPACE_NAME, 0), else_=1), self.model_class.id)
 
     def _same_grant(self, session: Session, row) -> list:
         """``row`` and any unassigned duplicate of it (see :meth:`_one_in_scope`).
@@ -281,6 +291,25 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
                 .filter(SqlUser.username == username, self._in_scope())
+                .all()
+            )
+            return [r.to_mlflow_entity() for r in rows]
+
+    def list_permissions_for_user_by_precedence(self, username: str) -> List[EntityT]:
+        """All of a user's grants in the request's grant workspace, in precedence order.
+
+        Same rows as :meth:`list_permissions_for_user`, ordered so that, of several grants on one
+        resource, the first is the one :meth:`_one_in_scope` picks. One JOIN.
+
+        :param username: The username of the user.
+        :return: A list of permission entities, the deciding grant of each resource first.
+        """
+        with self._Session() as session:
+            rows = (
+                session.query(self.model_class)
+                .join(SqlUser, SqlUser.id == self.model_class.user_id)
+                .filter(SqlUser.username == username, self._in_scope())
+                .order_by(*self._precedence())
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]

@@ -243,6 +243,8 @@ The OIDC provider's signing keys (JWKS) are fetched once and cached in-process f
 
 Permission resolution results (the computed permission for a user + resource pair) are cached with a TTL of `PERMISSION_CACHE_TTL_SECONDS` (default: 30). The cache is automatically invalidated whenever permissions are created, updated, or deleted through the `SqlAlchemyStore`.
 
+Decisions are made by one resolver, `mlflow_oidc_auth/utils/grant_context.py`, for single checks, MLflow list/search filters and the FastAPI batch endpoints alike. It reads a user's grants once per resource type (direct, group, pattern and group-pattern grants, a fixed number of statements however many resources are then resolved) and decides each resource in memory. Those per-user grant sets are cached under the same TTL and flushed by the same store writes as the decision cache, behind an invalidation generation guard; a failed read is never cached.
+
 The cache backend is configurable via `CACHE_BACKEND`:
 - **`local`** (default): In-process TTL cache. Suitable for single-replica deployments.
 - **`redis`**: Shared Redis-compatible instance (Redis, Valkey, Dragonfly, KeyDB). Required for multi-replica deployments where permission changes must propagate immediately across all replicas. Requires `CACHE_REDIS_URL` to be set. Install with `pip install "mlflow-oidc-auth[cache]"`.

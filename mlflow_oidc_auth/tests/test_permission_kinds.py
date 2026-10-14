@@ -9,7 +9,6 @@ and — the security guard — that a prompt pattern never matches a registered 
 import inspect
 
 import pytest
-from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.db import models as db_models
 from mlflow_oidc_auth import permission_kinds
@@ -316,28 +315,30 @@ def store(tmp_path, monkeypatch):
     s.create_user(USER, "Alice")
     s.group_repo.create_group(GROUP)
     s.add_user_to_group(USER, GROUP)
-    # The request-time resolvers read the module-level store singleton.
+    # The request-time resolvers read the module-level store singleton; the grant context
+    # (issue #460) reads it through ``grant_context._store``.
     monkeypatch.setattr("mlflow_oidc_auth.utils.permissions.store", s)
-    monkeypatch.setattr("mlflow_oidc_auth.utils.batch_permissions.store", s)
+    monkeypatch.setattr("mlflow_oidc_auth.utils.grant_context._store", lambda: s)
     yield s
     s.engine.dispose()
 
 
 def _regex_sources(resource_type: str, name: str):
-    from mlflow_oidc_auth.utils.permissions import PERMISSION_REGISTRY
+    """The user and group pattern sources the resolver walks for one resource (``grant_context``)."""
+    from mlflow_oidc_auth.utils.grant_context import _lookups, load_grant_context
 
-    sources = PERMISSION_REGISTRY[resource_type](name, USER)
+    sources = _lookups(load_grant_context(USER), resource_type, name, None)
     return sources["regex"], sources["group-regex"]
 
 
 def _assert_no_match(source):
-    with pytest.raises(MlflowException) as exc:
-        source()
-    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+    # A source with no grant returns None, which the source walk reads as "not found".
+    assert source() is None
 
 
 def test_prompt_regex_does_not_match_model(store):
-    from mlflow_oidc_auth.utils.batch_permissions import _match_regex_permission_or_none, build_user_permission_context
+    from mlflow_oidc_auth.utils.batch_permissions import build_user_permission_context
+    from mlflow_oidc_auth.utils.grant_context import best_matching_regex
 
     store.create_prompt_regex_permission(".*", 0, "MANAGE", USER)
     store.create_group_prompt_regex_permission(".*", 0, "MANAGE", GROUP)
@@ -345,16 +346,17 @@ def test_prompt_regex_does_not_match_model(store):
     user_regex, group_regex = _regex_sources("registered_model", "churn")
     _assert_no_match(user_regex)
     _assert_no_match(group_regex)
-    ctx = build_user_permission_context(USER)
-    assert ctx.model_regex_permissions == [] and ctx.group_model_regex_permissions == []
-    assert _match_regex_permission_or_none(ctx.model_regex_permissions, "churn", "model name") is None
+    patterns = build_user_permission_context(USER).patterns("registered_model")
+    assert patterns.regex == () and patterns.group_regex == ()
+    assert best_matching_regex(patterns.regex, "churn", "model name") is None
     # The same grants do resolve the prompt they were made for.
     user_regex, group_regex = _regex_sources("prompt", "churn")
     assert user_regex() == "MANAGE" and group_regex() == "MANAGE"
 
 
 def test_model_regex_does_not_match_prompt(store):
-    from mlflow_oidc_auth.utils.batch_permissions import _match_regex_permission_or_none, build_user_permission_context
+    from mlflow_oidc_auth.utils.batch_permissions import build_user_permission_context
+    from mlflow_oidc_auth.utils.grant_context import best_matching_regex
 
     store.create_registered_model_regex_permission(".*", 0, "MANAGE", USER)
     store.create_group_registered_model_regex_permission(GROUP, ".*", 0, "MANAGE")
@@ -362,8 +364,8 @@ def test_model_regex_does_not_match_prompt(store):
     user_regex, group_regex = _regex_sources("prompt", "churn")
     _assert_no_match(user_regex)
     _assert_no_match(group_regex)
-    ctx = build_user_permission_context(USER)
-    assert ctx.prompt_regex_permissions == [] and ctx.group_prompt_regex_permissions == []
-    assert _match_regex_permission_or_none(ctx.prompt_regex_permissions, "churn", "prompt name") is None
+    patterns = build_user_permission_context(USER).patterns("prompt")
+    assert patterns.regex == () and patterns.group_regex == ()
+    assert best_matching_regex(patterns.regex, "churn", "prompt name") is None
     user_regex, group_regex = _regex_sources("registered_model", "churn")
     assert user_regex() == "MANAGE" and group_regex() == "MANAGE"

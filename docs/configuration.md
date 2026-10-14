@@ -163,7 +163,7 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
-| `PERMISSION_CACHE_MAX_SIZE` | Integer | `10000` | Maximum number of entries in the permission resolution cache (per replica for `local`; ignored by `redis`, whose size is bounded by the Redis server). A single list page checks one entry per row, so a value too small for the number of concurrent users makes them evict each other and re-query the database |
+| `PERMISSION_CACHE_MAX_SIZE` | Integer | `10000` | Maximum number of entries in the permission resolution cache (per replica for `local`; ignored by `redis`, whose size is bounded by the Redis server). Single checks cache one entry per resource; list pages resolve every row against the user's cached grants (one entry per user and resource type, same size bound), so a value too small for the number of concurrent users makes them evict each other and re-query the database |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
 | `CACHE_KEY_PREFIX` | String | `mlflow_oidc_auth:` | Key prefix for Redis cache entries. Useful when sharing a Redis instance with other applications |
@@ -179,7 +179,14 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 > - `mlflow_oidc_auth:workspace_denials:*`
 > - `mlflow_oidc_auth:workspace_generation:*`
 >
-> The permission cache (`mlflow_oidc_auth:permissions:*`) keeps its key format and needs no action. With `CACHE_BACKEND=local` there is nothing to do.
+> The permission decision cache moves to a new namespace too, `permissions_v2` (its entries now carry their own expiry, capped by the grants they were built from), and the grants each user is resolved against are cached in `grant_context_v2`, guarded by `grant_context_generation`. Old replicas never read these, nor new replicas the old `permissions` entries; while both run side by side, neither invalidates the other's entries, so a revoked grant can be served for up to `PERMISSION_CACHE_TTL_SECONDS`. Once the last old replica is gone, delete:
+>
+> - `mlflow_oidc_auth:permissions:*` (old format; otherwise left to expire)
+> - `mlflow_oidc_auth:permissions_v2:*`
+> - `mlflow_oidc_auth:grant_context_v2:*`
+> - `mlflow_oidc_auth:grant_context_generation:*`
+>
+> With `CACHE_BACKEND=local` there is nothing to do.
 
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 

@@ -338,7 +338,7 @@ class TestFlushWorkspaceCache:
 
 
 class TestMatchWorkspaceRegexPermission:
-    """Test _match_workspace_regex_permission() function."""
+    """Test grant_context.match_workspace_pattern(), the workspace pattern matcher."""
 
     _next_id = 0
 
@@ -354,63 +354,63 @@ class TestMatchWorkspaceRegexPermission:
 
     def test_returns_none_for_empty_list(self):
         """Returns None when no regexes provided."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
-        result = _match_workspace_regex_permission([], "prod-workspace")
+        result = match_workspace_pattern([], "prod-workspace")
         assert result is None
 
     def test_returns_permission_for_matching_regex(self):
         """Returns permission for the first matching regex."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [self._make_regex_perm("^prod-.*", 10, "MANAGE")]
-        result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        result = match_workspace_pattern(regexes, "prod-workspace")
         assert result == MANAGE
 
     def test_returns_none_when_no_match(self):
         """Returns None when no regex matches the workspace name."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [self._make_regex_perm("^staging-.*", 10, "READ")]
-        result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        result = match_workspace_pattern(regexes, "prod-workspace")
         assert result is None
 
     def test_priority_ordering_lower_wins(self):
         """Lower priority number wins (D-07)."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [
             self._make_regex_perm("^prod-.*", 5, "READ"),
             self._make_regex_perm("^prod-.*", 10, "MANAGE"),
         ]
-        result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        result = match_workspace_pattern(regexes, "prod-workspace")
         assert result == READ
 
     def test_same_priority_most_permissive_wins(self):
         """When multiple regexes match at the same priority, return most permissive (D-08)."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [
             self._make_regex_perm("^prod-.*", 10, "READ"),
             self._make_regex_perm("^prod-work.*", 10, "MANAGE"),
         ]
-        result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        result = match_workspace_pattern(regexes, "prod-workspace")
         assert result == MANAGE
 
     def test_short_circuits_on_higher_priority_match(self):
         """Stops checking once a higher-priority tier is exhausted."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [
@@ -419,19 +419,19 @@ class TestMatchWorkspaceRegexPermission:
         ]
         # Even though the second regex also matches and has higher permission,
         # it's at lower priority tier so should be ignored
-        result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        result = match_workspace_pattern(regexes, "prod-workspace")
         assert result == EDIT
 
     @pytest.mark.parametrize("first, second", [("MANAGE", "NO_PERMISSIONS"), ("NO_PERMISSIONS", "MANAGE")])
     def test_same_priority_no_permissions_wins(self, first, second):
         """NO_PERMISSIONS ranks highest, so it wins an equal-priority tie, as for resource patterns."""
         from mlflow_oidc_auth.permissions import NO_PERMISSIONS
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         regexes = [self._make_regex_perm("^prod-.*", 10, first), self._make_regex_perm("^prod-work.*", 10, second)]
-        assert _match_workspace_regex_permission(regexes, "prod-workspace") == NO_PERMISSIONS
+        assert match_workspace_pattern(regexes, "prod-workspace") == NO_PERMISSIONS
 
     @pytest.mark.parametrize(
         "order",
@@ -440,8 +440,8 @@ class TestMatchWorkspaceRegexPermission:
     )
     def test_unsorted_input_resolves_as_sorted(self, order):
         """Unsorted input gives the sorted result: best priority tier, most permissive in it (D-07, D-08)."""
-        from mlflow_oidc_auth.utils.workspace_cache import (
-            _match_workspace_regex_permission,
+        from mlflow_oidc_auth.utils.grant_context import (
+            match_workspace_pattern,
         )
 
         rules = [
@@ -449,19 +449,25 @@ class TestMatchWorkspaceRegexPermission:
             self._make_regex_perm("^prod-work.*", 5, "EDIT", id_=20),
             self._make_regex_perm("^prod-.*", 10, "MANAGE", id_=10),
         ]
-        result = _match_workspace_regex_permission([rules[i] for i in order], "prod-workspace")
+        result = match_workspace_pattern([rules[i] for i in order], "prod-workspace")
         # Unsorted, a list starting with the priority-10 MANAGE rule used to return MANAGE: the scan
         # took the first match's tier. Sorted, the priority-5 tier wins, and EDIT is its most permissive.
         assert result == EDIT
 
 
+def _resolve_one_source(mock_store, source, username, workspace):
+    """``grant_context.resolve_workspace_permission`` restricted to one source (issue #460)."""
+    from mlflow_oidc_auth.utils.grant_context import resolve_workspace_permission
+
+    with patch("mlflow_oidc_auth.store.store", mock_store):
+        return resolve_workspace_permission(username, workspace, [source])
+
+
 class TestResolveUserRegex:
-    """Test _resolve_user_regex() function."""
+    """The user-regex source of the workspace walk (formerly ``_resolve_user_regex``)."""
 
     def test_matches_workspace_against_user_regexes(self):
         """Calls store.list_workspace_regex_permissions and matches against workspace name."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_user_regex
-
         mock_store = MagicMock()
         regex_perm = MagicMock()
         regex_perm.regex = "^prod-.*"
@@ -469,38 +475,30 @@ class TestResolveUserRegex:
         regex_perm.permission = "MANAGE"
         mock_store.list_workspace_regex_permissions.return_value = [regex_perm]
 
-        result = _resolve_user_regex(mock_store, "user1", "prod-workspace")
-        assert result == MANAGE
+        result = _resolve_one_source(mock_store, "regex", "user1", "prod-workspace")
+        assert result == (MANAGE, False)
         mock_store.list_workspace_regex_permissions.assert_called_once_with("user1")
 
     def test_returns_none_when_store_returns_empty_list(self):
         """Returns None when store returns empty list."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_user_regex
-
         mock_store = MagicMock()
         mock_store.list_workspace_regex_permissions.return_value = []
 
-        result = _resolve_user_regex(mock_store, "user1", "prod-workspace")
-        assert result is None
+        assert _resolve_one_source(mock_store, "regex", "user1", "prod-workspace") == (None, False)
 
     def test_returns_none_on_store_exception(self):
-        """Returns None on store exception."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_user_regex
-
+        """A store error denies, and is reported as an error so it is never cached."""
         mock_store = MagicMock()
         mock_store.list_workspace_regex_permissions.side_effect = Exception("DB error")
 
-        result = _resolve_user_regex(mock_store, "user1", "prod-workspace")
-        assert result is None
+        assert _resolve_one_source(mock_store, "regex", "user1", "prod-workspace") == (None, True)
 
 
 class TestResolveGroupRegex:
-    """Test _resolve_group_regex() function."""
+    """The group-regex source of the workspace walk (formerly ``_resolve_group_regex``)."""
 
     def test_matches_workspace_against_group_regexes(self):
         """Gets user's group IDs and matches workspace against group regex permissions."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_group_regex
-
         mock_store = MagicMock()
         mock_store.get_groups_ids_for_user.return_value = [1, 2]
         regex_perm = MagicMock()
@@ -509,25 +507,20 @@ class TestResolveGroupRegex:
         regex_perm.permission = "EDIT"
         mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [regex_perm]
 
-        result = _resolve_group_regex(mock_store, "user1", "team-workspace")
-        assert result == EDIT
+        result = _resolve_one_source(mock_store, "group-regex", "user1", "team-workspace")
+        assert result == (EDIT, False)
         mock_store.get_groups_ids_for_user.assert_called_once_with("user1")
         mock_store.list_workspace_group_regex_permissions_for_groups_ids.assert_called_once_with([1, 2])
 
     def test_returns_none_when_user_has_no_groups(self):
         """Returns None when user has no groups."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_group_regex
-
         mock_store = MagicMock()
         mock_store.get_groups_ids_for_user.return_value = []
 
-        result = _resolve_group_regex(mock_store, "user1", "team-workspace")
-        assert result is None
+        assert _resolve_one_source(mock_store, "group-regex", "user1", "team-workspace") == (None, False)
 
     def test_returns_none_when_no_group_regex_matches(self):
         """Returns None when no group regex matches the workspace."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_group_regex
-
         mock_store = MagicMock()
         mock_store.get_groups_ids_for_user.return_value = [1]
         regex_perm = MagicMock()
@@ -536,18 +529,14 @@ class TestResolveGroupRegex:
         regex_perm.permission = "READ"
         mock_store.list_workspace_group_regex_permissions_for_groups_ids.return_value = [regex_perm]
 
-        result = _resolve_group_regex(mock_store, "user1", "prod-workspace")
-        assert result is None
+        assert _resolve_one_source(mock_store, "group-regex", "user1", "prod-workspace") == (None, False)
 
     def test_returns_none_on_store_exception(self):
-        """Returns None on store exception."""
-        from mlflow_oidc_auth.utils.workspace_cache import _resolve_group_regex
-
+        """A store error denies, and is reported as an error so it is never cached."""
         mock_store = MagicMock()
         mock_store.get_groups_ids_for_user.side_effect = Exception("DB error")
 
-        result = _resolve_group_regex(mock_store, "user1", "team-workspace")
-        assert result is None
+        assert _resolve_one_source(mock_store, "group-regex", "user1", "team-workspace") == (None, True)
 
 
 class TestLookupWithRegexSources:

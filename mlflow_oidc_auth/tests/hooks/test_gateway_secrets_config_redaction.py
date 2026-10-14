@@ -120,7 +120,7 @@ def test_response_is_independent_of_the_callers_grants():
     Per-secret visibility is enforced by ListGatewaySecretInfos / GetGatewaySecretInfo.
     """
     payload = {"secrets_available": True, "using_default_passphrase": True}
-    with patch("mlflow_oidc_auth.hooks.after_request.store") as store, patch("mlflow_oidc_auth.hooks.after_request.can_read_gateway_secret") as can_read:
+    with patch("mlflow_oidc_auth.hooks.after_request.store") as store, patch("mlflow_oidc_auth.hooks.after_request._can_read_gateway_secret") as can_read:
         no_grants = _run_hook(payload, is_admin=False).get_json()
         assert store.method_calls == []
         can_read.assert_not_called()

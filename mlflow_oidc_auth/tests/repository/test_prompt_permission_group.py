@@ -113,6 +113,8 @@ def effective(store, monkeypatch):
     from mlflow_oidc_auth.utils import permissions
 
     monkeypatch.setattr(permissions, "store", store)
+    # The grant context (issue #460) reads the store through ``grant_context._store``.
+    monkeypatch.setattr("mlflow_oidc_auth.utils.grant_context._store", lambda: store)
 
     def resolve(name):
         permissions.flush_permission_cache()

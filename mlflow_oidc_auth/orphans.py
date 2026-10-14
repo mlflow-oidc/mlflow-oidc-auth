@@ -125,9 +125,9 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, re
 
     try:
         if workspace:
-            from mlflow_oidc_auth.utils.workspace_cache import _match_workspace_regex_permission
+            from mlflow_oidc_auth.utils.grant_context import match_workspace_pattern
 
-            permission = _match_workspace_regex_permission(rules, subject)
+            permission = match_workspace_pattern(rules, subject)
             return permission.name if permission is not None else None
         from mlflow_oidc_auth.utils.permissions import _match_regex_permission
 
