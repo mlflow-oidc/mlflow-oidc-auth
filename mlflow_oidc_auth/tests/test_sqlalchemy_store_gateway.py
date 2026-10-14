@@ -157,6 +157,19 @@ class TestGatewayModelDefinitionPermissions:
             repo._wipe_in.assert_called_once_with(session, "new-m")
             repo._rename_in.assert_called_once_with(session, "old-m", "new-m")
 
+    def test_rename_moves_only_the_recorded_rows(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        session = _one_session(store_with_mocked_repos)
+        store_with_mocked_repos.rename_gateway_model_definition_permissions("old-m", "new-m", [[[1, 7]], [[2, 9]]])
+        store_with_mocked_repos.gateway_model_definition_repo._rename_ids_in.assert_called_once_with(session, [[1, 7]], "old-m", "new-m")
+        store_with_mocked_repos.gateway_model_definition_group_repo._rename_ids_in.assert_called_once_with(session, [[2, 9]], "old-m", "new-m")
+        store_with_mocked_repos.gateway_model_definition_repo._rename_in.assert_not_called()
+
+    def test_wipe_runs_in_one_session(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
+        session = _one_session(store_with_mocked_repos)
+        store_with_mocked_repos.wipe_gateway_model_definition_permissions("m-1")
+        store_with_mocked_repos.gateway_model_definition_repo._wipe_in.assert_called_once_with(session, "m-1")
+        store_with_mocked_repos.gateway_model_definition_group_repo._wipe_in.assert_called_once_with(session, "m-1")
+
     def test_grant_creator_clears_the_name_and_grants_manage_in_one_session(self, store_with_mocked_repos: SqlAlchemyStore) -> None:
         session = _one_session(store_with_mocked_repos)
         store_with_mocked_repos.grant_creator_gateway_model_definition_permission("m-1", "alice")

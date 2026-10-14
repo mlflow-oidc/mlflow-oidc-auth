@@ -608,7 +608,7 @@ def _set_can_manage_gateway_endpoint_permission(resp: Response):
     store.grant_creator_gateway_endpoint_permission(name, username)
 
 
-def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, response_class, response_field: str, rename) -> None:
+def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, ids_attr: str, response_class, response_field: str, rename) -> None:
     """Move a renamed gateway resource's user and group permissions to its new name.
 
     The before-request hook stashes the current name in ``flask.g`` (it is resolved from the
@@ -617,9 +617,10 @@ def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, 
     Parameters:
         resp: MLflow's successful update response.
         old_name_attr: The ``flask.g`` attribute holding the stashed name.
+        ids_attr: The ``flask.g`` attribute holding the ids of the rows to move, recorded with the name.
         response_class: The update message whose ``Response`` to parse.
         response_field: The response field holding the updated resource.
-        rename: The store method moving the permissions, called as ``rename(old_name, new_name)``.
+        rename: The store method moving the permissions, called as ``rename(old_name, new_name, ids)``.
     """
     old_name = getattr(g, old_name_attr, None)
     if not old_name:
@@ -633,9 +634,10 @@ def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, 
         return
 
     try:
-        rename(old_name, new_name)
-    except Exception:
-        get_logger().warning("Failed to move permissions of a renamed gateway %s", response_field.replace("_", " "))
+        rename(old_name, new_name, getattr(g, ids_attr, None))
+    except Exception as exc:
+        # MLflow has already committed the rename; the permissions stayed on the old name.
+        get_logger().error("Failed to move permissions of a renamed gateway %s (%s)", response_field.replace("_", " "), type(exc).__name__)
 
 
 def _rename_gateway_endpoint_permission(resp: Response):
@@ -643,6 +645,7 @@ def _rename_gateway_endpoint_permission(resp: Response):
     _rename_gateway_resource_permissions(
         resp,
         old_name_attr="_updating_gateway_endpoint_old_name",
+        ids_attr="_updating_gateway_endpoint_permission_ids",
         response_class=UpdateGatewayEndpoint,
         response_field="endpoint",
         rename=store.rename_gateway_endpoint_permissions,
@@ -785,6 +788,7 @@ def _rename_gateway_model_definition_permission(resp: Response):
     _rename_gateway_resource_permissions(
         resp,
         old_name_attr="_updating_gateway_model_definition_old_name",
+        ids_attr="_updating_gateway_model_definition_permission_ids",
         response_class=UpdateGatewayModelDefinition,
         response_field="model_definition",
         rename=store.rename_gateway_model_definition_permissions,

@@ -271,16 +271,37 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
             setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 
+    def _ids_in(self, session: Session, resource_id: str) -> list[list[int]]:
+        """``[id, user_id]`` of each row stored under ``resource_id`` in the request's grant workspace.
+
+        The principal is recorded with the id because a database may reuse the id of a deleted row.
+        """
+        query = session.query(self.model_class.id, self.model_class.user_id).filter(self._resource_is(resource_id))
+        return [[row_id, principal] for row_id, principal in query.all()]
+
+    def _rename_ids_in(self, session: Session, ids: list[list[int]], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, user_id]`` pairs, still under ``old_name``) to ``new_name``."""
+        recorded = {(row_id, principal) for row_id, principal in ids or []}
+        if not recorded:
+            return
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row_id for row_id, _ in recorded]), self._resource_is(old_name))
+        for perm in query.all():
+            if (perm.id, perm.user_id) in recorded:
+                setattr(perm, self.resource_id_attr, new_name)
+        session.flush()
+
     def wipe(self, resource_id: str) -> None:
         """Delete all permissions for a resource."""
         with self._Session(read_only=False) as session:
             self._wipe_in(session, resource_id)
 
-    def _wipe_in(self, session: Session, resource_id: str) -> None:
-        """``wipe`` inside the caller's session, so it can share a transaction."""
-        for perm in session.query(self.model_class).filter(self._resource_is(resource_id)).all():
+    def _wipe_in(self, session: Session, resource_id: str) -> int:
+        """``wipe`` inside the caller's session, so it can share a transaction. Returns the rows removed."""
+        perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
+        for perm in perms:
             session.delete(perm)
         session.flush()
+        return len(perms)
 
 
 class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT]):
@@ -550,16 +571,37 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 
+    def _ids_in(self, session: Session, resource_id: str) -> list[list[int]]:
+        """``[id, group_id]`` of each row stored under ``resource_id`` in the request's grant workspace.
+
+        The principal is recorded with the id because a database may reuse the id of a deleted row.
+        """
+        query = session.query(self.model_class.id, self.model_class.group_id).filter(self._resource_is(resource_id))
+        return [[row_id, principal] for row_id, principal in query.all()]
+
+    def _rename_ids_in(self, session: Session, ids: list[list[int]], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, group_id]`` pairs, still under ``old_name``) to ``new_name``."""
+        recorded = {(row_id, principal) for row_id, principal in ids or []}
+        if not recorded:
+            return
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row_id for row_id, _ in recorded]), self._resource_is(old_name))
+        for perm in query.all():
+            if (perm.id, perm.group_id) in recorded:
+                setattr(perm, self.resource_id_attr, new_name)
+        session.flush()
+
     def wipe(self, resource_id: str) -> None:
         """Delete all group permissions for a resource."""
         with self._Session(read_only=False) as session:
             self._wipe_in(session, resource_id)
 
-    def _wipe_in(self, session: Session, resource_id: str) -> None:
-        """``wipe`` inside the caller's session, so it can share a transaction."""
-        for perm in session.query(self.model_class).filter(self._resource_is(resource_id)).all():
+    def _wipe_in(self, session: Session, resource_id: str) -> int:
+        """``wipe`` inside the caller's session, so it can share a transaction. Returns the rows removed."""
+        perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
+        for perm in perms:
             session.delete(perm)
         session.flush()
+        return len(perms)
 
 
 def _pattern_workspace_fields(model_class) -> dict:

@@ -1200,7 +1200,7 @@ def test_rename_gateway_endpoint_permission(mock_response, mock_store):
 
         g._updating_gateway_endpoint_old_name = "old-endpoint-name"
         _rename_gateway_endpoint_permission(mock_response)
-        mock_store.rename_gateway_endpoint_permissions.assert_called_once_with("old-endpoint-name", "new-endpoint-name")
+        mock_store.rename_gateway_endpoint_permissions.assert_called_once_with("old-endpoint-name", "new-endpoint-name", None)
 
 
 def test_rename_gateway_endpoint_permission_same_name(mock_response, mock_store):
@@ -1255,8 +1255,9 @@ def test_rename_gateway_model_definition_permission(mock_response, mock_store):
         from flask import g
 
         g._updating_gateway_model_definition_old_name = "old-model-def"
+        g._updating_gateway_model_definition_permission_ids = [[1], [2]]
         _rename_gateway_model_definition_permission(mock_response)
-        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def")
+        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def", [[1], [2]])
 
 
 def test_rename_gateway_model_definition_permission_same_name(mock_response, mock_store):
@@ -1306,7 +1307,7 @@ def test_successful_model_definition_update_moves_grants(mock_store):
 
         g._updating_gateway_model_definition_old_name = "old-model-def"
         after_request_hook(response)
-        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def")
+        mock_store.rename_gateway_model_definition_permissions.assert_called_once_with("old-model-def", "new-model-def", None)
 
 
 def test_failed_model_definition_update_keeps_grants(mock_store):

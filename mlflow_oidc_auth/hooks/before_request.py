@@ -1194,18 +1194,18 @@ def _stash_gateway_context(validator) -> None:
             if name:
                 if validator is not validate_can_delete_gateway_endpoint:
                     g._updating_gateway_endpoint_old_name = name
+                    # The rows to move are fixed now: once MLflow releases the name, a new
+                    # endpoint may take it, and its creator's grant must not move.
+                    g._updating_gateway_endpoint_permission_ids = store.gateway_endpoint_permission_ids(name)
                 else:
                     g._deleting_gateway_endpoint_name = name
         return
 
     # --- Gateway secret: delete ---
     if validator is validate_can_delete_gateway_secret:
-        data = request.get_json(force=True, silent=True) or {}
-        secret_name = data.get("secret_name")
-        if not secret_name:
-            secret_id = data.get("secret_id")
-            if secret_id:
-                secret_name = _resolve_secret_name_from_id(secret_id)
+        # DeleteGatewaySecret carries only secret_id: resolve the name of the secret MLflow deletes.
+        secret_id = _safe_param("secret_id")
+        secret_name = _resolve_secret_name_from_id(secret_id) if secret_id else None
         if secret_name:
             g._deleting_gateway_secret_name = secret_name
         return
@@ -1218,16 +1218,15 @@ def _stash_gateway_context(validator) -> None:
             name = _resolve_model_definition_name_from_id(model_definition_id)
             if name:
                 g._updating_gateway_model_definition_old_name = name
+                g._updating_gateway_model_definition_permission_ids = store.gateway_model_definition_permission_ids(name)
         return
 
     # --- Gateway model definition: delete ---
     if validator is validate_can_delete_gateway_model_definition:
-        data = request.get_json(force=True, silent=True) or {}
-        name = data.get("name")
-        if not name:
-            model_definition_id = data.get("model_definition_id")
-            if model_definition_id:
-                name = _resolve_model_definition_name_from_id(model_definition_id)
+        # DeleteGatewayModelDefinition carries only model_definition_id: resolve the name of the
+        # model definition MLflow deletes.
+        model_definition_id = _safe_param("model_definition_id")
+        name = _resolve_model_definition_name_from_id(model_definition_id) if model_definition_id else None
         if name:
             g._deleting_gateway_model_definition_name = name
         return
