@@ -582,10 +582,10 @@ class AppConfig:
 
         The creation validators require EDIT+ on the resource NAME, resolved from name
         regex and group-regex rules with a workspace fallback. When workspaces are off and
-        no regex matches, that resolution lands on DEFAULT_MLFLOW_PERMISSION — which ships
-        as MANAGE, and MANAGE grants can_update. So enabling the flag on a default install
-        denies nothing at all: every user can still create every experiment and registered
-        model, exactly as before.
+        no regex matches, that resolution lands on DEFAULT_MLFLOW_PERMISSION. It ships as
+        NO_PERMISSIONS (since v7.6.0), but when it is set to EDIT or MANAGE, both of which
+        grant can_update, enabling the flag denies nothing at all: every user can still create
+        every experiment and registered model, exactly as before.
 
         A flag that silently does nothing is worse than no flag, because operators
         reasonably read "RESTRICT_RESOURCE_CREATION=true" as "creation is restricted" and

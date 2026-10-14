@@ -737,8 +737,9 @@ for deployments behind a reverse proxy.
   model's experiment; creating or updating a gateway model definition needs USE on its secret;
   creating or updating a gateway endpoint, or attaching a model to one, needs USE on every model
   definition it routes to, and EDIT on the experiment named in `experiment_id`. Admins are
-  unaffected. With `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants; with
-  the default `NO_PERMISSIONS`, grant them before upgrading. See
+  unaffected. With `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants. With
+  the default `NO_PERMISSIONS` (which also applies to a deployment upgraded from before v7.6.0
+  that never set the variable), grant them before upgrading. See
   [Resources a request references](permissions#resources-a-request-references).
 - **Model version sources are checked.** A model version whose `source` is a storage location
   (`s3://`, `gs://`, a local path, a URL other than the artifact proxy) must lie under the
@@ -889,7 +890,7 @@ SESSION_COOKIE_MAX_AGE_SECONDS=0
 SESSION_COOKIE_SAMESITE=strict
 SESSION_COOKIE_SECURE=true
 
-# Disable API docs
+# API docs stay off (the default); shown here so it is explicit
 ENABLE_API_DOCS=false
 
 # Auto-redirect to OIDC login

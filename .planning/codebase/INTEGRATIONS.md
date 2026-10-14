@@ -253,7 +253,7 @@
 - `SECRET_KEY` - Session signing key (auto-generated if not set)
 - `OIDC_GROUP_NAME` - Allowed OIDC groups (default: `mlflow`)
 - `OIDC_ADMIN_GROUP_NAME` - Admin group name (default: `mlflow-admin`)
-- `DEFAULT_MLFLOW_PERMISSION` - Default permission level (default: `MANAGE`)
+- `DEFAULT_MLFLOW_PERMISSION` - Default permission level (default: `NO_PERMISSIONS` since v7.6.0)
 - `OIDC_SCOPE` - OIDC scopes (default: `openid,email,profile`)
 - `OIDC_GROUPS_ATTRIBUTE` - Token attribute for groups (default: `groups`)
 
