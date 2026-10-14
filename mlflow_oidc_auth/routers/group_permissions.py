@@ -53,7 +53,7 @@ from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validat
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
-from ._permission_routes import ALL_OPS, CALLER, GROUP, exact_routes, pattern_fields, regex_routes
+from ._permission_routes import ALL_OPS, CALLER, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -706,280 +706,49 @@ async def get_group_scorers(
         raise HTTPException(status_code=500, detail="Failed to retrieve group scorer permissions")
 
 
-@group_permissions_router.post(
+exact_routes(
+    group_permissions_router,
+    GROUP,
+    "scorer",
+    "group scorer permissions",
     GROUP_SCORER_PERMISSION_DETAIL,
-    status_code=201,
-    summary="Create scorer permission for a group",
-    description="Creates a new permission for a group to access a specific scorer.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer permissions"],
+    ops=("create", "update", "delete"),
+    keys=SCORER_KEYS,
+    auth=(("current_username", check_experiment_manage_permission),),
+    body=ScorerPermission,
+    call={
+        "create": lambda a: store.create_group_scorer_permission(
+            group_name=a.group_name, experiment_id=str(a.experiment_id), scorer_name=str(a.scorer_name), permission=str(a.permission_data.permission)
+        ),
+        "update": lambda a: store.update_group_scorer_permission(
+            group_name=a.group_name, experiment_id=str(a.experiment_id), scorer_name=str(a.scorer_name), permission=str(a.permission_data.permission)
+        ),
+        "delete": lambda a: store.delete_group_scorer_permission(a.group_name, str(a.experiment_id), str(a.scorer_name)),
+    },
+    on="scorer {scorer_name}",
 )
-async def create_group_scorer_permission(
-    group_name: str = Path(..., description="The group name to grant scorer permission to"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    permission_data: ScorerPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    try:
-        store.create_group_scorer_permission(
-            group_name=group_name,
-            experiment_id=str(experiment_id),
-            scorer_name=str(scorer_name),
-            permission=str(permission_data.permission),
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="group_scorer_permission",
-            resource_id=scorer_name,
-            detail={"group_name": group_name, "experiment_id": experiment_id, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Scorer permission created for group {group_name} on scorer {scorer_name}")
-    except Exception as e:
-        logger.error(f"Error creating group scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create group scorer permission")
 
-
-@group_permissions_router.patch(
-    GROUP_SCORER_PERMISSION_DETAIL,
-    summary="Update scorer permission for a group",
-    description="Updates the permission for a group on a specific scorer.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer permissions"],
-)
-async def update_group_scorer_permission(
-    group_name: str = Path(..., description="The group name to update scorer permission for"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    permission_data: ScorerPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    try:
-        store.update_group_scorer_permission(
-            group_name=group_name,
-            experiment_id=str(experiment_id),
-            scorer_name=str(scorer_name),
-            permission=str(permission_data.permission),
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="group_scorer_permission",
-            resource_id=scorer_name,
-            detail={"group_name": group_name, "experiment_id": experiment_id, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Scorer permission updated for group {group_name} on scorer {scorer_name}")
-    except Exception as e:
-        logger.error(f"Error updating group scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update group scorer permission")
-
-
-@group_permissions_router.delete(
-    GROUP_SCORER_PERMISSION_DETAIL,
-    summary="Delete scorer permission for a group",
-    description="Deletes the permission for a group on a specific scorer.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer permissions"],
-)
-async def delete_group_scorer_permission(
-    group_name: str = Path(..., description="The group name to delete scorer permission for"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    try:
-        store.delete_group_scorer_permission(group_name, str(experiment_id), str(scorer_name))
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="group_scorer_permission",
-            resource_id=scorer_name,
-            detail={"group_name": group_name, "experiment_id": experiment_id},
-        )
-        return StatusMessageResponse(message=f"Scorer permission deleted for group {group_name} on scorer {scorer_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete group scorer permission")
-
-
-@group_permissions_router.get(
+regex_routes(
+    group_permissions_router,
+    GROUP,
+    "scorer",
+    "group scorer pattern permissions",
     GROUP_SCORER_PATTERN_PERMISSIONS,
-    summary="Get group scorer pattern permissions",
-    description="Retrieves all scorer regex pattern permissions for a specific group.",
-    response_model=List[GroupScorerRegexPermissionItem],
-    tags=["group scorer pattern permissions"],
-)
-async def get_group_scorer_pattern_permissions(
-    group_name: str = Path(..., description="The group name to get scorer pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupScorerRegexPermissionItem]:
-    try:
-        patterns = store.list_group_scorer_regex_permissions(group_name)
-        items: List[GroupScorerRegexPermissionItem] = []
-        for pattern in patterns:
-            payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-            if isinstance(payload, dict):
-                items.append(
-                    GroupScorerRegexPermissionItem(
-                        id=payload["id"],
-                        regex=payload["regex"],
-                        priority=payload["priority"],
-                        group_id=payload.get("group_id"),
-                        permission=payload["permission"],
-                        workspace=payload.get("workspace"),
-                    )
-                )
-            else:
-                items.append(
-                    GroupScorerRegexPermissionItem(
-                        id=pattern.id,
-                        regex=pattern.regex,
-                        priority=pattern.priority,
-                        group_id=getattr(pattern, "group_id", None),
-                        permission=pattern.permission,
-                        workspace=pattern_workspace_of(pattern),
-                    )
-                )
-
-        return items
-    except Exception as e:
-        logger.error(f"Error getting group scorer pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get group scorer pattern permissions")
-
-
-@group_permissions_router.post(
-    GROUP_SCORER_PATTERN_PERMISSIONS,
-    status_code=201,
-    summary="Create scorer pattern permission for a group",
-    description="Creates a new regex pattern permission for a group to access scorers.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer pattern permissions"],
-)
-async def create_group_scorer_pattern_permission(
-    group_name: str = Path(..., description="The group name to create scorer pattern permission for"),
-    pattern_data: ScorerRegexCreate = Body(..., description="The pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    try:
-        store.create_group_scorer_regex_permission(
-            group_name=group_name,
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_scorer_regex_permission",
-            resource_id=group_name,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Scorer pattern permission created for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error creating group scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create group scorer pattern permission")
-
-
-@group_permissions_router.get(
     GROUP_SCORER_PATTERN_PERMISSION_DETAIL,
-    summary="Get specific scorer pattern permission for a group",
-    description="Retrieves a specific scorer regex pattern permission for a group.",
-    response_model=GroupScorerRegexPermissionItem,
-    tags=["group scorer pattern permissions"],
+    specific=ALL_OPS,
+    plural="scorers",
+    group_failures=True,
+    body=ScorerRegexCreate,
+    item=_group_pattern(GroupScorerRegexPermissionItem),
+    item_model=GroupScorerRegexPermissionItem,
+    call={
+        "list": lambda a: store.list_group_scorer_regex_permissions(a.group_name),
+        "create": lambda a: store.create_group_scorer_regex_permission(group_name=a.group_name, **pattern_fields(a)),
+        "get": lambda a: store.get_group_scorer_regex_permission(a.group_name, a.id),
+        "update": lambda a: store.update_group_scorer_regex_permission(id=a.id, group_name=a.group_name, **pattern_fields(a)),
+        "delete": lambda a: store.delete_group_scorer_regex_permission(a.id, a.group_name),
+    },
 )
-async def get_group_scorer_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupScorerRegexPermissionItem:
-    try:
-        pattern = store.get_group_scorer_regex_permission(group_name, id)
-        payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-        if isinstance(payload, dict):
-            item = GroupScorerRegexPermissionItem(
-                id=payload["id"],
-                regex=payload["regex"],
-                priority=payload["priority"],
-                group_id=payload.get("group_id"),
-                permission=payload["permission"],
-                workspace=payload.get("workspace"),
-            )
-        else:
-            item = GroupScorerRegexPermissionItem(
-                id=pattern.id,
-                regex=pattern.regex,
-                priority=pattern.priority,
-                group_id=getattr(pattern, "group_id", None),
-                permission=pattern.permission,
-                workspace=pattern_workspace_of(pattern),
-            )
-
-        return item
-    except Exception as e:
-        logger.error(f"Error getting group scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get group scorer pattern permission")
-
-
-@group_permissions_router.patch(
-    GROUP_SCORER_PATTERN_PERMISSION_DETAIL,
-    summary="Update scorer pattern permission for a group",
-    description="Updates a specific scorer regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer pattern permissions"],
-)
-async def update_group_scorer_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    pattern_data: ScorerRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    try:
-        store.update_group_scorer_regex_permission(
-            id=id,
-            group_name=group_name,
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_scorer_regex_permission",
-            resource_id=group_name,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Scorer pattern permission updated for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error updating group scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update group scorer pattern permission")
-
-
-@group_permissions_router.delete(
-    GROUP_SCORER_PATTERN_PERMISSION_DETAIL,
-    summary="Delete scorer pattern permission for a group",
-    description="Deletes a specific scorer regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group scorer pattern permissions"],
-)
-async def delete_group_scorer_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    try:
-        store.delete_group_scorer_regex_permission(id, group_name)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_scorer_regex_permission",
-            resource_id=group_name,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Scorer pattern permission deleted for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete group scorer pattern permission")
 
 
 # ========================================================================================

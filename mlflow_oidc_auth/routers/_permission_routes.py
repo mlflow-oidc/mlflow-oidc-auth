@@ -54,6 +54,9 @@ CALLER: Auth = (("current_username", get_username), ("is_admin", get_is_admin))
 
 ALL_OPS = ("list", "create", "get", "update", "delete")
 
+SCORER_KEYS = (("experiment_id", "The experiment ID owning the scorer"), ("scorer_name", "The scorer name"))
+"""Path parameters naming a scorer, for :func:`exact_routes`."""
+
 BAD_PATTERN_ID = "Invalid pattern ID format. Expected an integer."
 
 _METHOD = {"list": "GET", "create": "POST", "get": "GET", "update": "PATCH", "delete": "DELETE"}

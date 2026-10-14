@@ -77,7 +77,7 @@ from mlflow_oidc_auth.utils.permissions import (
     effective_gateway_secret_permission,
 )
 
-from ._permission_routes import USER, exact_routes, pattern_fields, regex_names, regex_routes
+from ._permission_routes import SCORER_KEYS, USER, exact_routes, pattern_fields, regex_names, regex_routes
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
@@ -474,280 +474,53 @@ async def get_user_scorer_permissions(
         raise HTTPException(status_code=500, detail="Failed to retrieve scorer permissions")
 
 
-@user_permissions_router.post(
+exact_routes(
+    user_permissions_router,
+    USER,
+    "scorer",
+    "user scorer permissions",
     USER_SCORER_PERMISSION_DETAIL,
-    status_code=201,
-    response_model=ScorerPermissionResponse,
-    summary="Create scorer permission for a user",
-    description="Creates a new permission for a user to access a specific scorer.",
-    tags=["user scorer permissions"],
+    keys=SCORER_KEYS,
+    auth=(("current_username", check_experiment_manage_permission),),
+    body=ScorerPermission,
+    call={
+        "create": lambda a: store.create_scorer_permission(
+            experiment_id=str(a.experiment_id), scorer_name=str(a.scorer_name), username=str(a.username), permission=str(a.permission_data.permission)
+        ),
+        "get": lambda a: store.get_scorer_permission(str(a.experiment_id), str(a.scorer_name), str(a.username)),
+        "update": lambda a: store.update_scorer_permission(
+            experiment_id=str(a.experiment_id), scorer_name=str(a.scorer_name), username=str(a.username), permission=str(a.permission_data.permission)
+        ),
+        "delete": lambda a: store.delete_scorer_permission(str(a.experiment_id), str(a.scorer_name), str(a.username)),
+    },
+    models={"create": ScorerPermissionResponse, "get": ScorerPermissionResponse},
+    respond={op: lambda a, sp: ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json())) for op in ("create", "get")},
+    conflicts=True,
 )
-async def create_user_scorer_permission(
-    username: str = Path(..., description="The username to grant scorer permission to"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    permission_data: ScorerPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> ScorerPermissionResponse:
-    """Create a scorer permission for a user.
 
-    We require MANAGE on the owning experiment to grant/revoke scorer permissions.
-    """
-    try:
-        sp = store.create_scorer_permission(
-            experiment_id=str(experiment_id),
-            scorer_name=str(scorer_name),
-            username=str(username),
-            permission=str(permission_data.permission),
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="scorer_permission",
-            resource_id=scorer_name,
-            detail={"username": username, "experiment_id": experiment_id, "permission": permission_data.permission},
-        )
-        return ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json()))
-    except MlflowException as e:
-        logger.error(f"Error creating scorer permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
-            raise HTTPException(status_code=409, detail="Scorer permission already exists")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error creating scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create scorer permission")
-
-
-@user_permissions_router.get(
-    USER_SCORER_PERMISSION_DETAIL,
-    response_model=ScorerPermissionResponse,
-    summary="Get scorer permission for a user",
-    description="Retrieves the permission for a user on a specific scorer.",
-    tags=["user scorer permissions"],
-)
-async def get_user_scorer_permission(
-    username: str = Path(..., description="The username to get scorer permission for"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    _: None = Depends(check_experiment_manage_permission),
-) -> ScorerPermissionResponse:
-    try:
-        sp = store.get_scorer_permission(str(experiment_id), str(scorer_name), str(username))
-        return ScorerPermissionResponse(scorer_permission=ScorerPermissionRecord(**sp.to_json()))
-    except Exception as e:
-        logger.error(f"Error getting scorer permission: {str(e)}")
-        raise HTTPException(status_code=404, detail="Scorer permission not found")
-
-
-@user_permissions_router.patch(
-    USER_SCORER_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Update scorer permission for a user",
-    description="Updates the permission for a user on a specific scorer.",
-    tags=["user scorer permissions"],
-)
-async def update_user_scorer_permission(
-    username: str = Path(..., description="The username to update scorer permission for"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    permission_data: ScorerPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    try:
-        store.update_scorer_permission(
-            experiment_id=str(experiment_id),
-            scorer_name=str(scorer_name),
-            username=str(username),
-            permission=str(permission_data.permission),
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="scorer_permission",
-            resource_id=scorer_name,
-            detail={"username": username, "experiment_id": experiment_id, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Scorer permission updated for {username} on {scorer_name}")
-    except MlflowException as e:
-        logger.error(f"Error updating scorer permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
-            raise HTTPException(status_code=404, detail="Scorer permission does not exist")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error updating scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update scorer permission")
-
-
-@user_permissions_router.delete(
-    USER_SCORER_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete scorer permission for a user",
-    description="Deletes the permission for a user on a specific scorer.",
-    tags=["user scorer permissions"],
-)
-async def delete_user_scorer_permission(
-    username: str = Path(..., description="The username to delete scorer permission for"),
-    experiment_id: str = Path(..., description="The experiment ID owning the scorer"),
-    scorer_name: str = Path(..., description="The scorer name"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    try:
-        store.delete_scorer_permission(str(experiment_id), str(scorer_name), str(username))
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="scorer_permission",
-            resource_id=scorer_name,
-            detail={"username": username, "experiment_id": experiment_id},
-        )
-        return StatusMessageResponse(message=f"Scorer permission deleted for {username} on {scorer_name}")
-    except Exception as e:
-        logger.error(f"Error deleting scorer permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete scorer permission")
-
-
-@user_permissions_router.get(
+regex_routes(
+    user_permissions_router,
+    USER,
+    "scorer",
+    "user scorer pattern permissions",
     USER_SCORER_PATTERN_PERMISSIONS,
-    response_model=List[ScorerRegexPermissionRecord],
-    summary="List scorer pattern permissions for a user",
-    description="Retrieves a list of regex-based scorer permission patterns for the specified user.",
-    tags=["user scorer pattern permissions"],
-)
-async def get_user_scorer_regex_permissions(
-    username: str = Path(..., description="The username to list scorer pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[ScorerRegexPermissionRecord]:
-    try:
-        perms = store.list_scorer_regex_permissions(username=username)
-        return [ScorerRegexPermissionRecord(**p.to_json()) for p in perms]
-    except Exception as e:
-        logger.error(f"Error listing scorer pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve scorer pattern permissions")
-
-
-@user_permissions_router.post(
-    USER_SCORER_PATTERN_PERMISSIONS,
-    status_code=201,
-    response_model=ScorerRegexPermissionResponse,
-    summary="Create scorer pattern permission for a user",
-    description="Creates a new regex-based permission pattern for scorer access.",
-    tags=["user scorer pattern permissions"],
-)
-async def create_user_scorer_regex_permission(
-    username: str = Path(..., description="The username to create scorer pattern permission for"),
-    pattern_data: ScorerRegexCreate = Body(..., description="The regex pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> ScorerRegexPermissionResponse:
-    try:
-        perm = store.create_scorer_regex_permission(
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="scorer_regex_permission",
-            resource_id=username,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
-    except MlflowException as e:
-        logger.error(f"Error creating scorer pattern permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
-            raise HTTPException(status_code=409, detail="Scorer pattern permission already exists")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error creating scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create scorer pattern permission")
-
-
-@user_permissions_router.get(
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
-    response_model=ScorerRegexPermissionResponse,
-    summary="Get specific scorer pattern permission for a user",
-    description="Retrieves a specific scorer regex pattern permission for a user.",
-    tags=["user scorer pattern permissions"],
+    names={"list": "get_user_scorer_regex_permissions", "create": "create_user_scorer_regex_permission"},
+    specific=("get", "update", "delete"),
+    conflicts=True,
+    body=ScorerRegexCreate,
+    item=lambda p: ScorerRegexPermissionRecord(**p.to_json()),
+    item_model=ScorerRegexPermissionRecord,
+    models={op: ScorerRegexPermissionResponse for op in ("create", "get", "update")},
+    respond={op: lambda a, perm: ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json())) for op in ("create", "get", "update")},
+    call={
+        "list": lambda a: store.list_scorer_regex_permissions(username=a.username),
+        "create": lambda a: store.create_scorer_regex_permission(**pattern_fields(a), username=a.username),
+        "get": lambda a: store.get_scorer_regex_permission(username=a.username, id=a.id),
+        "update": lambda a: store.update_scorer_regex_permission(id=a.id, **pattern_fields(a), username=a.username),
+        "delete": lambda a: store.delete_scorer_regex_permission(id=a.id, username=a.username),
+    },
 )
-async def get_user_scorer_pattern_permission(
-    username: str = Path(..., description="The username"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> ScorerRegexPermissionResponse:
-    try:
-        perm = store.get_scorer_regex_permission(username=username, id=id)
-        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
-    except Exception as e:
-        logger.error(f"Error getting scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail="Scorer pattern permission not found")
-
-
-@user_permissions_router.patch(
-    USER_SCORER_PATTERN_PERMISSION_DETAIL,
-    response_model=ScorerRegexPermissionResponse,
-    summary="Update scorer pattern permission for a user",
-    description="Updates a specific scorer regex pattern permission for a user.",
-    tags=["user scorer pattern permissions"],
-)
-async def update_user_scorer_pattern_permission(
-    username: str = Path(..., description="The username"),
-    id: int = Path(..., description="The pattern ID"),
-    pattern_data: ScorerRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> ScorerRegexPermissionResponse:
-    try:
-        perm = store.update_scorer_regex_permission(
-            id=id,
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="scorer_regex_permission",
-            resource_id=username,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return ScorerRegexPermissionResponse(pattern=ScorerRegexPermissionRecord(**perm.to_json()))
-    except Exception as e:
-        logger.error(f"Error updating scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update scorer pattern permission")
-
-
-@user_permissions_router.delete(
-    USER_SCORER_PATTERN_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete scorer pattern permission for a user",
-    description="Deletes a specific scorer regex pattern permission for a user.",
-    tags=["user scorer pattern permissions"],
-)
-async def delete_user_scorer_pattern_permission(
-    username: str = Path(..., description="The username"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    try:
-        store.delete_scorer_regex_permission(id=id, username=username)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="scorer_regex_permission",
-            resource_id=username,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Scorer pattern permission deleted for {username}")
-    except Exception as e:
-        logger.error(f"Error deleting scorer pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete scorer pattern permission")
 
 
 regex_routes(
