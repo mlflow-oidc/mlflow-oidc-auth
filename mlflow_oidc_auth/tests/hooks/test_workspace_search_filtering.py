@@ -122,7 +122,11 @@ class TestFilterSearchExperimentsWorkspace:
     """Tests for workspace filtering in _filter_search_experiments (WSSEC-01)."""
 
     def test_removes_experiments_from_inaccessible_workspaces(self):
-        """Experiments from inaccessible workspaces are removed on initial page."""
+        """An experiment search in an inaccessible workspace returns nothing (issue #456).
+
+        MLflow scopes the search to the request's workspace, so one check on that workspace
+        covers every row; no per-row ``get_experiment`` and no per-row workspace field.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_experiments
 
         mock_response = MagicMock()
@@ -200,15 +204,20 @@ class TestFilterSearchExperimentsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="denied-ws",
                 ),
             ):
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_experiments(mock_response)
 
-                # Only exp_1 should remain
-                assert len(mock_response_message.experiments) == 1
-                assert mock_response_message.experiments[0].experiment_id == "exp_1"
+                assert len(mock_response_message.experiments) == 0
+                assert mock_response_message.next_page_token == ""
+                mock_access.assert_called_once_with("user1", "denied-ws")
                 tracking_store.get_experiment.assert_not_called()
+                tracking_store.search_experiments.assert_not_called()
 
     def test_keeps_experiments_from_accessible_workspaces(self):
         """Experiments from accessible workspaces are kept on initial page."""
@@ -287,7 +296,11 @@ class TestFilterSearchExperimentsWorkspace:
                 assert len(mock_response_message.experiments) == 2
 
     def test_refetch_path_applies_workspace_filtering(self):
-        """Refetch path filters out entities from inaccessible workspaces."""
+        """The top-up path is covered by the one search-scope check (issue #456).
+
+        Every refetched row lives in the workspace the search was scoped to; no row's own
+        ``workspace`` attribute is consulted.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_experiments
 
         mock_response = MagicMock()
@@ -304,7 +317,7 @@ class TestFilterSearchExperimentsWorkspace:
         for i in range(10):
             e = MagicMock()
             e.experiment_id = f"exp_{i}"
-            e.workspace = "allowed-ws" if i % 2 == 0 else "denied-ws"
+            e.workspace = "allowed-ws"
             e.to_proto.return_value = MagicMock(experiment_id=f"exp_{i}")
             refetched_entities.append(e)
 
@@ -359,6 +372,10 @@ class TestFilterSearchExperimentsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="allowed-ws",
                 ),
                 patch(
                     "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token",
@@ -372,8 +389,8 @@ class TestFilterSearchExperimentsWorkspace:
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_experiments(mock_response)
 
-                # Only 5 of 10 should pass (even-indexed with allowed-ws)
-                assert len(experiments_list) == 5
+                assert len(experiments_list) == 10
+                assert {c.args for c in mock_access.call_args_list} == {("user1", "allowed-ws")}
 
     def test_admin_bypasses_workspace_filtering(self):
         """Admin users see all experiments regardless of workspace (WSSEC-06)."""
@@ -1250,9 +1267,8 @@ class TestFirstPageWorkspaceWithoutLookups:
         assert ids == [], "rows from a denied workspace were returned"
         assert token == ""
         assert checked and set(checked) == {"ws-a"}
-        if kind != "experiments":
-            # One scope check covers the top-up half too: nothing more is fetched (issue #456).
-            assert store.calls == 1, "top-up pages were fetched for a denied workspace"
+        # One scope check covers the top-up half too: nothing more is fetched (issue #456).
+        assert store.calls == 1, "top-up pages were fetched for a denied workspace"
 
     def test_model_version_rows_without_workspace_are_not_waved_through(self):
         """A top-up row missing ``workspace`` is judged by the search scope, never treated as pre-workspace."""

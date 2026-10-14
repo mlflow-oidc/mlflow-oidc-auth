@@ -580,3 +580,79 @@ class TestSetUserGroupsRealStore:
         real_store.set_user_groups("olga@example.com", ["readers"])
 
         assert perms._get_permission_cache().get(key) is not None, "an unchanged login sync flushed the cache"
+
+
+WS_INVALIDATE_PATH = "mlflow_oidc_auth.utils.workspace_cache.invalidate_user_workspace_entries"
+
+
+class TestMembershipWrapperWorkspaceInvalidation:
+    """One membership wrapper; the sync skips BOTH invalidations when nothing changed (PR #464 review)."""
+
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_unchanged_skips_workspace_invalidation(self, mock_flush, mock_ws, mock_store):
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome()
+        mock_store.set_user_groups("user1", ["group1"])
+        mock_flush.assert_not_called()
+        mock_ws.assert_not_called()
+
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_changed_invalidates_both_once(self, mock_flush, mock_ws, mock_store):
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome(removed=[("user1", "group1")])
+        mock_store.set_user_groups("user1", [])
+        mock_flush.assert_called_once()
+        mock_ws.assert_called_once_with("user1")
+
+    @pytest.mark.parametrize("method, args", [("add_user_to_group", ("user1", "group1")), ("remove_user_from_group", ("user1", "group1"))])
+    @patch(WS_INVALIDATE_PATH)
+    @patch(FLUSH_PATCH_PATH)
+    def test_other_membership_methods_always_invalidate(self, mock_flush, mock_ws, mock_store, method, args):
+        getattr(mock_store, method)(*args)
+        mock_flush.assert_called_once()
+        mock_ws.assert_called_once_with("user1")
+
+    def test_membership_methods_are_wrapped_once(self):
+        """The flush wrapper and the membership wrapper used to stack; now there is one layer."""
+        from mlflow_oidc_auth.sqlalchemy_store import _MEMBERSHIP_CUD_METHODS
+
+        for name in _MEMBERSHIP_CUD_METHODS:
+            wrapped = getattr(SqlAlchemyStore, name)
+            assert hasattr(wrapped, "__wrapped__")
+            assert not hasattr(wrapped.__wrapped__, "__wrapped__"), f"{name} is wrapped more than once"
+
+
+class TestSetUserGroupsWorkspaceRealStore:
+    """Real store, real workspace cache."""
+
+    @pytest.fixture
+    def ws_store(self, tmp_path, monkeypatch):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils import workspace_cache
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group", "regex", "group-regex"])
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        monkeypatch.setattr("mlflow_oidc_auth.store.store", store, raising=False)
+        workspace_cache.flush_workspace_cache()
+        yield store
+        workspace_cache.flush_workspace_cache()
+
+    def test_set_user_groups_removed_member_loses_workspace_access_immediately(self, ws_store):
+        """Negative test: a cached group-derived workspace grant must not survive removal from the group."""
+        from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+        ws_store.create_user("wendy@example.com", "Wendy")
+        ws_store.populate_groups(["ws-readers", "others"])
+        ws_store.set_user_groups("wendy@example.com", ["ws-readers", "others"])
+        ws_store.create_workspace_group_permission("ws-prod", "ws-readers", "READ")
+        assert get_workspace_permission_cached("wendy@example.com", "ws-prod").name == "READ", "precondition: grant cached"
+
+        ws_store.set_user_groups("wendy@example.com", ["others"])
+
+        assert get_workspace_permission_cached("wendy@example.com", "ws-prod") is None, "removed member still served the cached workspace grant"

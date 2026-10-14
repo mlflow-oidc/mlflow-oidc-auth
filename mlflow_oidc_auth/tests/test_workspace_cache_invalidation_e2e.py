@@ -344,3 +344,87 @@ class TestDenialsCannotEvictGrants:
         for i in range(20):
             assert _cached("vera@example.com", f"no-such-ws-{i}") is None
         assert len(wsc._get_cache()._cache) == 0
+
+
+class TestInvalidationDuringLookup:
+    """A lookup racing an invalidation must not cache what it read (PR #464 review)."""
+
+    def test_grant_written_mid_lookup_leaves_no_stale_denial(self, ws_store, monkeypatch):
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("xena@example.com", "Xena")
+        original = wsc._resolve_workspace_permission
+
+        def racing(username, workspace):
+            result = original(username, workspace)  # reads "no grant"
+            ws_store.create_workspace_permission(workspace, username, "READ")  # commits + invalidates
+            return result
+
+        monkeypatch.setattr(wsc, "_resolve_workspace_permission", racing)
+        assert _cached("xena@example.com", "ws-prod") is None, "this request answers with what it read"
+        key = wsc._make_cache_key("xena@example.com", "ws-prod")
+        assert wsc._get_denial_cache().get(key) is None, "a stale denial was cached after the grant's invalidation"
+
+        monkeypatch.setattr(wsc, "_resolve_workspace_permission", original)
+        assert _cached("xena@example.com", "ws-prod").name == "READ", "the next check sees the grant"
+
+    def test_revoke_mid_lookup_leaves_no_stale_grant(self, ws_store, monkeypatch):
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("yuri@example.com", "Yuri")
+        ws_store.create_workspace_permission("ws-prod", "yuri@example.com", "EDIT")
+        original = wsc._resolve_workspace_permission
+
+        def racing(username, workspace):
+            result = original(username, workspace)  # reads EDIT
+            ws_store.delete_workspace_permission(workspace, username)
+            return result
+
+        monkeypatch.setattr(wsc, "_resolve_workspace_permission", racing)
+        _cached("yuri@example.com", "ws-prod")
+        assert wsc._get_cache().get(wsc._make_cache_key("yuri@example.com", "ws-prod")) is None, "a revoked grant was cached"
+
+        monkeypatch.setattr(wsc, "_resolve_workspace_permission", original)
+        assert _cached("yuri@example.com", "ws-prod") is None
+
+    def test_unrelated_lookup_without_invalidation_is_cached(self, ws_store):
+        """The guard must not disable caching when nothing was invalidated."""
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("zoe@example.com", "Zoe")
+        assert _cached("zoe@example.com", "ws-prod") is None
+        assert wsc._get_denial_cache().get(wsc._make_cache_key("zoe@example.com", "ws-prod")) is not None
+
+
+class TestCacheKeysDoNotCollide:
+    """``username:workspace`` keys are percent-encoded, so ``:`` cannot shift the boundary."""
+
+    def test_denial_for_a_on_b_colon_c_does_not_lock_out_a_colon_b_on_c(self, ws_store):
+        ws_store.create_user("a", "A")
+        ws_store.create_user("a:b", "A:B")
+        ws_store.create_workspace_permission("c", "a:b", "READ")
+
+        assert _cached("a", "b:c") is None  # caches a denial for user "a", workspace "b:c"
+        assert _cached("a:b", "c") is not None and _cached("a:b", "c").name == "READ", "user a:b locked out by a's denial"
+
+    def test_invalidating_a_does_not_drop_a_colon_b_entries(self, ws_store):
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("a", "A")
+        ws_store.create_user("a:b", "A:B")
+        ws_store.create_workspace_permission("c", "a:b", "READ")
+        ws_store.create_workspace_permission("c", "a", "EDIT")
+        assert _cached("a:b", "c").name == "READ"
+        assert _cached("a", "c").name == "EDIT"
+
+        wsc.invalidate_user_workspace_entries("a")
+
+        assert wsc._get_cache().get(wsc._make_cache_key("a", "c")) is None, "target not invalidated"
+        assert wsc._get_cache().get(wsc._make_cache_key("a:b", "c")) is not None, "invalidating a dropped a:b"
+
+    def test_keys_are_distinct(self):
+        from mlflow_oidc_auth.utils.workspace_cache import _make_cache_key, _user_key_prefix
+
+        assert _make_cache_key("a", "b:c") != _make_cache_key("a:b", "c")
+        assert _make_cache_key("a%3Ab", "c") != _make_cache_key("a:b", "c")
+        assert not _make_cache_key("a:b", "c").startswith(_user_key_prefix("a"))

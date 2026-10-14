@@ -850,11 +850,13 @@ class TestPermissionCacheMaxSize:
         monkeypatch.setenv("PERMISSION_CACHE_MAX_SIZE", "250")
         assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 250
 
+    @pytest.mark.parametrize(("setting", "default"), [("PERMISSION_CACHE_MAX_SIZE", 10000), ("WORKSPACE_CACHE_MAX_SIZE", 1024)])
     @pytest.mark.parametrize("bad", ["0", "-5", "big", "1.5"])
-    def test_invalid_value_warns_and_uses_default(self, monkeypatch, bad):
+    def test_invalid_value_warns_and_uses_default(self, monkeypatch, bad, setting, default):
         import mlflow_oidc_auth.config as config_module
+        import mlflow_oidc_auth.config_providers.manager as manager_module
 
-        monkeypatch.setenv("PERMISSION_CACHE_MAX_SIZE", bad)
-        with patch.object(config_module.logger, "warning") as warn:
-            assert config_module.AppConfig().PERMISSION_CACHE_MAX_SIZE == 10000
-        assert any("PERMISSION_CACHE_MAX_SIZE" in str(call.args[1]) for call in warn.call_args_list if len(call.args) > 1)
+        monkeypatch.setenv(setting, bad)
+        with patch.object(manager_module.logger, "warning") as warn:
+            assert getattr(config_module.AppConfig(), setting) == default
+        assert any(len(call.args) > 1 and call.args[1] == setting for call in warn.call_args_list), "no warning named the setting"

@@ -18,6 +18,8 @@ through another. A lookup that hit an error is never cached in either.
 """
 
 import re
+import uuid
+from urllib.parse import quote
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
@@ -28,6 +30,13 @@ logger = get_logger()
 
 _cache: CacheBackend | None = None
 _denial_cache: CacheBackend | None = None
+_generation_cache: CacheBackend | None = None
+
+# The one key of the generation cache. Invalidation stores a fresh random value under it.
+_GENERATION_KEY = "generation"
+# How long a generation value is kept. A lookup is only fooled if a value is written and then
+# expires within the few milliseconds of one lookup, so this only has to be long.
+_GENERATION_MIN_TTL = 3600
 
 _WORKSPACE_CACHE_DEFAULT_MAX_SIZE = 1024
 _WORKSPACE_CACHE_DEFAULT_TTL = 300
@@ -39,9 +48,23 @@ def _sanitize(value: str) -> str:
     return value.replace("\n", "").replace("\r", "").replace("\t", "")
 
 
+def _key_part(value: str) -> str:
+    """Percent-encode one key component. ``:`` and ``%`` never survive unencoded."""
+    return quote(value, safe="")
+
+
 def _make_cache_key(username: str, workspace: str) -> str:
-    """Build a string cache key for workspace permission lookups."""
-    return f"{username}:{workspace}"
+    """Build a collision-free ``username:workspace`` cache key.
+
+    Both parts are percent-encoded, so the only literal ``:`` is the separator: user ``a``
+    in workspace ``b:c`` and user ``a:b`` in workspace ``c`` get different keys.
+    """
+    return f"{_key_part(username)}:{_key_part(workspace)}"
+
+
+def _user_key_prefix(username: str) -> str:
+    """The key prefix of every entry of ``username``, and of no other user."""
+    return f"{_key_part(username)}:"
 
 
 def _get_cache() -> CacheBackend:
@@ -80,6 +103,32 @@ def _caches() -> tuple[CacheBackend, CacheBackend]:
     return _get_cache(), _get_denial_cache()
 
 
+def _get_generation_cache() -> CacheBackend:
+    """Get or create the one-entry cache holding the invalidation generation (lazy init).
+
+    Its own store, so no flood of other entries can evict the generation. On Redis it is
+    shared, so an invalidation on any replica is seen by a lookup on every replica.
+    """
+    global _generation_cache
+    if _generation_cache is None:
+        ttl = max(getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL), _GENERATION_MIN_TTL)
+        _generation_cache = get_cache_backend("workspace_generation", maxsize=1, ttl=ttl)
+    return _generation_cache
+
+
+def _current_generation():
+    return _get_generation_cache().get(_GENERATION_KEY)
+
+
+def _bump_generation() -> None:
+    """Record that an invalidation happened. Call AFTER the entries are deleted.
+
+    A random value rather than a counter: any change is detected, and no atomic increment is
+    needed on either backend.
+    """
+    _get_generation_cache().set(_GENERATION_KEY, uuid.uuid4().hex)
+
+
 def get_workspace_permission_cached(username: str, workspace: str) -> Permission | None:
     """Get effective workspace permission for a user, with caching.
 
@@ -106,9 +155,16 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     if denials.get(key) is not None:
         return None
 
+    # An invalidation that runs while this lookup is in flight may already have deleted the
+    # key we are about to write, so the result could be stale (a denial read just before a
+    # grant was committed). The generation tells: if it moved, answer this request but cache
+    # nothing.
+    generation = _current_generation()
     perm, errored = _resolve_workspace_permission(username, workspace)
     if errored:
         return None
+    if _current_generation() != generation:
+        return perm
     if perm is not None:
         grants.set(key, perm)
     else:
@@ -124,6 +180,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
     key = _make_cache_key(username, workspace)
     for cache in _caches():
         cache.delete(key)
+    _bump_generation()
 
 
 def invalidate_user_workspace_entries(username: str) -> None:
@@ -131,8 +188,9 @@ def invalidate_user_workspace_entries(username: str) -> None:
 
     Group membership drives the group-scoped branch of workspace resolution, so a
     membership change can alter this user's permission in ANY workspace — but only
-    this user's. Keys are ``username:workspace``, so a prefix delete is exact and
-    bounded, and leaves every other user's entries warm.
+    this user's. Keys are ``username:workspace`` with both parts percent-encoded, so the
+    prefix ``username:`` is exact — it cannot match another user whose name merely starts
+    with this one — and leaves every other user's entries warm.
 
     This matters for throughput as well as correctness: OIDC login re-syncs group
     membership on every sign-in, so a full flush here would wipe the cache fleet-wide
@@ -144,7 +202,8 @@ def invalidate_user_workspace_entries(username: str) -> None:
         # the guard in get_workspace_permission_cached.
         return
     for cache in _caches():
-        cache.delete_prefix(f"{username}:")
+        cache.delete_prefix(_user_key_prefix(username))
+    _bump_generation()
     logger.debug("Workspace cache entries invalidated for user %s", _sanitize(username))
 
 
@@ -180,6 +239,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
         key = _make_cache_key(member.username, workspace)
         for cache in caches:
             cache.delete(key)
+    _bump_generation()
     logger.debug(
         "Workspace cache invalidated for %d member(s) of group %s in workspace %s",
         len(members),
@@ -196,6 +256,7 @@ def flush_workspace_cache() -> None:
     """
     for cache in _caches():
         cache.clear()
+    _bump_generation()
     logger.debug("Workspace permission cache fully flushed (regex CUD)")
 
 

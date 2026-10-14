@@ -216,7 +216,15 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     return cache[key]
 
 
-def _top_up_page(rows: Any, max_results: int, page_token: str, fetch: Callable[[str], Any], keep: Callable[[Any], bool]) -> str:
+def _top_up_page(
+    rows: Any,
+    max_results: int,
+    page_token: str,
+    fetch: Callable[[str], Any],
+    keep: Callable[[Any], bool],
+    decode_offset: Callable[[str], int] | None = None,
+    encode_offset: Callable[[int], str] | None = None,
+) -> str:
     """Fill a filtered page back up to ``max_results`` from the following offset-token pages.
 
     Each fetched batch is walked in full: a row the user cannot read is skipped, a readable
@@ -224,7 +232,7 @@ def _top_up_page(rows: Any, max_results: int, page_token: str, fetch: Callable[[
     right after the one that filled it. No fetched row is discarded unexamined, so no row is
     fetched twice (issue #456) — the earlier loop sliced the *unfiltered* batch to the free
     space before filtering and advanced the token by the slice, so the tail was re-fetched on
-    the next iteration. Mirrors the logged-models loop in ``_filter_search_logged_models``.
+    the next iteration. Shared by every re-paging search filter.
 
     Parameters:
         rows: The page's repeated field (or list); readable rows are appended as protos.
@@ -232,15 +240,21 @@ def _top_up_page(rows: Any, max_results: int, page_token: str, fetch: Callable[[
         page_token: The token for the next unfiltered page, ``""`` when there is none.
         fetch: Fetches the batch that starts at a token, at most ``max_results`` rows.
         keep: Whether the current user may see a fetched row. Only kept rows are appended.
+        decode_offset: Reads the row offset a token starts at. Defaults to MLflow's
+            ``SearchUtils`` offset token; logged models pass their own token codec.
+        encode_offset: Builds the token for a row offset; pairs with ``decode_offset``.
 
     Returns:
         The token for the next page, or ``""`` when the result set is exhausted.
     """
+    # Resolved per call, not as default arguments, so the codec is looked up when it is used.
+    decode = decode_offset or SearchUtils.parse_start_offset_from_page_token
+    encode = encode_offset or SearchUtils.create_page_token
     while len(rows) < max_results and page_token:
         batch = fetch(page_token)
         if len(batch) == 0:
             return ""
-        offset = SearchUtils.parse_start_offset_from_page_token(page_token)
+        offset = decode(page_token)
         # MLflow's PagedList carries ``token=None`` on the last page. Anything without the
         # attribute is not known to be the last page, so keep paging until an empty batch.
         is_last_page = hasattr(batch, "token") and batch.token is None
@@ -250,8 +264,8 @@ def _top_up_page(rows: Any, max_results: int, page_token: str, fetch: Callable[[
                 continue
             rows.append(row.to_proto())
             if len(rows) >= max_results:
-                return "" if is_last_page and index == last_index else SearchUtils.create_page_token(offset + index + 1)
-        page_token = "" if is_last_page else SearchUtils.create_page_token(offset + len(batch))
+                return "" if is_last_page and index == last_index else encode(offset + index + 1)
+        page_token = "" if is_last_page else encode(offset + len(batch))
     return page_token
 
 
@@ -272,17 +286,10 @@ def _search_scope_workspace() -> str:
 def _search_scope_denied(username: str) -> bool:
     """Whether workspaces are on and ``username`` cannot read the workspace the search ran in.
 
-    One check covers a whole registry or logged-model search, both halves of the page: when
-    it is denied, every row the search can ever return is denied with it.
+    One check covers a whole experiment, registry or logged-model search, both halves of the
+    page: when it is denied, every row the search can ever return is denied with it.
     """
     return bool(config.MLFLOW_ENABLE_WORKSPACES) and not _can_access_workspace(username, _search_scope_workspace())
-
-
-def _experiment_proto_workspace(experiment: Any) -> str:
-    """Return the workspace of a first-page experiment proto: its own field, else the search scope."""
-    if experiment.HasField("workspace") and experiment.workspace:
-        return experiment.workspace
-    return _search_scope_workspace()
 
 
 def _filter_search_experiments(resp: Response):
@@ -295,17 +302,18 @@ def _filter_search_experiments(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-01). MLflow scopes an experiment search to the
+    # request's workspace, so one check covers every row, on this page and any top-up page.
+    if _search_scope_denied(username):
+        del response_message.experiments[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable experiments from the current response page.
     for e in list(response_message.experiments):
         if not _cached_can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
-
-    # Filter by workspace permission (WSSEC-01). The experiment proto carries its own
-    # workspace, so no per-row store lookup is needed.
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        for e in list(response_message.experiments):
-            if not _can_access_workspace(username, _experiment_proto_workspace(e)):
-                response_message.experiments.remove(e)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
@@ -320,7 +328,7 @@ def _filter_search_experiments(resp: Response):
             filter_string=request_message.filter,
             page_token=token,
         ),
-        keep=lambda e: _cached_can_read_experiment(e.experiment_id, username) and _can_access_workspace(username, e.workspace),
+        keep=lambda e: _cached_can_read_experiment(e.experiment_id, username),
     )
 
     resp.data = message_to_json(response_message)
@@ -510,27 +518,16 @@ def _filter_search_logged_models(resp: Response) -> None:
         ),
     }
 
-    next_page_token = response_message.next_page_token or None
     tracking_store = _get_tracking_store()
-
-    while len(response_message.models) < max_results and next_page_token is not None:
-        batch = tracking_store.search_logged_models(max_results=max_results, page_token=next_page_token, **params)
-        is_last_page = batch.token is None
-        offset = Token.decode(next_page_token).offset if next_page_token else 0
-        last_index = len(batch) - 1
-
-        for index, model in enumerate(batch):
-            if not _cached_can_read_experiment(model.experiment_id, username):
-                continue
-
-            response_message.models.append(model.to_proto())
-            if len(response_message.models) >= max_results:
-                next_page_token = None if is_last_page and index == last_index else Token(offset=offset + index + 1, **params).encode()
-                break
-        else:
-            next_page_token = None if is_last_page else Token(offset=offset + max_results, **params).encode()
-
-    response_message.next_page_token = next_page_token or ""
+    response_message.next_page_token = _top_up_page(
+        response_message.models,
+        max_results,
+        response_message.next_page_token,
+        fetch=lambda token: tracking_store.search_logged_models(max_results=max_results, page_token=token, **params),
+        keep=lambda model: _cached_can_read_experiment(model.experiment_id, username),
+        decode_offset=lambda token: Token.decode(token).offset,
+        encode_offset=lambda offset: Token(offset=offset, **params).encode(),
+    )
     resp.data = message_to_json(response_message)
 
 
