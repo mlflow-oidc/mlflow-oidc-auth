@@ -17722,13 +17722,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The UI's index.html or a static asset */
+            /** @description The UI's index.html */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/html": unknown;
+                    "text/html": string;
                 };
             };
             /** @description Resource not found */
@@ -17778,13 +17778,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The UI's index.html or a static asset */
+            /** @description A static asset of the UI, served with its file's media type, or index.html for a client-side route */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/html": unknown;
+                    "*/*": string;
+                    "application/json": string;
+                    "font/*": string;
+                    "image/*": string;
+                    "text/css": string;
+                    "text/html": string;
+                    "text/javascript": string;
                 };
             };
             /** @description Resource not found */

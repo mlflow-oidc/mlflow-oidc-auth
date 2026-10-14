@@ -19461,9 +19461,14 @@
         "responses": {
           "200": {
             "content": {
-              "text/html": {}
+              "text/html": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
             },
-            "description": "The UI's index.html or a static asset"
+            "description": "The UI's index.html"
           },
           "404": {
             "description": "Resource not found"
@@ -19517,9 +19522,50 @@
         "responses": {
           "200": {
             "content": {
-              "text/html": {}
+              "*/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "font/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/*": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/css": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "text/javascript": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
             },
-            "description": "The UI's index.html or a static asset"
+            "description": "A static asset of the UI, served with its file's media type, or index.html for a client-side route"
           },
           "404": {
             "description": "Resource not found"
