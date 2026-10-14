@@ -9,7 +9,8 @@ import eslintConfigPrettier from "eslint-config-prettier";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  // Generated from ../openapi.json by `yarn gen:api`; type-checked by tsc, not linted.
+  globalIgnores(["dist", "src/core/types/generated"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
