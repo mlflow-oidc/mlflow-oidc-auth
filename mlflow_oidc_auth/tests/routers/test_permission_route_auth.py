@@ -44,6 +44,7 @@ GATES = {
 
 U = "/{username}"
 G = "/{group_name:path}"
+SUBJECT_PARAMS = {"username", "group_name"}  # path parameters naming the grantee, not a resource
 
 # (method, path below the router prefix) -> gate. Every route of both routers must be listed.
 USER_ROUTES = {
@@ -212,9 +213,11 @@ def test_route_has_its_gate(item):
         if gate != ADMIN:
             _assert_reads_target_from_path(route, dependency)
     elif gate in (INLINE_MODEL, INLINE_PROMPT, FILTERED):
-        assert get_username in direct and get_is_admin in direct, f"{route.name} must resolve the caller and whether they are an admin"
         if gate == FILTERED:
-            assert method == "GET", f"{route.name} is an unguarded listing and must not change state"
+            # Only a collection may be an ungated, caller-filtered listing; one grant needs a gate.
+            resource_params = {param.name for param in route.dependant.path_params} - SUBJECT_PARAMS
+            assert method == "GET" and not resource_params, f"{method} {route.path} ({route.name}) is labelled FILTERED but addresses one resource"
+        assert get_username in direct and get_is_admin in direct, f"{route.name} must resolve the caller and whether they are an admin"
     elif gate == SIGNED_IN:
         assert direct[0] is get_username and method == "GET"
     else:  # pragma: no cover - the table holds only the gates above
@@ -234,6 +237,7 @@ def _inline_kwargs(route, is_admin):
         "permission_data": SimpleNamespace(permission="MANAGE"),
         "current_username": "mallory",
         "is_admin": is_admin,
+        "audit_actor": "mallory",
     }
     return {name: values[name] for name in inspect.signature(route.endpoint).parameters}
 
@@ -294,3 +298,28 @@ def test_factory_refuses_a_guarded_list_route():
             body=None,
             guard=lambda a: None,
         )
+
+
+@pytest.mark.parametrize("op", ["create", "update", "delete"])
+def test_factory_refuses_an_ungated_write(op):
+    """auth=CALLER only identifies the caller: a write generated with it and no guard would be open to anyone."""
+    from fastapi import APIRouter
+
+    from mlflow_oidc_auth.routers._permission_routes import CALLER, Route, add_route
+
+    route = Route(
+        name=f"{op}_x",
+        op=op,
+        path="/x",
+        summary="s",
+        description="d",
+        tag="t",
+        params=(),
+        auth=CALLER,
+        call=lambda a: None,
+        respond=lambda a, r: r,
+        response_model=None,
+    )
+    with pytest.raises(ValueError, match="authorization dependency or a guard"):
+        add_route(APIRouter(), route)
+    add_route(APIRouter(), Route(**{**route.__dict__, "guard": lambda a: None}))  # a guard makes it valid

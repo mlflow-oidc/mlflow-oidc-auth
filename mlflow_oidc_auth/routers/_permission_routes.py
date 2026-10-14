@@ -46,7 +46,10 @@ Args = SimpleNamespace
 """A route's bound arguments, by parameter name (``a.username``, ``a.permission_data``)."""
 
 Auth = Tuple[Tuple[str, Callable[..., Any]], ...]
-"""``(parameter name, dependency)`` pairs. The first one's value is the audit actor."""
+"""``(parameter name, dependency)`` pairs: the route's authorization dependencies."""
+
+AUDIT_ACTOR = "audit_actor"
+"""Parameter of every auditing route that receives the caller's username from ``get_username``."""
 
 ADMIN: Auth = (("admin_username", check_admin_permission),)
 CALLER: Auth = (("current_username", get_username), ("is_admin", get_is_admin))
@@ -182,7 +185,7 @@ def _perform(route: Route, a: Args) -> Any:
     if route.audit is not None:
         resource_type, resource_id, detail = route.audit
         event = f"permission.{route.op}"
-        emit_audit_event(event, actor=getattr(a, route.auth[0][0]), resource_type=resource_type, resource_id=resource_id(a), detail=detail(a))
+        emit_audit_event(event, actor=getattr(a, AUDIT_ACTOR), resource_type=resource_type, resource_id=resource_id(a), detail=detail(a))
     return route.respond(a, result)
 
 
@@ -213,12 +216,20 @@ def add_route(router: APIRouter, route: Route) -> Callable[..., Any]:
     Returns:
         The endpoint coroutine function.
     """
+    gates = [dependency for _, dependency in route.auth if dependency not in (get_username, get_is_admin)]
+    if route.op in _PAST and not gates and route.guard is None:
+        # get_username and get_is_admin only identify the caller; a write needs a gate or a guard.
+        raise ValueError(f"{route.name}: a {route.op} route needs an authorization dependency or a guard")
     kind = inspect.Parameter.POSITIONAL_OR_KEYWORD
     parameters = [inspect.Parameter(name, kind, default=Path(..., description=text), annotation=type_) for name, type_, text in route.params]
     if route.body is not None:
         name, model, text = route.body
         parameters.append(inspect.Parameter(name, kind, default=Body(..., description=text), annotation=model))
     parameters += [inspect.Parameter(name, kind, default=Depends(dependency), annotation=Any) for name, dependency in route.auth]
+    if route.audit is not None:
+        # The audit actor is the signed-in caller, resolved after the gate. It is not the gate's return
+        # value: the manage checks return None (#474). FastAPI caches get_username per request.
+        parameters.append(inspect.Parameter(AUDIT_ACTOR, kind, default=Depends(get_username), annotation=Any))
     signature = inspect.Signature(parameters, return_annotation=route.response_model)
 
     async def endpoint(*args: Any, **kwargs: Any) -> Any:
@@ -287,7 +298,7 @@ def exact_routes(
     created: Optional[int] = 201,
     guard: Optional[Callable[[Args], None]] = None,
     conflicts: bool = False,
-    handled: bool = True,
+    unhandled: Sequence[str] = (),
     text: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Add the routes managing exact grants of one resource kind for a user or a group.
@@ -314,7 +325,7 @@ def exact_routes(
         guard: An inline authorization check run before every route's store call.
         conflicts: Map MlflowException error codes of create and update, as the prompt,
             registered-model and scorer routes do.
-        handled: ``False`` lets exceptions propagate instead of becoming a 404/500.
+        unhandled: Ops whose exceptions propagate instead of becoming a 404/500.
         text: OpenAPI text overrides, by op and then by ``summary``, ``description``,
             ``subject``, ``body`` or a key name.
     """
@@ -355,7 +366,7 @@ def exact_routes(
 
             audit = (f"{_snake(subject.prefix)}{snake}_permission", lambda a: getattr(a, resource_key), detail)
         failure = None
-        if handled:
+        if op not in unhandled:
             mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
             if conflicts and op == "create":
                 mlflow = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"), (INVALID_PARAMETER_VALUE, 400, None))
@@ -482,8 +493,8 @@ def regex_routes(
         audit = None
         if op in _PAST:
             details = {
-                "create": lambda a: {"regex": a.pattern_data.regex, "priority": a.pattern_data.priority, "permission": a.pattern_data.permission},
-                "update": lambda a: {"id": a.id, "regex": a.pattern_data.regex, "priority": a.pattern_data.priority, "permission": a.pattern_data.permission},
+                "create": pattern_fields,
+                "update": lambda a: {"id": a.id, **pattern_fields(a)},
                 "delete": lambda a: {"id": a.id},
             }
             audit = (f"{_snake(subject.prefix)}{snake}_regex_permission", lambda a: getattr(a, subject.param), details[op])

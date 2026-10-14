@@ -120,6 +120,16 @@ class TestUserExperimentCRUD:
         assert resp.status_code == 200
         assert resp.json()["experiment_permission"]["experiment_id"] == "exp-1"
 
+    def test_get_missing_grant_is_404(self, authenticated_client, mock_store):
+        """A missing grant answers 404 like every other kind, not an unhandled 500."""
+        from mlflow.exceptions import MlflowException
+        from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+        mock_store.get_experiment_permission.side_effect = MlflowException("no grant", error_code=RESOURCE_DOES_NOT_EXIST)
+        resp = authenticated_client.get(f"{USER_BASE}/user@example.com/experiments/exp-1")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Experiment permission not found"
+
     def test_update(self, authenticated_client, mock_store):
         """Test updating experiment permission for a user."""
         resp = authenticated_client.patch(
