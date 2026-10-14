@@ -1,6 +1,7 @@
 """Tests for workspace permission cache module."""
 
 import importlib
+from contextlib import contextmanager
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,17 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.permissions import EDIT, MANAGE, READ, USE
+
+
+@contextmanager
+def _patched_lookup():
+    """Stand in for the source walk: ``mock_lookup`` returns the permission, never an error."""
+    mock_lookup = MagicMock()
+    with patch(
+        "mlflow_oidc_auth.utils.workspace_cache._resolve_workspace_permission",
+        side_effect=lambda username, workspace: (mock_lookup(username, workspace), False),
+    ):
+        yield mock_lookup
 
 
 class TestGetWorkspacePermissionCached:
@@ -19,8 +31,10 @@ class TestGetWorkspacePermissionCached:
         wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
+        wc._denial_cache = None
         yield
         wc._cache = None
+        wc._denial_cache = None
 
     def test_returns_none_when_workspaces_disabled(self):
         """get_workspace_permission_cached() returns None when MLFLOW_ENABLE_WORKSPACES is False."""
@@ -45,10 +59,11 @@ class TestGetWorkspacePermissionCached:
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            _patched_lookup() as mock_lookup,
         ):
             mock_lookup.return_value = READ
             result = get_workspace_permission_cached("user1", "default")
@@ -65,10 +80,11 @@ class TestGetWorkspacePermissionCached:
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            _patched_lookup() as mock_lookup,
         ):
             mock_lookup.return_value = None
             result = get_workspace_permission_cached("user1", "default")
@@ -85,10 +101,11 @@ class TestGetWorkspacePermissionCached:
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            _patched_lookup() as mock_lookup,
         ):
             mock_lookup.return_value = READ
             result = get_workspace_permission_cached("user1", "ws1")
@@ -105,10 +122,11 @@ class TestGetWorkspacePermissionCached:
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            _patched_lookup() as mock_lookup,
         ):
             mock_lookup.return_value = MANAGE
             # First call — cache miss
@@ -119,8 +137,13 @@ class TestGetWorkspacePermissionCached:
             # lookup should only be called once (not twice)
             assert mock_lookup.call_count == 1
 
-    def test_does_not_cache_none_results(self):
-        """get_workspace_permission_cached() does NOT cache None results."""
+    def test_caches_denial(self):
+        """A denial is cached (issue #456), but only for that exact user and workspace.
+
+        Before, denials were never cached, so a user with no grant re-walked every source on
+        every request. The cached denial lives under the ``username:workspace`` key, so it must
+        never be served to another user or for another workspace.
+        """
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
         )
@@ -129,18 +152,57 @@ class TestGetWorkspacePermissionCached:
         mock_config.MLFLOW_ENABLE_WORKSPACES = True
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
+
+        grants = {("user2", "ws1"): MANAGE, ("user1", "ws2"): READ}
 
         with (
             patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
-            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+            _patched_lookup() as mock_lookup,
+        ):
+            mock_lookup.side_effect = lambda username, workspace: grants.get((username, workspace))
+
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 1, "denial was not cached"
+
+            # Another user in the same workspace, and the same user in another workspace,
+            # are resolved on their own — the denial is not served to them.
+            assert get_workspace_permission_cached("user2", "ws1") == MANAGE
+            assert get_workspace_permission_cached("user1", "ws2") == READ
+            assert mock_lookup.call_count == 3
+
+            # And the denial itself is unaffected by their grants.
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 3
+
+    def test_grant_clears_cached_denial(self):
+        """The invalidation a grant write performs drops a cached denial, so the grant applies at once."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+            invalidate_workspace_permission,
+        )
+
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
+        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
+
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
+            _patched_lookup() as mock_lookup,
         ):
             mock_lookup.return_value = None
-            # First call — returns None, should not cache
-            result1 = get_workspace_permission_cached("user1", "ws1")
-            assert result1 is None
-            # Second call — should call lookup again because None was not cached
-            result2 = get_workspace_permission_cached("user1", "ws1")
-            assert result2 is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 1, "precondition: denial cached"
+
+            # A grant is written; the store wrapper invalidates the user's entry.
+            mock_lookup.return_value = READ
+            invalidate_workspace_permission("user1", "ws1")
+
+            assert get_workspace_permission_cached("user1", "ws1") == READ
             assert mock_lookup.call_count == 2
 
 
@@ -153,8 +215,10 @@ class TestLookupWorkspacePermission:
         wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
+        wc._denial_cache = None
         yield
         wc._cache = None
+        wc._denial_cache = None
 
     def test_tries_user_permission_first(self):
         """_lookup_workspace_permission() tries user-level permission first."""
@@ -230,8 +294,10 @@ class TestFlushWorkspaceCache:
         wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
+        wc._denial_cache = None
         yield
         wc._cache = None
+        wc._denial_cache = None
 
     def test_flush_clears_all_entries(self):
         """flush_workspace_cache() clears the entire cache."""
@@ -243,6 +309,7 @@ class TestFlushWorkspaceCache:
         mock_config = MagicMock()
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
         mock_config.CACHE_BACKEND = "local"
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
@@ -263,6 +330,7 @@ class TestFlushWorkspaceCache:
         mock_config = MagicMock()
         mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
         mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = 30
         mock_config.CACHE_BACKEND = "local"
 
         with patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config):
@@ -272,12 +340,16 @@ class TestFlushWorkspaceCache:
 class TestMatchWorkspaceRegexPermission:
     """Test _match_workspace_regex_permission() function."""
 
-    def _make_regex_perm(self, regex, priority, permission):
-        """Helper to create a mock regex permission entity."""
+    _next_id = 0
+
+    def _make_regex_perm(self, regex, priority, permission, id_=None):
+        """Helper to create a mock regex permission entity (ids ascend in creation order)."""
+        TestMatchWorkspaceRegexPermission._next_id += 1
         perm = MagicMock()
         perm.regex = regex
         perm.priority = priority
         perm.permission = permission
+        perm.id = id_ if id_ is not None else TestMatchWorkspaceRegexPermission._next_id
         return perm
 
     def test_returns_none_for_empty_list(self):
@@ -348,6 +420,38 @@ class TestMatchWorkspaceRegexPermission:
         # Even though the second regex also matches and has higher permission,
         # it's at lower priority tier so should be ignored
         result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        assert result == EDIT
+
+    @pytest.mark.parametrize("first, second", [("MANAGE", "NO_PERMISSIONS"), ("NO_PERMISSIONS", "MANAGE")])
+    def test_same_priority_no_permissions_wins(self, first, second):
+        """NO_PERMISSIONS ranks highest, so it wins an equal-priority tie, as for resource patterns."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            _match_workspace_regex_permission,
+        )
+
+        regexes = [self._make_regex_perm("^prod-.*", 10, first), self._make_regex_perm("^prod-work.*", 10, second)]
+        assert _match_workspace_regex_permission(regexes, "prod-workspace") == NO_PERMISSIONS
+
+    @pytest.mark.parametrize(
+        "order",
+        [(0, 1, 2), (2, 1, 0), (1, 2, 0), (2, 0, 1)],
+        ids=["sorted", "reversed", "rotated", "mixed"],
+    )
+    def test_unsorted_input_resolves_as_sorted(self, order):
+        """Unsorted input gives the sorted result: best priority tier, most permissive in it (D-07, D-08)."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            _match_workspace_regex_permission,
+        )
+
+        rules = [
+            self._make_regex_perm("^prod-.*", 5, "READ", id_=30),
+            self._make_regex_perm("^prod-work.*", 5, "EDIT", id_=20),
+            self._make_regex_perm("^prod-.*", 10, "MANAGE", id_=10),
+        ]
+        result = _match_workspace_regex_permission([rules[i] for i in order], "prod-workspace")
+        # Unsorted, a list starting with the priority-10 MANAGE rule used to return MANAGE: the scan
+        # took the first match's tier. Sorted, the priority-5 tier wins, and EDIT is its most permissive.
         assert result == EDIT
 
 
@@ -455,8 +559,10 @@ class TestLookupWithRegexSources:
         wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
 
         wc._cache = None
+        wc._denial_cache = None
         yield
         wc._cache = None
+        wc._denial_cache = None
 
     def test_falls_through_to_user_regex(self):
         """When user-direct and group-direct fail, user-regex matches."""
@@ -557,3 +663,98 @@ class TestLookupWithRegexSources:
         ):
             result = _lookup_workspace_permission("user1", "ws1")
             assert result == MANAGE
+
+
+class TestDenialCache:
+    """Denials: separate cache, short TTL, never an error (PR #464 review)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_cache(self):
+        wc = importlib.import_module("mlflow_oidc_auth.utils.workspace_cache")
+
+        wc._cache = None
+        wc._denial_cache = None
+        yield
+        wc._cache = None
+        wc._denial_cache = None
+
+    @staticmethod
+    def _config(workspace_ttl=300, permission_ttl=30):
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
+        mock_config.WORKSPACE_CACHE_TTL_SECONDS = workspace_ttl
+        mock_config.PERMISSION_CACHE_TTL_SECONDS = permission_ttl
+        mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+        return mock_config
+
+    @pytest.mark.parametrize(("workspace_ttl", "permission_ttl", "expected"), [(300, 30, 30), (10, 30, 10), (300, 300, 300)])
+    def test_denial_ttl_is_at_most_the_permission_ttl(self, workspace_ttl, permission_ttl, expected):
+        """A denial on one replica outlives a grant written via another for at most PERMISSION_CACHE_TTL_SECONDS."""
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _get_denial_cache
+
+        with patch("mlflow_oidc_auth.utils.workspace_cache.config", self._config(workspace_ttl, permission_ttl)):
+            assert _get_denial_cache()._cache.ttl == expected
+            assert _get_cache()._cache.ttl == workspace_ttl, "grant TTL is unchanged"
+
+    def test_denial_expires_after_its_ttl(self):
+        """The denial entry really expires on the short TTL, while a grant would not."""
+        from mlflow_oidc_auth.utils.workspace_cache import _get_denial_cache, get_workspace_permission_cached
+
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", self._config(300, 30)),
+            _patched_lookup() as mock_lookup,
+        ):
+            mock_lookup.return_value = None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            cache = _get_denial_cache()._cache
+            cache.expire(cache.timer() + 31)  # 31 s on: past the denial TTL, inside the grant TTL
+            mock_lookup.return_value = READ
+            assert get_workspace_permission_cached("user1", "ws1") == READ
+            assert mock_lookup.call_count == 2
+
+    def test_lookup_error_is_not_cached_and_denies(self):
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _get_denial_cache, get_workspace_permission_cached
+
+        mock_store = MagicMock()
+        mock_store.get_workspace_permission.side_effect = RuntimeError("db down")
+        mock_store.get_user_groups_workspace_permission.return_value = MagicMock(permission="MANAGE")
+
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", self._config()),
+            patch("mlflow_oidc_auth.store.store", mock_store),
+        ):
+            assert get_workspace_permission_cached("user1", "ws1") is None, "error must deny, not fall through to the group grant"
+            assert _get_cache().get("user1:ws1") is None
+            assert _get_denial_cache().get("user1:ws1") is None
+
+            mock_store.get_workspace_permission.side_effect = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+            assert get_workspace_permission_cached("user1", "ws1") == MANAGE, "nothing stale was cached by the failure"
+
+    def test_unexpected_mlflow_exception_is_an_error(self):
+        from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
+
+        from mlflow_oidc_auth.utils.workspace_cache import _resolve_workspace_permission
+
+        mock_store = MagicMock()
+        mock_store.get_workspace_permission.side_effect = MlflowException("boom", INTERNAL_ERROR)
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", self._config()),
+            patch("mlflow_oidc_auth.store.store", mock_store),
+        ):
+            assert _resolve_workspace_permission("user1", "ws1") == (None, True)
+
+    def test_regex_not_found_is_no_grant_not_an_error(self):
+        from mlflow_oidc_auth.utils.workspace_cache import _resolve_workspace_permission
+
+        not_found = MlflowException("Not found", RESOURCE_DOES_NOT_EXIST)
+        mock_store = MagicMock()
+        mock_store.get_workspace_permission.side_effect = not_found
+        mock_store.get_user_groups_workspace_permission.side_effect = not_found
+        mock_store.list_workspace_regex_permissions.side_effect = not_found
+        mock_store.get_groups_ids_for_user.side_effect = not_found
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", self._config()),
+            patch("mlflow_oidc_auth.store.store", mock_store),
+        ):
+            assert _resolve_workspace_permission("user1", "ws1") == (None, False)

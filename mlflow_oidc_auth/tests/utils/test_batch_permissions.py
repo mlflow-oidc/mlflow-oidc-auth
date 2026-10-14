@@ -21,13 +21,17 @@ from mlflow_oidc_auth.utils.batch_permissions import (
     filter_manageable_experiments,
     filter_manageable_models,
     filter_manageable_prompts,
-    _find_regex_permission,
     _resolve_permission_from_context,
 )
+from mlflow_oidc_auth.utils.permissions import _match_regex_permission_or_none
 
 
-class TestFindRegexPermission:
-    """Tests for the _find_regex_permission helper function."""
+def _find(regexes, name, workspace=None):
+    return _match_regex_permission_or_none(regexes, name, "model name", workspace)
+
+
+class TestMatchRegexPermissionOrNone:
+    """Tests for the non-raising regex matcher the batch path uses."""
 
     def test_finds_matching_regex(self):
         """Should return permission when regex matches."""
@@ -35,7 +39,7 @@ class TestFindRegexPermission:
         regex_perm.regex = "^model-.*"
         regex_perm.permission = "READ"
 
-        result = _find_regex_permission([regex_perm], "model-test")
+        result = _find([regex_perm], "model-test")
         assert result == "READ"
 
     def test_returns_none_when_no_match(self):
@@ -44,25 +48,25 @@ class TestFindRegexPermission:
         regex_perm.regex = "^other-.*"
         regex_perm.permission = "READ"
 
-        result = _find_regex_permission([regex_perm], "model-test")
+        result = _find([regex_perm], "model-test")
         assert result is None
 
-    def test_returns_first_matching_regex(self):
-        """Should return the first matching regex permission."""
-        regex_perm1 = MagicMock()
+    def test_returns_highest_ranked_match_at_equal_priority(self):
+        """Of matches at the same priority, the highest-ranked permission decides (issue #459)."""
+        regex_perm1 = MagicMock(priority=1, id=1)
         regex_perm1.regex = ".*"
         regex_perm1.permission = "READ"
 
-        regex_perm2 = MagicMock()
+        regex_perm2 = MagicMock(priority=1, id=2)
         regex_perm2.regex = "^model-.*"
         regex_perm2.permission = "MANAGE"
 
-        result = _find_regex_permission([regex_perm1, regex_perm2], "model-test")
-        assert result == "READ"
+        result = _find([regex_perm1, regex_perm2], "model-test")
+        assert result == "MANAGE"
 
     def test_empty_list_returns_none(self):
         """Should return None for empty regex list."""
-        result = _find_regex_permission([], "model-test")
+        result = _find([], "model-test")
         assert result is None
 
     def test_partial_match_with_anchored_regex(self):
@@ -71,9 +75,28 @@ class TestFindRegexPermission:
         regex_perm.regex = "^exact$"
         regex_perm.permission = "MANAGE"
 
-        assert _find_regex_permission([regex_perm], "exact") == "MANAGE"
-        assert _find_regex_permission([regex_perm], "exact-extra") is None
-        assert _find_regex_permission([regex_perm], "not-exact") is None
+        assert _find([regex_perm], "exact") == "MANAGE"
+        assert _find([regex_perm], "exact-extra") is None
+        assert _find([regex_perm], "not-exact") is None
+
+    def test_pattern_for_another_workspace_does_not_match(self):
+        """A pattern recorded for another workspace is out of scope: no match, not an error."""
+        regex_perm = MagicMock()
+        regex_perm.regex = ".*"
+        regex_perm.permission = "MANAGE"
+        regex_perm.workspace = "team-b"
+
+        assert _find([regex_perm], "model-test", workspace="team-a") is None
+        assert _find([regex_perm], "model-test", workspace="team-b") == "MANAGE"
+
+    def test_other_errors_propagate(self):
+        """No match means None; any other error (here an invalid stored pattern) is raised, never swallowed."""
+        import re
+
+        regex_perm = MagicMock(regex="(", permission="MANAGE", priority=1, id=1)
+
+        with pytest.raises(re.error):
+            _find([regex_perm], "model-test")
 
 
 class TestResolvePermissionFromContext:
@@ -339,6 +362,41 @@ class TestResolveExperimentPermissionFromContext:
             prompt_regex_permissions=[],
             group_prompt_regex_permissions=[],
         )
+
+    @pytest.mark.parametrize("pattern_workspace, expected_kind", [("team-b", "fallback"), ("team-a", "regex")])
+    def test_regex_for_another_workspace_is_denied(self, pattern_workspace, expected_kind):
+        """A pattern recorded for another workspace than the request's grant workspace never matches."""
+        exp_regex = MagicMock()
+        exp_regex.regex = ".*"
+        exp_regex.permission = "MANAGE"
+        exp_regex.workspace = pattern_workspace
+        ctx = UserPermissionContext(
+            username="testuser",
+            group_ids=[],
+            user_experiment_permissions={},
+            group_experiment_permissions={},
+            experiment_regex_permissions=[exp_regex],
+            group_experiment_regex_permissions=[],
+            user_model_permissions={},
+            group_model_permissions={},
+            model_regex_permissions=[],
+            group_model_regex_permissions=[],
+            prompt_regex_permissions=[],
+            group_prompt_regex_permissions=[],
+        )
+        with (
+            patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config,
+            patch("mlflow_oidc_auth.utils.grant_workspace.current_grant_workspace", return_value="team-a"),
+        ):
+            mock_config.PERMISSION_SOURCE_ORDER = ["user", "group", "regex", "group-regex"]
+            mock_config.DEFAULT_MLFLOW_PERMISSION = "NO_PERMISSIONS"
+            mock_config.MLFLOW_ENABLE_WORKSPACES = False
+
+            result = resolve_experiment_permission_from_context(ctx, "exp-1", "any-experiment")
+
+        assert result.kind == expected_kind
+        if expected_kind == "fallback":
+            assert result.permission.name == "NO_PERMISSIONS"
 
     def test_resolves_user_experiment_permission(self, context_with_experiment_permissions):
         """Should resolve user direct experiment permission."""

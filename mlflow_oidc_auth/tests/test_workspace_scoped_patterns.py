@@ -142,7 +142,7 @@ def test_orphan_detection_counts_only_patterns_for_the_resources_workspace():
 
     from mlflow_oidc_auth.orphans import _regex_permission
 
-    rule = SimpleNamespace(regex="^churn", permission="MANAGE", priority=1, workspace="team-a")
+    rule = SimpleNamespace(regex="^churn", permission="MANAGE", priority=1, id=1, workspace="team-a")
 
     assert _regex_permission([rule], "churn", False, "team-a") == "MANAGE"
     assert _regex_permission([rule], "churn", False, "team-b") is None

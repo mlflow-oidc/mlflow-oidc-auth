@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 from flask import Response, g, has_app_context, request
 from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
@@ -30,6 +30,7 @@ from mlflow.protos.service_pb2 import (
     SearchExperiments,
     SearchLoggedModels,
     UpdateGatewayEndpoint,
+    UpdateGatewayModelDefinition,
 )
 from mlflow.server.handlers import (
     _get_ajax_path,
@@ -44,6 +45,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
+from mlflow.utils.workspace_utils import resolve_entity_workspace_name
 
 import json
 
@@ -190,11 +192,10 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     - Resource has no workspace assignment (pre-workspace-era, WSSEC-05)
     - User has at least READ workspace permission via get_workspace_permission_cached (WSSEC-01/02/03/04)
 
-    Memoized for the current request. ``get_workspace_permission_cached`` deliberately
-    does not cache DENIALS, so a user with no grant on the workspace re-ran the full
-    source walk for every row of a search result. The memo uses the same request-scoped
-    dict as the ``_cached_can_read_*`` helpers, so it adds no new staleness window
-    (issue #253).
+    Memoized for the current request. ``get_workspace_permission_cached`` caches grants and
+    (since issue #456) denials; the memo additionally spares a shared-cache round trip per
+    row. It uses the same request-scoped dict as the ``_cached_can_read_*`` helpers, so it
+    adds no new staleness window (issue #253).
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return True
@@ -216,6 +217,82 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     return cache[key]
 
 
+def _top_up_page(
+    rows: Any,
+    max_results: int,
+    page_token: str,
+    fetch: Callable[[str], Any],
+    keep: Callable[[Any], bool],
+    decode_offset: Callable[[str], int] | None = None,
+    encode_offset: Callable[[int], str] | None = None,
+) -> str:
+    """Fill a filtered page back up to ``max_results`` from the following offset-token pages.
+
+    Each fetched batch is walked in full: a row the user cannot read is skipped, a readable
+    one is appended, and as soon as the page is full the returned token points at the row
+    right after the one that filled it. No fetched row is discarded unexamined, so no row is
+    fetched twice (issue #456) — the earlier loop sliced the *unfiltered* batch to the free
+    space before filtering and advanced the token by the slice, so the tail was re-fetched on
+    the next iteration. Shared by every re-paging search filter.
+
+    Parameters:
+        rows: The page's repeated field (or list); readable rows are appended as protos.
+        max_results: The page size the client asked for.
+        page_token: The token for the next unfiltered page, ``""`` when there is none.
+        fetch: Fetches the batch that starts at a token, at most ``max_results`` rows.
+        keep: Whether the current user may see a fetched row. Only kept rows are appended.
+        decode_offset: Reads the row offset a token starts at. Defaults to MLflow's
+            ``SearchUtils`` offset token; logged models pass their own token codec.
+        encode_offset: Builds the token for a row offset; pairs with ``decode_offset``.
+
+    Returns:
+        The token for the next page, or ``""`` when the result set is exhausted.
+    """
+    # Resolved per call, not as default arguments, so the codec is looked up when it is used.
+    decode = decode_offset or SearchUtils.parse_start_offset_from_page_token
+    encode = encode_offset or SearchUtils.create_page_token
+    while len(rows) < max_results and page_token:
+        batch = fetch(page_token)
+        if len(batch) == 0:
+            return ""
+        offset = decode(page_token)
+        # MLflow's PagedList carries ``token=None`` on the last page. Anything without the
+        # attribute is not known to be the last page, so keep paging until an empty batch.
+        is_last_page = hasattr(batch, "token") and batch.token is None
+        last_index = len(batch) - 1
+        for index, row in enumerate(batch):
+            if not keep(row):
+                continue
+            rows.append(row.to_proto())
+            if len(rows) >= max_results:
+                return "" if is_last_page and index == last_index else encode(offset + index + 1)
+        page_token = "" if is_last_page else encode(offset + len(batch))
+    return page_token
+
+
+def _search_scope_workspace() -> str:
+    """Return the workspace the current request's search ran in.
+
+    With workspaces enabled MLflow's stores scope every search to the request's active
+    workspace: registered models and model versions by their ``workspace`` column, logged
+    models through their experiment. Every row of every page — first page and top-up alike —
+    lives there. Registered-model, model-version and logged-model protos carry no
+    ``workspace`` field; this is what the matching entity's ``.workspace`` resolves to,
+    without a per-row store lookup (issue #456). Never None, so a row is never mistaken for
+    a pre-workspace-era resource and waved through.
+    """
+    return resolve_entity_workspace_name(None)
+
+
+def _search_scope_denied(username: str) -> bool:
+    """Whether workspaces are on and ``username`` cannot read the workspace the search ran in.
+
+    One check covers a whole experiment, registry or logged-model search, both halves of the
+    page: when it is denied, every row the search can ever return is denied with it.
+    """
+    return bool(config.MLFLOW_ENABLE_WORKSPACES) and not _can_access_workspace(username, _search_scope_workspace())
+
+
 def _filter_search_experiments(resp: Response):
     if get_fastapi_admin_status():
         return
@@ -226,49 +303,34 @@ def _filter_search_experiments(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-01). MLflow scopes an experiment search to the
+    # request's workspace, so one check covers every row, on this page and any top-up page.
+    if _search_scope_denied(username):
+        del response_message.experiments[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable experiments from the current response page.
     for e in list(response_message.experiments):
         if not _cached_can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
 
-    # Filter by workspace permission (WSSEC-01)
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        tracking_store = _get_tracking_store()
-        ws_map = {}
-        for e in list(response_message.experiments):
-            try:
-                ws_map[e.experiment_id] = tracking_store.get_experiment(e.experiment_id).workspace
-            except Exception:
-                ws_map[e.experiment_id] = None
-        for e in list(response_message.experiments):
-            if not _can_access_workspace(username, ws_map.get(e.experiment_id)):
-                response_message.experiments.remove(e)
-
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
-    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
-        refetched = tracking_store.search_experiments(
+    response_message.next_page_token = _top_up_page(
+        response_message.experiments,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: tracking_store.search_experiments(
             view_type=request_message.view_type,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
             filter_string=request_message.filter,
-            page_token=response_message.next_page_token,
-        )
-
-        remaining = request_message.max_results - len(response_message.experiments)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        readable_proto = [
-            e.to_proto() for e in refetched if _cached_can_read_experiment(e.experiment_id, username) and _can_access_workspace(username, e.workspace)
-        ]
-        response_message.experiments.extend(readable_proto)
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda e: _cached_can_read_experiment(e.experiment_id, username),
+    )
 
     resp.data = message_to_json(response_message)
 
@@ -283,47 +345,33 @@ def _filter_search_registered_models(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-02). Every row of the search, on this page and
+    # on any top-up page, lives in the workspace it was scoped to, so one check covers all.
+    if _search_scope_denied(username):
+        del response_message.registered_models[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable models from the current response page.
     for rm in list(response_message.registered_models):
         if not _cached_can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
 
-    # Filter by workspace permission (WSSEC-02)
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        model_registry_store_ws = _get_model_registry_store()
-        ws_map = {}
-        for rm in list(response_message.registered_models):
-            try:
-                ws_map[rm.name] = model_registry_store_ws.get_registered_model(rm.name).workspace
-            except Exception:
-                ws_map[rm.name] = None
-        for rm in list(response_message.registered_models):
-            if not _can_access_workspace(username, ws_map.get(rm.name)):
-                response_message.registered_models.remove(rm)
-
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
-        refetched = model_registry_store.search_registered_models(
+    response_message.next_page_token = _top_up_page(
+        response_message.registered_models,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: model_registry_store.search_registered_models(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
-            page_token=response_message.next_page_token,
-        )
-        remaining = request_message.max_results - len(response_message.registered_models)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        readable_proto = [
-            rm.to_proto() for rm in refetched if _cached_can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace)
-        ]
-        response_message.registered_models.extend(readable_proto)
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda rm: _cached_can_read_registered_model(rm.name, username),
+    )
 
     resp.data = message_to_json(response_message)
 
@@ -339,51 +387,39 @@ def _filter_search_model_versions(resp: Response):
 
     username = get_fastapi_username()
 
+    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their
+    # model). Every row of the search, on this page and on any top-up page, lives in the
+    # workspace it was scoped to, so one check covers all; no row depends on a field of its own.
+    if _search_scope_denied(username):
+        del response_message.model_versions[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
     # Filter out unreadable model versions from the current response page.
     for mv in list(response_message.model_versions):
         if not _cached_can_read_registered_model(mv.name, username):
             response_message.model_versions.remove(mv)
 
-    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their model)
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        model_registry_store_ws = _get_model_registry_store()
-        ws_map: dict[str, str | None] = {}
-        for mv in list(response_message.model_versions):
-            if mv.name not in ws_map:
-                try:
-                    ws_map[mv.name] = model_registry_store_ws.get_registered_model(mv.name).workspace
-                except Exception:
-                    ws_map[mv.name] = None
-            if not _can_access_workspace(username, ws_map.get(mv.name)):
-                response_message.model_versions.remove(mv)
-
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.model_versions) < request_message.max_results and response_message.next_page_token != "":
-        refetched = model_registry_store.search_model_versions(
+    response_message.next_page_token = _top_up_page(
+        response_message.model_versions,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: model_registry_store.search_model_versions(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
-            page_token=response_message.next_page_token,
-        )
-        remaining = request_message.max_results - len(response_message.model_versions)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        for mv in refetched:
-            if _cached_can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)):
-                response_message.model_versions.append(mv.to_proto())
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda mv: _cached_can_read_registered_model(mv.name, username),
+    )
 
     resp.data = message_to_json(response_message)
 
 
-def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws_map: dict[str, str | None]) -> bool:
+def _search_logged_models_needs_no_filtering(payload: Any, username: str) -> bool:
     """Report whether the already-decoded response body can be passed through untouched.
 
     Rewriting the body costs a `parse_dict` into protobuf plus a full re-serialisation
@@ -398,9 +434,8 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
     payload returns False and leaves the filtering below to do its work.
 
     ``payload`` is ``resp.json`` decoded once by the caller — werkzeug does not cache
-    ``Response.get_json``, and the body is large. Workspace lookups performed here are
-    recorded in ``exp_ws_map`` so the full filter can reuse them instead of repeating
-    the store round-trips when this returns False.
+    ``Response.get_json``, and the body is large. The workspace has already been checked
+    by the caller, once for the whole search.
     """
     if not isinstance(payload, dict):
         return False
@@ -416,7 +451,6 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
     if not isinstance(models, list):
         return False
 
-    workspaces_enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
     for model in models:
         if not isinstance(model, dict):
             return False
@@ -428,14 +462,6 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str, exp_ws
             return False
         if not _cached_can_read_experiment(experiment_id, username):
             return False
-        if workspaces_enabled:
-            if experiment_id not in exp_ws_map:
-                try:
-                    exp_ws_map[experiment_id] = _get_tracking_store().get_experiment(experiment_id).workspace
-                except Exception:
-                    exp_ws_map[experiment_id] = None
-            if not _can_access_workspace(username, exp_ws_map[experiment_id]):
-                return False
 
     return True
 
@@ -448,10 +474,19 @@ def _filter_search_logged_models(resp: Response) -> None:
         return
 
     username = get_fastapi_username()
-    payload = resp.json
-    exp_ws_map: dict[str, str | None] = {}
 
-    if _search_logged_models_needs_no_filtering(payload, username, exp_ws_map):
+    # Filter by workspace permission (WSSEC-03). MLflow scopes a logged-model search to the
+    # experiments of the request's workspace, so one check covers every row of every page.
+    payload = resp.json
+    if _search_scope_denied(username):
+        response_message = SearchLoggedModels.Response()  # type: ignore
+        parse_dict(payload, response_message)
+        del response_message.models[:]
+        response_message.next_page_token = ""
+        resp.data = message_to_json(response_message)
+        return
+
+    if _search_logged_models_needs_no_filtering(payload, username):
         return
 
     response_message = SearchLoggedModels.Response()  # type: ignore
@@ -462,21 +497,6 @@ def _filter_search_logged_models(resp: Response) -> None:
     for m in list(response_message.models):
         if not _cached_can_read_experiment(m.info.experiment_id, username):
             response_message.models.remove(m)
-
-    # Filter by workspace permission (WSSEC-03); exp_ws_map may already hold lookups
-    # made by the shortcut above.
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        tracking_store_ws = _get_tracking_store()
-        for m in list(response_message.models):
-            exp_id = m.info.experiment_id
-            if exp_id not in exp_ws_map:
-                try:
-                    exp_ws_map[exp_id] = tracking_store_ws.get_experiment(exp_id).workspace
-                except Exception:
-                    exp_ws_map[exp_id] = None
-        for m in list(response_message.models):
-            if not _can_access_workspace(username, exp_ws_map.get(m.info.experiment_id)):
-                response_message.models.remove(m)
 
     from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
 
@@ -499,38 +519,16 @@ def _filter_search_logged_models(resp: Response) -> None:
         ),
     }
 
-    next_page_token = response_message.next_page_token or None
     tracking_store = _get_tracking_store()
-
-    while len(response_message.models) < max_results and next_page_token is not None:
-        batch = tracking_store.search_logged_models(max_results=max_results, page_token=next_page_token, **params)
-        is_last_page = batch.token is None
-        offset = Token.decode(next_page_token).offset if next_page_token else 0
-        last_index = len(batch) - 1
-
-        for index, model in enumerate(batch):
-            if not _cached_can_read_experiment(model.experiment_id, username):
-                continue
-
-            # Workspace filtering for refetch path (WSSEC-03)
-            if config.MLFLOW_ENABLE_WORKSPACES:
-                exp_id = model.experiment_id
-                if exp_id not in exp_ws_map:
-                    try:
-                        exp_ws_map[exp_id] = tracking_store.get_experiment(exp_id).workspace
-                    except Exception:
-                        exp_ws_map[exp_id] = None
-                if not _can_access_workspace(username, exp_ws_map.get(exp_id)):
-                    continue
-
-            response_message.models.append(model.to_proto())
-            if len(response_message.models) >= max_results:
-                next_page_token = None if is_last_page and index == last_index else Token(offset=offset + index + 1, **params).encode()
-                break
-        else:
-            next_page_token = None if is_last_page else Token(offset=offset + max_results, **params).encode()
-
-    response_message.next_page_token = next_page_token or ""
+    response_message.next_page_token = _top_up_page(
+        response_message.models,
+        max_results,
+        response_message.next_page_token,
+        fetch=lambda token: tracking_store.search_logged_models(max_results=max_results, page_token=token, **params),
+        keep=lambda model: _cached_can_read_experiment(model.experiment_id, username),
+        decode_offset=lambda token: Token.decode(token).offset,
+        encode_offset=lambda offset: Token(offset=offset, **params).encode(),
+    )
     resp.data = message_to_json(response_message)
 
 
@@ -604,31 +602,51 @@ def _set_can_manage_gateway_endpoint_permission(resp: Response):
     parse_dict(resp.json, response_message)
     name = response_message.endpoint.name
     username = get_fastapi_username()
-    store.create_gateway_endpoint_permission(name, username, MANAGE.name)
+    store.grant_creator_gateway_endpoint_permission(name, username)
 
 
-def _rename_gateway_endpoint_permission(resp: Response):
-    """Propagate endpoint name changes to all user and group permission records.
+def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, ids_attr: str, response_class, response_field: str, rename) -> None:
+    """Move a renamed gateway resource's user and group permissions to its new name.
 
-    The old name was stashed in ``flask.g`` by the before-request validator.
-    The new name is read from the response.
+    The before-request hook stashes the current name in ``flask.g`` (it is resolved from the
+    resource id); the new name is read from MLflow's response.
+
+    Parameters:
+        resp: MLflow's successful update response.
+        old_name_attr: The ``flask.g`` attribute holding the stashed name.
+        ids_attr: The ``flask.g`` attribute holding the ids of the rows to move, recorded with the name.
+        response_class: The update message whose ``Response`` to parse.
+        response_field: The response field holding the updated resource.
+        rename: The store method moving the permissions, called as ``rename(old_name, new_name, ids)``.
     """
-    old_name = getattr(g, "_updating_gateway_endpoint_old_name", None)
+    old_name = getattr(g, old_name_attr, None)
     if not old_name:
         return
 
-    response_message = UpdateGatewayEndpoint.Response()  # type: ignore
+    response_message = response_class.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    new_name = response_message.endpoint.name
+    new_name = getattr(response_message, response_field).name
 
     if not new_name or new_name == old_name:
-        # Name unchanged — nothing to do.
         return
 
     try:
-        store.rename_gateway_endpoint_permissions(old_name, new_name)
-    except Exception:
-        get_logger().warning("Failed to rename gateway endpoint permissions")
+        rename(old_name, new_name, getattr(g, ids_attr, None))
+    except Exception as exc:
+        # MLflow has already committed the rename; the permissions stayed on the old name.
+        get_logger().error("Failed to move permissions of a renamed gateway %s (%s)", response_field.replace("_", " "), type(exc).__name__)
+
+
+def _rename_gateway_endpoint_permission(resp: Response):
+    """Propagate endpoint name changes to all user and group permission records."""
+    _rename_gateway_resource_permissions(
+        resp,
+        old_name_attr="_updating_gateway_endpoint_old_name",
+        ids_attr="_updating_gateway_endpoint_permission_ids",
+        response_class=UpdateGatewayEndpoint,
+        response_field="endpoint",
+        rename=store.rename_gateway_endpoint_permissions,
+    )
 
 
 def _set_can_manage_gateway_secret_permission(resp: Response):
@@ -637,7 +655,7 @@ def _set_can_manage_gateway_secret_permission(resp: Response):
     parse_dict(resp.json, response_message)
     secret_name = response_message.secret.secret_name
     username = get_fastapi_username()
-    store.create_gateway_secret_permission(secret_name, username, MANAGE.name)
+    store.grant_creator_gateway_secret_permission(secret_name, username)
 
 
 def _set_can_manage_gateway_model_definition_permission(resp: Response):
@@ -646,7 +664,7 @@ def _set_can_manage_gateway_model_definition_permission(resp: Response):
     parse_dict(resp.json, response_message)
     name = response_message.model_definition.name
     username = get_fastapi_username()
-    store.create_gateway_model_definition_permission(name, username, MANAGE.name)
+    store.grant_creator_gateway_model_definition_permission(name, username)
 
 
 def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
@@ -760,6 +778,18 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
         store.wipe_gateway_secret_permissions(name)
     except Exception:
         get_logger().warning("Failed to cascade-delete permissions for gateway secret")
+
+
+def _rename_gateway_model_definition_permission(resp: Response):
+    """Propagate model definition name changes to all user and group permission records."""
+    _rename_gateway_resource_permissions(
+        resp,
+        old_name_attr="_updating_gateway_model_definition_old_name",
+        ids_attr="_updating_gateway_model_definition_permission_ids",
+        response_class=UpdateGatewayModelDefinition,
+        response_field="model_definition",
+        rename=store.rename_gateway_model_definition_permissions,
+    )
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:
@@ -1006,6 +1036,7 @@ AFTER_REQUEST_PATH_HANDLERS = {
     CreateGatewaySecret: _set_can_manage_gateway_secret_permission,
     CreateGatewayModelDefinition: _set_can_manage_gateway_model_definition_permission,
     UpdateGatewayEndpoint: _rename_gateway_endpoint_permission,
+    UpdateGatewayModelDefinition: _rename_gateway_model_definition_permission,
     DeleteGatewayEndpoint: _delete_gateway_endpoint_permissions_cascade,
     DeleteGatewaySecret: _delete_gateway_secret_permissions_cascade,
     DeleteGatewayModelDefinition: _delete_gateway_model_definition_permissions_cascade,

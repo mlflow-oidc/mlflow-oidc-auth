@@ -37,11 +37,11 @@ class TestMatchRegexPermissionScorer:
         assert result == "READ"
 
     def test_returns_first_match(self) -> None:
-        """Should return the first matching regex in list order."""
-        r1 = MagicMock(regex=".*", permission="READ", priority=10)
-        r2 = MagicMock(regex="^accuracy.*", permission="MANAGE", priority=1)
+        """Should return the first matching regex by (priority, id), whatever the list order."""
+        r1 = MagicMock(regex=".*", permission="READ", priority=10, id=1)
+        r2 = MagicMock(regex="^accuracy.*", permission="MANAGE", priority=1, id=2)
         result = _match_regex_permission([r1, r2], "accuracy-v1", "scorer name")
-        assert result == "READ"
+        assert result == "MANAGE"
 
     def test_raises_when_no_match(self) -> None:
         """Should raise MlflowException when no regex matches."""
