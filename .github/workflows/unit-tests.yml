@@ -44,12 +44,19 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: 3.14
+          # Keyed on what the export installs. A PR run saves to its own ref only, so a fork cannot
+          # seed a cache that a run on main restores.
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            scripts/openapi-constraints.txt
       - name: Install dependencies
         run: |
           yarn install
         working-directory: web-react
       # The committed openapi.json and generated types must match the routers (#458). FastAPI and
       # Pydantic shape the document, so they are pinned to the versions it was generated with.
+      # `git status --porcelain` also catches a generated file that was never committed.
       - name: Check the API contract is current
         run: |
           python -m pip install --upgrade pip
@@ -57,11 +64,13 @@ jobs:
           python scripts/export_openapi.py
           (cd web-react && yarn gen:api)
           git diff --exit-code openapi.json web-react/src/core/types/generated/
-      - name: Type check
-        run: |
-          yarn tsc --noEmit -p tsconfig.app.json
-          yarn tsc --noEmit -p tsconfig.node.json
-        working-directory: web-react
+          drift="$(git status --porcelain -- openapi.json web-react/src/core/types/generated/)"
+          if [ -n "${drift}" ]; then
+            echo "The API contract is out of date; run scripts/export_openapi.py and yarn gen:api, then commit:"
+            echo "${drift}"
+            exit 1
+          fi
+      # `yarn lint` runs `tsc -b`, which type-checks both tsconfig projects (app and node).
       - name: Lint
         run: |
           yarn lint
