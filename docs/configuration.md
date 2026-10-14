@@ -115,9 +115,9 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level when no explicit permission is found. Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
+| `DEFAULT_MLFLOW_PERMISSION` | String | `NO_PERMISSIONS` | Default permission level when no explicit permission is found (deny by default since v7.6.0; it was `MANAGE` before). Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
-| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is left at the default `MANAGE` — lower it below `EDIT` (or use workspaces) to actually restrict creation. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
+| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is `EDIT` or `MANAGE`. It works with the default `NO_PERMISSIONS` and with `READ` or `USE`, since none of those can create; or use workspaces. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
 
 ### Database
 
@@ -148,8 +148,8 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `OIDC_GEN_AI_GATEWAY_ENABLED` | Boolean | `true` | Enable AI Gateway permission management in the admin UI and API. Disable if you don't use MLflow AI Gateway |
-| `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. Requires MLflow >=3.10. See [Workspaces](workspaces) |
-| `ENABLE_API_DOCS` | Boolean | `true` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
+| `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. See [Workspaces](workspaces) |
+| `ENABLE_API_DOCS` | Boolean | `false` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
 
 ### Caching
 
@@ -703,8 +703,8 @@ for deployments behind a reverse proxy.
   `jku` that is not an http(s) URL, a non-boolean `b64`), and one whose signature segment
   carries base64 padding. Standards-conforming identity providers issue none of these.
 - **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
-  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
-  `MANAGE`, so on a default deployment any authenticated user could download, upload to or
+  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. On a deployment that sets
+  it to `MANAGE` (the shipped default before v7.6.0), any authenticated user could download, upload to or
   delete the artifact root (`DELETE /api/2.0/mlflow-artifacts/artifacts/.` emptied every
   experiment's artifacts) and list every experiment id. Such paths now get `403` for every
   method. Listing the root still works, but it returns only the experiments the caller can read.
@@ -737,8 +737,9 @@ for deployments behind a reverse proxy.
   model's experiment; creating or updating a gateway model definition needs USE on its secret;
   creating or updating a gateway endpoint, or attaching a model to one, needs USE on every model
   definition it routes to, and EDIT on the experiment named in `experiment_id`. Admins are
-  unaffected. With the default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these
-  grants; on a deny-by-default deployment, grant them before upgrading. See
+  unaffected. With `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants. With
+  the default `NO_PERMISSIONS` (which also applies to a deployment upgraded from before v7.6.0
+  that never set the variable), grant them before upgrading. See
   [Resources a request references](permissions#resources-a-request-references).
 - **Model version sources are checked.** A model version whose `source` is a storage location
   (`s3://`, `gs://`, a local path, a URL other than the artifact proxy) must lie under the
@@ -755,8 +756,9 @@ for deployments behind a reverse proxy.
   review queues, UI jobs, scorer online-scoring configuration, `issues/invoke` and
   `genai/evaluate/invoke` now check the permission of the
   experiment they belong to. A non-admin needs the grant listed in
-  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
-  default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no
+  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with
+  `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it, and with the default
+  `NO_PERMISSIONS` it has to be granted. Requests that name no
   experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
   no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
   `windows`) and demo-data generation are admin-only.
@@ -869,7 +871,7 @@ SECRET_KEY=dev-not-for-production
 ### Security-First Production Setup
 
 ```bash
-# Deny all access by default — require explicit permission grants
+# Deny by default (the shipped default since v7.6.0); shown here so it is explicit
 DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
 
 # Strict group requirements
@@ -888,7 +890,7 @@ SESSION_COOKIE_MAX_AGE_SECONDS=0
 SESSION_COOKIE_SAMESITE=strict
 SESSION_COOKIE_SECURE=true
 
-# Disable API docs
+# API docs stay off (the default); shown here so it is explicit
 ENABLE_API_DOCS=false
 
 # Auto-redirect to OIDC login
