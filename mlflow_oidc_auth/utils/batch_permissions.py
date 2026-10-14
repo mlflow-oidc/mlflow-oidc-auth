@@ -201,11 +201,13 @@ def filter_manageable_prompts(username: str, prompts: List) -> List:
 def _filter_manageable_by_name(username: str, resource_type: str, items: List, name_of: Callable[[Any], str]) -> List:
     """The items of a gateway listing ``username`` can manage, resolved against one bulk context.
 
-    The workspace fallback applies in the same request workspace as every other batch filter
-    (:func:`_batch_workspace`). An item without a name, or one whose resolution fails, is not
-    manageable.
+    The workspace fallback applies in the workspace the request names, as the single-resource
+    gateway checks (``can_manage_gateway_*``) decide it: a header-less request gets the global
+    default. The experiment, model and prompt filters use MLflow's request workspace instead
+    (:func:`_batch_workspace`); aligning the two is #480. An item without a name, or one whose
+    resolution fails, is not manageable.
     """
-    ctx = build_user_permission_context(username)
+    ctx = load_grant_context(username, bulk=True)
     manageable = []
     for item in items:
         name = name_of(item)

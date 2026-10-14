@@ -721,12 +721,12 @@ class TestWorkspaceFallbackIntegration:
         assert result.permission.name == "MANAGE"
 
 
-def test_header_less_request_falls_back_alike_for_every_resource_type():
-    """Every batch filter reads the request workspace from the same source (issue #460 review).
+def test_header_less_request_workspace_sources_are_unchanged():
+    """A header-less request with workspaces on, as on main (#480 tracks aligning them).
 
-    A header-less request with workspaces on: MLflow serves it from its own workspace ("ws-x"
-    here), and every resource type without a grant of its own falls back to the caller's
-    permission there — gateway listings included, which used to read the header instead.
+    MLflow serves it from its own workspace ("ws-x" here). Experiments, models and prompts without
+    a grant of their own fall back to the caller's permission there. Gateway listings follow the
+    single-resource gateway checks, which read the request header: with none, the global default.
     """
     from mlflow_oidc_auth.permissions import MANAGE
     from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_endpoints, filter_manageable_gateway_secrets
@@ -743,7 +743,7 @@ def test_header_less_request_falls_back_alike_for_every_resource_type():
         assert filter_manageable_experiments("testuser", experiments) == experiments
         assert filter_manageable_models("testuser", models) == models
         assert filter_manageable_prompts("testuser", models) == models
-        assert filter_manageable_gateway_endpoints("testuser", [{"name": "ep"}]) == [{"name": "ep"}]
-        assert filter_manageable_gateway_secrets("testuser", [{"secret_name": "s"}]) == [{"secret_name": "s"}]
         kinds = {r.kind for r in batch_resolve_model_permissions("testuser", models).values()}
+        assert filter_manageable_gateway_endpoints("testuser", [{"name": "ep"}]) == []
+        assert filter_manageable_gateway_secrets("testuser", [{"secret_name": "s"}]) == []
     assert kinds == {"workspace"}
