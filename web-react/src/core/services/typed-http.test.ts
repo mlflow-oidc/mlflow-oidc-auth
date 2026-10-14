@@ -173,18 +173,16 @@ describe("typed-http", () => {
 
   it("is checked against the contract at compile time", () => {
     // Response types come from the generated contract.
-    const detail: ApiResponse<
-      "/api/2.0/mlflow/users/details",
-      "get"
-    >[number] = {
-      username: "a",
-      display_name: "A",
-      is_admin: false,
-      is_service_account: false,
-      active: true,
-      managed_by: "manual",
-      service_account_source: null,
-    };
+    const detail: ApiResponse<"/api/2.0/mlflow/users/details", "get">[number] =
+      {
+        username: "a",
+        display_name: "A",
+        is_admin: false,
+        is_service_account: false,
+        active: true,
+        managed_by: "manual",
+        service_account_source: null,
+      };
     expect(detail.username).toBe("a");
 
     const neverCalled = () => {

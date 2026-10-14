@@ -26,10 +26,9 @@ export type PathsWithMethod<M extends HttpMethod> = {
 }[ApiPath];
 
 /** The operation `M` on `P`. */
-export type ApiOperation<
-  P extends ApiPath,
-  M extends HttpMethod,
-> = NonNullable<paths[P][M]>;
+export type ApiOperation<P extends ApiPath, M extends HttpMethod> = NonNullable<
+  paths[P][M]
+>;
 
 type ParametersOf<Op> = Op extends { parameters: infer X } ? X : never;
 
@@ -151,10 +150,7 @@ function toRequest(
  *   body: { active: false },
  * });
  */
-export function apiRequest<
-  M extends HttpMethod,
-  P extends PathsWithMethod<M>,
->(
+export function apiRequest<M extends HttpMethod, P extends PathsWithMethod<M>>(
   method: M,
   path: P,
   ...[options]: OptionsArg<ApiCallOptions<P, M>>

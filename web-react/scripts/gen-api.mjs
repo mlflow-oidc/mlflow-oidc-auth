@@ -9,7 +9,10 @@ import fs from "node:fs";
 import openapiTS, { astToString, COMMENT_HEADER } from "openapi-typescript";
 
 const schema = new URL("../../openapi.json", import.meta.url);
-const output = new URL("../src/core/types/generated/openapi.ts", import.meta.url);
+const output = new URL(
+  "../src/core/types/generated/openapi.ts",
+  import.meta.url,
+);
 
 const ast = await openapiTS(schema, { defaultNonNullable: false });
 fs.mkdirSync(new URL(".", output), { recursive: true });
