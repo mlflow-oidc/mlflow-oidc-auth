@@ -22,11 +22,13 @@ jobs:
           # Keep in sync with allowed-commit-types in commit-message-check.yml, which already
           # accepts these. "perf" is a release type: the angular preset that
           # @semantic-release/commit-analyzer defaults to maps it to a patch release and
-          # gives it its own "Performance Improvements" changelog section.
+          # gives it its own "Performance Improvements" changelog section. "refactor" is not a
+          # release type: a squash-merged refactor publishes nothing on its own.
           types: |
             fix
             feat
             perf
+            refactor
             docs
             ci
             chore
