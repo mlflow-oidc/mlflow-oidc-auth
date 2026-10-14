@@ -11,6 +11,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from sqlalchemy.orm import Session
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGroup, SqlScorerGroupPermission, SqlUser, SqlUserGroup
 from mlflow_oidc_auth.entities import ScorerPermission
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
@@ -19,7 +20,7 @@ from mlflow_oidc_auth.repository.utils import get_group
 
 
 class ScorerPermissionGroupRepository(BaseGroupPermissionRepository[SqlScorerGroupPermission, ScorerPermission]):
-    model_class = SqlScorerGroupPermission
+    grant_kind = permission_kinds.SCORER
     resource_id_attr = "experiment_id"
 
     # -- private helpers (2-part key) -----------------------------------------
