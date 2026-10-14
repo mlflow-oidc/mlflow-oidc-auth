@@ -30,6 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth.permission_kinds import resource_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, compare_permissions, get_permission, in_regex_grant_order
 from mlflow_oidc_auth.store import store
 
@@ -402,7 +403,7 @@ def _build_mcp_server_sources(name: str, username: str, **kwargs) -> Dict[str, C
 # ---------------------------------------------------------------------------
 
 
-PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
+_SOURCE_BUILDERS: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
     EXPERIMENT: _build_experiment_sources,
     REGISTERED_MODEL: _build_registered_model_sources,
     PROMPT: _build_prompt_sources,
@@ -412,6 +413,10 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
     GATEWAY_MODEL_DEFINITION: _build_gateway_model_definition_sources,
     MCP_SERVER: _build_mcp_server_sources,
 }
+
+#: One builder per kind ``permission_kinds`` resolves per resource. A kind without a builder fails
+#: here, at import; a builder without a kind is never reachable (``test_permission_kinds.py``).
+PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {kind.name: _SOURCE_BUILDERS[kind.name] for kind in resource_kinds()}
 
 #: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
 #: (MCP servers have no pattern sources) skips it silently; only an unknown name is a misconfiguration.

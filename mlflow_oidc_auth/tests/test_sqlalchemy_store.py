@@ -134,17 +134,17 @@ class TestSqlAlchemyStore:
     def test_get_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.get_registered_model_regex_permission(1, "user")
-        store.registered_model_regex_repo.get.assert_called_once_with(1, "user")
+        store.registered_model_regex_repo.get.assert_called_once_with(username="user", id=1)
 
     def test_update_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.update_registered_model_regex_permission(1, ".*", 2, "EDIT", "user")
-        store.registered_model_regex_repo.update.assert_called_once_with(1, ".*", 2, "EDIT", "user")
+        store.registered_model_regex_repo.update.assert_called_once_with(regex=".*", priority=2, permission="EDIT", username="user", id=1)
 
     def test_delete_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_regex_repo = MagicMock()
         store.delete_registered_model_regex_permission(1, "user")
-        store.registered_model_regex_repo.revoke.assert_called_once_with(1, "user")
+        store.registered_model_regex_repo.revoke.assert_called_once_with(username="user", id=1)
 
     def test_create_group_registered_model_regex_permission(self, store: SqlAlchemyStore):
         store.registered_model_group_regex_repo = MagicMock()
@@ -183,72 +183,58 @@ class TestSqlAlchemyStore:
 
     def test_create_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.create_prompt_regex_permission(".*", 1, "READ", "user", prompt=True)
-        store.prompt_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", username="user", prompt=True)
+        store.create_prompt_regex_permission(".*", 1, "READ", "user")
+        store.prompt_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", username="user")
 
     def test_get_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.get_prompt_regex_permission(1, "user", prompt=True)
-        store.prompt_regex_repo.get.assert_called_once_with(id=1, username="user", prompt=True)
+        store.get_prompt_regex_permission(1, "user")
+        store.prompt_regex_repo.get.assert_called_once_with(username="user", id=1)
 
     def test_update_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
-        store.update_prompt_regex_permission(1, ".*", 2, "EDIT", "user", prompt=True)
-        store.prompt_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            username="user",
-            prompt=True,
-        )
+        store.update_prompt_regex_permission(1, ".*", 2, "EDIT", "user")
+        store.prompt_regex_repo.update.assert_called_once_with(regex=".*", priority=2, permission="EDIT", username="user", id=1)
 
     def test_delete_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_regex_repo = MagicMock()
         store.delete_prompt_regex_permission(1, "user")
-        store.prompt_regex_repo.revoke.assert_called_once_with(id=1, username="user", prompt=True)
+        store.prompt_regex_repo.revoke.assert_called_once_with(username="user", id=1)
 
     def test_create_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.create_group_prompt_regex_permission(".*", 1, "READ", "group", prompt=True)
-        store.prompt_group_regex_repo.grant.assert_called_once_with(regex=".*", priority=1, permission="READ", group_name="group", prompt=True)
+        store.create_group_prompt_regex_permission(".*", 1, "READ", "group")
+        store.prompt_group_regex_repo.grant.assert_called_once_with(group_name="group", regex=".*", priority=1, permission="READ")
 
     def test_get_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.get_group_prompt_regex_permission(1, "group", prompt=True)
-        store.prompt_group_regex_repo.get.assert_called_once_with(id=1, group_name="group", prompt=True)
+        store.get_group_prompt_regex_permission(1, "group")
+        store.prompt_group_regex_repo.get.assert_called_once_with(group_name="group", id=1)
 
     def test_list_group_prompt_regex_permissions(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions("group", prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_group.assert_called_once_with(group_name="group", prompt=True)
+        store.list_group_prompt_regex_permissions("group")
+        store.prompt_group_regex_repo.list_permissions_for_group.assert_called_once_with("group")
 
     def test_update_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.update_group_prompt_regex_permission(1, ".*", 2, "EDIT", "group", prompt=True)
-        store.prompt_group_regex_repo.update.assert_called_once_with(
-            id=1,
-            regex=".*",
-            priority=2,
-            permission="EDIT",
-            group_name="group",
-            prompt=True,
-        )
+        store.update_group_prompt_regex_permission(1, ".*", 2, "EDIT", "group")
+        store.prompt_group_regex_repo.update.assert_called_once_with(id=1, group_name="group", regex=".*", priority=2, permission="EDIT")
 
     def test_delete_group_prompt_regex_permission(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
         store.delete_group_prompt_regex_permission(1, "group")
-        store.prompt_group_regex_repo.revoke.assert_called_once_with(id=1, group_name="group", prompt=True)
+        store.prompt_group_regex_repo.revoke.assert_called_once_with(group_name="group", id=1)
 
     def test_list_group_prompt_regex_permissions_for_groups(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions_for_groups(["group1", "group2"], prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_groups.assert_called_once_with(group_names=["group1", "group2"], prompt=True)
+        store.list_group_prompt_regex_permissions_for_groups(["group1", "group2"])
+        store.prompt_group_regex_repo.list_permissions_for_groups.assert_called_once_with(["group1", "group2"])
 
     def test_list_group_prompt_regex_permissions_for_groups_ids(self, store: SqlAlchemyStore):
         store.prompt_group_regex_repo = MagicMock()
-        store.list_group_prompt_regex_permissions_for_groups_ids([1, 2], prompt=True)
-        store.prompt_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with(group_ids=[1, 2], prompt=True)
+        store.list_group_prompt_regex_permissions_for_groups_ids([1, 2])
+        store.prompt_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with([1, 2])
 
     # Test missing user management methods
     def test_authenticate_user(self, mock_store: SqlAlchemyStore):
@@ -533,22 +519,22 @@ class TestSqlAlchemyStore:
     # Test prompt permission methods
     def test_create_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.create_group_prompt_permission("group1", "prompt1", "READ")
-        mock_store.prompt_group_repo.grant_prompt_permission_to_group.assert_called_once_with("group1", "prompt1", "READ")
+        mock_store.prompt_group_repo.grant_group_permission.assert_called_once_with("group1", "prompt1", "READ")
 
     def test_get_group_prompts(self, mock_store: SqlAlchemyStore):
         mock_permissions = [create_test_registered_model_permission("prompt1", "READ", 1, prompt=True)]
-        mock_store.prompt_group_repo.list_prompt_permissions_for_group.return_value = mock_permissions
+        mock_store.prompt_group_repo.list_permissions_for_group.return_value = mock_permissions
         result = mock_store.get_group_prompts("group1")
-        mock_store.prompt_group_repo.list_prompt_permissions_for_group.assert_called_once_with("group1")
+        mock_store.prompt_group_repo.list_permissions_for_group.assert_called_once_with("group1")
         assert result == mock_permissions
 
     def test_update_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.update_group_prompt_permission("group1", "prompt1", "EDIT")
-        mock_store.prompt_group_repo.update_prompt_permission_for_group.assert_called_once_with("group1", "prompt1", "EDIT")
+        mock_store.prompt_group_repo.update_group_permission.assert_called_once_with("group1", "prompt1", "EDIT")
 
     def test_delete_group_prompt_permission(self, mock_store: SqlAlchemyStore):
         mock_store.delete_group_prompt_permission("group1", "prompt1")
-        mock_store.prompt_group_repo.revoke_prompt_permission_from_group.assert_called_once_with("group1", "prompt1")
+        mock_store.prompt_group_repo.revoke_group_permission.assert_called_once_with("group1", "prompt1")
 
     # Test regex permission methods that were missing
     def test_list_experiment_regex_permissions(self, mock_store: SqlAlchemyStore):
@@ -576,8 +562,8 @@ class TestSqlAlchemyStore:
         mock_store.registered_model_group_regex_repo.list_permissions_for_groups_ids.assert_called_once_with([1, 2])
 
     def test_list_prompt_regex_permissions(self, mock_store: SqlAlchemyStore):
-        mock_store.list_prompt_regex_permissions("user1", prompt=True)
-        mock_store.prompt_regex_repo.list_regex_for_user.assert_called_once_with(username="user1", prompt=True)
+        mock_store.list_prompt_regex_permissions("user1")
+        mock_store.prompt_regex_repo.list_regex_for_user.assert_called_once_with(username="user1")
 
 
 class TestSqlAlchemyStoreErrorHandling:

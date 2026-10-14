@@ -7,7 +7,8 @@ Provides common CRUD patterns for:
 - BaseGroupRegexPermissionRepository: regex-based group permissions (regex + priority + group_id)
 """
 
-from typing import Callable, Generic, List, Type, TypeVar
+from types import MappingProxyType
+from typing import Any, Callable, Generic, List, Mapping, Type, TypeVar
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
@@ -34,7 +35,41 @@ ModelT = TypeVar("ModelT")
 EntityT = TypeVar("EntityT")
 
 
-class _GrantWorkspaceScope:
+class _KindFilter:
+    """The rows of a shared table that belong to this repository's grant kind.
+
+    ``extra_filter`` maps columns to the value this kind's rows hold — ``{"prompt": True}`` for
+    prompts, ``{"prompt": False}`` for registered models, which share their pattern tables and their
+    group grant table (see :mod:`mlflow_oidc_auth.permission_kinds`). Every row the repository
+    creates carries it, and every grant it looks up, lists, updates or revokes must match it, so a
+    prompt pattern is never read, changed or matched as a registered model pattern, or the reverse.
+
+    The exact-grant permission lookups (``get_group_permission_for_user_resource``,
+    ``list_permissions_for_user_groups``, ``_same_grant``) and the per-resource cascades (rename,
+    wipe) do not filter: a grant on a name counts for that name whatever its flag, as it always has.
+    """
+
+    extra_filter: Mapping[str, Any] = MappingProxyType({})
+    model_class: Type
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        model = getattr(cls, "model_class", None)
+        missing = [column for column in cls.extra_filter if model is not None and not hasattr(model, column)]
+        if missing:
+            # A filter on a column the table lacks would silently match every row of the shared table.
+            raise TypeError(f"{cls.__name__}.extra_filter names columns {missing} that {model.__name__} does not have")
+
+    def _kind_is(self) -> list:
+        """The ``extra_filter`` conditions, to add to a query's filter."""
+        return [getattr(self.model_class, column) == value for column, value in self.extra_filter.items()]
+
+    def _kind_fields(self) -> dict:
+        """The ``extra_filter`` values, to write into a new row."""
+        return dict(self.extra_filter)
+
+
+class _GrantWorkspaceScope(_KindFilter):
     """Workspace scoping for grants on name-keyed resources (see utils/grant_workspace.py).
 
     Subclasses whose resources MLflow keeps unique per ``(workspace, name)`` — registered models
@@ -147,6 +182,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
                 .filter(
                     self._resource_is(resource_id),
                     SqlUser.username == username,
+                    *self._kind_is(),
                 )
             )
         except NoResultFound:
@@ -182,6 +218,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
                     "user_id": user.id,
                     "permission": permission,
                     **self._new_row_fields(),
+                    **self._kind_fields(),
                 }
             )
             session.add(perm)
@@ -217,7 +254,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
             rows = (
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
-                .filter(SqlUser.username == username, self._in_scope())
+                .filter(SqlUser.username == username, self._in_scope(), *self._kind_is())
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]
@@ -229,7 +266,7 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         :return: A list of permission entities for the resource.
         """
         with self._Session() as session:
-            rows = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
+            rows = session.query(self.model_class).filter(self._resource_is(resource_id), *self._kind_is()).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_permission(self, resource_id: str, username: str, permission: str) -> EntityT:
@@ -335,6 +372,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 .filter(
                     self._resource_is(resource_id),
                     SqlGroup.group_name == group_name,
+                    *self._kind_is(),
                 )
             )
         except NoResultFound:
@@ -363,6 +401,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             session.query(self.model_class).filter(
                 self._resource_is(resource_id),
                 self.model_class.group_id == group.id,
+                *self._kind_is(),
             ),
             required=False,
         )
@@ -405,6 +444,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                         "group_id": group.id,
                         "permission": permission,
                         **self._new_row_fields(),
+                        **self._kind_fields(),
                     }
                 )
                 session.add(perm)
@@ -424,7 +464,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         """
         with self._Session() as session:
             group = get_group(session, group_name)
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id, self._in_scope()).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group.id, self._in_scope(), *self._kind_is()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_permissions_for_group_id(self, group_id: int) -> List[EntityT]:
@@ -434,7 +474,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         :return: A list of permission entities for the group.
         """
         with self._Session() as session:
-            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id, self._in_scope()).all()
+            perms = session.query(self.model_class).filter(self.model_class.group_id == group_id, self._in_scope(), *self._kind_is()).all()
             return [p.to_mlflow_entity() for p in perms]
 
     def list_groups_for_resource(self, resource_id: str) -> List[tuple[str, str]]:
@@ -447,7 +487,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             rows = (
                 session.query(SqlGroup.group_name, self.model_class.permission)
                 .join(self.model_class, self.model_class.group_id == SqlGroup.id)
-                .filter(self._resource_is(resource_id))
+                .filter(self._resource_is(resource_id), *self._kind_is())
                 .all()
             )
             return [(str(group_name), str(permission)) for group_name, permission in rows]
@@ -536,6 +576,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
+                    *self._kind_is(),
                 )
             )
             for row in self._same_grant(session, perm):
@@ -555,6 +596,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
                 session.query(self.model_class).filter(
                     self._resource_is(resource_id),
                     self.model_class.group_id == group.id,
+                    *self._kind_is(),
                 )
             )
             for row in self._same_grant(session, perm):
@@ -614,7 +656,7 @@ def _pattern_workspace_fields(model_class) -> dict:
     return {"workspace": new_pattern_workspace()} if hasattr(model_class, "workspace") else {}
 
 
-class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
+class BaseRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
     """Base class for regex-based user permission repositories.
 
     Subclasses must set:
@@ -641,6 +683,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                 .filter(
                     self.model_class.user_id == user_id,
                     self.model_class.id == id,
+                    *self._kind_is(),
                 )
                 .one()
             )
@@ -675,6 +718,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                     user_id=user.id,
                     permission=permission,
                     **_pattern_workspace_fields(self.model_class),
+                    **self._kind_fields(),
                 )
                 session.add(perm)
                 session.flush()
@@ -703,7 +747,10 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
         :return: A list of all permission entities.
         """
         with self._Session() as session:
-            rows = session.query(self.model_class).order_by(*regex_grant_order(self.model_class)).all()
+            query = session.query(self.model_class)
+            if self.extra_filter:
+                query = query.filter(*self._kind_is())
+            rows = query.order_by(*regex_grant_order(self.model_class)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def list_regex_for_user(self, username: str) -> List[EntityT]:
@@ -720,7 +767,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
             rows = (
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
-                .filter(SqlUser.username == username)
+                .filter(SqlUser.username == username, *self._kind_is())
                 .order_by(*regex_grant_order(self.model_class))
                 .all()
             )
@@ -761,7 +808,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
             return None
 
 
-class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
+class BaseGroupRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
     """Base class for regex-based group permission repositories.
 
     Subclasses must set:
@@ -788,6 +835,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
                 .filter(
                     self.model_class.id == id,
                     self.model_class.group_id == group_id,
+                    *self._kind_is(),
                 )
                 .one()
             )
@@ -811,7 +859,8 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
         :param groups: A list of group IDs.
         :return: A list of permission model instances.
         """
-        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(*regex_grant_order(self.model_class)).all()
+        query = session.query(self.model_class).filter(self.model_class.group_id.in_(groups), *self._kind_is())
+        return query.order_by(*regex_grant_order(self.model_class)).all()
 
     def grant(self, group_name: str, regex: str, priority: int, permission: str) -> EntityT:
         """Create a new group regex permission.
@@ -833,6 +882,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
                     permission=permission,
                     priority=priority,
                     **_pattern_workspace_fields(self.model_class),
+                    **self._kind_fields(),
                 )
                 session.add(perm)
                 session.flush()

@@ -83,101 +83,24 @@ class _Spec(NamedTuple):
 
 
 def _specs() -> List[_Spec]:
-    """One entry per resource kind: its grant tables, key columns and regex subject."""
-    from mlflow_oidc_auth.db.models import (
-        SqlExperimentGroupPermission,
-        SqlExperimentGroupRegexPermission,
-        SqlExperimentPermission,
-        SqlExperimentRegexPermission,
-        SqlGatewayEndpointGroupPermission,
-        SqlGatewayEndpointGroupRegexPermission,
-        SqlGatewayEndpointPermission,
-        SqlGatewayEndpointRegexPermission,
-        SqlGatewayModelDefinitionGroupPermission,
-        SqlGatewayModelDefinitionGroupRegexPermission,
-        SqlGatewayModelDefinitionPermission,
-        SqlGatewayModelDefinitionRegexPermission,
-        SqlGatewaySecretGroupPermission,
-        SqlGatewaySecretGroupRegexPermission,
-        SqlGatewaySecretPermission,
-        SqlGatewaySecretRegexPermission,
-        SqlMCPServerGroupPermission,
-        SqlMCPServerPermission,
-        SqlRegisteredModelGroupPermission,
-        SqlRegisteredModelGroupRegexPermission,
-        SqlRegisteredModelPermission,
-        SqlRegisteredModelRegexPermission,
-        SqlScorerGroupPermission,
-        SqlScorerGroupRegexPermission,
-        SqlScorerPermission,
-        SqlScorerRegexPermission,
-        SqlWorkspaceGroupPermission,
-        SqlWorkspaceGroupRegexPermission,
-        SqlWorkspacePermission,
-        SqlWorkspaceRegexPermission,
-    )
+    """One entry per resource kind that owns grant tables (``permission_kinds``): its tables, key columns and regex subject.
+
+    Prompts share the registered model tables and are judged with them, under ``registered_model``.
+    """
+    from mlflow_oidc_auth.permission_kinds import table_owning_kinds
 
     return [
         _Spec(
-            EXPERIMENT,
-            SqlExperimentPermission,
-            SqlExperimentGroupPermission,
-            ("experiment_id",),
-            SqlExperimentRegexPermission,
-            SqlExperimentGroupRegexPermission,
-            None,
-        ),
-        _Spec(
-            REGISTERED_MODEL,
-            SqlRegisteredModelPermission,
-            SqlRegisteredModelGroupPermission,
-            ("name",),
-            SqlRegisteredModelRegexPermission,
-            SqlRegisteredModelGroupRegexPermission,
-            0,
-            True,
-        ),
-        # A scorer's patterns match the scorer name, as in ``_build_scorer_sources``.
-        _Spec(
-            SCORER, SqlScorerPermission, SqlScorerGroupPermission, ("experiment_id", "scorer_name"), SqlScorerRegexPermission, SqlScorerGroupRegexPermission, 1
-        ),
-        # Name-keyed resources are unique per (workspace, name) in MLflow (``workspace_scoped``).
-        # Gateway resolvers pass the name to both the grant lookup and the pattern match: the key.
-        _Spec(
-            GATEWAY_ENDPOINT,
-            SqlGatewayEndpointPermission,
-            SqlGatewayEndpointGroupPermission,
-            ("endpoint_id",),
-            SqlGatewayEndpointRegexPermission,
-            SqlGatewayEndpointGroupRegexPermission,
-            0,
-            True,
-        ),
-        _Spec(
-            GATEWAY_MODEL_DEFINITION,
-            SqlGatewayModelDefinitionPermission,
-            SqlGatewayModelDefinitionGroupPermission,
-            ("model_definition_id",),
-            SqlGatewayModelDefinitionRegexPermission,
-            SqlGatewayModelDefinitionGroupRegexPermission,
-            0,
-            True,
-        ),
-        # The resource-type label is written inline: a module constant carrying "secret" in its
-        # name makes static analysis treat the label (not a secret) as sensitive wherever it is logged.
-        _Spec(
-            "gateway_secret",
-            SqlGatewaySecretPermission,
-            SqlGatewaySecretGroupPermission,
-            ("secret_id",),
-            SqlGatewaySecretRegexPermission,
-            SqlGatewaySecretGroupRegexPermission,
-            0,
-            True,
-        ),
-        # MCP servers have user and group grants only — no pattern tables.
-        _Spec(MCP_SERVER, SqlMCPServerPermission, SqlMCPServerGroupPermission, ("name",), None, None, 0, True),
-        _Spec(WORKSPACE, SqlWorkspacePermission, SqlWorkspaceGroupPermission, ("workspace",), SqlWorkspaceRegexPermission, SqlWorkspaceGroupRegexPermission, 0),
+            kind.name,
+            kind.user_model,
+            kind.group_model,
+            kind.key_columns,
+            kind.user_regex_model,
+            kind.group_regex_model,
+            kind.regex_key_index,
+            kind.workspace_scoped,
+        )
+        for kind in table_owning_kinds()
     ]
 
 

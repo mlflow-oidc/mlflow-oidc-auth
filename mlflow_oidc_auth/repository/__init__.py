@@ -32,9 +32,11 @@ from mlflow_oidc_auth.repository.experiment_permission_regex_group import (
     ExperimentPermissionGroupRegexRepository,
 )
 from mlflow_oidc_auth.repository.registered_model_permission_regex import (
+    PromptPermissionRegexRepository,
     RegisteredModelPermissionRegexRepository,
 )
 from mlflow_oidc_auth.repository.registered_model_permission_regex_group import (
+    PromptGroupRegexPermissionRepository,
     RegisteredModelGroupRegexPermissionRepository,
 )
 
@@ -126,6 +128,8 @@ __all__ = [
     "ExperimentPermissionGroupRegexRepository",
     "RegisteredModelPermissionRegexRepository",
     "RegisteredModelGroupRegexPermissionRepository",
+    "PromptPermissionRegexRepository",
+    "PromptGroupRegexPermissionRepository",
     "ScorerPermissionRepository",
     "ScorerPermissionGroupRepository",
     "ScorerPermissionRegexRepository",
