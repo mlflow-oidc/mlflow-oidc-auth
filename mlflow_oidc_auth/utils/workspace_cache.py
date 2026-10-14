@@ -24,7 +24,7 @@ from urllib.parse import quote
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import Permission, get_permission
+from mlflow_oidc_auth.permissions import Permission, get_permission, in_regex_grant_order
 
 logger = get_logger()
 
@@ -273,12 +273,16 @@ def flush_workspace_cache() -> None:
 def _match_workspace_regex_permission(regexes, workspace: str) -> Permission | None:
     """Match workspace name against sorted regex permissions.
 
-    Per D-07: regexes are sorted by priority (lower number = higher priority).
+    Per D-07: regexes are tried by priority (lower number = higher priority).
     Per D-04: first match wins (short-circuit).
     Per D-08: when multiple regexes match at the same priority, return most permissive.
 
+    The early stop relies on priority order, so input not already in ``(priority, id)`` order
+    (``permissions.regex_grant_order``) is sorted first; ordered input, the usual case from the
+    repositories, is only checked.
+
     Parameters:
-        regexes: List of regex permission entities, sorted by priority ascending.
+        regexes: List of regex permission entities, normally sorted by priority ascending.
         workspace: The workspace name to match against.
 
     Returns:
@@ -287,7 +291,7 @@ def _match_workspace_regex_permission(regexes, workspace: str) -> Permission | N
     best_perm = None
     best_priority = None
 
-    for regex_perm in regexes:
+    for regex_perm in in_regex_grant_order(regexes):
         # If we already found a match at a higher priority (lower number), stop
         if best_priority is not None and regex_perm.priority > best_priority:
             break

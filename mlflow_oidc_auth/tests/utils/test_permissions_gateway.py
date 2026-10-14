@@ -50,11 +50,11 @@ class TestGatewayEndpointRegexPermission:
             _match_regex_permission([regex], "ep-chat", "gateway name")
 
     def test_returns_first_match_priority(self) -> None:
-        """Should return first matching regex (by list order)."""
-        r1 = MagicMock(regex=".*", permission="READ", priority=10)
-        r2 = MagicMock(regex="^ep-.*", permission="MANAGE", priority=1)
+        """Should return the first matching regex by (priority, id), whatever the list order."""
+        r1 = MagicMock(regex=".*", permission="READ", priority=10, id=1)
+        r2 = MagicMock(regex="^ep-.*", permission="MANAGE", priority=1, id=2)
         result = _match_regex_permission([r1, r2], "ep-chat", "gateway name")
-        assert result == "READ"
+        assert result == "MANAGE"
 
     def test_empty_list_raises(self) -> None:
         """Should raise when regex list is empty."""

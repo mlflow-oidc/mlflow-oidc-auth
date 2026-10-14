@@ -23,8 +23,9 @@ with an answer decides, as at request time. So a colleague with a direct ``READ`
 holder under the default order even if a group of theirs holds ``MANAGE``, and a group in which the
 departing user was the last active member keeps nothing managed.
 
-Patterns are matched exactly as the request-time resolvers match them (priority order, first match;
-for workspaces the most permissive of the best-priority matches), against the same subject: the
+Patterns are matched exactly as the request-time resolvers match them (best priority; a tie there by
+permission rank, ``NO_PERMISSIONS`` first; for workspaces the most permissive of the best-priority
+matches), against the same subject: the
 experiment's *name*, the model or prompt name, the scorer name, the gateway key, the workspace name.
 Where the subject lives in MLflow (an experiment's name, whether a registered model is a prompt) it
 is looked up in every workspace when workspaces are enabled, with at most
@@ -40,6 +41,7 @@ from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.permissions import regex_grant_order
 
 logger = get_logger()
 
@@ -253,7 +255,7 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, re
 
 
 def _manages_by_rules(rules: RuleList, subject: str) -> bool:
-    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, first match by priority."""
+    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, as the request-time matcher resolves them."""
     return _regex_permission(rules, subject) == MANAGE
 
 
@@ -293,7 +295,7 @@ class _Context:
 
 
 def _sort_rules(rules: Iterable[Any]) -> RuleList:
-    return sorted(rules, key=lambda r: (r.priority, r.id))
+    return sorted(rules, key=regex_grant_order)
 
 
 def _rule_columns(model):
