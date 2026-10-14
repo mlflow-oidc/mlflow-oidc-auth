@@ -183,6 +183,7 @@ describe("typed-http", () => {
       is_service_account: false,
       active: true,
       managed_by: "manual",
+      service_account_source: null,
     };
     expect(detail.username).toBe("a");
 

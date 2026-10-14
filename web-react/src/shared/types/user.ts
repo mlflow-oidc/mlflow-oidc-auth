@@ -1,32 +1,16 @@
-export type Group = {
-  id: number;
-  group_name: string;
-};
+import type { components } from "../../core/types/generated/openapi";
 
-export type CurrentUser = {
-  display_name: string;
-  groups: Group[];
-  id: number;
-  is_admin: boolean;
-  is_service_account: boolean;
-  username: string;
-};
+type Schemas = components["schemas"];
+
+/** `GET /users/current` and `GET /users/{username}`. Generated from the API contract. */
+export type CurrentUser = Schemas["CurrentUserProfile"];
 
 /**
- * managed_by values: "manual", "scim", or "oidc:<provider_id>".
+ * A user with its lifecycle state (`GET /users/details`). Generated from the API contract.
+ * `managed_by` is "manual", "scim", "oidc:<provider_id>" or "saml:<provider_id>";
+ * `service_account_source` is "internal" or a provider id for a service account, null for a person.
  */
-export type ManagedBy = string;
-
-export type UserDetails = {
-  username: string;
-  display_name: string;
-  is_admin: boolean;
-  is_service_account: boolean;
-  active: boolean;
-  managed_by: ManagedBy;
-  /** How a service account signs in: "internal" or a provider id; null for a person. */
-  service_account_source?: string | null;
-};
+export type UserDetails = Schemas["UserDetail"];
 
 /**
  * A live server-side session as the admin API lists it. Never the full session id: that is a
