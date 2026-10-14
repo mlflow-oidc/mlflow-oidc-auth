@@ -50,9 +50,13 @@ def index():
         )
         return html_content
 
-    # Build the combined injection. Re-auth runs first so the fetch/XHR patch is
-    # in place before the menu code (or any later script) issues network calls.
+    # Build the combined injection. The admin redirect runs first so a page that is
+    # about to be replaced does not start any work. Re-auth runs next so the
+    # fetch/XHR patch is in place before the menu code (or any later script)
+    # issues network calls.
     injections = []
+    if config.EXTEND_MLFLOW_REDIRECT_ADMIN:
+        injections.append(_read_snippet("redirect.html"))
     if config.EXTEND_MLFLOW_REAUTH:
         injections.append(_read_snippet("reauth.html"))
     if config.EXTEND_MLFLOW_MENU:

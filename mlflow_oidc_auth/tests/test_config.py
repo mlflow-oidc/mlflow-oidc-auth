@@ -320,6 +320,18 @@ class TestAppConfig(unittest.TestCase):
             self.assertFalse(config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT)
             self.assertFalse(config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION)
 
+    def test_EXTEND_MLFLOW_REDIRECT_ADMIN_defaults_true(self):
+        """The admin-page redirect is on unless explicitly disabled."""
+        with patch.dict(os.environ, {}, clear=True):
+            config = AppConfig()
+            self.assertIs(config.EXTEND_MLFLOW_REDIRECT_ADMIN, True)
+
+    def test_EXTEND_MLFLOW_REDIRECT_ADMIN_override_false(self):
+        """The admin-page redirect can be turned off via the environment."""
+        with patch.dict(os.environ, {"EXTEND_MLFLOW_REDIRECT_ADMIN": "false"}):
+            config = AppConfig()
+            self.assertIs(config.EXTEND_MLFLOW_REDIRECT_ADMIN, False)
+
     def test_workspace_feature_flags_override(self):
         """Test that workspace feature flags can be overridden via environment variables."""
         with patch.dict(

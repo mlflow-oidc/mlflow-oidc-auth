@@ -26,6 +26,7 @@ def _menu_only_config():
     with patch("mlflow_oidc_auth.hack.config") as cfg:
         cfg.EXTEND_MLFLOW_MENU = True
         cfg.EXTEND_MLFLOW_REAUTH = False
+        cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = False
         yield cfg
 
 
@@ -893,7 +894,7 @@ class TestHackModulePerformance:
 class TestReauthInjection:
     """Cover the EXTEND_MLFLOW_REAUTH flag and the combined injection ordering."""
 
-    def _run_index(self, html: str, snippets: dict, *, reauth: bool, menu: bool):
+    def _run_index(self, html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False):
         """Drive ``hack.index()`` with a controlled file-system / config state."""
 
         mock_app = MagicMock()
@@ -915,6 +916,7 @@ class TestReauthInjection:
         ):
             cfg.EXTEND_MLFLOW_REAUTH = reauth
             cfg.EXTEND_MLFLOW_MENU = menu
+            cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = redirect
             mock_file_open.side_effect = open_side_effect
             return index()
 
@@ -972,3 +974,198 @@ class TestReauthInjection:
         assert "401" in content
         assert "/login?next=" in content
         assert "window.location.hash" in content
+
+
+class TestRedirectInjection:
+    """Cover the EXTEND_MLFLOW_REDIRECT_ADMIN flag and its injection ordering."""
+
+    _SNIPPETS = {"redirect.html": "<!--REDIRECT_MARK-->", "reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"}
+
+    def _run_index(self, *, redirect: bool, reauth: bool, menu: bool):
+        return TestReauthInjection()._run_index("<html><body>Content</body></html>", self._SNIPPETS, reauth=reauth, menu=menu, redirect=redirect)
+
+    def test_redirect_snippet_injected_when_enabled(self):
+        result = self._run_index(redirect=True, reauth=False, menu=False)
+        assert "REDIRECT_MARK" in result
+        assert result.index("REDIRECT_MARK") < result.index("</body>")
+        assert "REAUTH_MARK" not in result
+        assert "MENU_MARK" not in result
+
+    def test_redirect_snippet_absent_when_disabled(self):
+        result = self._run_index(redirect=False, reauth=True, menu=True)
+        assert "REDIRECT_MARK" not in result
+        assert "REAUTH_MARK" in result
+        assert "MENU_MARK" in result
+
+    def test_redirect_snippet_injected_before_reauth(self):
+        result = self._run_index(redirect=True, reauth=True, menu=True)
+        assert result.index("REDIRECT_MARK") < result.index("REAUTH_MARK") < result.index("MENU_MARK")
+
+    def test_redirect_snippet_file_exists_in_repo(self):
+        from mlflow_oidc_auth import hack
+
+        snippet_path = os.path.join(hack._HACK_DIR, "redirect.html")
+        assert os.path.isfile(snippet_path)
+        with open(snippet_path) as f:
+            content = f.read()
+        assert "window.__mlflowOidcMapAdminRoute" in content
+        assert "window.location.replace" in content
+        assert "hashchange" in content
+        assert "encodeURIComponent" in content
+        # No DOM writes and no external requests.
+        for forbidden in ("innerHTML", "outerHTML", "document.write", "fetch(", "XMLHttpRequest", "http://", "https://"):
+            assert forbidden not in content
+
+
+# ── Mapping function, evaluated in node ─────────────────────────────────────
+
+_NODE_HARNESS = r"""
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[1], "utf8");
+const m = html.match(/<script>([\s\S]*?)<\/script>/);
+if (!m) throw new Error("no <script> in snippet");
+const replaced = [];
+const listeners = {};
+globalThis.window = {
+  location: { hash: "", replace: (t) => replaced.push(t) },
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+};
+new Function(m[1])();
+if (replaced.length !== 0) throw new Error("redirected on an empty hash");
+if (typeof listeners.hashchange !== "function") throw new Error("no hashchange listener");
+const map = window.__mlflowOidcMapAdminRoute;
+const hashes = JSON.parse(fs.readFileSync(0, "utf8"));
+const mapped = hashes.map((h) => map(h));
+// Drive the real listener once so the replace() wiring is exercised too.
+window.location.hash = "#/admin";
+listeners.hashchange();
+process.stdout.write(JSON.stringify({ mapped, replaced }));
+"""
+
+_MAPPING_CASES = [
+    # #/admin, any query except tab=roles -> users
+    ("#/admin", "oidc/ui/users"),
+    ("#/admin/", "oidc/ui/users"),
+    ("#/admin?tab=users", "oidc/ui/users"),
+    ("#/admin?foo=bar", "oidc/ui/users"),
+    # roles -> groups
+    ("#/admin?tab=roles", "oidc/ui/groups"),
+    ("#/admin?foo=1&tab=roles", "oidc/ui/groups"),
+    ("#/admin/roles/42", "oidc/ui/groups"),
+    ("#/admin/roles/anything/else?x=1", "oidc/ui/groups"),
+    # users/<u> -> users/<u>/experiments
+    ("#/admin/users/alice", "oidc/ui/users/alice/experiments"),
+    ("#/admin/users/alice%40example.com", "oidc/ui/users/alice%40example.com/experiments"),
+    ("#/admin/users/a%2Fb", "oidc/ui/users/a%2Fb/experiments"),
+    ("#/admin/users/a/b", "oidc/ui/users/a%2Fb/experiments"),
+    ("#/admin/users/a%3Fb", "oidc/ui/users/a%3Fb/experiments"),
+    ("#/admin/users/a%23b", "oidc/ui/users/a%23b/experiments"),
+    ("#/admin/users/a#b", "oidc/ui/users/a%23b/experiments"),
+    ("#/admin/users/100%25", "oidc/ui/users/100%25/experiments"),
+    ("#/admin/users/100%", "oidc/ui/users/100%25/experiments"),
+    ("#/admin/users/a..b", "oidc/ui/users/a..b/experiments"),
+    ("#/admin/users/..", "oidc/ui/users"),
+    ("#/admin/users/%2E%2E", "oidc/ui/users"),
+    ("#/admin/users/../../logout", "oidc/ui/users/..%2F..%2Flogout/experiments"),
+    ("#/admin/users/", "oidc/ui/users"),
+    ("#/admin/users", "oidc/ui/users"),
+    # ws?workspace=<w> -> workspaces/<w>
+    ("#/admin/ws?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    ("#/admin/ws?workspace=a%2Fb", "oidc/ui/workspaces/a%2Fb"),
+    ("#/admin/ws?workspace=a/b", "oidc/ui/workspaces/a%2Fb"),
+    ("#/admin/ws?workspace=a%3Fb", "oidc/ui/workspaces/a%3Fb"),
+    ("#/admin/ws?workspace=a%23b", "oidc/ui/workspaces/a%23b"),
+    ("#/admin/ws?workspace=a#b", "oidc/ui/workspaces/a%23b"),
+    ("#/admin/ws?workspace=100%25", "oidc/ui/workspaces/100%25"),
+    ("#/admin/ws?workspace=..", "oidc/ui/workspaces"),
+    ("#/admin/ws?workspace=%2e%2e", "oidc/ui/workspaces"),
+    ("#/admin/ws?workspace=.%2e", "oidc/ui/workspaces"),
+    ("#/admin/users/.%2E", "oidc/ui/users"),
+    ("#/admin/users/%2e.", "oidc/ui/users"),
+    ("#/admin/users/%252e%252e", "oidc/ui/users/%252e%252e/experiments"),
+    ("#/admin/ws?workspace=a..b", "oidc/ui/workspaces/a..b"),
+    ("#/admin/ws?workspace=", "oidc/ui/workspaces"),
+    ("#/admin/ws", "oidc/ui/workspaces"),
+    # account -> user
+    ("#/account", "oidc/ui/user"),
+    ("#/account?tab=tokens", "oidc/ui/user"),
+    # Not admin routes: left alone.
+    ("", None),
+    ("#", None),
+    ("#/", None),
+    ("#/experiments", None),
+    ("#/administrator", None),
+    ("#/admin-tools", None),
+    ("#/accounts", None),
+    ("#/models/admin", None),
+]
+
+_HOSTILE_HASHES = [
+    "#/admin/users/%2F%2Fevil.com",
+    "#/admin/users///evil.com",
+    "#/admin/users/https:%2F%2Fevil.com",
+    "#/admin/users/https://evil.com",
+    "#/admin/users/javascript:alert(1)",
+    "#/admin/users/%5C%5Cevil.com",
+    "#/admin/users/%00",
+    "#/admin/ws?workspace=//evil.com",
+    "#/admin/ws?workspace=https://evil.com",
+    "#/admin/ws?workspace=javascript:alert(1)",
+    "#/admin/ws?workspace=%5C%5Cevil.com",
+    "#/admin/ws?workspace=data:text/html,<script>alert(1)</script>",
+    "#/admin/users/<img src=x onerror=alert(1)>",
+]
+
+
+@pytest.fixture(scope="module")
+def _node_mapping():
+    """Run the shipped snippet's mapping function in node over every case once."""
+
+    import json
+    import shutil
+    import subprocess
+
+    from mlflow_oidc_auth import hack
+
+    node = shutil.which("node")
+    # Deliberately a failure, not a skip: this is the negative test for an open redirect.
+    assert node, "node is required to evaluate mlflow_oidc_auth/hack/redirect.html"
+
+    hashes = [h for h, _ in _MAPPING_CASES] + _HOSTILE_HASHES
+    proc = subprocess.run(
+        [node, "-e", _NODE_HARNESS, os.path.join(hack._HACK_DIR, "redirect.html")],
+        input=json.dumps(hashes),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    out = json.loads(proc.stdout)
+    return dict(zip(hashes, out["mapped"])), out["replaced"]
+
+
+@pytest.mark.parametrize("hash_value,expected", _MAPPING_CASES)
+def test_redirect_mapping(_node_mapping, hash_value, expected):
+    mapped, _ = _node_mapping
+    assert mapped[hash_value] == expected
+
+
+def test_redirect_mapping_uses_location_replace(_node_mapping):
+    _, replaced = _node_mapping
+    assert replaced == ["oidc/ui/users"]
+
+
+@pytest.mark.parametrize("hash_value", _HOSTILE_HASHES)
+def test_redirect_never_absolute(_node_mapping, hash_value):
+    import re
+
+    mapped, _ = _node_mapping
+    target = mapped[hash_value]
+    assert target is not None
+    assert not target.startswith("/")
+    assert not target.startswith("\\")
+    assert not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+    assert target.startswith("oidc/ui/")
+    # Everything after the fixed prefix is one encoded segment (plus a fixed suffix).
+    rest = target[len("oidc/ui/") :]
+    assert re.fullmatch(r"(users/[^/:<>\\]+/experiments|workspaces/[^/:<>\\]+|users|workspaces)", rest), target

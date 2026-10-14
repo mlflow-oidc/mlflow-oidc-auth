@@ -1,0 +1,68 @@
+<script>
+    (function () {
+        "use strict";
+
+        // MLflow's bundled UI ships admin pages built for its own basic-auth RBAC
+        // (#/admin, #/admin/users/<u>, #/admin/ws?workspace=<w>, #/account). Those
+        // pages call APIs this plugin does not implement, so send the browser to
+        // the plugin's own UI instead. The hash never reaches the server, so this
+        // has to happen client-side.
+        //
+        // Security: values taken from the hash are only ever passed through
+        // encodeURIComponent into a path that is relative to the page and starts
+        // with "oidc/ui/". Nothing is written to the DOM.
+
+        var BASE = "oidc/ui/";
+
+        function decode(value) {
+            try {
+                return decodeURIComponent(value);
+            } catch (e) {
+                return value;
+            }
+        }
+
+        // A segment that is empty or made only of dots would be collapsed by URL
+        // resolution ("users/../experiments"), so it maps to the list page instead.
+        function segment(value) {
+            if (!value || /^\.+$/.test(value)) return null;
+            return encodeURIComponent(value);
+        }
+
+        // Pure: maps a location.hash to a relative target, or null when the hash
+        // is not one of MLflow's admin routes.
+        function mapAdminRoute(hash) {
+            var route = String(hash || "");
+            if (route.charAt(0) === "#") route = route.slice(1);
+            var q = route.indexOf("?");
+            var path = q === -1 ? route : route.slice(0, q);
+            var params = new URLSearchParams(q === -1 ? "" : route.slice(q + 1));
+
+            if (path === "/account" || path.indexOf("/account/") === 0) return BASE + "user";
+
+            if (path === "/admin" || path === "/admin/") {
+                return params.get("tab") === "roles" ? BASE + "groups" : BASE + "users";
+            }
+            if (path === "/admin/roles" || path.indexOf("/admin/roles/") === 0) return BASE + "groups";
+            if (path === "/admin/users" || path.indexOf("/admin/users/") === 0) {
+                var user = segment(decode(path.slice("/admin/users/".length)));
+                return user ? BASE + "users/" + user + "/experiments" : BASE + "users";
+            }
+            if (path === "/admin/ws" || path === "/admin/ws/") {
+                var ws = segment(params.get("workspace"));
+                return ws ? BASE + "workspaces/" + ws : BASE + "workspaces";
+            }
+            return null;
+        }
+
+        window.__mlflowOidcMapAdminRoute = mapAdminRoute;
+
+        function redirect() {
+            var target = mapAdminRoute(window.location.hash);
+            if (target) window.location.replace(target);
+        }
+
+        window.addEventListener("hashchange", redirect);
+        redirect();
+    })();
+</script>
