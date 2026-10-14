@@ -73,7 +73,8 @@ def _get_cache() -> CacheBackend:
     if _cache is None:
         maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
         ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
-        _cache = get_cache_backend("workspace", maxsize=maxsize, ttl=ttl)
+        # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
+        _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
     return _cache
 
 
@@ -89,7 +90,7 @@ def _get_denial_cache() -> CacheBackend:
 
     Same size bound as the grant cache but a separate store, so a flood of denials for
     made-up workspace names evicts only other denials. The Redis namespace
-    ``workspace_denials`` does not share the grant namespace's ``workspace:`` prefix, so
+    ``workspace_denials`` does not share the grant namespace's ``workspace_v2:`` prefix, so
     neither cache's prefix delete or clear reaches into the other.
     """
     global _denial_cache
@@ -121,10 +122,12 @@ def _current_generation():
 
 
 def _bump_generation() -> None:
-    """Record that an invalidation happened. Call AFTER the entries are deleted.
+    """Record that an invalidation is happening. Invalidations call it BEFORE and AFTER their deletes.
 
-    A random value rather than a counter: any change is detected, and no atomic increment is
-    needed on either backend.
+    The bump before means a lookup that checks the generation after writing its entry sees
+    the move whenever the delete could still be pending; the bump after means a lookup that
+    read the generation before the delete sees it too. A random value rather than a
+    counter: any change is detected, and no atomic increment is needed on either backend.
     """
     _get_generation_cache().set(_GENERATION_KEY, uuid.uuid4().hex)
 
@@ -155,20 +158,23 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     if denials.get(key) is not None:
         return None
 
-    # An invalidation that runs while this lookup is in flight may already have deleted the
-    # key we are about to write, so the result could be stale (a denial read just before a
-    # grant was committed). The generation tells: if it moved, answer this request but cache
-    # nothing.
+    # An invalidation that runs while this lookup is in flight may delete the key before we
+    # write it, so the result could be stale (a denial read just before a grant was committed,
+    # or a grant read just before a revoke). Invalidations bump the generation before and
+    # after their deletes, so:
+    # - moved before the write: answer this request but cache nothing;
+    # - moved after the write: delete what we wrote. An invalidation that bumps only after
+    #   this last check also deletes only after it, so it removes our entry itself.
     generation = _current_generation()
     perm, errored = _resolve_workspace_permission(username, workspace)
     if errored:
         return None
     if _current_generation() != generation:
         return perm
-    if perm is not None:
-        grants.set(key, perm)
-    else:
-        denials.set(key, True)
+    target = grants if perm is not None else denials
+    target.set(key, perm if perm is not None else True)
+    if _current_generation() != generation:
+        target.delete(key)
     return perm
 
 
@@ -178,6 +184,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
     Called by workspace permission router after successful CUD operations.
     """
     key = _make_cache_key(username, workspace)
+    _bump_generation()
     for cache in _caches():
         cache.delete(key)
     _bump_generation()
@@ -201,6 +208,7 @@ def invalidate_user_workspace_entries(username: str) -> None:
         # otherwise every login pays a Redis keyspace SCAN for no benefit. Mirrors
         # the guard in get_workspace_permission_cached.
         return
+    _bump_generation()
     for cache in _caches():
         cache.delete_prefix(_user_key_prefix(username))
     _bump_generation()
@@ -235,6 +243,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
         return
 
     caches = _caches()
+    _bump_generation()
     for member in members:
         key = _make_cache_key(member.username, workspace)
         for cache in caches:
@@ -254,6 +263,7 @@ def flush_workspace_cache() -> None:
     Called by workspace regex permission router after any CUD operation.
     Full flush is necessary because regex changes can affect any user+workspace combo.
     """
+    _bump_generation()
     for cache in _caches():
         cache.clear()
     _bump_generation()

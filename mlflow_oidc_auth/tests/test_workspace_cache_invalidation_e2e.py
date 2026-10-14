@@ -428,3 +428,50 @@ class TestCacheKeysDoNotCollide:
         assert _make_cache_key("a", "b:c") != _make_cache_key("a:b", "c")
         assert _make_cache_key("a%3Ab", "c") != _make_cache_key("a:b", "c")
         assert not _make_cache_key("a:b", "c").startswith(_user_key_prefix("a"))
+
+
+class TestGenerationGuardInterleavings:
+    """Run an invalidation at each point of a lookup's generation reads (security review of 633cb1c5).
+
+    A lookup reads the generation (1) before resolving, (2) before writing, and (3) after
+    writing. These tests run a real revoke right after read N returns, so the revoke lands
+    exactly between that read and the lookup's next step, and check the revoked grant is not
+    left in the cache.
+    """
+
+    def _revoke_after_read(self, ws_store, monkeypatch, read_number):
+        from mlflow_oidc_auth.utils import workspace_cache as wsc
+
+        ws_store.create_user("ines@example.com", "Ines")
+        ws_store.create_workspace_permission("ws-prod", "ines@example.com", "EDIT")
+        real = wsc._current_generation
+        reads = {"n": 0}
+
+        def interleaved():
+            value = real()
+            reads["n"] += 1
+            if reads["n"] == read_number:
+                ws_store.delete_workspace_permission("ws-prod", "ines@example.com")
+            return value
+
+        monkeypatch.setattr(wsc, "_current_generation", interleaved)
+        served = _cached("ines@example.com", "ws-prod")
+        monkeypatch.setattr(wsc, "_current_generation", real)
+        return wsc, served, reads["n"]
+
+    @pytest.mark.parametrize("read_number", [1, 2, 3])
+    def test_revoked_grant_does_not_survive(self, ws_store, monkeypatch, read_number):
+        wsc, served, reads = self._revoke_after_read(ws_store, monkeypatch, read_number)
+
+        key = wsc._make_cache_key("ines@example.com", "ws-prod")
+        assert wsc._get_cache().get(key) is None, f"revoked grant cached (revoke after read {read_number})"
+        assert _cached("ines@example.com", "ws-prod") is None, "next check must resolve fresh and see the revoke"
+
+    def test_second_read_then_write_interleaving(self, ws_store, monkeypatch):
+        """The reviewer's case: read gen, second read, invalidation, write — the entry must not survive."""
+        wsc, served, reads = self._revoke_after_read(ws_store, monkeypatch, 2)
+
+        assert reads == 3, "the lookup must re-read the generation after writing"
+        assert served is not None and served.name == "EDIT", "this request answers with what it read"
+        assert wsc._get_cache().get(wsc._make_cache_key("ines@example.com", "ws-prod")) is None
+        assert _cached("ines@example.com", "ws-prod") is None

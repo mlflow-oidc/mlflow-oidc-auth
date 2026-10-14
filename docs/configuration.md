@@ -171,6 +171,15 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 
 > **Multiple replicas:** invalidation reaches every replica only with `CACHE_BACKEND=redis`. With `local`, each replica has its own cache, and a write invalidates only the replica that served it. Elsewhere, a revoked or changed permission can be served until its entry expires: up to `PERMISSION_CACHE_TTL_SECONDS` for resource decisions and `WORKSPACE_CACHE_TTL_SECONDS` for workspace grants. A *new* workspace grant can likewise be refused on another replica while that replica still holds a cached denial for the user and workspace. Denials are therefore kept no longer than `PERMISSION_CACHE_TTL_SECONDS` (default 30 s). A workspace lookup that fails (for example on a database error) is refused and not cached.
 
+> **Upgrading with a shared Redis cache:** this release changes the workspace cache's key format: usernames and workspace names are now percent-encoded, so `alice@x.com` is stored as `alice%40x.com`. The workspace grant cache also moves to a new namespace, `workspace_v2`. New replicas never read old-format keys. However, while old and new replicas run side by side against one Redis, neither can invalidate the other's workspace entries, so a revoked workspace grant can be served for up to `WORKSPACE_CACHE_TTL_SECONDS`. With `CACHE_BACKEND=redis`, either restart all replicas together, or, once the last old replica is gone, delete these keys (shown with the default `CACHE_KEY_PREFIX=mlflow_oidc_auth:`):
+>
+> - `mlflow_oidc_auth:workspace:*` (old format; unused after the upgrade, and otherwise left to expire)
+> - `mlflow_oidc_auth:workspace_v2:*`
+> - `mlflow_oidc_auth:workspace_denials:*`
+> - `mlflow_oidc_auth:workspace_generation:*`
+>
+> The permission cache (`mlflow_oidc_auth:permissions:*`) keeps its key format and needs no action. With `CACHE_BACKEND=local` there is nothing to do.
+
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 
 ### Workspace Settings
