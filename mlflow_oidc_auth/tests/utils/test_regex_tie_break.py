@@ -20,9 +20,9 @@ from mlflow_oidc_auth.utils.batch_permissions import (
     resolve_model_permission_from_context,
     resolve_prompt_permission_from_context,
 )
+from mlflow_oidc_auth.utils.grant_context import best_matching_regex
 from mlflow_oidc_auth.utils.permissions import (
     _match_regex_permission,
-    _match_regex_permission_or_none,
     flush_permission_cache,
     resolve_permission,
 )
@@ -65,7 +65,7 @@ def _workspaces_disabled():
 @pytest.mark.parametrize("rules, name, expected", CASES.values(), ids=CASES.keys())
 def test_matcher(rules, name, expected):
     assert _match_regex_permission(rules, name, "model name") == expected
-    assert _match_regex_permission_or_none(rules, name, "model name") == expected
+    assert best_matching_regex(rules, name, "model name").permission == expected
 
 
 def _fake_store(kind: str, source: str, rules):

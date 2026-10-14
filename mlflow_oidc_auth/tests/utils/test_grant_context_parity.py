@@ -21,6 +21,7 @@ from typing import Callable, Dict
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
@@ -288,6 +289,51 @@ def _random_grants(store, rng: random.Random) -> None:
                 _try(lambda: store.create_workspace_group_regex_permission(group, pattern, priority(), perm()))
 
 
+def _legacy_grants(store, rng: random.Random) -> None:
+    """Rows only a rolling upgrade or the backfill leaves behind, written straight to the tables.
+
+    Unassigned (``workspace IS NULL``) grants beside a ``default`` one and beside each other, and
+    grants the backfill could not place (``::unresolved``). With workspaces disabled the
+    per-resource lookup decides between duplicates by its precedence (``default``, else the
+    oldest); the bulk read must decide identically.
+    """
+    from mlflow_oidc_auth.db.models import (
+        SqlGatewayEndpointPermission,
+        SqlGroup,
+        SqlMCPServerPermission,
+        SqlRegisteredModelGroupPermission,
+        SqlRegisteredModelPermission,
+        SqlUser,
+    )
+    from mlflow_oidc_auth.utils.grant_workspace import UNRESOLVED_WORKSPACE
+
+    tables = [
+        (SqlRegisteredModelPermission, "name"),
+        (SqlGatewayEndpointPermission, "endpoint_id"),
+        (SqlMCPServerPermission, "name"),
+    ]
+    with store.ManagedSessionMaker(read_only=False) as session:
+        user_ids = {u.username: u.id for u in session.query(SqlUser).filter(SqlUser.username.in_(USERS)).all()}
+        group_ids = [g.id for g in session.query(SqlGroup).filter(SqlGroup.group_name.in_(GROUPS)).all()]
+        for model, column in tables:
+            for user in USERS:
+                for name in rng.sample(NAMES, 2):
+                    for workspace in rng.sample([None, None, UNRESOLVED_WORKSPACE, "default"], rng.randint(1, 3)):
+                        try:
+                            with session.begin_nested():
+                                session.add(model(**{column: name, "user_id": user_ids[user], "permission": rng.choice(PERMISSIONS), "workspace": workspace}))
+                        except IntegrityError:
+                            pass  # a second ``default`` grant on the same name
+        for group_id in group_ids:
+            for name in rng.sample(NAMES, 2):
+                for workspace in rng.sample([None, None, UNRESOLVED_WORKSPACE], rng.randint(1, 2)):
+                    session.add(SqlRegisteredModelGroupPermission(name=name, group_id=group_id, permission=rng.choice(PERMISSIONS), workspace=workspace))
+                    session.flush()
+    from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+    flush_permission_cache()
+
+
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     """A real store, made the singleton, plus a fake tracking store the resolvers both read."""
@@ -333,6 +379,8 @@ def test_resolve_matches_pre_refactor_resolve_permission(world, seed):
     store, tracking = world
     rng = random.Random(seed)
     _random_grants(store, rng)
+    if seed % 3 == 0:
+        _legacy_grants(store, rng)
     order = ["user", "group", "regex", "group-regex"]
     if seed % 2:
         rng.shuffle(order)
@@ -612,3 +660,26 @@ def test_deleted_user_grants_do_not_reach_a_recreated_account(world, delete):
 
         assert resolve(load_grant_context("alice", bulk=True), "registered_model", "alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
         assert resolve_permission("registered_model", "beta-2", "alice") == PermissionResult(NO_PERMISSIONS, "fallback")
+
+
+@pytest.mark.parametrize("delete", ["delete_user", "delete_user_with_hook"])
+def test_deleted_user_workspace_grant_does_not_reach_a_recreated_account(world, delete):
+    """alice's cached MANAGE on ``finance`` is gone the moment alice is deleted and re-created."""
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    store, _ = world
+    store.create_user("alice", "Alice")
+    store.create_workspace_permission("finance", "alice", "MANAGE")
+    with patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True):
+        assert get_workspace_permission_cached("alice", "finance").can_manage, "precondition: the grant is cached"
+
+        if delete == "delete_user":
+            store.delete_user("alice", admin_override=True)
+        else:
+            store.delete_user_with_hook("alice", lambda session, user: None, admin_override=True)
+        store.create_user("alice", "Alice again")
+
+        assert get_workspace_permission_cached("alice", "finance") is None
+        with as_request("alice", "finance"):
+            ctx = load_grant_context("alice", bulk=True)
+            assert resolve(ctx, "registered_model", "alpha-1") == PermissionResult(NO_PERMISSIONS, "workspace-deny")

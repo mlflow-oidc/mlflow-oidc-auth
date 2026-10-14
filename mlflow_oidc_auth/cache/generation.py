@@ -100,12 +100,22 @@ class GenerationGuard:
         finally:
             self.bump()
 
-    def store_unless_raced(self, cache: CacheBackend, key: str, value: Any, generation: Any, current: Optional[Callable[[], Any]] = None) -> bool:
+    def store_unless_raced(
+        self,
+        cache: CacheBackend,
+        key: str,
+        value: Any,
+        generation: Any,
+        current: Optional[Callable[[], Any]] = None,
+        check_before_write: bool = True,
+    ) -> bool:
         """Write ``value`` unless an invalidation overlapped the lookup that produced it.
 
-        - Generation moved before the write: write nothing.
         - Moved after the write: delete what was written. An invalidation that bumps only after
-          this last check also deletes only after it, so it removes the entry itself.
+          this last check also deletes only after it, so it removes the entry itself. This check
+          alone is what makes the write safe.
+        - With ``check_before_write``, a generation that moved before the write skips the write
+          too — one more round trip to spare a write that would be deleted anyway.
 
         Parameters:
             cache: The cache to write to.
@@ -113,12 +123,13 @@ class GenerationGuard:
             value: The entry.
             generation: The generation read before the database was read.
             current: Reads the current generation; :meth:`current` when omitted.
+            check_before_write: Also check before writing (see above).
 
         Returns:
             Whether the entry was left in the cache.
         """
         read = current or self.current
-        if read() != generation:
+        if check_before_write and read() != generation:
             return False
         cache.set(key, value)
         if read() != generation:

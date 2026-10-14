@@ -186,9 +186,9 @@ class TestScorerSources:
 class TestEffectiveScorerPermission:
     """Tests for effective_scorer_permission."""
 
-    @patch(f"{_MOD}.resolve")
+    @patch(f"{_MOD}.resolve_scorer")
     def test_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
-        """Should delegate to the grant-context resolver (issue #460)."""
+        """Should delegate to the grant context's one scorer resolver (issue #460)."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
 
@@ -197,13 +197,13 @@ class TestEffectiveScorerPermission:
         assert result is mock_result
         mock_resolver.assert_called_once()
 
-    @patch(f"{_MOD}.resolve")
+    @patch(f"{_MOD}.resolve_scorer")
     def test_passes_scorer_config(self, mock_resolver: MagicMock) -> None:
         """Should resolve the scorer by experiment id and scorer name."""
         effective_scorer_permission("exp-1", "scorer-1", "alice")
-        args, kwargs = mock_resolver.call_args
-        assert args[1:] == ("scorer", "exp-1")
-        assert kwargs["name"] == "scorer-1"
+        args, _ = mock_resolver.call_args
+        assert args[0].username == "alice"
+        assert args[1:] == ("exp-1", "scorer-1")
 
 
 class TestEffectiveScorerPermissionInheritsExperiment:

@@ -77,10 +77,7 @@ from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_expe
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.validators.review import is_review_queue_member
 from mlflow_oidc_auth.validators.scorers import scorer_has_versions
-from mlflow_oidc_auth.utils.workspace_cache import (
-    flush_workspace_cache,
-    get_workspace_permission_cached,
-)
+from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
 
 # ---------------------------------------------------------------------------
 # Request-scoped grant context and permission memo
@@ -97,7 +94,7 @@ from mlflow_oidc_auth.utils.workspace_cache import (
 def _get_request_permission_cache() -> dict:
     """Return a dict scoped to the current Flask request via ``flask.g``.
 
-    Holds the request's grant context and the workspace-access memo.
+    Holds the request's grant context.
     """
     cache = getattr(g, "_after_request_perm_cache", None)
     if cache is None:
@@ -209,31 +206,18 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     Returns True (allow) when:
     - Workspaces are disabled (MLFLOW_ENABLE_WORKSPACES is False)
     - Resource has no workspace assignment (pre-workspace-era, WSSEC-05)
-    - User has at least READ workspace permission via get_workspace_permission_cached (WSSEC-01/02/03/04)
+    - User has at least READ workspace permission (WSSEC-01/02/03/04)
 
-    Memoized for the current request. ``get_workspace_permission_cached`` caches grants and
-    (since issue #456) denials; the memo additionally spares a shared-cache round trip per
-    row. It uses the same request-scoped dict as the request's grant context, so it
-    adds no new staleness window (issue #253).
+    Read through the request's grant context (``GrantContext.workspace_permission``), which
+    memoizes it for the request on top of ``get_workspace_permission_cached``'s own grant and
+    denial caches, so a page of rows costs one lookup and no new staleness window (issue #253).
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return True
     if not workspace:
         return True  # Pre-workspace-era resource (WSSEC-05)
-
-    def _lookup() -> bool:
-        perm = get_workspace_permission_cached(username, workspace)
-        return perm is not None and perm.can_read
-
-    # The memo is an optimization, not a requirement: outside a Flask request context
-    # (direct calls, tests) fall through to the uncached lookup rather than failing.
-    if not has_app_context():
-        return _lookup()
-    cache = _get_request_permission_cache()
-    key = ("ws", workspace, username)
-    if key not in cache:
-        cache[key] = _lookup()
-    return cache[key]
+    perm = _request_grant_context(username).workspace_permission(workspace)
+    return perm is not None and perm.can_read
 
 
 def _top_up_page(
@@ -943,7 +927,11 @@ def _filter_list_artifact_root(resp: Response) -> None:
     * the caller can READ, and
     * with workspaces enabled, belongs to the workspace being listed — the one a
       ``workspaces/<ws>`` path names, otherwise the request workspace — and one the
-      caller can read, mirroring the search filters.
+      caller can read, mirroring the search filters. An experiment of another workspace than
+      the request's (``workspaces/ws-b`` listed from a request naming ``ws-a``) is judged as a
+      request of its own workspace would judge it: patterns scoped to that workspace, its
+      workspace permission as the fallback, and only for a caller who can read that workspace
+      (issue #460).
 
     A listing that is not of a root (``path=12/run/artifacts``) is left alone: its
     entries are file names, and ``before_request`` has already required READ on it.

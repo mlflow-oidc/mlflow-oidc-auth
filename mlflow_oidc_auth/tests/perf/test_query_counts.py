@@ -199,6 +199,14 @@ class TestFoldedQueriesDoNotOverGrant:
             store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-y", "s2@example.com")
 
 
+def _read_all(ctx, resource_types):
+    """Read every grant a bulk context resolves ``resource_types`` against: direct grants and patterns."""
+    for resource_type in resource_types:
+        ctx.direct(resource_type)
+        ctx.patterns(resource_type)
+    return ctx
+
+
 class TestPermissionContextBuild:
     """The batch context backs the admin/listing batch paths (the grant context since issue #460)."""
 
@@ -209,9 +217,9 @@ class TestPermissionContextBuild:
 
         Each read used to re-resolve the same user (7x) and memberships (3x); folding those into
         JOINs took the old build from 20 statements to 15. The grant context reads the group ids
-        once and each type's four lists (the model and prompt pattern reads each resolve the user
-        first, and prompts re-read the registered-model direct grants they share): 15 as well. The assertion is exact so a
-        regression, or a further improvement, has to be acknowledged.
+        once, each type's two pattern lists (the model and prompt ones each resolve the user first)
+        and the direct grants once per grant table — prompts share the registered-model read: 13.
+        The assertion is exact so a regression, or a further improvement, has to be acknowledged.
         """
         import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
@@ -219,10 +227,10 @@ class TestPermissionContextBuild:
         store, username, _ = seeded_store
         monkeypatch.setattr(store_mod, "store", store)
         counter.reset()
-        ctx = bp.build_user_permission_context(username).preload(*self.TYPES)
+        ctx = _read_all(bp.build_user_permission_context(username), self.TYPES)
 
         assert ctx.username == username
-        assert counter.count == 15, counter.report()
+        assert counter.count == 13, counter.report()
 
     def test_context_build_is_constant_in_group_count(self, store, counter, monkeypatch):
         import mlflow_oidc_auth.store as store_mod
@@ -238,7 +246,7 @@ class TestPermissionContextBuild:
             store.set_user_groups(username, groups)
 
             counter.reset()
-            bp.build_user_permission_context(username).preload(*self.TYPES)
+            _read_all(bp.build_user_permission_context(username), self.TYPES)
             counts[n_groups] = counter.count
 
         assert len(set(counts.values())) == 1, f"context build scales with group count: {counts}"
@@ -273,7 +281,7 @@ class TestWorkspaceFallbackMemo:
         for n in (1, 5, 20):
             # Experiments of the request's workspace, as MLflow's search returns them.
             experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}", workspace="ws-none") for i in range(n)]
-            ctx = bp.build_user_permission_context(username).preload("experiment")
+            ctx = _read_all(bp.build_user_permission_context(username), ("experiment",))
             wsc.flush_workspace_cache()
             counter.reset()
             for exp in experiments:

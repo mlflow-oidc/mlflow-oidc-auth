@@ -24,7 +24,7 @@ from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_ke
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission
-from mlflow_oidc_auth.utils.grant_context import resolve_workspace_permission
+from mlflow_oidc_auth.utils.grant_context import resolve_workspace_permission, sanitize_log_value
 
 logger = get_logger()
 
@@ -34,11 +34,6 @@ _denial_cache: CacheBackend | None = None
 _WORKSPACE_CACHE_DEFAULT_MAX_SIZE = 1024
 _WORKSPACE_CACHE_DEFAULT_TTL = 300
 _PERMISSION_CACHE_DEFAULT_TTL = 30
-
-
-def _sanitize(value: str) -> str:
-    """Strip control characters from a value before logging to prevent log injection."""
-    return value.replace("\n", "").replace("\r", "").replace("\t", "")
 
 
 def _make_cache_key(username: str, workspace: str) -> str:
@@ -175,7 +170,7 @@ def invalidate_user_workspace_entries(username: str) -> None:
     with _GUARD.invalidating():
         for cache in _caches():
             cache.delete_prefix(_user_key_prefix(username))
-    logger.debug("Workspace cache entries invalidated for user %s", _sanitize(username))
+    logger.debug("Workspace cache entries invalidated for user %s", sanitize_log_value(username))
 
 
 def invalidate_group_workspace_permission(group_name: str, workspace: str) -> None:
@@ -200,7 +195,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
         # leave stale authorization behind either: fall back to a full flush.
         logger.warning(
             "Could not list members of group %s for targeted workspace-cache invalidation; flushing instead",
-            _sanitize(group_name),
+            sanitize_log_value(group_name),
         )
         flush_workspace_cache()
         return
@@ -214,8 +209,8 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
     logger.debug(
         "Workspace cache invalidated for %d member(s) of group %s in workspace %s",
         len(members),
-        _sanitize(group_name),
-        _sanitize(workspace),
+        sanitize_log_value(group_name),
+        sanitize_log_value(workspace),
     )
 
 

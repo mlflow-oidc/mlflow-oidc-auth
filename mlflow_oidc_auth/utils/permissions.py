@@ -170,10 +170,8 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     GATEWAY_SECRET,
     GUARD,
     MCP_SERVER,
-    NON_EXPLICIT_PERMISSION_KINDS,
     PROMPT,
     REGISTERED_MODEL,
-    SCORER,
     TYPE_SPECS,
     best_matching_regex,
     flush_grant_contexts,
@@ -181,6 +179,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     load_grant_context,
     permission_cache_ttl,
     resolve,
+    resolve_scorer,
     walk_sources,
     workspace_fallback,
 )
@@ -204,22 +203,6 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # ---------------------------------------------------------------------------
 # Pattern matcher. The one implementation is grant_context.best_matching_regex.
 # ---------------------------------------------------------------------------
-
-
-def _match_regex_permission_or_none(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> str | None:
-    """Non-raising matcher, for callers where no match is not an error.
-
-    Parameters:
-        regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
-        name: The resource name to match.
-        label: What ``name`` is (e.g. ``"model name"``), for the debug log.
-        workspace: The resource's workspace; the request's grant workspace when omitted.
-
-    Returns:
-        The permission of the deciding pattern (see ``grant_context.best_matching_regex``), or ``None``.
-    """
-    regex = best_matching_regex(regexes, name, label, workspace)
-    return regex.permission if regex is not None else None
 
 
 def _match_regex_permission(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> str:
@@ -395,27 +378,34 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     if resource_type not in TYPE_SPECS:
         # An unknown type is an error, never a cache miss or a fallback decision.
         raise KeyError(resource_type)
-    cache = _get_permission_cache()
     # kwargs identify the resource beyond its id (scorer_name for a scorer), so they are part of the key.
     cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(), **kwargs)
+    return _cached_decision(cache_key, username, lambda ctx: resolve(ctx, resource_type, resource_id, name=kwargs.get("scorer_name")))
 
+
+def _cached_decision(cache_key: str, username: str, decide: Callable[[Any], PermissionResult]) -> PermissionResult:
+    """A decision from the permission cache, made with a single-resource grant context on a miss.
+
+    The context reads the invalidation generation once, before it reads any grant; the decision
+    is cached only if no invalidation overlapped (one generation read after the write), and only
+    until the earlier of one TTL from now and one TTL from the oldest grant read it was built from.
+    """
+    cache = _get_permission_cache()
     cached = cache.get(cache_key)
     if isinstance(cached, _CachedDecision):
         if time.time() < cached.expires_at:
             return cached.result
         cache.delete(cache_key)
 
-    # The grant-context generation guards this entry as it guards the grant reads: a decision an
-    # invalidation overlapped answers this request but is not cached (or is deleted again).
-    generation = GUARD.current()
     ctx = load_grant_context(username)
-    result = resolve(ctx, resource_type, resource_id, name=kwargs.get("scorer_name"))
+    generation = ctx.generation()
+    result = decide(ctx)
     ttl = permission_cache_ttl()
     expires_at = time.time() + ttl
     if ctx.oldest_read is not None:
         expires_at = min(expires_at, ctx.oldest_read + ttl)
     if expires_at > time.time():
-        GUARD.store_unless_raced(cache, cache_key, _CachedDecision(result, expires_at), generation)
+        GUARD.store_unless_raced(cache, cache_key, _CachedDecision(result, expires_at), generation, check_before_write=False)
     return result
 
 
@@ -524,10 +514,9 @@ def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str)
     Returns:
         The scorer's grant, or the experiment's effective permission when there is none.
     """
-    result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
-    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
-        return effective_experiment_permission(experiment_id, user)
-    return result
+    # One implementation of the scorer -> experiment inheritance: grant_context.resolve_scorer.
+    cache_key = _make_cache_key("effective_scorer", experiment_id, user, _get_cache_workspace(), scorer_name=scorer_name)
+    return _cached_decision(cache_key, user, lambda ctx: resolve_scorer(ctx, experiment_id, scorer_name))
 
 
 def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:

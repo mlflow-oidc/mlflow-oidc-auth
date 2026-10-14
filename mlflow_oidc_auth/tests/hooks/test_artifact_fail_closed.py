@@ -389,6 +389,20 @@ def test_non_root_listing_is_not_filtered(artifact_root):
     assert _listed(_request(f"/api/2.0/mlflow-artifacts/artifacts?path={VICTIM}/r1", "GET", READER)) == ["artifacts"]
 
 
+def _filtered_root_listing(username, workspace, path, entries):
+    """Run the artifact-root listing filter on a listing of ``entries`` at ``path``."""
+    from flask import Response
+
+    from mlflow_oidc_auth.hooks.after_request import _filter_list_artifact_root
+
+    environ = {AUTH_CONTEXT_KEY: AuthContext(username=username, is_admin=False, workspace=workspace)}
+    body = json.dumps({"files": [{"path": entry, "is_dir": True} for entry in entries]})
+    with mlflow_app.test_request_context(f"/api/2.0/mlflow-artifacts/artifacts?path={path}", method="GET", environ_base=environ):
+        resp = Response(body, mimetype="application/json")
+        _filter_list_artifact_root(resp)
+        return sorted(f["path"] for f in json.loads(resp.get_data())["files"])
+
+
 class TestRootListingWithWorkspaces:
     @pytest.fixture(autouse=True)
     def workspaces(self, permission_store, monkeypatch):
@@ -417,6 +431,24 @@ class TestRootListingWithWorkspaces:
     def test_listing_is_empty_without_access_to_the_workspace(self, artifact_root):
         """OUTSIDER can read experiment 4 but holds no grant on ws1, so it is hidden."""
         assert _listed(_request("/api/2.0/mlflow-artifacts/artifacts", "GET", OUTSIDER, workspace="ws1")) == []
+
+    @pytest.mark.parametrize("workspace", ["ws1", None])
+    def test_listing_another_workspaces_root_judges_it_in_that_workspace(self, artifact_root, workspace, permission_store):
+        """``workspaces/ws2`` listed from a ws1 (or header-less) request (issue #460).
+
+        Experiment 5 lives in ws2. OWNER holds a direct grant on it and READ on ws2, so it is
+        listed — judged as a ws2 request would judge it. Without access to ws2 it is hidden,
+        whatever OWNER holds on the experiment itself.
+        """
+        from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
+
+        # MLflow's own view refuses a cross-workspace path, so the filter is driven directly with
+        # the listing MLflow would produce for workspaces/ws2.
+        assert _filtered_root_listing(OWNER, workspace, "workspaces/ws2", [WS2_EXPERIMENT]) == [WS2_EXPERIMENT]
+
+        permission_store.delete_workspace_permission("ws2", OWNER)
+        flush_workspace_cache()
+        assert _filtered_root_listing(OWNER, workspace, "workspaces/ws2", [WS2_EXPERIMENT]) == []
 
 
 # ---------------------------------------------------------------------------

@@ -23,11 +23,12 @@ from mlflow_oidc_auth.utils.batch_permissions import (
     filter_manageable_models,
     filter_manageable_prompts,
 )
-from mlflow_oidc_auth.utils.permissions import _match_regex_permission_or_none
+from mlflow_oidc_auth.utils.grant_context import best_matching_regex
 
 
 def _find(regexes, name, workspace=None):
-    return _match_regex_permission_or_none(regexes, name, "model name", workspace)
+    rule = best_matching_regex(regexes, name, "model name", workspace)
+    return rule.permission if rule is not None else None
 
 
 class TestMatchRegexPermissionOrNone:
@@ -151,6 +152,11 @@ def _fake_store(
         "registered_model": [SimpleNamespace(name=k, permission=v) for k, v in (group_models or {}).items()],
     }
     store.list_user_groups_grants.side_effect = lambda resource_type, username: group_rows.get(resource_type, [])
+    # The bulk read of direct grants (store.list_user_grants), by grant table.
+    store.list_user_grants.side_effect = lambda table, username: {
+        "experiment": store.list_experiment_permissions,
+        "registered_model": store.list_registered_model_permissions,
+    }.get(table, lambda _username: [])(username)
     return store
 
 
@@ -650,13 +656,28 @@ class TestWorkspaceFallbackIntegration:
         assert result.permission.name == "MANAGE"
 
     def test_experiment_of_another_workspace_gets_nothing(self):
-        """The batch path checks the experiment is in the request's workspace (issue #460)."""
-        from mlflow_oidc_auth.permissions import MANAGE
+        """An experiment of another workspace is judged in that workspace (issue #460).
 
-        with self._workspace("dev-ws", MANAGE) as ctx:
+        The caller's MANAGE on the request workspace never reaches it; without access to its own
+        workspace it gets nothing, and with access the fallback is the permission held there.
+        """
+        from mlflow_oidc_auth.permissions import MANAGE, READ
+
+        held = {"dev-ws": MANAGE}
+        with (
+            self._workspace("dev-ws", MANAGE) as ctx,
+            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", side_effect=lambda u, ws: held.get(ws)),
+        ):
             result = resolve_experiment_permission_from_context(ctx, "exp-1", "experiment-name", "other-ws")
-
         assert (result.kind, result.permission.can_read) == ("workspace-deny", False)
+
+        held["other-ws"] = READ
+        with (
+            self._workspace("dev-ws", MANAGE) as ctx,
+            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", side_effect=lambda u, ws: held.get(ws)),
+        ):
+            result = resolve_experiment_permission_from_context(ctx, "exp-1", "experiment-name", "other-ws")
+        assert (result.kind, result.permission.name) == ("workspace", "READ")
 
     def test_experiment_without_entity_workspace_is_looked_up(self):
         """Without the entity's workspace, MLflow is asked whether the experiment is in the request's."""
@@ -698,3 +719,31 @@ class TestWorkspaceFallbackIntegration:
 
         assert result.kind == "user"
         assert result.permission.name == "MANAGE"
+
+
+def test_header_less_request_falls_back_alike_for_every_resource_type():
+    """Every batch filter reads the request workspace from the same source (issue #460 review).
+
+    A header-less request with workspaces on: MLflow serves it from its own workspace ("ws-x"
+    here), and every resource type without a grant of its own falls back to the caller's
+    permission there — gateway listings included, which used to read the header instead.
+    """
+    from mlflow_oidc_auth.permissions import MANAGE
+    from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_endpoints, filter_manageable_gateway_secrets
+
+    with (
+        _config(workspaces=True),
+        patch("mlflow.utils.workspace_context.get_request_workspace", return_value="ws-x"),
+        patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value=None),
+        patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=MANAGE),
+        patch("mlflow_oidc_auth.utils.grant_context._store", return_value=_fake_store()),
+    ):
+        experiments = [SimpleNamespace(experiment_id="1", name="e", workspace="ws-x")]
+        models = [SimpleNamespace(name="m")]
+        assert filter_manageable_experiments("testuser", experiments) == experiments
+        assert filter_manageable_models("testuser", models) == models
+        assert filter_manageable_prompts("testuser", models) == models
+        assert filter_manageable_gateway_endpoints("testuser", [{"name": "ep"}]) == [{"name": "ep"}]
+        assert filter_manageable_gateway_secrets("testuser", [{"secret_name": "s"}]) == [{"secret_name": "s"}]
+        kinds = {r.kind for r in batch_resolve_model_permissions("testuser", models).values()}
+    assert kinds == {"workspace"}

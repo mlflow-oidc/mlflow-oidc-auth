@@ -544,6 +544,35 @@ class SqlAlchemyStore:
     def list_user_groups_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
         return self.registered_model_group_repo.list_for_user(username)
 
+    def list_user_grants(self, resource_type: str, username: str) -> list:
+        """Every direct grant of ``username`` on ``resource_type``, in precedence order, in one JOIN.
+
+        For the grant context (``utils/grant_context.py``). Of several grants on one resource the
+        first is the one the per-resource lookup returns (``_GrantWorkspaceScope._precedence``).
+        Prompts are registered models: pass ``"registered_model"``.
+
+        Parameters:
+            resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+            username: The user.
+
+        Returns:
+            The grant entities.
+
+        Raises:
+            KeyError: For an unknown resource type.
+        """
+        repos = {
+            "experiment": self.experiment_repo,
+            "registered_model": self.registered_model_repo,
+            "scorer": self.scorer_repo,
+            "gateway_endpoint": self.gateway_endpoint_repo,
+            "gateway_secret": self.gateway_secret_repo,
+            "gateway_model_definition": self.gateway_model_definition_repo,
+            "mcp_server": self.mcp_server_repo,
+        }
+        return repos[resource_type].list_permissions_for_user_by_precedence(username)
+
     def list_user_groups_grants(self, resource_type: str, username: str) -> list:
         """Every grant on ``resource_type`` held by a group ``username`` belongs to, in one JOIN.
 
@@ -2187,9 +2216,41 @@ _USER_DELETE_METHODS = [
     "delete_user_with_hook",
 ]
 
+
+def _wrap_with_user_delete_invalidation(method):
+    """Wrap a user delete to drop everything cached for the user.
+
+    The permission cache and the grant-context cache are flushed (a failure raises, as for every
+    other permission write), and the user's workspace grant and denial entries are invalidated
+    through the workspace cache's generation guard — the delete also removes the user's workspace
+    grants. A workspace invalidation failure is logged, never raised: the delete already
+    committed. The username is the first positional argument (or the ``username`` keyword).
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
+        username = kwargs.get("username") if "username" in kwargs else (args[0] if args else None)
+        if username:
+            try:
+                from mlflow_oidc_auth.utils.workspace_cache import invalidate_user_workspace_entries
+
+                invalidate_user_workspace_entries(username)
+            except Exception:
+                from mlflow_oidc_auth.logger import get_logger
+
+                get_logger().warning("Workspace cache invalidation failed after %s; entries expire via TTL", method.__name__)
+        return result
+
+    return wrapper
+
+
 for _method_name in _USER_DELETE_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
-    setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_user_delete_invalidation(_original))
 
 for _method_name in _MEMBERSHIP_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)

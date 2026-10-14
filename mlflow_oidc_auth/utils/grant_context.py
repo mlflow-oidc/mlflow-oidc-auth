@@ -193,7 +193,9 @@ class TypeSpec:
     Attributes:
         name: The resource type.
         label: What a pattern is matched against, for the debug log.
-        user: Lists the user's direct grants (``store, username``), for bulk contexts.
+        direct_table: The grant table its direct grants live in; types that share one (prompts
+            and registered models) share one read and one cache entry of them.
+        user: Lists the user's direct grants (``store, username``), in precedence order, for bulk contexts.
         group: Lists the grants of the user's groups (``store, username``), one JOIN, for bulk contexts.
         regex: Lists the user's patterns (``store, username``), or None when the type has none.
         group_regex: Lists the patterns of the user's groups (``store, group_ids``), or None.
@@ -205,6 +207,7 @@ class TypeSpec:
 
     name: str
     label: str
+    direct_table: str
     user: Callable[[Any, str], list]
     group: Callable[[Any, str], list]
     regex: Optional[Callable[[Any, str], list]]
@@ -217,8 +220,9 @@ class TypeSpec:
 TYPE_SPECS: Dict[str, TypeSpec] = {
     EXPERIMENT: TypeSpec(
         name=EXPERIMENT,
+        direct_table=EXPERIMENT,
         label="experiment",
-        user=lambda s, u: s.list_experiment_permissions(u),
+        user=lambda s, u: s.list_user_grants(EXPERIMENT, u),
         group=lambda s, u: s.list_user_groups_grants(EXPERIMENT, u),
         regex=lambda s, u: s.list_experiment_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_experiment_regex_permissions_for_groups_ids(ids),
@@ -228,8 +232,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     REGISTERED_MODEL: TypeSpec(
         name=REGISTERED_MODEL,
+        direct_table=REGISTERED_MODEL,
         label="model name",
-        user=lambda s, u: s.list_registered_model_permissions(u),
+        user=lambda s, u: s.list_user_grants(REGISTERED_MODEL, u),
         group=lambda s, u: s.list_user_groups_grants(REGISTERED_MODEL, u),
         regex=lambda s, u: s.list_registered_model_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_registered_model_regex_permissions_for_groups_ids(ids),
@@ -241,8 +246,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     # their patterns are their own.
     PROMPT: TypeSpec(
         name=PROMPT,
+        direct_table=REGISTERED_MODEL,
         label="prompt name",
-        user=lambda s, u: s.list_registered_model_permissions(u),
+        user=lambda s, u: s.list_user_grants(REGISTERED_MODEL, u),
         group=lambda s, u: s.list_user_groups_grants(REGISTERED_MODEL, u),
         regex=lambda s, u: s.list_prompt_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_prompt_regex_permissions_for_groups_ids(ids),
@@ -252,8 +258,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     SCORER: TypeSpec(
         name=SCORER,
+        direct_table=SCORER,
         label="scorer name",
-        user=lambda s, u: s.list_scorer_permissions(u),
+        user=lambda s, u: s.list_user_grants(SCORER, u),
         group=lambda s, u: s.list_user_groups_grants(SCORER, u),
         regex=lambda s, u: s.list_scorer_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_scorer_regex_permissions_for_groups_ids(ids),
@@ -263,8 +270,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     GATEWAY_ENDPOINT: TypeSpec(
         name=GATEWAY_ENDPOINT,
+        direct_table=GATEWAY_ENDPOINT,
         label="gateway name",
-        user=lambda s, u: s.list_gateway_endpoint_permissions(u),
+        user=lambda s, u: s.list_user_grants(GATEWAY_ENDPOINT, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_ENDPOINT, u),
         regex=lambda s, u: s.list_gateway_endpoint_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_endpoint_regex_permissions_for_groups_ids(ids),
@@ -274,8 +282,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     GATEWAY_SECRET: TypeSpec(
         name=GATEWAY_SECRET,
+        direct_table=GATEWAY_SECRET,
         label="gateway name",
-        user=lambda s, u: s.list_gateway_secret_permissions(u),
+        user=lambda s, u: s.list_user_grants(GATEWAY_SECRET, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_SECRET, u),
         regex=lambda s, u: s.list_gateway_secret_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_secret_regex_permissions_for_groups_ids(ids),
@@ -285,8 +294,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     GATEWAY_MODEL_DEFINITION: TypeSpec(
         name=GATEWAY_MODEL_DEFINITION,
+        direct_table=GATEWAY_MODEL_DEFINITION,
         label="gateway name",
-        user=lambda s, u: s.list_gateway_model_definition_permissions(u),
+        user=lambda s, u: s.list_user_grants(GATEWAY_MODEL_DEFINITION, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_MODEL_DEFINITION, u),
         regex=lambda s, u: s.list_gateway_model_definition_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_model_definition_regex_permissions_for_groups_ids(ids),
@@ -297,8 +307,9 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     # MCP servers have no pattern grants: no regex / group-regex sources.
     MCP_SERVER: TypeSpec(
         name=MCP_SERVER,
+        direct_table=MCP_SERVER,
         label="MCP server name",
-        user=lambda s, u: s.list_mcp_server_permissions(u),
+        user=lambda s, u: s.list_user_grants(MCP_SERVER, u),
         group=lambda s, u: s.list_user_groups_grants(MCP_SERVER, u),
         regex=None,
         group_regex=None,
@@ -388,38 +399,16 @@ def _fold_group_grants(rows: Sequence[Any], key: Callable[[Any], Any]) -> Dict[A
 
 
 def _direct_user_grants(rows: Sequence[Any], key: Callable[[Any], Any]) -> Dict[Any, str]:
-    """The user's direct grant per resource.
+    """The user's direct grant per resource: the first row of each, the store's precedence order.
 
-    The unique constraints allow one grant per user and resource in a workspace. The one exception
-    is a grant on a name-keyed resource from before the workspace column, which can sit beside a
-    ``default`` one while workspaces are disabled until the startup backfill merges them; the
-    per-resource lookup then reads the ``default`` grant, and so does this. Of two unassigned
-    duplicates the less capable one is kept — never the more capable.
+    ``store.list_user_grants`` returns rows in the order the per-resource lookup decides between
+    duplicates by (``_GrantWorkspaceScope._precedence``: the ``default`` grant, else the oldest),
+    so taking the first row of each resource applies exactly that lookup's rule.
     """
     grants: Dict[Any, str] = {}
-    from_default: set = set()
     for row in rows:
-        resource = key(row)
-        is_default = getattr(row, "workspace", None) == DEFAULT_WORKSPACE_NAME
-        current = grants.get(resource)
-        if current is None:
-            grants[resource] = row.permission
-        elif resource in from_default:
-            continue
-        elif is_default:
-            grants[resource] = row.permission
-        else:
-            grants[resource] = _less_capable(current, row.permission)
-        if is_default:
-            from_default.add(resource)
+        grants.setdefault(key(row), row.permission)
     return grants
-
-
-def _less_capable(a: str, b: str) -> str:
-    """Of two permission names, the one that allows less; ``NO_PERMISSIONS`` allows nothing."""
-    if a == NO_PERMISSIONS.name or b == NO_PERMISSIONS.name:
-        return NO_PERMISSIONS.name
-    return a if get_permission(a).priority <= get_permission(b).priority else b
 
 
 def _load_direct(spec: TypeSpec, username: str) -> _DirectGrants:
@@ -481,11 +470,6 @@ def _get_section_cache() -> CacheBackend:
     return _section_cache
 
 
-def current_generation() -> Any:
-    """The invalidation generation; changes whenever cached grants are invalidated."""
-    return GUARD.current()
-
-
 def _section_key(username: str, scope: str, resource_type: str, part: str) -> str:
     """``user:scope:type:part``, every component percent-encoded."""
     return make_key(username, scope, resource_type, part)
@@ -509,19 +493,19 @@ def invalidate_user_grant_contexts(username: str) -> None:
         _get_section_cache().delete_prefix(f"{key_part(username)}:")
 
 
-def _cached(key: str, kind: type, load: Callable[[], Any]) -> Any:
+def _cached(key: str, kind: type, load: Callable[[], Any], generation: Any) -> Any:
     """A grant read from the cache, reading and caching it on a miss.
 
-    A read that fails raises and caches nothing. A read that an invalidation overlapped answers
-    this request but is not cached (or is deleted again): see ``GenerationGuard``.
+    ``generation`` is the invalidation generation read before the context read anything. A read
+    that fails raises and caches nothing; one that an invalidation overlapped answers this
+    request but is not left cached: see ``GenerationGuard.store_unless_raced``.
     """
     cache = _get_section_cache()
     cached = cache.get(key)
     if isinstance(cached, kind):
         return cached
-    generation = GUARD.current()
     value = load()
-    GUARD.store_unless_raced(cache, key, value, generation)
+    GUARD.store_unless_raced(cache, key, value, generation, check_before_write=False)
     return value
 
 
@@ -530,6 +514,7 @@ def _cached(key: str, kind: type, load: Callable[[], Any]) -> Any:
 # ---------------------------------------------------------------------------
 
 _REQUEST = object()
+_UNREAD = object()
 
 
 def _grant_scope() -> Tuple[str, str]:
@@ -582,7 +567,19 @@ class GrantContext:
         self._experiment_names: Dict[str, str] = {}
         self._experiment_hints: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
         self._decisions: Dict[Tuple[str, str, Optional[str], Optional[str]], PermissionResult] = {}
+        self._generation: Any = _UNREAD
         self.oldest_read: Optional[float] = None
+
+    def generation(self) -> Any:
+        """The invalidation generation, read once — before this context reads any grant.
+
+        Every cache write the context makes (its grant reads, and the decision
+        ``resolve_permission`` caches) is checked against it after the write, so one generation
+        read serves the whole context.
+        """
+        if self._generation is _UNREAD:
+            self._generation = GUARD.current()
+        return self._generation
 
     def _check_scope(self) -> None:
         # The repositories read name-keyed grants in the grant workspace current at read time; the
@@ -607,14 +604,15 @@ class GrantContext:
         return self._in_memory_names
 
     def direct(self, resource_type: str) -> _DirectGrants:
-        """All of the user's direct grants on ``resource_type``. Only for :meth:`names_in_memory` contexts."""
-        grants = self._direct.get(resource_type)
+        """All of the user's direct grants on ``resource_type``'s grant table (bulk, exact-``=`` contexts)."""
+        spec = TYPE_SPECS[resource_type]
+        grants = self._direct.get(spec.direct_table)
         if grants is None:
-            spec = TYPE_SPECS[resource_type]
             self._check_scope()
-            key = _section_key(self.username, self._scope, spec.name, "direct")
-            grants = _cached(key, _DirectGrants, lambda: _load_direct(spec, self.username))
-            self._direct[resource_type] = grants
+            generation = self.generation()
+            key = _section_key(self.username, self._scope, spec.direct_table, "direct")
+            grants = _cached(key, _DirectGrants, lambda: _load_direct(spec, self.username), generation)
+            self._direct[spec.direct_table] = grants
             self._note_read(grants.loaded_at)
         return grants
 
@@ -624,20 +622,12 @@ class GrantContext:
         if patterns is None:
             spec = TYPE_SPECS[resource_type]
             self._check_scope()
+            generation = self.generation()
             key = _section_key(self.username, self._scope, spec.name, "patterns")
-            patterns = _cached(key, _Patterns, lambda: _load_patterns(spec, self.username, self.group_ids))
+            patterns = _cached(key, _Patterns, lambda: _load_patterns(spec, self.username, self.group_ids), generation)
             self._patterns[resource_type] = patterns
             self._note_read(patterns.loaded_at)
         return patterns
-
-    def preload(self, *resource_types: str) -> "GrantContext":
-        """Read the grants of ``resource_types`` now (all eight when none is named)."""
-        for resource_type in resource_types or tuple(TYPE_SPECS):
-            if self.names_in_memory():
-                self.direct(resource_type)
-            if TYPE_SPECS[resource_type].regex is not None:
-                self.patterns(resource_type)
-        return self
 
     def workspace_permission(self, workspace: str) -> Optional[Permission]:
         """The user's permission on ``workspace``, memoized for this context.
@@ -747,8 +737,14 @@ def walk_sources(
     return PermissionResult(to_permission(default_permission), "fallback")
 
 
-def _lookups(ctx: GrantContext, resource_type: str, resource_id: str, name: str | None) -> Dict[str, Callable[[], Optional[str]]]:
-    """The source lookups of one resource. Each reads only when the walk reaches it."""
+def _lookups(
+    ctx: GrantContext, resource_type: str, resource_id: str, name: str | None, pattern_workspace: str | None = None
+) -> Dict[str, Callable[[], Optional[str]]]:
+    """The source lookups of one resource. Each reads only when the walk reaches it.
+
+    Patterns apply in ``pattern_workspace``: the context's grant workspace unless the resource is
+    known to live in another one.
+    """
     spec = TYPE_SPECS[resource_type]
     if resource_type == SCORER and name is None:
         raise ValueError("A scorer is resolved by its experiment id and its scorer name")
@@ -777,7 +773,7 @@ def _lookups(ctx: GrantContext, resource_type: str, resource_id: str, name: str 
         rules = patterns.group_regex if group else patterns.regex
         if not rules:
             return None
-        rule = best_matching_regex(rules, pattern_name(), spec.label, ctx.grant_workspace)
+        rule = best_matching_regex(rules, pattern_name(), spec.label, pattern_workspace or ctx.grant_workspace)
         return rule.permission if rule is not None else None
 
     lookups: Dict[str, Callable[[], Optional[str]]] = {"user": direct("user"), "group": direct("group")}
@@ -849,9 +845,11 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
         name: For an experiment, its name when the caller has it (else looked up when a pattern
             source is reached); for a scorer, the scorer name (required).
         resource_workspace: The experiment's workspace when the caller has its entity. With
-            workspaces enabled, one that differs from the workspace the request is served from is
-            denied before any source is read. Omitted, the workspace fallback asks MLflow whether
-            the experiment is in the request's workspace.
+            workspaces enabled, one of another workspace than the one the request is served from
+            is judged in its own workspace: only if the caller may access that workspace, with
+            patterns scoped to it and its workspace permission as the fallback — never with the
+            request workspace's patterns or permission. Omitted, the workspace fallback asks
+            MLflow whether the experiment is in the request's workspace.
 
     Returns:
         The decision and the source it came from.
@@ -863,25 +861,21 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
     known = ctx._decisions.get(memo_key)
     if known is not None:
         return known
-    if resource_type in _EXPERIMENT_KEYED and resource_workspace is not None and config.MLFLOW_ENABLE_WORKSPACES:
-        # The caller holds the experiment's entity: one of another workspace than the one this
-        # request is served from gets nothing — not a direct grant, not a pattern, not the
-        # workspace permission. Pattern scope and grant reads both belong to the request's
-        # workspace, so no source may speak for an entity outside it.
-        if resource_workspace != (ctx.request_workspace or ctx.grant_workspace):
-            result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
-            ctx._decisions[memo_key] = result
-            return result
-    result = walk_sources(_lookups(ctx, resource_type, resource_id, name), config.PERMISSION_SOURCE_ORDER, config.DEFAULT_MLFLOW_PERMISSION)
-    request_workspace = ctx.request_workspace
-    result = workspace_fallback(
-        result,
-        enabled=bool(config.MLFLOW_ENABLE_WORKSPACES),
-        request_workspace=request_workspace,
-        resource_type=resource_type,
-        in_request_workspace=lambda: _in_request_workspace(resource_id, resource_workspace, request_workspace),
-        workspace_permission=ctx.workspace_permission,
-    )
+    enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
+    serving = ctx.request_workspace or ctx.grant_workspace
+    if enabled and resource_type in _EXPERIMENT_KEYED and resource_workspace is not None and resource_workspace != serving:
+        result = _resolve_in_entity_workspace(ctx, resource_type, resource_id, name, resource_workspace)
+    else:
+        result = walk_sources(_lookups(ctx, resource_type, resource_id, name), config.PERMISSION_SOURCE_ORDER, config.DEFAULT_MLFLOW_PERMISSION)
+        request_workspace = ctx.request_workspace
+        result = workspace_fallback(
+            result,
+            enabled=enabled,
+            request_workspace=request_workspace,
+            resource_type=resource_type,
+            in_request_workspace=lambda: _in_request_workspace(resource_id, resource_workspace, request_workspace),
+            workspace_permission=ctx.workspace_permission,
+        )
     # Recorded after the workspace fallback, which may already have replaced it with a real
     # decision. A scorer's fallback is not final: effective_scorer_permission hands it to the
     # experiment, whose own resolution records a fallback if the default does decide.
@@ -891,6 +885,28 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
         record_permission_fallback(resource_type, str(resource_id), ctx.username, result.permission)
     ctx._decisions[memo_key] = result
     return result
+
+
+def _resolve_in_entity_workspace(ctx: GrantContext, resource_type: str, resource_id: str, name: str | None, workspace: str) -> PermissionResult:
+    """An experiment (or scorer) the caller holds the entity of, living in another workspace.
+
+    Judged as a request of that workspace would judge it: only a caller who may read that
+    workspace gets anything; patterns apply as scoped to that workspace; and the fallback is the
+    caller's permission on that workspace. Experiment and scorer grants are keyed by an id MLflow
+    keeps unique across workspaces, so their direct grants are the same rows either way.
+    """
+    access = ctx.workspace_permission(workspace)
+    if access is None or not access.can_read:
+        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+    result = walk_sources(_lookups(ctx, resource_type, resource_id, name, workspace), config.PERMISSION_SOURCE_ORDER, config.DEFAULT_MLFLOW_PERMISSION)
+    return workspace_fallback(
+        result,
+        enabled=True,
+        request_workspace=workspace,
+        resource_type=resource_type,
+        in_request_workspace=lambda: True,  # its own entity says so
+        workspace_permission=ctx.workspace_permission,
+    )
 
 
 #: Kinds of a resolved permission that are not a grant on the resource itself.
@@ -921,7 +937,7 @@ def resolve_scorer(ctx: GrantContext, experiment_id: str, scorer_name: str, *, r
 # ---------------------------------------------------------------------------
 
 
-def _sanitize(value: str) -> str:
+def sanitize_log_value(value: str) -> str:
     """Strip control characters from a value before logging to prevent log injection."""
     return str(value).replace("\n", "").replace("\r", "").replace("\t", "")
 
@@ -977,7 +993,7 @@ def resolve_workspace_permission(username: str, workspace: str, source_order: Op
         "group-regex": group_patterns,
     }
 
-    logger.debug("Looking up workspace permission for %s@%s", _sanitize(username), _sanitize(workspace))
+    logger.debug("Looking up workspace permission for %s@%s", sanitize_log_value(username), sanitize_log_value(workspace))
     for source_name in order:
         lookup = sources.get(source_name)
         if lookup is None:
@@ -987,12 +1003,12 @@ def resolve_workspace_permission(username: str, workspace: str, source_order: Op
             permission = lookup()
         except Exception as e:
             if _is_not_found(e):
-                logger.debug("No %s workspace permission for %s@%s", source_label(source_name), _sanitize(username), _sanitize(workspace))
+                logger.debug("No %s workspace permission for %s@%s", source_label(source_name), sanitize_log_value(username), sanitize_log_value(workspace))
                 continue
             logger.warning(
                 "Workspace permission lookup for %s@%s failed in source %s (%s); denying without caching",
-                _sanitize(username),
-                _sanitize(workspace),
+                sanitize_log_value(username),
+                sanitize_log_value(workspace),
                 source_label(source_name),
                 type(e).__name__,
             )
@@ -1001,10 +1017,10 @@ def resolve_workspace_permission(username: str, workspace: str, source_order: Op
             logger.debug(
                 "Workspace permission found via source '%s' for %s@%s: %s",
                 source_label(source_name),
-                _sanitize(username),
-                _sanitize(workspace),
+                sanitize_log_value(username),
+                sanitize_log_value(workspace),
                 permission.name,
             )
             return permission, False
-    logger.warning("No workspace permission found for %s@%s after checking all sources", _sanitize(username), _sanitize(workspace))
+    logger.warning("No workspace permission found for %s@%s after checking all sources", sanitize_log_value(username), sanitize_log_value(workspace))
     return None, False

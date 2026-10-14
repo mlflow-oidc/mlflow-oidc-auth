@@ -32,6 +32,11 @@ def store():
     store.list_experiment_permissions.return_value = [SimpleNamespace(experiment_id="1", permission="MANAGE")]
     store.list_user_groups_grants.return_value = []
     store.list_experiment_regex_permissions.return_value = []
+    # The bulk read of direct grants (store.list_user_grants), by grant table.
+    store.list_user_grants.side_effect = lambda table, username: {
+        "experiment": store.list_experiment_permissions,
+        "registered_model": store.list_registered_model_permissions,
+    }[table](username)
     store.get_experiment_permission.side_effect = lambda r, u: SimpleNamespace(permission="MANAGE") if r == "1" else _missing()
     store.get_user_groups_experiment_permission.side_effect = _missing
     with (

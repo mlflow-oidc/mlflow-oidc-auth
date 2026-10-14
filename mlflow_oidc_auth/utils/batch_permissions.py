@@ -201,10 +201,11 @@ def filter_manageable_prompts(username: str, prompts: List) -> List:
 def _filter_manageable_by_name(username: str, resource_type: str, items: List, name_of: Callable[[Any], str]) -> List:
     """The items of a gateway listing ``username`` can manage, resolved against one bulk context.
 
-    The workspace fallback applies in the workspace the request names, as for the single-resource
-    gateway checks. An item without a name, or one whose resolution fails, is not manageable.
+    The workspace fallback applies in the same request workspace as every other batch filter
+    (:func:`_batch_workspace`). An item without a name, or one whose resolution fails, is not
+    manageable.
     """
-    ctx = load_grant_context(username, bulk=True)
+    ctx = build_user_permission_context(username)
     manageable = []
     for item in items:
         name = name_of(item)

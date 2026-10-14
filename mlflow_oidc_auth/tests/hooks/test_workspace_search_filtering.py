@@ -70,7 +70,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "team-alpha") is True
@@ -82,7 +82,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=None,
             ):
                 assert _can_access_workspace("user1", "restricted-ws") is False
@@ -95,7 +95,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=NO_PERMISSIONS,
             ):
                 assert _can_access_workspace("user1", "some-ws") is False
@@ -107,7 +107,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=None,
             ):
                 assert _can_access_workspace("user1", "default") is False
@@ -1157,7 +1157,7 @@ class TestWorkspaceFilteringCrossCutting:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "default") is True
@@ -1185,7 +1185,7 @@ class TestWorkspaceMemoLifetime:
 
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         calls = []
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
 
         with self._app().test_request_context("/"):
             assert ar._can_access_workspace("bob", "ws1") is False
@@ -1200,7 +1200,7 @@ class TestWorkspaceMemoLifetime:
 
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         calls = []
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
 
         app = self._app()
         for _ in range(2):
@@ -1220,7 +1220,7 @@ class TestWorkspaceMemoLifetime:
             seen.append(username)
             return SimpleNamespace(can_read=(username == "allowed"))
 
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", _perm)
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", _perm)
 
         with self._app().test_request_context("/"):
             assert ar._can_access_workspace("allowed", "ws1") is True
