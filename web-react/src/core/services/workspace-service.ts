@@ -1,8 +1,6 @@
-import {
-  createStaticApiFetcher,
-  createDynamicApiFetcher,
-} from "./create-api-fetcher";
+import { createStaticApiFetcher } from "./create-api-fetcher";
 import { request } from "./api-utils";
+import { apiRequest } from "./typed-http";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -17,27 +15,35 @@ import type {
   WorkspaceMemberCounts,
 } from "../../shared/types/entity";
 
+// Workspace CRUD (`/api/3.0/mlflow/workspaces`) is MLflow's own API, proxied unchanged: it is not
+// part of this plugin's contract, so those calls keep their hand-written types. The permission
+// endpoints below are the plugin's and are typed from the generated contract.
+
 export const fetchAllWorkspaces =
   createStaticApiFetcher<WorkspaceListResponse>({
     endpointKey: "ALL_WORKSPACES",
     responseType: {} as WorkspaceListResponse,
   });
 
-export const fetchWorkspaceUsers = createDynamicApiFetcher<
-  WorkspaceUserPermission[],
-  "WORKSPACE_USERS"
->({
-  endpointKey: "WORKSPACE_USERS",
-  responseType: [] as WorkspaceUserPermission[],
-});
+export const fetchWorkspaceUsers = async (
+  workspace: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceUserPermission[]> =>
+  (await apiRequest(
+    "get",
+    "/api/3.0/mlflow/permissions/workspaces/{workspace}/users",
+    { path: { workspace }, signal },
+  )) as WorkspaceUserPermission[];
 
-export const fetchWorkspaceGroups = createDynamicApiFetcher<
-  WorkspaceGroupPermission[],
-  "WORKSPACE_GROUPS"
->({
-  endpointKey: "WORKSPACE_GROUPS",
-  responseType: [] as WorkspaceGroupPermission[],
-});
+export const fetchWorkspaceGroups = async (
+  workspace: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceGroupPermission[]> =>
+  (await apiRequest(
+    "get",
+    "/api/3.0/mlflow/permissions/workspaces/{workspace}/groups",
+    { path: { workspace }, signal },
+  )) as WorkspaceGroupPermission[];
 
 /** MLflow native workspace response wraps the object in a `workspace` key. */
 type MlflowWorkspaceResponse = { workspace: WorkspaceCrudResponse };
