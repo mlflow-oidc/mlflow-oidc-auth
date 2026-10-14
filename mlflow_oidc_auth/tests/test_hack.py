@@ -891,39 +891,53 @@ class TestHackModulePerformance:
                     assert menu_html in result
 
 
+@pytest.fixture(autouse=True)
+def _fresh_snippet_cache():
+    """index() caches snippet files; every test here controls their content through mocks."""
+    from mlflow_oidc_auth import hack
+
+    hack._read_snippet.cache_clear()
+    yield
+    hack._read_snippet.cache_clear()
+
+
+def _run_index(html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False, script_root: str = ""):
+    """Drive ``hack.index()`` inside a request served under ``script_root``, with a controlled
+    file-system / config state."""
+    from flask import Flask
+
+    mock_app = MagicMock()
+    mock_app.static_folder = "/fake/static"
+
+    def open_side_effect(file_path, mode="r"):
+        if "index.html" in file_path:
+            return mock_open(read_data=html).return_value
+        for key, content in snippets.items():
+            if key in file_path:
+                return mock_open(read_data=content).return_value
+        raise FileNotFoundError(file_path)
+
+    with (
+        patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}),
+        patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
+        patch("builtins.open", mock_open()) as mock_file_open,
+        patch("mlflow_oidc_auth.hack.config") as cfg,
+        Flask(__name__).test_request_context("/", environ_overrides={"SCRIPT_NAME": script_root}),
+    ):
+        cfg.EXTEND_MLFLOW_REAUTH = reauth
+        cfg.EXTEND_MLFLOW_MENU = menu
+        cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = redirect
+        mock_file_open.side_effect = open_side_effect
+        return index()
+
+
 class TestReauthInjection:
     """Cover the EXTEND_MLFLOW_REAUTH flag and the combined injection ordering."""
-
-    def _run_index(self, html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False):
-        """Drive ``hack.index()`` with a controlled file-system / config state."""
-
-        mock_app = MagicMock()
-        mock_app.static_folder = "/fake/static"
-
-        def open_side_effect(file_path, mode="r"):
-            if "index.html" in file_path:
-                return mock_open(read_data=html).return_value
-            for key, content in snippets.items():
-                if key in file_path:
-                    return mock_open(read_data=content).return_value
-            raise FileNotFoundError(file_path)
-
-        with (
-            patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}),
-            patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open()) as mock_file_open,
-            patch("mlflow_oidc_auth.hack.config") as cfg,
-        ):
-            cfg.EXTEND_MLFLOW_REAUTH = reauth
-            cfg.EXTEND_MLFLOW_MENU = menu
-            cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = redirect
-            mock_file_open.side_effect = open_side_effect
-            return index()
 
     def test_reauth_only_injection(self):
         """When only reauth is enabled, only the reauth snippet is appended."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<script>REAUTH</script>", "menu.html": "<script>MENU</script>"},
             reauth=True,
@@ -937,7 +951,7 @@ class TestReauthInjection:
         """Reauth must precede menu in the injected output so the fetch patch
         is in place before any later script issues network calls."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"},
             reauth=True,
@@ -948,7 +962,7 @@ class TestReauthInjection:
     def test_both_disabled_returns_unmodified(self):
         """If both flags are off, ``index`` returns the original HTML unchanged."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<!--REAUTH-->", "menu.html": "<!--MENU-->"},
             reauth=False,
@@ -982,7 +996,27 @@ class TestRedirectInjection:
     _SNIPPETS = {"redirect.html": "<!--REDIRECT_MARK-->", "reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"}
 
     def _run_index(self, *, redirect: bool, reauth: bool, menu: bool):
-        return TestReauthInjection()._run_index("<html><body>Content</body></html>", self._SNIPPETS, reauth=reauth, menu=menu, redirect=redirect)
+        return _run_index("<html><body>Content</body></html>", self._SNIPPETS, reauth=reauth, menu=menu, redirect=redirect)
+
+    @pytest.mark.parametrize(
+        "script_root,expected",
+        [
+            ("", ""),
+            ("/mlflow", "/mlflow"),
+            ("/mlflow/", "/mlflow"),
+            ("//evil.com", ""),
+            ("evil.com", ""),
+            ('/a"</script><script>alert(1)', '/a\\"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)'),
+        ],
+    )
+    def test_base_path_is_filled_in_from_the_request(self, script_root, expected):
+        from mlflow_oidc_auth.hack import BASE_PATH_PLACEHOLDER
+
+        snippets = {"redirect.html": f'<script>var BASE_PATH = "{BASE_PATH_PLACEHOLDER}";</script>'}
+        result = _run_index("<html><body>Content</body></html>", snippets, reauth=False, menu=False, redirect=True, script_root=script_root)
+        assert BASE_PATH_PLACEHOLDER not in result
+        assert f'var BASE_PATH = "{expected}";' in result
+        assert result.count("</script>") == 1
 
     def test_redirect_snippet_injected_when_enabled(self):
         result = self._run_index(redirect=True, reauth=False, menu=False)
@@ -1022,7 +1056,7 @@ class TestRedirectInjection:
 
 _NODE_HARNESS = r"""
 const fs = require("fs");
-const html = fs.readFileSync(process.argv[1], "utf8");
+const html = fs.readFileSync(process.argv[1], "utf8").split("__MLFLOW_OIDC_BASE_PATH__").join(process.argv[2]);
 const m = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!m) throw new Error("no <script> in snippet");
 const fn = html.match(/\/\/ BEGIN mapAdminRoute[^\n]*\n([\s\S]*?)\/\/ END mapAdminRoute/);
@@ -1104,6 +1138,16 @@ _MAPPING_CASES = [
     ("#/admin/ws?workspace=a..b", "oidc/ui/workspaces/a..b"),
     ("#/admin/ws?workspace=", "oidc/ui/workspaces"),
     ("#/admin/ws", "oidc/ui/workspaces"),
+    # Matched like MLflow's router: per segment, decoded, ignoring case
+    ("#/Admin", "oidc/ui/users"),
+    ("#/ACCOUNT", "oidc/ui/user"),
+    ("#/%61dmin", "oidc/ui/users"),
+    ("#/admin/USERS/Alice", "oidc/ui/users/Alice/experiments"),
+    ("#/Admin/WS?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    ("#/admin/?tab=roles", "oidc/ui/groups"),
+    # Only "." and ".." collapse; other dot names are real names
+    ("#/admin/users/...", "oidc/ui/users/.../experiments"),
+    ("#/admin/ws?workspace=...", "oidc/ui/workspaces/..."),
     ("#/admin/ws/", "oidc/ui/workspaces"),
     ("#/admin/ws/team-a?workspace=team-a", "oidc/ui/workspaces/team-a"),
     # Any other page of the admin area -> users
@@ -1140,9 +1184,8 @@ _HOSTILE_HASHES = [
 ]
 
 
-@pytest.fixture(scope="module")
-def _node_mapping():
-    """Run the shipped snippet's mapping function in node over every case once."""
+def _run_node(base_path: str):
+    """Run the shipped snippet's mapping function in node over every case, served under ``base_path``."""
 
     import json
     import shutil
@@ -1156,7 +1199,7 @@ def _node_mapping():
 
     hashes = [h for h, _ in _MAPPING_CASES] + _HOSTILE_HASHES
     proc = subprocess.run(
-        [node, "-e", _NODE_HARNESS, os.path.join(hack._HACK_DIR, "redirect.html")],
+        [node, "-e", _NODE_HARNESS, os.path.join(hack._HACK_DIR, "redirect.html"), base_path],
         input=json.dumps(hashes),
         capture_output=True,
         text=True,
@@ -1167,28 +1210,39 @@ def _node_mapping():
     return dict(zip(hashes, out["mapped"])), out["replaced"]
 
 
+@pytest.fixture(scope="module")
+def _node_mapping():
+    return _run_node("")
+
+
+@pytest.fixture(scope="module")
+def _node_mapping_prefixed():
+    return _run_node("/mlflow")
+
+
 @pytest.mark.parametrize("hash_value,expected", _MAPPING_CASES)
-def test_redirect_mapping(_node_mapping, hash_value, expected):
-    mapped, _ = _node_mapping
-    assert mapped[hash_value] == expected
+def test_redirect_mapping(_node_mapping, _node_mapping_prefixed, hash_value, expected):
+    for (mapped, _), prefix in ((_node_mapping, ""), (_node_mapping_prefixed, "/mlflow")):
+        assert mapped[hash_value] == (None if expected is None else f"{prefix}/{expected}")
 
 
 def test_redirect_mapping_uses_location_replace(_node_mapping):
     _, replaced = _node_mapping
-    assert replaced == ["oidc/ui/users", "oidc/ui/user", "oidc/ui/workspaces/team-a", "oidc/ui/groups"]
+    assert replaced == ["/oidc/ui/users", "/oidc/ui/user", "/oidc/ui/workspaces/team-a", "/oidc/ui/groups"]
 
 
 @pytest.mark.parametrize("hash_value", _HOSTILE_HASHES)
-def test_redirect_never_absolute(_node_mapping, hash_value):
+def test_redirect_never_absolute(_node_mapping, _node_mapping_prefixed, hash_value):
+    """Hostile hashes never produce a target outside the plugin's UI: no scheme, no
+    protocol-relative URL, no other host, and exactly one encoded segment from the hash."""
     import re
 
-    mapped, _ = _node_mapping
-    target = mapped[hash_value]
-    assert target is not None
-    assert not target.startswith("/")
-    assert not target.startswith("\\")
-    assert not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
-    assert target.startswith("oidc/ui/")
-    # Everything after the fixed prefix is one encoded segment (plus a fixed suffix).
-    rest = target[len("oidc/ui/") :]
-    assert re.fullmatch(r"(users/[^/:<>\\]+/experiments|workspaces/[^/:<>\\]+|users|workspaces)", rest), target
+    for (mapped, _), prefix in ((_node_mapping, ""), (_node_mapping_prefixed, "/mlflow")):
+        target = mapped[hash_value]
+        assert target is not None
+        assert not target.startswith("//")
+        assert "\\" not in target
+        assert not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+        assert target.startswith(f"{prefix}/oidc/ui/")
+        rest = target[len(f"{prefix}/oidc/ui/") :]
+        assert re.fullmatch(r"(users/[^/:<>\\]+/experiments|workspaces/[^/:<>\\]+|users|workspaces)", rest), target
