@@ -862,4 +862,4 @@ class TestPermissionCacheMaxSize:
         assert any(len(call.args) > 1 and call.args[1] == setting for call in warn.call_args_list), "no warning named the setting"
         # The rejected value is never logged: the same lookup serves secrets from config providers.
         for call in warn.call_args_list:
-            assert bad not in (call.args[0] % call.args[1:] if len(call.args) > 1 else str(call.args[0]))
+            assert repr(bad) not in (call.args[0] % call.args[1:] if len(call.args) > 1 else str(call.args[0]))
