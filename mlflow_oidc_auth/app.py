@@ -278,7 +278,9 @@ def create_app() -> FastAPI:
 
     # Inject into MLflow's index.html when the menu links or the re-auth helper
     # are enabled. Both live in the same hack module to keep injection ordering
-    # predictable.
+    # predictable. The admin-page redirect rides along with them and never turns
+    # the injection on by itself, so a deployment that switched both off keeps
+    # MLflow's index untouched.
     if config.EXTEND_MLFLOW_MENU or config.EXTEND_MLFLOW_REAUTH:
         from mlflow_oidc_auth import hack
 
