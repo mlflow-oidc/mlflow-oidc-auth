@@ -92,24 +92,36 @@ Regex permissions use Python regular expression syntax to match resource names b
 ### How They Work
 
 1. Patterns are ordered by **priority** (lower number = checked first)
-2. The **first matching pattern** determines the permission
+2. The matching pattern with the **best priority** determines the permission; if several match at
+   that priority, see [Ties at Equal Priority](#ties-at-equal-priority)
 3. Both user-level and group-level regex permissions are supported
 4. With workspaces enabled, a pattern applies in the workspace it was made in, or in every
    workspace when made with none selected (see [Workspaces](workspaces#pattern-regex-grants))
 
 ### Ties at Equal Priority
 
-Two matching patterns can share a priority. Resource patterns and workspace patterns break that tie
-differently, on purpose:
+Several patterns can match at the same priority, for example a broad `.*` pattern from one group and
+a narrower `^team-.*` pattern from another. They are resolved by **permission rank**, the same rule
+used when a user's groups hold different direct grants on one resource:
 
-| Pattern kind | Equal-priority tie-break |
+1. **Priority decides first.** Only matches at the best (lowest-number) priority count; a better
+   priority wins even over a more capable permission.
+2. **`NO_PERMISSIONS` wins the tie.** If any match at that priority is `NO_PERMISSIONS`, the result is
+   `NO_PERMISSIONS`.
+3. **Otherwise the most capable permission wins:** `MANAGE` > `EDIT` > `USE` > `READ`.
+
+| Grants | Tie-break at equal priority |
 |---|---|
-| Resource patterns (experiments, registered models, prompts, scorers, AI Gateway resources) | **Lowest id wins.** Patterns are tried in `(priority, id)` order, and the first match wins. The id is assigned at creation, so the older pattern wins. |
-| Workspace patterns (user and group) | **Most permissive wins.** All matches at the best priority are compared, and the highest permission level is used. |
+| Resource patterns (experiments, registered models, prompts, scorers, AI Gateway resources), user and group | Permission rank, `NO_PERMISSIONS` first |
+| Direct group grants on one resource | Permission rank, `NO_PERMISSIONS` first |
+| Workspace patterns (user and group) | Most permissive of the best-priority matches. This ranks `NO_PERMISSIONS` highest too, so the outcome is the same |
 
-Before issue #459, resource-pattern ties resolved in whatever order the database returned the rows, so
-the result was not guaranteed. To make one pattern win, give it a lower priority number rather than
-relying on the tie-break.
+Patterns are always read in `(priority, id)` order. The id never changes the outcome, but it does
+decide which of several equally ranked patterns is reported in the debug log.
+
+Before issue #459, a tie between resource patterns went to whichever pattern the database returned
+first, so the result could vary. To make one pattern win regardless of rank, give it a lower priority
+number.
 
 ### Pattern Examples
 
@@ -598,8 +610,8 @@ Some consequences under the default order (`user,group,regex,group-regex`):
 - A group in which the departing user was the **last active member** holds nothing. Resources the
   departing user managed only through that group are reported as `via: "group:<name>"`.
 
-Patterns resolve as they do at request time. They are tried in priority order and the first match
-wins; for workspaces, the most permissive of the best-priority matches wins. Each pattern is matched
+Patterns resolve as they do at request time: the best priority decides, and a tie at that priority
+goes by permission rank (see [Ties at Equal Priority](#ties-at-equal-priority)). Each pattern is matched
 against the same value the resolver uses:
 
 - experiments: the experiment **name**

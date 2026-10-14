@@ -51,8 +51,8 @@ class TestMatchRegexPermissionOrNone:
         result = _find([regex_perm], "model-test")
         assert result is None
 
-    def test_returns_first_matching_regex(self):
-        """Should return the first matching regex permission in (priority, id) order."""
+    def test_returns_highest_ranked_match_at_equal_priority(self):
+        """Of matches at the same priority, the highest-ranked permission decides (issue #459)."""
         regex_perm1 = MagicMock(priority=1, id=1)
         regex_perm1.regex = ".*"
         regex_perm1.permission = "READ"
@@ -62,7 +62,7 @@ class TestMatchRegexPermissionOrNone:
         regex_perm2.permission = "MANAGE"
 
         result = _find([regex_perm1, regex_perm2], "model-test")
-        assert result == "READ"
+        assert result == "MANAGE"
 
     def test_empty_list_returns_none(self):
         """Should return None for empty regex list."""

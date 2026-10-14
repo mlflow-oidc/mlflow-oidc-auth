@@ -649,7 +649,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
     def list_regex_for_user(self, username: str) -> List[EntityT]:
         """List all regex permissions for a user, ordered by priority, then id.
 
-        Ties on priority resolve by id (oldest grant first) so the first match is deterministic.
+        Rows within a priority come back by id, so the list never depends on the backend's row order.
 
         :param username: The username of the user.
         :return: A list of permission entities.
@@ -745,7 +745,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
     def _list_group_permissions(self, session: Session, groups: List[int]) -> list:
         """List all permissions for a list of group IDs, ordered by priority, then id.
 
-        Ties on priority resolve by id (oldest grant first) so the first match is deterministic.
+        Rows within a priority come back by id, so the list never depends on the backend's row order.
 
         :param session: SQLAlchemy session
         :param groups: A list of group IDs.

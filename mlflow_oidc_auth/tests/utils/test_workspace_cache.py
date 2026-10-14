@@ -354,6 +354,17 @@ class TestMatchWorkspaceRegexPermission:
         result = _match_workspace_regex_permission(regexes, "prod-workspace")
         assert result == EDIT
 
+    @pytest.mark.parametrize("first, second", [("MANAGE", "NO_PERMISSIONS"), ("NO_PERMISSIONS", "MANAGE")])
+    def test_same_priority_no_permissions_wins(self, first, second):
+        """NO_PERMISSIONS ranks highest, so it wins an equal-priority tie, as for resource patterns."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            _match_workspace_regex_permission,
+        )
+
+        regexes = [self._make_regex_perm("^prod-.*", 10, first), self._make_regex_perm("^prod-work.*", 10, second)]
+        assert _match_workspace_regex_permission(regexes, "prod-workspace") == NO_PERMISSIONS
+
     @pytest.mark.parametrize(
         "order",
         [(0, 1, 2), (2, 1, 0), (1, 2, 0), (2, 0, 1)],

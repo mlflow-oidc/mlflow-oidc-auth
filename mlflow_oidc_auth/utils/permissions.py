@@ -30,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission, in_regex_grant_order
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, compare_permissions, get_permission, in_regex_grant_order
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -166,14 +166,21 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # ---------------------------------------------------------------------------
 
 
-def _first_matching_regex(regexes, name: str, label: str, workspace: str | None = None):
-    """Generic regex matcher for any resource type: the first in-scope pattern matching ``name``.
+def _best_matching_regex(regexes, name: str, label: str, workspace: str | None = None):
+    """Generic regex matcher for any resource type: the pattern that decides ``name``'s permission.
 
-    The core both public forms share; it never raises on no match. Patterns are tried in
-    ``(priority, id)`` order (``permissions.regex_grant_order``) regardless of the order given —
-    already-ordered input, the usual case, is checked rather than sorted. Only patterns that apply in the
-    resource's workspace count — ``workspace``, or the request's grant workspace when omitted
-    (see ``utils/grant_workspace.pattern_in_scope``).
+    The core both public forms share; it never raises on no match. Only in-scope patterns that
+    match ``name`` count — in scope meaning they apply in the resource's workspace, ``workspace``,
+    or the request's grant workspace when omitted (see ``utils/grant_workspace.pattern_in_scope``).
+
+    - **Priority decides first.** Only matches in the best (lowest-number) priority tier count.
+    - **Within that tier, permission rank decides**, by the same ``compare_permissions`` rule
+      direct group grants fold with (``BaseGroupPermissionRepository`` and the batch
+      ``_collapse_group_permissions``), so the two cannot drift. ``NO_PERMISSIONS`` ranks
+      highest, so any ``NO_PERMISSIONS`` match in the tier wins; otherwise the most capable
+      (MANAGE > EDIT > USE > READ).
+    - Patterns are walked in ``(priority, id)`` order (``permissions.regex_grant_order``), so of
+      equally ranked matches the lowest id is the one returned and logged.
 
     Parameters:
         regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
@@ -182,17 +189,23 @@ def _first_matching_regex(regexes, name: str, label: str, workspace: str | None 
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The first matching pattern entity, or ``None`` when none matches.
+        The deciding pattern entity, or ``None`` when none matches.
     """
     from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
 
+    best = None
     for regex in in_regex_grant_order(regexes):
-        if not pattern_in_scope(regex, workspace):
+        if best is not None and regex.priority > best.priority:
+            break  # past the best tier
+        if not pattern_in_scope(regex, workspace) or not re.match(regex.regex, name):
             continue
-        if re.match(regex.regex, name):
-            logger.debug("Regex permission found for %s %s: %s with regex %s and priority %s", label, name, regex.permission, regex.regex, regex.priority)
-            return regex
-    return None
+        # compare_permissions(a, b) is True when b ranks at least as high as a: replace only on a
+        # strictly higher rank, so equal ranks keep the lower id.
+        if best is None or not compare_permissions(regex.permission, best.permission):
+            best = regex
+    if best is not None:
+        logger.debug("Regex permission found for %s %s: %s with regex %s and priority %s", label, name, best.permission, best.regex, best.priority)
+    return best
 
 
 def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: str | None = None) -> str | None:
@@ -205,14 +218,14 @@ def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: s
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The permission of the first matching pattern (see :func:`_first_matching_regex`), or ``None``.
+        The permission of the deciding pattern (see :func:`_best_matching_regex`), or ``None``.
     """
-    regex = _first_matching_regex(regexes, name, label, workspace)
+    regex = _best_matching_regex(regexes, name, label, workspace)
     return regex.permission if regex is not None else None
 
 
 def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
-    """Raising matcher, for the permission source chain (see :func:`_first_matching_regex`).
+    """Raising matcher, for the permission source chain (see :func:`_best_matching_regex`).
 
     Parameters:
         regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
@@ -221,12 +234,12 @@ def _match_regex_permission(regexes, name: str, label: str, workspace: str | Non
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The permission of the first matching pattern.
+        The permission of the deciding pattern.
 
     Raises:
         MlflowException: ``RESOURCE_DOES_NOT_EXIST`` when no pattern matches.
     """
-    regex = _first_matching_regex(regexes, name, label, workspace)
+    regex = _best_matching_regex(regexes, name, label, workspace)
     if regex is None:
         raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
     return regex.permission

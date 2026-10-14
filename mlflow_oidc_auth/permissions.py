@@ -145,8 +145,10 @@ def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
 def regex_grant_order(rule) -> tuple:
     """The order regex (pattern) grants are tried in: priority, then id.
 
-    The single definition of that order. Lower priority numbers first; a tie on priority goes to
-    the lower id (the older grant). It works on a grant entity or row, where it is a sort key, and
+    The single definition of that order. Lower priority numbers first, then lower id. Which of
+    several equal-priority matches decides is a separate rule (permission rank, in the matchers);
+    the id only makes the order, and so which equally ranked match is reported, deterministic.
+    It works on a grant entity or row, where it is a sort key, and
     on a regex permission model class, where it gives the columns to order by:
     ``query.order_by(*regex_grant_order(SqlExperimentRegexPermission))``.
 
@@ -164,7 +166,7 @@ def in_regex_grant_order(rules: list) -> list:
 
     Repositories return grants already ordered, so the usual cost is one linear check rather
     than a sort. Anything that is not in order (a query missing the tie-break, a hand-built
-    list) is sorted, so the first match never depends on the order a caller passed.
+    list) is sorted, so a matcher's result never depends on the order a caller passed.
 
     Parameters:
         rules: Regex grants with ``priority`` and ``id``.
