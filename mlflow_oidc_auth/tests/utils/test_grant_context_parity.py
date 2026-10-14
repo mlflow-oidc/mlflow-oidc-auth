@@ -634,6 +634,49 @@ def test_pattern_grant_does_not_cross_into_entity_workspace(world):
     assert results["1"].kind == "regex" and results["1"].permission.can_manage
 
 
+def test_entity_workspace_patterns_scope_to_the_entitys_workspace(world):
+    """An entity of another workspace the caller can read is judged by that workspace's patterns.
+
+    alice reads ws-b. A pattern scoped to ws-a must not grant on a ws-b experiment, and a ws-b
+    NO_PERMISSIONS pattern must deny it despite the READ alice holds on ws-b.
+    """
+    store, _ = world
+    store.create_user("alice", "Alice")
+    store.create_workspace_permission("ws-b", "alice", "READ")
+    with patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True), as_request("admin", "ws-a"):
+        store.create_experiment_regex_permission("^beta", 1, "MANAGE", "alice")
+    with patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True), as_request("admin", "ws-b"):
+        store.create_experiment_regex_permission("^gamma", 1, "NO_PERMISSIONS", "alice")
+
+    with (
+        patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True),
+        patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+        patch("mlflow.utils.workspace_context.get_request_workspace", return_value="ws-a"),
+        as_request("alice", "ws-a"),
+    ):
+        for bulk in (False, True):
+            ctx = load_grant_context("alice", bulk=bulk)
+            # The ws-a pattern matches the name but belongs to another workspace: ws-b's READ applies.
+            beta = resolve(ctx, "experiment", "7", name="beta-7", resource_workspace="ws-b")
+            assert beta.kind == "workspace" and beta.permission.name == "READ", bulk
+            # The ws-b denial pattern outranks the READ alice holds on ws-b.
+            gamma = resolve(ctx, "experiment", "8", name="gamma-8", resource_workspace="ws-b")
+            assert gamma == PermissionResult(NO_PERMISSIONS, "regex"), bulk
+
+
+def test_a_pattern_match_never_logs_the_resource_name(caplog):
+    """The matcher's debug line names the pattern, never the resource (a gateway secret's name)."""
+    import logging
+
+    from mlflow_oidc_auth.utils.grant_context import best_matching_regex, logger
+
+    rule = SimpleNamespace(id=42, regex="^prod-", priority=1, permission="USE", workspace="*")
+    with caplog.at_level(logging.DEBUG, logger=logger.name):
+        assert best_matching_regex([rule], "prod-openai-key", "gateway name", "*") is rule
+    assert "prod-openai-key" not in caplog.text
+    assert "42" in caplog.text
+
+
 @pytest.mark.parametrize("delete", ["delete_user", "delete_user_with_hook"])
 def test_deleted_user_grants_do_not_reach_a_recreated_account(world, delete):
     """A user re-created under a deleted user's name within the TTL starts with no grants."""

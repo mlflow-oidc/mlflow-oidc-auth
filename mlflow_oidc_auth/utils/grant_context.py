@@ -162,7 +162,8 @@ def best_matching_regex(regexes: Sequence[Any], name: str, label: str, workspace
         regexes: Pattern grants with ``regex``, ``permission``, ``priority`` and ``id``; a
             precompiled pattern from a grant context is matched without recompiling.
         name: The resource name to match.
-        label: What ``name`` is (e.g. ``"model name"``), for the debug log.
+        label: What ``name`` is (e.g. ``"model name"``), for the debug log. The name itself is
+            not logged.
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
@@ -179,7 +180,8 @@ def best_matching_regex(regexes: Sequence[Any], name: str, label: str, workspace
         if best is None or not compare_permissions(regex.permission, best.permission):
             best = regex
     if best is not None:
-        logger.debug("Regex permission found for %s %s: %s with regex %s and priority %s", label, name, best.permission, best.regex, best.priority)
+        # The resource name is never logged: for a gateway secret it is the secret's name.
+        logger.debug("Regex permission found for a %s: %s from pattern %s (priority %s)", label, best.permission, getattr(best, "id", None), best.priority)
     return best
 
 
