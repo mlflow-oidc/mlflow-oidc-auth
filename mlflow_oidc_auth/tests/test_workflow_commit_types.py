@@ -1,17 +1,21 @@
 """The PR-title and commit-message checks must accept the same Conventional Commit types.
 
 Squash merges use the PR title as the commit subject, so a type one check allows and the other
-rejects blocks a merge (as `refactor` did before #477).
+rejects blocks a merge (as `refactor` did before #477). Only the type lists are compared; the
+title check's subject and header patterns have no counterpart in the commit check.
 """
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
 
 
 def _step_input(workflow: str, uses_prefix: str, key: str) -> str:
+    if not WORKFLOWS.is_dir():
+        pytest.skip("run from a source checkout: .github/workflows is not shipped in the package")
     data = yaml.safe_load((WORKFLOWS / workflow).read_text())
     for job in data["jobs"].values():
         for step in job.get("steps", []):

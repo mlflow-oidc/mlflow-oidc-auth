@@ -16,7 +16,9 @@ jobs:
     name: Conventional commit title validation
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
+      # Pinned to the commit of v6.1.1: a third-party action running in a pull_request_target
+      # job with a write-scoped token on fork PR metadata.
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -24,9 +26,10 @@ jobs:
           # (mlflow_oidc_auth/tests/test_workflow_commit_types.py enforces it).
           # Releases come from @semantic-release/commit-analyzer's default angular rules:
           # feat -> minor, fix and perf -> patch (perf gets its own "Performance
-          # Improvements" changelog section), the rest -> no release on their own. A
-          # "BREAKING CHANGE:" footer in the squash body forces a major release whatever
-          # the type. The angular release notes list only feat, fix, perf, revert and
+          # Improvements" changelog section), a revert whose body has git's "This reverts
+          # commit <sha>." line -> the release of the reverted commit, the rest -> no
+          # release on their own. A "BREAKING CHANGE:" footer in the squash body forces a
+          # major release whatever the type. The angular release notes list only feat, fix, perf, revert and
           # breaking changes, so a refactor that changes behaviour operators should know
           # about belongs in a fix/feat/perf PR or in the release notes by hand.
           types: |
