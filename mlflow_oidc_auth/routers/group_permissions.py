@@ -232,7 +232,7 @@ async def list_groups(username: str = Depends(get_username), page: PageQuery = N
 
     except Exception as e:
         logger.error(f"Error listing groups: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve groups")
+        raise HTTPException(status_code=500, detail="Failed to retrieve groups")
 
 
 @group_permissions_router.post(
@@ -379,7 +379,7 @@ async def get_group_users(
         return [GroupUser(username=user.username, is_admin=user.is_admin) for user in users]
     except Exception as e:
         logger.error(f"Error getting group users: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Group not found or error retrieving users")
+        raise HTTPException(status_code=404, detail="Group not found or error retrieving users")
 
 
 @group_permissions_router.get(
@@ -439,7 +439,7 @@ async def get_group_experiments(
 
     except Exception as e:
         logger.error(f"Error retrieving group experiment permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve group experiment permissions")
+        raise HTTPException(status_code=500, detail="Failed to retrieve group experiment permissions")
 
 
 exact_routes(
@@ -510,7 +510,7 @@ async def get_group_registered_models(
 
     except Exception as e:
         logger.error(f"Error retrieving group registered model permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve group registered model permissions")
+        raise HTTPException(status_code=500, detail="Failed to retrieve group registered model permissions")
 
 
 exact_routes(
@@ -582,7 +582,7 @@ async def get_group_prompts(
         return items
     except Exception as e:
         logger.error(f"Error getting group prompt permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt permissions")
+        raise HTTPException(status_code=500, detail="Failed to get group prompt permissions")
 
 
 exact_routes(
