@@ -605,31 +605,48 @@ def _set_can_manage_gateway_endpoint_permission(resp: Response):
     parse_dict(resp.json, response_message)
     name = response_message.endpoint.name
     username = get_fastapi_username()
-    store.create_gateway_endpoint_permission(name, username, MANAGE.name)
+    store.grant_creator_gateway_endpoint_permission(name, username)
 
 
-def _rename_gateway_endpoint_permission(resp: Response):
-    """Propagate endpoint name changes to all user and group permission records.
+def _rename_gateway_resource_permissions(resp: Response, *, old_name_attr: str, response_class, response_field: str, rename) -> None:
+    """Move a renamed gateway resource's user and group permissions to its new name.
 
-    The old name was stashed in ``flask.g`` by the before-request validator.
-    The new name is read from the response.
+    The before-request hook stashes the current name in ``flask.g`` (it is resolved from the
+    resource id); the new name is read from MLflow's response.
+
+    Parameters:
+        resp: MLflow's successful update response.
+        old_name_attr: The ``flask.g`` attribute holding the stashed name.
+        response_class: The update message whose ``Response`` to parse.
+        response_field: The response field holding the updated resource.
+        rename: The store method moving the permissions, called as ``rename(old_name, new_name)``.
     """
-    old_name = getattr(g, "_updating_gateway_endpoint_old_name", None)
+    old_name = getattr(g, old_name_attr, None)
     if not old_name:
         return
 
-    response_message = UpdateGatewayEndpoint.Response()  # type: ignore
+    response_message = response_class.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    new_name = response_message.endpoint.name
+    new_name = getattr(response_message, response_field).name
 
     if not new_name or new_name == old_name:
-        # Name unchanged — nothing to do.
         return
 
     try:
-        store.rename_gateway_endpoint_permissions(old_name, new_name)
+        rename(old_name, new_name)
     except Exception:
-        get_logger().warning("Failed to rename gateway endpoint permissions")
+        get_logger().warning("Failed to move permissions of a renamed gateway %s", response_field.replace("_", " "))
+
+
+def _rename_gateway_endpoint_permission(resp: Response):
+    """Propagate endpoint name changes to all user and group permission records."""
+    _rename_gateway_resource_permissions(
+        resp,
+        old_name_attr="_updating_gateway_endpoint_old_name",
+        response_class=UpdateGatewayEndpoint,
+        response_field="endpoint",
+        rename=store.rename_gateway_endpoint_permissions,
+    )
 
 
 def _set_can_manage_gateway_secret_permission(resp: Response):
@@ -638,21 +655,16 @@ def _set_can_manage_gateway_secret_permission(resp: Response):
     parse_dict(resp.json, response_message)
     secret_name = response_message.secret.secret_name
     username = get_fastapi_username()
-    store.create_gateway_secret_permission(secret_name, username, MANAGE.name)
+    store.grant_creator_gateway_secret_permission(secret_name, username)
 
 
 def _set_can_manage_gateway_model_definition_permission(resp: Response):
-    """Create MANAGE gateway model definition permission for the model definition creator.
-
-    The model definition is new, so any grant already stored under its name belongs to an earlier
-    one with that name and is removed before the creator's grant is written.
-    """
+    """Create MANAGE gateway model definition permission for the model definition creator."""
     response_message = CreateGatewayModelDefinition.Response()  # type: ignore
     parse_dict(resp.json, response_message)
     name = response_message.model_definition.name
     username = get_fastapi_username()
-    store.wipe_gateway_model_definition_permissions(name)
-    store.create_gateway_model_definition_permission(name, username, MANAGE.name)
+    store.grant_creator_gateway_model_definition_permission(name, username)
 
 
 def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
@@ -769,26 +781,14 @@ def _delete_gateway_secret_permissions_cascade(resp: Response) -> None:
 
 
 def _rename_gateway_model_definition_permission(resp: Response):
-    """Propagate model definition name changes to all user and group permission records.
-
-    The old name was stashed in ``flask.g`` by the before-request hook.
-    The new name is read from the response.
-    """
-    old_name = getattr(g, "_updating_gateway_model_definition_old_name", None)
-    if not old_name:
-        return
-
-    response_message = UpdateGatewayModelDefinition.Response()  # type: ignore
-    parse_dict(resp.json, response_message)
-    new_name = response_message.model_definition.name
-
-    if not new_name or new_name == old_name:
-        return
-
-    try:
-        store.rename_gateway_model_definition_permissions(old_name, new_name)
-    except Exception:
-        get_logger().warning("Failed to rename gateway model definition permissions")
+    """Propagate model definition name changes to all user and group permission records."""
+    _rename_gateway_resource_permissions(
+        resp,
+        old_name_attr="_updating_gateway_model_definition_old_name",
+        response_class=UpdateGatewayModelDefinition,
+        response_field="model_definition",
+        rename=store.rename_gateway_model_definition_permissions,
+    )
 
 
 def _delete_gateway_model_definition_permissions_cascade(resp: Response) -> None:

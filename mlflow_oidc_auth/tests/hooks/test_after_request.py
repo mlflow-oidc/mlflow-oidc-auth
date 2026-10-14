@@ -897,7 +897,7 @@ def test_set_can_manage_gateway_endpoint_permission(mock_response, mock_store, m
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_endpoint_permission(mock_response)
-            mock_store.create_gateway_endpoint_permission.assert_called_once_with("my-endpoint", "test_user", "MANAGE")
+            mock_store.grant_creator_gateway_endpoint_permission.assert_called_once_with("my-endpoint", "test_user")
 
 
 def test_set_can_manage_gateway_secret_permission(mock_response, mock_store, mock_bridge):
@@ -920,7 +920,7 @@ def test_set_can_manage_gateway_secret_permission(mock_response, mock_store, moc
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_secret_permission(mock_response)
-            mock_store.create_gateway_secret_permission.assert_called_once_with("my-secret", "test_user", "MANAGE")
+            mock_store.grant_creator_gateway_secret_permission.assert_called_once_with("my-secret", "test_user")
 
 
 def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_store, mock_bridge):
@@ -943,11 +943,7 @@ def test_set_can_manage_gateway_model_definition_permission(mock_response, mock_
             return_value=mock_response_message,
         ):
             _set_can_manage_gateway_model_definition_permission(mock_response)
-            mock_store.create_gateway_model_definition_permission.assert_called_once_with("us-east-1/claude-3", "test_user", "MANAGE")
-            # Grants left on the name by an earlier model definition go before the creator's is written.
-            calls = [c[0] for c in mock_store.method_calls]
-            assert calls.index("wipe_gateway_model_definition_permissions") < calls.index("create_gateway_model_definition_permission")
-            mock_store.wipe_gateway_model_definition_permissions.assert_called_once_with("us-east-1/claude-3")
+            mock_store.grant_creator_gateway_model_definition_permission.assert_called_once_with("us-east-1/claude-3", "test_user")
 
 
 def test_get_after_request_handler_gateway_endpoints():

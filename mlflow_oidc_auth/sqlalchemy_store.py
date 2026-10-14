@@ -848,6 +848,15 @@ class SqlAlchemyStore:
     def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_secret_repo.revoke_permission(gateway_name, username)
 
+    def grant_creator_gateway_secret_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway secret.
+
+        Parameters:
+            gateway_name: The secret name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_secret_repo, self.gateway_secret_group_repo, gateway_name, username)
+
     def wipe_gateway_secret_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway secret."""
         self.gateway_secret_repo.wipe(gateway_name)
@@ -928,19 +937,66 @@ class SqlAlchemyStore:
     def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
-    def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
-        """Move all user and group permissions of a renamed gateway endpoint to its new name.
+    def _move_name_keyed_permissions(self, repos, old_name: str, new_name: str) -> None:
+        """Move the user and group permissions of a renamed resource to its new name, atomically.
 
         MLflow only renames onto a free name, so rows already on ``new_name`` are left over from an
-        earlier endpoint. They are removed first: the move would otherwise collide with them on the
-        unique key and leave the endpoint's own grants behind.
+        earlier resource of that name. They are removed first, in the same transaction: the move
+        would otherwise collide with them on the unique key, or hand them to the renamed resource.
+
+        Parameters:
+            repos: The resource type's user and group permission repositories.
+            old_name: The name before the rename.
+            new_name: The name after the rename.
         """
         if old_name == new_name:
             return
-        self.gateway_endpoint_repo.wipe(new_name)
-        self.gateway_endpoint_group_repo.wipe(new_name)
-        self.gateway_endpoint_repo.rename(old_name, new_name)
-        self.gateway_endpoint_group_repo.rename(old_name, new_name)
+        with self.ManagedSessionMaker(read_only=False) as session:
+            for repo in repos:
+                repo._wipe_in(session, new_name)
+            for repo in repos:
+                repo._rename_in(session, old_name, new_name)
+
+    def _grant_creator_of_new_resource(self, user_repo, group_repo, name: str, username: str):
+        """Give the creator of a just-created resource MANAGE as its only permission, atomically.
+
+        The resource is new, so any row already stored under its name belongs to an earlier
+        resource of that name (or was granted on the name before the resource existed) and is
+        removed in the same transaction as the creator's grant is written.
+
+        Parameters:
+            user_repo: The resource type's user permission repository.
+            group_repo: The resource type's group permission repository.
+            name: The new resource's name.
+            username: The creator.
+
+        Returns:
+            The creator's permission entity.
+        """
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        with self.ManagedSessionMaker(read_only=False) as session:
+            user_repo._wipe_in(session, name)
+            group_repo._wipe_in(session, name)
+            return user_repo._grant_in(session, name, username, MANAGE.name)
+
+    def grant_creator_gateway_endpoint_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway endpoint.
+
+        Parameters:
+            gateway_name: The endpoint name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_endpoint_repo, self.gateway_endpoint_group_repo, gateway_name, username)
+
+    def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
+        """Move all user and group permissions of a renamed gateway endpoint to its new name.
+
+        Parameters:
+            old_name: The endpoint name before the rename.
+            new_name: The endpoint name after the rename.
+        """
+        self._move_name_keyed_permissions((self.gateway_endpoint_repo, self.gateway_endpoint_group_repo), old_name, new_name)
 
     def wipe_gateway_endpoint_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway endpoint."""
@@ -1084,18 +1140,23 @@ class SqlAlchemyStore:
     def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
 
+    def grant_creator_gateway_model_definition_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway model definition.
+
+        Parameters:
+            gateway_name: The model definition name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_model_definition_repo, self.gateway_model_definition_group_repo, gateway_name, username)
+
     def rename_gateway_model_definition_permissions(self, old_name: str, new_name: str) -> None:
         """Move all user and group permissions of a renamed gateway model definition to its new name.
 
-        MLflow only renames onto a free name, so rows already on ``new_name`` are left over from an
-        earlier model definition and are removed first, as for endpoints.
+        Parameters:
+            old_name: The model definition name before the rename.
+            new_name: The model definition name after the rename.
         """
-        if old_name == new_name:
-            return
-        self.gateway_model_definition_repo.wipe(new_name)
-        self.gateway_model_definition_group_repo.wipe(new_name)
-        self.gateway_model_definition_repo.rename(old_name, new_name)
-        self.gateway_model_definition_group_repo.rename(old_name, new_name)
+        self._move_name_keyed_permissions((self.gateway_model_definition_repo, self.gateway_model_definition_group_repo), old_name, new_name)
 
     def wipe_gateway_model_definition_permissions(self, gateway_name: str) -> None:
         """Delete all user and group permissions for a gateway model definition."""
@@ -1752,6 +1813,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_endpoint_permission",
     "update_gateway_endpoint_permission",
     "delete_gateway_endpoint_permission",
+    "grant_creator_gateway_endpoint_permission",
     "rename_gateway_endpoint_permissions",
     "wipe_gateway_endpoint_permissions",
     # Gateway endpoint permissions (group-scoped)
@@ -1770,6 +1832,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_secret_permission",
     "update_gateway_secret_permission",
     "delete_gateway_secret_permission",
+    "grant_creator_gateway_secret_permission",
     "wipe_gateway_secret_permissions",
     # Gateway secret permissions (group-scoped)
     "create_group_gateway_secret_permission",
@@ -1787,6 +1850,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_model_definition_permission",
     "update_gateway_model_definition_permission",
     "delete_gateway_model_definition_permission",
+    "grant_creator_gateway_model_definition_permission",
     "rename_gateway_model_definition_permissions",
     "wipe_gateway_model_definition_permissions",
     # Gateway model definition permissions (group-scoped)

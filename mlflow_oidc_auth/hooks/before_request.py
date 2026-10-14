@@ -1178,6 +1178,7 @@ def _stash_gateway_context(validator) -> None:
         _resolve_endpoint_name_from_id,
         _resolve_secret_name_from_id,
         _resolve_model_definition_name_from_id,
+        _safe_param,
     )
 
     # --- Gateway endpoint: update (rename) or delete ---
@@ -1186,8 +1187,8 @@ def _stash_gateway_context(validator) -> None:
         validate_can_update_gateway_endpoint_config,
         validate_can_delete_gateway_endpoint,
     ):
-        data = request.get_json(force=True, silent=True) or {}
-        endpoint_id = data.get("endpoint_id")
+        # The id MLflow itself reads, so the stashed name is the endpoint MLflow updates.
+        endpoint_id = _safe_param("endpoint_id")
         if endpoint_id:
             name = _resolve_endpoint_name_from_id(endpoint_id)
             if name:
@@ -1211,8 +1212,8 @@ def _stash_gateway_context(validator) -> None:
 
     # --- Gateway model definition: update (rename) ---
     if validator is validate_can_update_gateway_model_definition:
-        data = request.get_json(force=True, silent=True) or {}
-        model_definition_id = data.get("model_definition_id")
+        # The id MLflow itself reads, so the stashed name is the model definition MLflow updates.
+        model_definition_id = _safe_param("model_definition_id")
         if model_definition_id:
             name = _resolve_model_definition_name_from_id(model_definition_id)
             if name:
