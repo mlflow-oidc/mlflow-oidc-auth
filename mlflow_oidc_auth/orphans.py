@@ -40,6 +40,7 @@ from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Set, Tuple
 
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.permissions import regex_grant_order
 
 logger = get_logger()
 
@@ -293,7 +294,7 @@ class _Context:
 
 
 def _sort_rules(rules: Iterable[Any]) -> RuleList:
-    return sorted(rules, key=lambda r: (r.priority, r.id))
+    return sorted(rules, key=regex_grant_order)
 
 
 def _rule_columns(model):

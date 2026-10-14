@@ -19,7 +19,7 @@ from mlflow_oidc_auth.entities import (
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission, in_regex_grant_order
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.permissions import EXPERIMENT, PROMPT, REGISTERED_MODEL, _match_regex_permission_or_none, record_permission_fallback
 
@@ -141,19 +141,21 @@ def build_user_permission_context(username: str) -> UserPermissionContext:
     prompt_regex_permissions = store.list_prompt_regex_permissions(username)
     group_prompt_regex_permissions = store.list_group_prompt_regex_permissions_for_groups_ids(group_ids) if group_ids else []
 
+    # Put each pattern list in (priority, id) order once, here, rather than per resource: the
+    # repositories already return it ordered, so this is normally a check, not a sort.
     return UserPermissionContext(
         username=username,
         group_ids=group_ids,
         user_experiment_permissions=user_experiment_permissions,
         group_experiment_permissions=group_experiment_permissions,
-        experiment_regex_permissions=experiment_regex_permissions,
-        group_experiment_regex_permissions=group_experiment_regex_permissions,
+        experiment_regex_permissions=in_regex_grant_order(experiment_regex_permissions),
+        group_experiment_regex_permissions=in_regex_grant_order(group_experiment_regex_permissions),
         user_model_permissions=user_model_permissions,
         group_model_permissions=group_model_permissions,
-        model_regex_permissions=model_regex_permissions,
-        group_model_regex_permissions=group_model_regex_permissions,
-        prompt_regex_permissions=prompt_regex_permissions,
-        group_prompt_regex_permissions=group_prompt_regex_permissions,
+        model_regex_permissions=in_regex_grant_order(model_regex_permissions),
+        group_model_regex_permissions=in_regex_grant_order(group_model_regex_permissions),
+        prompt_regex_permissions=in_regex_grant_order(prompt_regex_permissions),
+        group_prompt_regex_permissions=in_regex_grant_order(group_prompt_regex_permissions),
     )
 
 
@@ -340,8 +342,8 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     user_direct = ctx.user_model_permissions.get(prompt_name)
     group_direct = ctx.group_model_permissions.get(prompt_name)
     # But use prompt-specific regex patterns
-    user_regex = _match_regex_permission_or_none(ctx.prompt_regex_permissions, prompt_name, "model name")
-    group_regex = _match_regex_permission_or_none(ctx.group_prompt_regex_permissions, prompt_name, "model name")
+    user_regex = _match_regex_permission_or_none(ctx.prompt_regex_permissions, prompt_name, "prompt name")
+    group_regex = _match_regex_permission_or_none(ctx.group_prompt_regex_permissions, prompt_name, "prompt name")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,

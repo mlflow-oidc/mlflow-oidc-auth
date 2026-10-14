@@ -142,6 +142,37 @@ def test_regex_lower_priority_value_still_wins_over_lower_id(store):
     assert _match_regex_permission(regexes, "team-exp", "name") == "MANAGE"
 
 
+def test_list_all_regex_equal_priority_ordered_by_id(store):
+    """The admin listing of every pattern uses the same order."""
+    _insert_tied(store, SqlExperimentRegexPermission, {"user_id": _user_id(store)})
+    regexes, statements = _select_statements(store, store.experiment_regex_repo.list)
+
+    assert [r.id for r in regexes] == [LOW_ID, HIGH_ID]
+    table = SqlExperimentRegexPermission.__tablename__
+    assert any(" ".join(s.split("ORDER BY", 1)[1].split()).startswith(f"{table}.priority, {table}.id") for s in statements if "ORDER BY" in s)
+
+
+# --- the shared order helper -------------------------------------------------------------------
+
+
+def test_in_regex_grant_order_returns_ordered_input_unsorted():
+    """Already-ordered input (what the repositories return) is checked, not copied or sorted."""
+    from mlflow_oidc_auth.permissions import in_regex_grant_order
+
+    rules = [_rule(LOW_ID, 1, "READ"), _rule(HIGH_ID, 1, "MANAGE"), _rule(5, 2, "EDIT")]
+
+    assert in_regex_grant_order(rules) is rules
+
+
+def test_in_regex_grant_order_sorts_unordered_input():
+    from mlflow_oidc_auth.permissions import in_regex_grant_order
+
+    rules = [_rule(HIGH_ID, 1, "MANAGE"), _rule(5, 2, "EDIT"), _rule(LOW_ID, 1, "READ")]
+
+    assert [r.id for r in in_regex_grant_order(rules)] == [LOW_ID, HIGH_ID, 5]
+    assert [r.id for r in rules] == [HIGH_ID, 5, LOW_ID]  # the caller's list is not reordered
+
+
 # --- matchers: unsorted input still yields the (priority, id) winner ---------------------------
 
 

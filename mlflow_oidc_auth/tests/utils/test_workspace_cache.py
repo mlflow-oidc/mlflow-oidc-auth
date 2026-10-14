@@ -272,12 +272,16 @@ class TestFlushWorkspaceCache:
 class TestMatchWorkspaceRegexPermission:
     """Test _match_workspace_regex_permission() function."""
 
-    def _make_regex_perm(self, regex, priority, permission):
-        """Helper to create a mock regex permission entity."""
+    _next_id = 0
+
+    def _make_regex_perm(self, regex, priority, permission, id_=None):
+        """Helper to create a mock regex permission entity (ids ascend in creation order)."""
+        TestMatchWorkspaceRegexPermission._next_id += 1
         perm = MagicMock()
         perm.regex = regex
         perm.priority = priority
         perm.permission = permission
+        perm.id = id_ if id_ is not None else TestMatchWorkspaceRegexPermission._next_id
         return perm
 
     def test_returns_none_for_empty_list(self):
@@ -348,6 +352,27 @@ class TestMatchWorkspaceRegexPermission:
         # Even though the second regex also matches and has higher permission,
         # it's at lower priority tier so should be ignored
         result = _match_workspace_regex_permission(regexes, "prod-workspace")
+        assert result == EDIT
+
+    @pytest.mark.parametrize(
+        "order",
+        [(0, 1, 2), (2, 1, 0), (1, 2, 0), (2, 0, 1)],
+        ids=["sorted", "reversed", "rotated", "mixed"],
+    )
+    def test_unsorted_input_resolves_as_sorted(self, order):
+        """Unsorted input gives the sorted result: best priority tier, most permissive in it (D-07, D-08)."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            _match_workspace_regex_permission,
+        )
+
+        rules = [
+            self._make_regex_perm("^prod-.*", 5, "READ", id_=30),
+            self._make_regex_perm("^prod-work.*", 5, "EDIT", id_=20),
+            self._make_regex_perm("^prod-.*", 10, "MANAGE", id_=10),
+        ]
+        result = _match_workspace_regex_permission([rules[i] for i in order], "prod-workspace")
+        # Unsorted, a list starting with the priority-10 MANAGE rule used to return MANAGE: the scan
+        # took the first match's tier. Sorted, the priority-5 tier wins, and EDIT is its most permissive.
         assert result == EDIT
 
 

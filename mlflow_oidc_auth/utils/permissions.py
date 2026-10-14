@@ -30,7 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
-from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
+from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission, in_regex_grant_order
 from mlflow_oidc_auth.store import store
 
 logger = get_logger()
@@ -166,20 +166,12 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # ---------------------------------------------------------------------------
 
 
-def _regex_try_order(regex) -> tuple:
-    """Sort key for regex grants: priority, then id (lower id — the older grant — wins a tie).
-
-    Same order as the repositories' ``_regex_order`` and ``orphans._sort_rules``; applied
-    here too so a caller passing unsorted grants cannot make the winner nondeterministic.
-    """
-    return (regex.priority, regex.id)
-
-
 def _first_matching_regex(regexes, name: str, label: str, workspace: str | None = None):
     """Generic regex matcher for any resource type: the first in-scope pattern matching ``name``.
 
     The core both public forms share; it never raises on no match. Patterns are tried in
-    ``(priority, id)`` order regardless of the order given. Only patterns that apply in the
+    ``(priority, id)`` order (``permissions.regex_grant_order``) regardless of the order given —
+    already-ordered input, the usual case, is checked rather than sorted. Only patterns that apply in the
     resource's workspace count — ``workspace``, or the request's grant workspace when omitted
     (see ``utils/grant_workspace.pattern_in_scope``).
 
@@ -194,7 +186,7 @@ def _first_matching_regex(regexes, name: str, label: str, workspace: str | None 
     """
     from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
 
-    for regex in sorted(regexes, key=_regex_try_order):
+    for regex in in_regex_grant_order(regexes):
         if not pattern_in_scope(regex, workspace):
             continue
         if re.match(regex.regex, name):
@@ -302,11 +294,11 @@ def _build_prompt_sources(model_name: str, username: str, **kwargs) -> Dict[str,
     return {
         "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
         "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
-        "regex": lambda model_name=model_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), model_name, "model name"),
+        "regex": lambda model_name=model_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), model_name, "prompt name"),
         "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
             store.list_group_prompt_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
             model_name,
-            "model name",
+            "prompt name",
         ),
     }
 

@@ -1344,7 +1344,9 @@ class SqlAlchemyStore:
                 SqlWorkspaceGroupRegexPermission,
             )
 
-            rows = session.query(SqlWorkspaceGroupRegexPermission).all()
+            from mlflow_oidc_auth.permissions import regex_grant_order
+
+            rows = session.query(SqlWorkspaceGroupRegexPermission).order_by(*regex_grant_order(SqlWorkspaceGroupRegexPermission)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_workspace_group_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> WorkspaceGroupRegexPermission:
