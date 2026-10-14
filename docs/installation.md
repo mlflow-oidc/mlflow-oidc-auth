@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python >=3.10 (3.14 recommended)
+- Python >=3.11 (3.14 recommended)
 - MLflow >=3.16.0, <4
 - An OIDC-compatible identity provider (Keycloak, Okta, Auth0, Azure AD, Google, etc.)
 
@@ -141,6 +141,11 @@ export MLFLOW_BACKEND_STORE_URI="postgresql://user:pass@host:5432/mlflow"
 export OIDC_USERS_DB_URI="postgresql://user:pass@host:5432/mlflow_auth"
 mlflow-oidc-server --host 0.0.0.0 --port 8080
 ```
+
+A bare `postgresql://` URL uses SQLAlchemy's default driver, which is `psycopg` (version 3) on
+SQLAlchemy 2.1 and later. The plugin does not install a PostgreSQL driver, so install one yourself:
+`pip install "psycopg[binary]"`. To keep using psycopg2, install it and name it in the URL:
+`postgresql+psycopg2://user:pass@host:5432/mlflow`.
 
 The plugin uses two databases:
 - **MLflow tracking database** (`MLFLOW_BACKEND_STORE_URI`) — Managed by MLflow for experiments, runs, models
