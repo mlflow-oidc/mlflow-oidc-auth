@@ -47,7 +47,7 @@
 ## Dependencies at Risk
 
 **Tight MLflow Version Coupling**
-- Risk: Pinned to `mlflow>=3.10.0,<4`. The codebase depends on MLflow private/internal APIs: `_get_tracking_store`, `_get_managed_session_maker`, `_get_graphql_auth_middleware`, protobuf message types, and Flask route patterns. Any MLflow major (or even minor) version change could break multiple integration points.
+- Risk: Pinned to `mlflow>=3.16.0,<4`. The codebase depends on MLflow private/internal APIs: `_get_tracking_store`, `_get_managed_session_maker`, `_get_graphql_auth_middleware`, protobuf message types, and Flask route patterns. Any MLflow major (or even minor) version change could break multiple integration points.
 - Files: `pyproject.toml` (dependency spec), `mlflow_oidc_auth/graphql/patch.py` (monkey-patching), `mlflow_oidc_auth/hooks/before_request.py` (route patterns), `mlflow_oidc_auth/hooks/after_request.py` (response parsing)
 - Impact: MLflow upgrades require extensive testing of all hook/bridge/patch code.
 - Migration plan: Track MLflow changelogs proactively. Maintain an integration test suite that runs against each supported MLflow version. Advocate upstream for stable plugin APIs.
