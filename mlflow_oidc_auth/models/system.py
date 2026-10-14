@@ -6,7 +6,7 @@ list exactly those fields.
 
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from mlflow_oidc_auth.models._base import ResponseModel
 
