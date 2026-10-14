@@ -32,7 +32,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
@@ -105,8 +105,10 @@ class Failure:
         status: Status of the HTTPException any other exception becomes.
         detail: Detail of that HTTPException.
         bad_id: Report a ``ValueError`` (a pattern id that is not an integer) as a 400.
-        mlflow: ``(error_code, status, detail)`` for an ``MlflowException``; a ``None`` detail
-            echoes the exception. An ``MlflowException`` matching none of them is re-raised.
+        mlflow: ``(error_code, status, detail)`` for an ``MlflowException``, with the proto
+            constant as ``error_code``; a ``None`` detail echoes the exception.
+        reraise: Re-raise an ``MlflowException`` matching none of ``mlflow``, rather than report it
+            like any other exception.
     """
 
     log: str
@@ -114,6 +116,7 @@ class Failure:
     detail: str
     bad_id: bool = False
     mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
+    reraise: bool = True
 
     def translate(self, error: Exception) -> Optional[HTTPException]:
         """Return the HTTPException to raise for ``error``, or ``None`` to re-raise it unchanged.
@@ -126,11 +129,15 @@ class Failure:
         """
         if self.mlflow and isinstance(error, MlflowException):
             logger.error(f"{self.log}: {str(error)}")
+            # MlflowException.error_code is the code's NAME ("RESOURCE_ALREADY_EXISTS"), not the
+            # proto int; comparing it with the int never matched (#475).
             code = getattr(error, "error_code", None)
             for error_code, status, detail in self.mlflow:
-                if code == error_code:
+                if code == ErrorCode.Name(error_code):
                     return HTTPException(status_code=status, detail=str(error) if detail is None else detail)
-            return None
+            if self.reraise:
+                return None
+            return HTTPException(status_code=self.status, detail=self.detail)
         if self.bad_id and isinstance(error, ValueError):
             return HTTPException(status_code=400, detail=BAD_PATTERN_ID)
         logger.error(f"{self.log}: {str(error)}")
@@ -509,9 +516,13 @@ def regex_routes(
             failure = Failure(f"Error getting {noun}", 404, f"{_cap(noun)} not found", bad_id=bad_id)
         else:
             mlflow: Tuple[Tuple[int, int, Optional[str]], ...] = ()
+            reraise = True
             if conflicts and op == "create":
                 mlflow = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"), (INVALID_PARAMETER_VALUE, 400, None))
-            failure = Failure(f"Error {_GERUND[op]} {noun}", 500, f"Failed to {op} {noun}", bad_id=bad_id, mlflow=mlflow)
+            if op == "update":
+                # A pattern renamed onto another pattern's regex is a conflict; any other failure stays a 500.
+                mlflow, reraise = ((RESOURCE_ALREADY_EXISTS, 409, f"{_cap(noun)} already exists"),), False
+            failure = Failure(f"Error {_GERUND[op]} {noun}", 500, f"Failed to {op} {noun}", bad_id=bad_id, mlflow=mlflow, reraise=reraise)
         if op == "list":
             default_model, default_respond = List[item_model], lambda a, r: [item(p) for p in r]
         elif op == "get":
