@@ -13,7 +13,12 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.utils import get_base_path, is_authenticated
 
+from mlflow_oidc_auth.models.system import UiRuntimeConfig
+
 from ._prefix import UI_ROUTER_PREFIX
+
+#: The SPA's index.html or one of its static assets.
+SPA_RESPONSES = {200: {"description": "The UI's index.html or a static asset", "content": {"text/html": {}}}}
 
 ui_router = APIRouter(
     prefix=UI_ROUTER_PREFIX,
@@ -35,7 +40,7 @@ def _get_ui_directory() -> tuple[Path, Path]:
     return ui_dir_path, index_file
 
 
-@ui_router.get("/config.json")
+@ui_router.get("/config.json", response_model=UiRuntimeConfig)
 async def serve_spa_config(
     base_path: str = Depends(get_base_path),
     authenticated: bool = Depends(is_authenticated),
@@ -52,7 +57,7 @@ async def serve_spa_config(
     )
 
 
-@ui_router.get("/")
+@ui_router.get("/", response_class=FileResponse, responses=SPA_RESPONSES)
 async def serve_spa_root():
     """
     Serve the main SPA index.html for the root UI route.
@@ -61,7 +66,7 @@ async def serve_spa_root():
     return FileResponse(str(index_file))
 
 
-@ui_router.get("/{filename:path}")
+@ui_router.get("/{filename:path}", response_class=FileResponse, responses=SPA_RESPONSES)
 async def serve_spa(filename: str):
     """
     Serve static files and SPA routes.
@@ -86,7 +91,7 @@ async def serve_spa(filename: str):
     return FileResponse(str(index_file))
 
 
-@ui_router.get("")
+@ui_router.get("", response_class=RedirectResponse, status_code=307, responses={307: {"description": "Redirect to the UI root"}})
 async def redirect_to_ui(request: Request):
     base_path = await get_base_path(request)
     return RedirectResponse(url=f"{base_path}{UI_ROUTER_PREFIX}/", status_code=307)

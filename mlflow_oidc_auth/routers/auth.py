@@ -30,6 +30,9 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_configured_or_dynamic_redirect_uri, extract_username, extract_display_name, call_group_detection_plugin
 from mlflow_oidc_auth.group_patterns import BY_PATTERN, admitting_rule, normalize_group_values
 
+from mlflow_oidc_auth.models.system import AuthProvidersResponse, AuthStatusResponse
+
+from ._openapi import REDIRECT_RESPONSES
 from ._prefix import UI_ROUTER_PREFIX
 
 logger = get_logger()
@@ -492,7 +495,7 @@ def _interactive_provider(provider_id: str):
     return None
 
 
-@auth_router.get(PROVIDERS)
+@auth_router.get(PROVIDERS, response_model=AuthProvidersResponse)
 async def providers(request: Request):
     """List the providers a browser may log in with (#317's login picker reads this).
 
@@ -543,7 +546,7 @@ def _login_path(request: Request, path: str) -> str:
     return f"{root_path.rstrip('/')}{path}"
 
 
-@auth_router.get(f"{LOGIN}/{{provider_id}}")
+@auth_router.get(f"{LOGIN}/{{provider_id}}", response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def login_with_provider(request: Request, provider_id: str):
     """Begin a login against a named provider (#316).
 
@@ -561,7 +564,7 @@ async def login_with_provider(request: Request, provider_id: str):
     return await _begin_login(request, provider_id)
 
 
-@auth_router.get(LOGIN)
+@auth_router.get(LOGIN, response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def login(request: Request):
     """The legacy login, which is the ``default`` provider's.
 
@@ -871,7 +874,7 @@ async def _named_provider_end_session_url(request: Request, provider_id: str, to
     return f"{end_session_endpoint}?{urlencode(logout_params)}"
 
 
-@auth_router.get(LOGOUT)
+@auth_router.get(LOGOUT, response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def logout(request: Request):
     """
     Handle user logout.
@@ -987,7 +990,7 @@ async def logout(request: Request):
         return RedirectResponse(url=auth_url, status_code=302)
 
 
-@auth_router.get(f"{CALLBACK}/{{provider_id}}")
+@auth_router.get(f"{CALLBACK}/{{provider_id}}", response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def callback_for_provider(request: Request, provider_id: str):
     """Complete a login that began at ``/login/{provider_id}`` (#316).
 
@@ -999,7 +1002,7 @@ async def callback_for_provider(request: Request, provider_id: str):
     return await _complete_login(request, provider_id)
 
 
-@auth_router.get(CALLBACK)
+@auth_router.get(CALLBACK, response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def callback(request: Request):
     """The legacy callback, for a login that began at ``/login``.
 
@@ -1126,7 +1129,7 @@ def _session_provider_display_name(resolved) -> str:
     return config.OIDC_PROVIDER_DISPLAY_NAME
 
 
-@auth_router.get(AUTH_STATUS)
+@auth_router.get(AUTH_STATUS, response_model=AuthStatusResponse)
 async def auth_status(request: Request):
     """
     Get current authentication status.

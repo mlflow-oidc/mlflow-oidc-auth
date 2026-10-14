@@ -26,6 +26,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_mcp_server_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import GatewayPermission, NamedPermissionSummary, StatusMessageResponse, UserPermission
+from mlflow_oidc_auth.models.responses import McpServerListItem
 from mlflow_oidc_auth.models.group import GroupNamedPermissionItem, GroupPermissionEntry
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.routers._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX, MCP_SERVER_PERMISSIONS_ROUTER_PREFIX, USER_PERMISSIONS_ROUTER_PREFIX
@@ -75,6 +76,7 @@ def _http_error(e: Exception, action: str) -> HTTPException:
 
 @mcp_server_permissions_router.get(
     LIST_MCP_SERVERS,
+    response_model=List[McpServerListItem],
     summary="List MCP servers the caller may manage",
     description="MCP servers of the request's workspace: all of them for an admin, otherwise those the caller can MANAGE.",
 )

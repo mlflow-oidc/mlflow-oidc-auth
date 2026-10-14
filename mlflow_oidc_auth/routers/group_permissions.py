@@ -14,6 +14,7 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission, check_experiment_manage_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.responses import GroupDetail
 from mlflow_oidc_auth.models import (
     CreateGroupRequest,
     ExperimentPermission,
@@ -256,6 +257,7 @@ async def create_group(
 
 @group_permissions_router.get(
     LIST_GROUP_DETAILS,
+    response_model=List[GroupDetail],
     summary="List groups with details",
     description="Lists groups with their external id and member count. Admins only.",
     tags=["groups"],

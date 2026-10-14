@@ -6,7 +6,7 @@ of ad-hoc JSONResponse payloads.
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -172,3 +172,31 @@ class CurrentUserProfile(BaseModel):
     is_admin: bool = Field(..., description="Whether the user is an administrator")
     is_service_account: bool = Field(..., description="Whether the user is a service account")
     username: str = Field(..., description="Username")
+
+
+class RegisteredModelListItem(BaseModel):
+    """A registered model or prompt in the list the caller may manage."""
+
+    name: str = Field(..., description="Registered model or prompt name")
+    tags: Dict[str, str] = Field(default_factory=dict, description="Tags")
+    description: Optional[str] = Field(None, description="Description")
+    aliases: Dict[str, Union[str, int]] = Field(default_factory=dict, description="Alias -> version")
+
+
+class McpServerListItem(BaseModel):
+    """An MCP server of the request's workspace."""
+
+    name: str = Field(..., description="Server name")
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    latest_version: Optional[str] = None
+    workspace: Optional[str] = None
+
+
+class GroupDetail(BaseModel):
+    """A group with its external id and member count (``GET /permissions/groups/details``)."""
+
+    group_name: str = Field(..., description="Group name")
+    external_id: Optional[str] = Field(None, description="Directory id, when provisioned")
+    member_count: int = Field(..., description="Number of members")

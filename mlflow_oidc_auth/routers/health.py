@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from mlflow_oidc_auth.oauth import is_oidc_configured
 from mlflow_oidc_auth.store import store
 
+from mlflow_oidc_auth.models.system import HealthStatusResponse, ReadinessResponse, StartupResponse
+
 from ._prefix import HEALTH_CHECK_ROUTER_PREFIX
 
 health_check_router = APIRouter(
@@ -19,7 +21,7 @@ health_check_router = APIRouter(
 )
 
 
-@health_check_router.get("")
+@health_check_router.get("", response_model=HealthStatusResponse)
 async def health_check_root() -> JSONResponse:
     """Health check endpoint root.
 
@@ -32,7 +34,7 @@ async def health_check_root() -> JSONResponse:
     return JSONResponse(content={"status": "ok"})
 
 
-@health_check_router.get("/ready")
+@health_check_router.get("/ready", response_model=ReadinessResponse, responses={503: {"model": ReadinessResponse, "description": "Not ready"}})
 async def health_check_ready() -> JSONResponse:
     """Readiness probe endpoint for Kubernetes.
 
@@ -80,7 +82,7 @@ async def health_check_ready() -> JSONResponse:
     )
 
 
-@health_check_router.get("/live")
+@health_check_router.get("/live", response_model=HealthStatusResponse)
 async def health_check_live() -> JSONResponse:
     """Liveness probe endpoint for Kubernetes.
 
@@ -96,7 +98,7 @@ async def health_check_live() -> JSONResponse:
     return JSONResponse(content={"status": "live"})
 
 
-@health_check_router.get("/startup")
+@health_check_router.get("/startup", response_model=StartupResponse, responses={503: {"model": StartupResponse, "description": "Still initializing"}})
 async def health_check_startup() -> JSONResponse:
     """Startup probe endpoint for Kubernetes.
 

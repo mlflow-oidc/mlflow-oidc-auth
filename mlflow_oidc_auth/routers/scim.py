@@ -25,7 +25,7 @@ import re
 import threading
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
@@ -62,7 +62,12 @@ from mlflow_oidc_auth.models.scim import (
     ScimGroupInput,
     ScimListResponse,
     ScimMeta,
+    ScimActivityPage,
     ScimPatchRequest,
+    ScimProvisioningStatus,
+    ScimTokenCreatedResponse,
+    ScimTokenRecord,
+    ScimTokenRotatedResponse,
     ScimUser,
     ScimUserInput,
 )
@@ -75,6 +80,7 @@ from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
+from ._openapi import ScimJSONResponse
 from ._prefix import SCIM_ADMIN_ROUTER_PREFIX, SCIM_ROUTER_PREFIX, SCIM_TOKENS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -260,6 +266,8 @@ scim_router = APIRouter(
     tags=["scim"],
     route_class=ScimRoute,
     dependencies=[Depends(require_scim_token)],
+    # Every SCIM handler returns its own ``application/scim+json`` response; this documents it.
+    default_response_class=ScimJSONResponse,
 )
 
 
@@ -1364,7 +1372,12 @@ def _token_http_error(exc: MlflowException) -> HTTPException:
     return HTTPException(status_code=500, detail="SCIM token operation failed")
 
 
-@scim_tokens_router.get("", summary="List SCIM tokens", description="Lists SCIM tokens. Hashes and plaintexts are never returned. Admins only.")
+@scim_tokens_router.get(
+    "",
+    response_model=List[ScimTokenRecord],
+    summary="List SCIM tokens",
+    description="Lists SCIM tokens. Hashes and plaintexts are never returned. Admins only.",
+)
 async def list_scim_tokens(admin_username: str = Depends(check_admin_permission), page: PageQuery = NO_PAGE) -> JSONResponse:
     """List SCIM tokens as a bare array, optionally paged and searched by name.
 
@@ -1381,6 +1394,7 @@ async def list_scim_tokens(admin_username: str = Depends(check_admin_permission)
 
 @scim_tokens_router.post(
     "",
+    response_model=ScimTokenCreatedResponse,
     status_code=201,
     summary="Issue a SCIM token",
     description="Issues a SCIM token. The plaintext is in this response and is never retrievable again. Admins only.",
@@ -1400,6 +1414,7 @@ async def create_scim_token(
 
 @scim_tokens_router.post(
     "/{token_id}/rotate",
+    response_model=ScimTokenRotatedResponse,
     status_code=201,
     summary="Rotate a SCIM token",
     description="Issues a replacement. The old token keeps working for SCIM_TOKEN_ROTATION_OVERLAP_SECONDS. Admins only.",
@@ -1420,7 +1435,9 @@ async def rotate_scim_token(token_id: int, admin_username: str = Depends(check_a
     return JSONResponse(content={**record.to_json(), "token": plaintext, "replaces": token_id}, status_code=201, headers=_NO_STORE)
 
 
-@scim_tokens_router.delete("/{token_id}", summary="Revoke a SCIM token", description="Revokes a SCIM token immediately. Admins only.")
+@scim_tokens_router.delete(
+    "/{token_id}", response_model=ScimTokenRecord, summary="Revoke a SCIM token", description="Revokes a SCIM token immediately. Admins only."
+)
 async def revoke_scim_token(token_id: int, admin_username: str = Depends(check_admin_permission)) -> JSONResponse:
     try:
         record = store.revoke_scim_token(token_id)
@@ -1443,6 +1460,7 @@ scim_admin_router = APIRouter(
 
 @scim_admin_router.get(
     "/activity",
+    response_model=ScimActivityPage,
     summary="Recent SCIM requests",
     description="The SCIM activity log, newest first. Page with `before` set to the last row's `id`. Admins only.",
 )
@@ -1466,6 +1484,7 @@ async def list_scim_activity(
 
 @scim_admin_router.get(
     "/status",
+    response_model=ScimProvisioningStatus,
     summary="SCIM provisioning status",
     description="Whether provisioning is working: last success and last error overall and per token, and 24-hour counts. Admins only.",
 )
