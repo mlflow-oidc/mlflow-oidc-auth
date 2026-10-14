@@ -289,7 +289,8 @@ class ConfigManager:
         except (TypeError, ValueError):
             value = None
         if value is None or value <= 0:
-            logger.warning("%s must be a positive integer; ignoring %r and using %d.", key, raw, default)
+            # The value is never echoed: the same lookup also serves secrets from the configured providers.
+            logger.warning("%s must be a positive integer; ignoring the configured value and using %d.", key, default)
             return default
         return value
 
