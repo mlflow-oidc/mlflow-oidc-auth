@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageResponse(BaseModel):
@@ -165,6 +165,9 @@ class CurrentUserProfile(BaseModel):
     This model intentionally excludes permission collections to keep the payload
     small and avoid heavy DB loads on common UI calls.
     """
+
+    # Serialized whole by FastAPI, so every field is present in a response: say so in the schema.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     display_name: str = Field(..., description="Display name")
     groups: List[GroupRecord] = Field(default_factory=list, description="Groups the user belongs to")

@@ -346,6 +346,7 @@
         },
         "required": [
           "display_name",
+          "groups",
           "id",
           "is_admin",
           "is_service_account",
@@ -3097,7 +3098,8 @@
           "is_admin",
           "is_service_account",
           "active",
-          "managed_by"
+          "managed_by",
+          "service_account_source"
         ],
         "title": "UserDetail",
         "type": "object"

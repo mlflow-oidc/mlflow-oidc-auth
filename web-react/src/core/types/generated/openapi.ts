@@ -3775,7 +3775,7 @@ export interface components {
              * Groups
              * @description Groups the user belongs to
              */
-            groups?: components["schemas"]["GroupRecord"][];
+            groups: components["schemas"]["GroupRecord"][];
             /**
              * Id
              * @description User ID
@@ -5382,7 +5382,7 @@ export interface components {
              * Service Account Source
              * @description How a service account signs in; null for a person
              */
-            service_account_source?: string | null;
+            service_account_source: string | null;
             /** Username */
             username: string;
         };

@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateAccessTokenRequest(BaseModel):
@@ -100,6 +100,9 @@ class RevokedCountResponse(BaseModel):
 
 class UserDetail(BaseModel):
     """A user with its lifecycle state (``GET /users/details``, ``PATCH /users/{username}/active``)."""
+
+    # The handlers always return every field, ``service_account_source`` included (null for a person).
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     username: str
     display_name: str
