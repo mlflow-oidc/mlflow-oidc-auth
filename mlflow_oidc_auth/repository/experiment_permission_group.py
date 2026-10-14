@@ -2,13 +2,14 @@
 
 from typing import List
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlExperimentGroupPermission
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 
 
 class ExperimentPermissionGroupRepository(BaseGroupPermissionRepository[SqlExperimentGroupPermission, ExperimentPermission]):
-    model_class = SqlExperimentGroupPermission
+    grant_kind = permission_kinds.EXPERIMENT
     resource_id_attr = "experiment_id"
 
     # -- Backward-compatible alias for the private helper ---------------------

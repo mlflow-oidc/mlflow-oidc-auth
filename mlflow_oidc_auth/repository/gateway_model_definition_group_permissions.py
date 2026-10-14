@@ -2,6 +2,7 @@
 
 from typing import List
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionGroupPermission
 from mlflow_oidc_auth.entities import GatewayModelDefinitionPermission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
@@ -10,9 +11,8 @@ from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 class GatewayModelDefinitionGroupPermissionRepository(
     BaseGroupPermissionRepository[SqlGatewayModelDefinitionGroupPermission, GatewayModelDefinitionPermission]
 ):
-    model_class = SqlGatewayModelDefinitionGroupPermission
+    grant_kind = permission_kinds.GATEWAY_MODEL_DEFINITION
     resource_id_attr = "model_definition_id"
-    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # -- Custom methods matching original API ---------------------------------
 

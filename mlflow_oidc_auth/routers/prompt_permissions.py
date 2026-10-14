@@ -103,7 +103,7 @@ async def get_prompt_groups(
     """List groups with explicit permissions for a prompt."""
 
     try:
-        groups = store.prompt_group_repo.list_groups_for_prompt(str(prompt_name))
+        groups = store.prompt_group_repo.list_groups_for_resource(str(prompt_name))
         return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving prompt group permissions: {str(e)}")

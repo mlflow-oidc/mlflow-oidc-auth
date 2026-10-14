@@ -2,15 +2,15 @@
 
 from typing import List
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGatewayEndpointGroupPermission
 from mlflow_oidc_auth.entities import GatewayEndpointPermission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 
 
 class GatewayEndpointGroupPermissionRepository(BaseGroupPermissionRepository[SqlGatewayEndpointGroupPermission, GatewayEndpointPermission]):
-    model_class = SqlGatewayEndpointGroupPermission
+    grant_kind = permission_kinds.GATEWAY_ENDPOINT
     resource_id_attr = "endpoint_id"
-    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # -- Custom methods matching original API ---------------------------------
 

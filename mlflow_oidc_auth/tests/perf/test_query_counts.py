@@ -205,8 +205,10 @@ class TestPermissionContextBuild:
     def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter):
         """Each pre-fetch used to re-resolve the same user (7x) and memberships (3x).
 
-        Folding those into JOINs took the build from 20 statements to 15. The assertion
-        is exact so a regression, or a further improvement, has to be acknowledged.
+        Folding those into JOINs took the build from 20 statements to 15. The registered model and
+        prompt pattern lists then resolved the user separately; on the shared base class (#459) they
+        JOIN too, which took it to 13. The assertion is exact so a regression, or a further
+        improvement, has to be acknowledged.
         """
         store, username, _ = seeded_store
         import mlflow_oidc_auth.utils.batch_permissions as bp
@@ -220,7 +222,7 @@ class TestPermissionContextBuild:
             bp.store = original
 
         assert ctx.username == username
-        assert counter.count == 15, counter.report()
+        assert counter.count == 13, counter.report()
 
     def test_context_build_is_constant_in_group_count(self, store, counter):
         counts = {}

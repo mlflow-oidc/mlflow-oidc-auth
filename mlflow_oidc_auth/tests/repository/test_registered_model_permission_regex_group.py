@@ -1,181 +1,128 @@
+"""Group pattern grants on registered models and prompts, which share one table (issue #459).
+
+The two repositories differ only in ``extra_filter`` (``prompt`` False / True). Run against a real
+SQLite database so the filter is exercised in SQL, not in a mock.
+"""
+
 import pytest
-from unittest.mock import MagicMock, patch
-from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.registered_model_permission_regex_group import (
-    RegisteredModelGroupRegexPermissionRepository,
-)
+from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupRegexPermission
+from mlflow_oidc_auth.repository import PromptGroupRegexPermissionRepository, RegisteredModelGroupRegexPermissionRepository
+
+USER = "alice@example.com"
+GROUP = "team"
 
 
 @pytest.fixture
-def session():
-    s = MagicMock()
-    s.__enter__.return_value = s
-    s.__exit__.return_value = None
-    return s
+def store(tmp_path):
+    from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+    s = SqlAlchemyStore()
+    s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    s.create_user(USER, "Alice")
+    s.group_repo.create_group(GROUP)
+    s.add_user_to_group(USER, GROUP)
+    yield s
+    s.engine.dispose()
 
 
-@pytest.fixture
-def session_maker(session):
-    return MagicMock(return_value=session)
+def _rows(store):
+    model = SqlRegisteredModelGroupRegexPermission
+    with store.ManagedSessionMaker() as session:
+        return [(r.regex, bool(r.prompt)) for r in session.query(model).order_by(model.id).all()]
 
 
-@pytest.fixture
-def repo(session_maker):
-    return RegisteredModelGroupRegexPermissionRepository(session_maker)
+def test_store_wires_one_repository_per_kind(store):
+    assert type(store.registered_model_group_regex_repo) is RegisteredModelGroupRegexPermissionRepository
+    assert type(store.prompt_group_regex_repo) is PromptGroupRegexPermissionRepository
+    assert dict(store.registered_model_group_regex_repo.extra_filter) == {"prompt": False}
+    assert dict(store.prompt_group_regex_repo.extra_filter) == {"prompt": True}
 
 
-def test_grant(repo, session):
-    group = MagicMock(id=1)
-    session.add = MagicMock()
-    session.flush = MagicMock()
-    with (
-        patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group),
-        patch(
-            "mlflow_oidc_auth.db.models.SqlRegisteredModelGroupRegexPermission",
-            return_value=MagicMock(),
-        ),
+def test_grant_records_the_kind(store):
+    store.create_group_registered_model_regex_permission(GROUP, "^model-.*", 1, "READ")
+    store.create_group_prompt_regex_permission("^prompt-.*", 1, "EDIT", GROUP)
+
+    assert _rows(store) == [("^model-.*", False), ("^prompt-.*", True)]
+
+
+def test_lists_only_their_own_kind(store):
+    store.create_group_registered_model_regex_permission(GROUP, "^model-.*", 1, "READ")
+    store.create_group_prompt_regex_permission("^prompt-.*", 1, "EDIT", GROUP)
+    group_ids = store.get_groups_ids_for_user(USER)
+
+    assert [r.regex for r in store.list_group_registered_model_regex_permissions(GROUP)] == ["^model-.*"]
+    assert [r.regex for r in store.list_group_registered_model_regex_permissions_for_groups([GROUP])] == ["^model-.*"]
+    assert [r.regex for r in store.list_group_registered_model_regex_permissions_for_groups_ids(group_ids)] == ["^model-.*"]
+    assert [r.regex for r in store.list_group_prompt_regex_permissions(GROUP)] == ["^prompt-.*"]
+    assert [r.regex for r in store.list_group_prompt_regex_permissions_for_groups([GROUP])] == ["^prompt-.*"]
+    assert [r.regex for r in store.list_group_prompt_regex_permissions_for_groups_ids(group_ids)] == ["^prompt-.*"]
+
+
+def test_prompt_get_update_revoke_cannot_reach_a_model_pattern(store):
+    grant_id = store.create_group_registered_model_regex_permission(GROUP, ".*", 1, "READ").id
+
+    for call in (
+        lambda: store.get_group_prompt_regex_permission(grant_id, GROUP),
+        lambda: store.update_group_prompt_regex_permission(grant_id, ".*", 1, "MANAGE", GROUP),
+        lambda: store.delete_group_prompt_regex_permission(grant_id, GROUP),
     ):
-        result = repo.grant("group1", "r", "READ", priority=1, prompt=True)
-        session.add.assert_called_once()
-        session.flush.assert_called_once()
-        assert result is not None
+        with pytest.raises(MlflowException) as exc:
+            call()
+        assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+    assert store.get_group_registered_model_regex_permission(GROUP, grant_id).permission == "READ"
 
 
-def test_get(repo, session):
-    group = MagicMock(id=2)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one.return_value = perm
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        result = repo.get(1, "group1", prompt=True)
-        assert result == "entity"
+def test_model_get_update_revoke_cannot_reach_a_prompt_pattern(store):
+    grant_id = store.create_group_prompt_regex_permission(".*", 1, "READ", GROUP).id
+
+    for call in (
+        lambda: store.get_group_registered_model_regex_permission(GROUP, grant_id),
+        lambda: store.update_group_registered_model_regex_permission(grant_id, GROUP, ".*", 1, "MANAGE"),
+        lambda: store.delete_group_registered_model_regex_permission(GROUP, grant_id),
+    ):
+        with pytest.raises(MlflowException) as exc:
+            call()
+        assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+    assert store.get_group_prompt_regex_permission(grant_id, GROUP).permission == "READ"
 
 
-def test_get_not_found(repo, session):
-    group = MagicMock(id=3)
-    from sqlalchemy.exc import NoResultFound
+def test_prompt_update_and_revoke(store):
+    grant_id = store.create_group_prompt_regex_permission("^old-.*", 1, "READ", GROUP).id
 
-    session.query().filter().one.side_effect = NoResultFound()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        with pytest.raises(MlflowException):
-            repo.get(1, "group1", prompt=True)
+    updated = store.update_group_prompt_regex_permission(grant_id, "^new-.*", 3, "EDIT", GROUP)
 
-
-def test_list_permissions_for_group(repo, session):
-    group = MagicMock(id=4)
-    perm1 = MagicMock()
-    perm1.to_mlflow_entity.return_value = "entity1"
-    perm2 = MagicMock()
-    perm2.to_mlflow_entity.return_value = "entity2"
-    session.query().filter().order_by().all.return_value = [perm1, perm2]
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        result = repo.list_permissions_for_group("group1", prompt=True)
-        assert result == ["entity1", "entity2"]
+    assert (updated.regex, updated.priority, updated.permission) == ("^new-.*", 3, "EDIT")
+    assert _rows(store) == [("^new-.*", True)]
+    store.delete_group_prompt_regex_permission(grant_id, GROUP)
+    assert _rows(store) == []
 
 
-def test_list_permissions_for_groups(repo, session):
-    group1 = MagicMock(id=5)
-    group2 = MagicMock(id=6)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().order_by().all.return_value = [perm]
-    with patch("mlflow_oidc_auth.repository.utils.get_group", side_effect=[group1, group2]):
-        result = repo.list_permissions_for_groups(["group1", "group2"], prompt=True)
-        assert result == ["entity"]
-
-
-def test_list_permissions_for_groups_ids(repo, session):
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().order_by().all.return_value = [perm]
-    result = repo.list_permissions_for_groups_ids([1, 2], prompt=True)
-    assert result == ["entity"]
-
-
-def test_update(repo, session):
-    group = MagicMock(id=7)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one.return_value = perm
-    session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        result = repo.update(1, "r", "group1", "EDIT", priority=2, prompt=True)
-        assert result == "entity"
-        assert perm.permission == "EDIT"
-        assert perm.priority == 2
-        session.flush.assert_called_once()
-
-
-def test_update_not_found(repo, session):
-    group = MagicMock(id=8)
-    from sqlalchemy.exc import NoResultFound
-
-    session.query().filter().one.side_effect = NoResultFound()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        with pytest.raises(MlflowException):
-            repo.update(1, "r", "group1", "EDIT", priority=2, prompt=True)
-
-
-def test_revoke(repo, session):
-    group = MagicMock(id=9)
-    perm = MagicMock()
-    session.query().filter().one.return_value = perm
-    session.delete = MagicMock()
-    session.flush = MagicMock()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        repo.revoke(1, "group1", prompt=True)
-        session.delete.assert_called_once_with(perm)
-        session.flush.assert_called_once()
-
-
-def test_revoke_not_found(repo, session):
-    group = MagicMock(id=10)
-    from sqlalchemy.exc import NoResultFound
-
-    session.query().filter().one.side_effect = NoResultFound()
-    with patch("mlflow_oidc_auth.repository.utils.get_group", return_value=group):
-        with pytest.raises(MlflowException):
-            repo.revoke(1, "group1", prompt=True)
-
-
-def test__get_registered_model_group_regex_permission_not_found(repo, session):
-    """Test _get_registered_model_group_regex_permission when no permission is found"""
-    session.query().filter().one.side_effect = NoResultFound()
+def test_update_to_an_existing_pattern_is_a_conflict(store):
+    store.create_group_prompt_regex_permission("^a-.*", 1, "READ", GROUP)
+    grant_id = store.create_group_prompt_regex_permission("^b-.*", 1, "READ", GROUP).id
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=False)
-
-    assert "No model perm for id=test_regex, group_id=1, prompt=False" in str(exc.value)
-    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
-
-
-def test__get_registered_model_group_regex_permission_multiple_found(repo, session):
-    """Test _get_registered_model_group_regex_permission when multiple permissions are found"""
-    session.query().filter().one.side_effect = MultipleResultsFound()
-
-    with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=False)
-
-    assert "Multiple model perms for id=test_regex, group_id=1, prompt=False" in str(exc.value)
-    assert exc.value.error_code == "INVALID_STATE"
+        store.update_group_prompt_regex_permission(grant_id, "^a-.*", 1, "EDIT", GROUP)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
+    assert sorted(regex for regex, _ in _rows(store)) == ["^a-.*", "^b-.*"]
 
 
-def test__get_registered_model_group_regex_permission_database_error(repo, session):
-    """Test _get_registered_model_group_regex_permission when database error occurs"""
-    session.query().filter().one.side_effect = Exception("Database connection error")
+def test_invalid_regex_is_rejected(store):
+    with pytest.raises(MlflowException):
+        store.create_group_prompt_regex_permission("(", 1, "READ", GROUP)
+    with pytest.raises(MlflowException):
+        store.create_group_registered_model_regex_permission(GROUP, "(", 1, "READ")
+    assert _rows(store) == []
 
-    with pytest.raises(Exception, match="Database connection error"):
-        repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=False)
 
-
-def test__get_registered_model_group_regex_permission_prompt_not_found(repo, session):
-    """Test _get_registered_model_group_regex_permission when no prompt permission is found"""
-    session.query().filter().one.side_effect = NoResultFound()
+def test_duplicate_pattern_is_rejected_within_a_kind(store):
+    store.create_group_prompt_regex_permission(".*", 1, "READ", GROUP)
+    store.create_group_registered_model_regex_permission(GROUP, ".*", 1, "READ")
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_group_regex_permission(session, "test_regex", 1, prompt=True)
-
-    assert "No model perm for id=test_regex, group_id=1, prompt=True" in str(exc.value)
-    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+        store.create_group_prompt_regex_permission(".*", 2, "EDIT", GROUP)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"

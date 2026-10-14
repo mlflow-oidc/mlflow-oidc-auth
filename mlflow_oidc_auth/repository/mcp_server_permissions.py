@@ -7,15 +7,15 @@ records it (see ``_GrantWorkspaceScope``).
 
 from typing import List, Tuple
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlMCPServerGroupPermission, SqlMCPServerPermission, SqlUser
 from mlflow_oidc_auth.entities import MCPServerPermission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository, BaseUserPermissionRepository
 
 
 class MCPServerPermissionRepository(BaseUserPermissionRepository[SqlMCPServerPermission, MCPServerPermission]):
-    model_class = SqlMCPServerPermission
+    grant_kind = permission_kinds.MCP_SERVER
     resource_id_attr = "name"
-    workspace_scoped = True  # MLflow keeps MCP servers unique per (workspace, name)
 
     def list_users_for_resource(self, name: str) -> List[Tuple[str, str, bool]]:
         """Users with a grant on ``name`` in the request's grant workspace.
@@ -38,9 +38,8 @@ class MCPServerPermissionRepository(BaseUserPermissionRepository[SqlMCPServerPer
 
 
 class MCPServerGroupPermissionRepository(BaseGroupPermissionRepository[SqlMCPServerGroupPermission, MCPServerPermission]):
-    model_class = SqlMCPServerGroupPermission
+    grant_kind = permission_kinds.MCP_SERVER
     resource_id_attr = "name"
-    workspace_scoped = True  # MLflow keeps MCP servers unique per (workspace, name)
 
     def get_group_permission_for_group(self, name: str, group_name: str) -> MCPServerPermission:
         """The grant ``group_name`` holds on ``name`` in the request's grant workspace.

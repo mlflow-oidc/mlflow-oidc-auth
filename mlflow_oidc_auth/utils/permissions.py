@@ -30,6 +30,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, compare_permissions, get_permission, in_regex_grant_order
 from mlflow_oidc_auth.store import store
 
@@ -135,30 +136,21 @@ def flush_permission_cache() -> None:
     logger.debug("Permission cache fully flushed")
 
 
-# Resource type constants
-EXPERIMENT = "experiment"
-REGISTERED_MODEL = "registered_model"
-PROMPT = "prompt"
-SCORER = "scorer"
-GATEWAY_ENDPOINT = "gateway_endpoint"
-GATEWAY_SECRET = "gateway_secret"
-GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
-MCP_SERVER = "mcp_server"
+# Resource type names, from the one place they are defined (``permission_kinds``).
+EXPERIMENT = permission_kinds.EXPERIMENT.name
+REGISTERED_MODEL = permission_kinds.REGISTERED_MODEL.name
+PROMPT = permission_kinds.PROMPT.name
+SCORER = permission_kinds.SCORER.name
+GATEWAY_ENDPOINT = permission_kinds.GATEWAY_ENDPOINT.name
+GATEWAY_SECRET = permission_kinds.GATEWAY_VAULT.name
+GATEWAY_MODEL_DEFINITION = permission_kinds.GATEWAY_MODEL_DEFINITION.name
+MCP_SERVER = permission_kinds.MCP_SERVER.name
 
-# The same names as literals, for log messages. CodeQL treats anything derived from a
-# constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
-# the matching literal here rather than by echoing the value it was given. Kept in step
-# with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
-_RESOURCE_TYPE_LOG_NAMES = (
-    "experiment",
-    "registered_model",
-    "prompt",
-    "scorer",
-    "gateway_endpoint",
-    "gateway_secret",
-    "gateway_model_definition",
-    "mcp_server",
-)
+# The same names for log messages. CodeQL treats anything derived from a constant named
+# ``*_SECRET`` as a secret, so a message names the resource type by picking the matching
+# registry name here (no constant of that name on the way) rather than by echoing the value
+# it was given. Kept in step with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+_RESOURCE_TYPE_LOG_NAMES = tuple(kind.name for kind in permission_kinds.resource_kinds())
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +394,7 @@ def _build_mcp_server_sources(name: str, username: str, **kwargs) -> Dict[str, C
 # ---------------------------------------------------------------------------
 
 
-PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
+_SOURCE_BUILDERS: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
     EXPERIMENT: _build_experiment_sources,
     REGISTERED_MODEL: _build_registered_model_sources,
     PROMPT: _build_prompt_sources,
@@ -411,6 +403,12 @@ PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
     GATEWAY_SECRET: _build_gateway_secret_sources,
     GATEWAY_MODEL_DEFINITION: _build_gateway_model_definition_sources,
     MCP_SERVER: _build_mcp_server_sources,
+}
+
+#: One builder per kind ``permission_kinds`` resolves per resource. A kind without a builder fails
+#: here, at import; a builder without a kind is never reachable (``test_permission_kinds.py``).
+PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
+    kind.name: _SOURCE_BUILDERS[kind.name] for kind in permission_kinds.resource_kinds()
 }
 
 #: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
