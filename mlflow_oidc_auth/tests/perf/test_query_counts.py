@@ -216,10 +216,11 @@ class TestPermissionContextBuild:
         """Reading the experiment, model and prompt grants the old build fetched, without identity lookups.
 
         Each read used to re-resolve the same user (7x) and memberships (3x); folding those into
-        JOINs took the old build from 20 statements to 15. The grant context reads the group ids
-        once, each type's two pattern lists (the model and prompt ones each resolve the user first)
-        and the direct grants once per grant table — prompts share the registered-model read: 13.
-        The assertion is exact so a regression, or a further improvement, has to be acknowledged.
+        JOINs took the old build from 20 statements to 15, and the model and prompt pattern lists
+        JOINing too (#459) to 13. The grant context reads the group ids once, each type's two
+        pattern lists, and the direct grants once per grant table — prompts share the
+        registered-model read: 11. The assertion is exact so a regression, or a further
+        improvement, has to be acknowledged.
         """
         import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
@@ -230,7 +231,7 @@ class TestPermissionContextBuild:
         ctx = _read_all(bp.build_user_permission_context(username), self.TYPES)
 
         assert ctx.username == username
-        assert counter.count == 13, counter.report()
+        assert counter.count == 11, counter.report()
 
     def test_context_build_is_constant_in_group_count(self, store, counter, monkeypatch):
         import mlflow_oidc_auth.store as store_mod

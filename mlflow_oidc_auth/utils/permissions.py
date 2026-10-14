@@ -2,7 +2,7 @@
 Permission resolution utilities for MLflow OIDC Auth.
 
 ``resolve_permission()`` is the single entry point for one resource's permission, for all 8
-resource types in ``grant_context.TYPE_SPECS``. The decision is made by ``utils/grant_context.py``
+resource types in ``grant_context.PERMISSION_REGISTRY``. The decision is made by ``utils/grant_context.py``
 (issue #460), the one resolver shared with the list filters and the FastAPI batch path: the
 user's grants are read once per resource type and resolved in memory.
 
@@ -31,6 +31,7 @@ from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
 from mlflow_oidc_auth.store import store
 
@@ -172,7 +173,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     MCP_SERVER,
     PROMPT,
     REGISTERED_MODEL,
-    TYPE_SPECS,
+    PERMISSION_REGISTRY,
     best_matching_regex,
     flush_grant_contexts,
     invalidate_user_grant_contexts,
@@ -184,20 +185,11 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     workspace_fallback,
 )
 
-# The same names as literals, for log messages. CodeQL treats anything derived from a
-# constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
-# the matching literal here rather than by echoing the value it was given. Kept in step
-# with grant_context.TYPE_SPECS by test_permission_fallback_observability.py.
-_RESOURCE_TYPE_LOG_NAMES = (
-    "experiment",
-    "registered_model",
-    "prompt",
-    "scorer",
-    "gateway_endpoint",
-    "gateway_secret",
-    "gateway_model_definition",
-    "mcp_server",
-)
+# The same names for log messages. CodeQL treats anything derived from a constant named
+# ``*_SECRET`` as a secret, so a message names the resource type by picking the matching
+# registry name here (no constant of that name on the way) rather than by echoing the value
+# it was given. Kept in step with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+_RESOURCE_TYPE_LOG_NAMES = tuple(kind.name for kind in permission_kinds.resource_kinds())
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +367,7 @@ def resolve_permission(resource_type: str, resource_id: str, username: str, **kw
     Raises:
         KeyError: For an unknown resource type.
     """
-    if resource_type not in TYPE_SPECS:
+    if resource_type not in PERMISSION_REGISTRY:
         # An unknown type is an error, never a cache miss or a fallback decision.
         raise KeyError(resource_type)
     # kwargs identify the resource beyond its id (scorer_name for a scorer), so they are part of the key.

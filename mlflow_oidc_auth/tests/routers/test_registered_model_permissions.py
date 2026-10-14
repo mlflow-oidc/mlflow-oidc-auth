@@ -46,7 +46,7 @@ class TestGetRegisteredModelGroupsEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_registered_model_groups_success(self, mock_store):
-        mock_store.registered_model_group_repo.list_groups_for_model.return_value = [
+        mock_store.registered_model_group_repo.list_groups_for_resource.return_value = [
             ("team-a", "READ"),
             ("team-b", "MANAGE"),
         ]
@@ -63,7 +63,7 @@ class TestGetRegisteredModelGroupsEndpoint:
         assert result[1].kind == "group"
 
     def test_get_registered_model_groups_integration(self, admin_client, mock_store):
-        mock_store.registered_model_group_repo.list_groups_for_model.return_value = []
+        mock_store.registered_model_group_repo.list_groups_for_resource.return_value = []
         response = admin_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/groups")
         assert response.status_code == 200
 

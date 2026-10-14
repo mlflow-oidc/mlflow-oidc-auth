@@ -11,7 +11,7 @@ order. SQLite happens to scan in rowid order, which would hide a missing tie-bre
 also asserts the ``ORDER BY`` the repository sends to the database.
 
 Covered: the shared base classes (via experiments) and the registered-model / prompt
-repositories, which override every list method to filter on the ``prompt`` flag.
+repositories, which filter every list on the ``prompt`` flag (their ``extra_filter``).
 """
 
 from types import SimpleNamespace
@@ -109,14 +109,14 @@ def test_group_regex_equal_priority_ordered_by_id(store):
     )
 
 
-# --- registered models and prompts (repositories that override every list method) -------------
+# --- registered models and prompts (repositories filtering on the prompt flag) -----------------
 
 
 @pytest.mark.parametrize("prompt", [False, True], ids=["registered_model", "prompt"])
 def test_model_user_regex_equal_priority_ordered_by_id(store, prompt):
     _insert_tied(store, SqlRegisteredModelRegexPermission, {"user_id": _user_id(store)}, prompt=prompt)
     repo = store.prompt_regex_repo if prompt else store.registered_model_regex_repo
-    _assert_ordered_by_priority_then_id(store, SqlRegisteredModelRegexPermission, lambda: repo.list_regex_for_user(USER, prompt=prompt))
+    _assert_ordered_by_priority_then_id(store, SqlRegisteredModelRegexPermission, lambda: repo.list_regex_for_user(USER))
 
 
 @pytest.mark.parametrize("prompt", [False, True], ids=["registered_model", "prompt"])
@@ -126,7 +126,7 @@ def test_model_group_regex_equal_priority_ordered_by_id(store, prompt, method):
     _insert_tied(store, SqlRegisteredModelGroupRegexPermission, {"group_id": group_ids[0]}, prompt=prompt)
     repo = store.prompt_group_regex_repo if prompt else store.registered_model_group_regex_repo
     argument = {"list_permissions_for_group": GROUP, "list_permissions_for_groups": [GROUP], "list_permissions_for_groups_ids": group_ids}[method]
-    _assert_ordered_by_priority_then_id(store, SqlRegisteredModelGroupRegexPermission, lambda: getattr(repo, method)(argument, prompt=prompt))
+    _assert_ordered_by_priority_then_id(store, SqlRegisteredModelGroupRegexPermission, lambda: getattr(repo, method)(argument))
 
 
 def test_regex_lower_priority_value_still_wins_over_lower_id(store):

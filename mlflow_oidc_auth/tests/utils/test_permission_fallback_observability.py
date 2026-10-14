@@ -84,7 +84,7 @@ class TestFallbackRecording:
 
     def test_log_names_cover_every_resource_type(self):
         """A type missing from the literal list would be logged as a generic 'resource'."""
-        assert set(P._RESOURCE_TYPE_LOG_NAMES) == set(P.TYPE_SPECS)
+        assert set(P._RESOURCE_TYPE_LOG_NAMES) == set(P.PERMISSION_REGISTRY)
 
     def test_a_denying_fallback_never_warns(self, captured_logger):
         """No access was handed out, so there is nothing for an operator to act on."""

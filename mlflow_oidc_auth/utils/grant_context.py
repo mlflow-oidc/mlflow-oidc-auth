@@ -44,6 +44,7 @@ from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
@@ -58,14 +59,15 @@ logger = get_logger()
 # Resource types
 # ---------------------------------------------------------------------------
 
-EXPERIMENT = "experiment"
-REGISTERED_MODEL = "registered_model"
-PROMPT = "prompt"
-SCORER = "scorer"
-GATEWAY_ENDPOINT = "gateway_endpoint"
-GATEWAY_SECRET = "gateway_secret"
-GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
-MCP_SERVER = "mcp_server"
+# The names come from the one place grant kinds are defined (``permission_kinds``, #472).
+EXPERIMENT = permission_kinds.EXPERIMENT.name
+REGISTERED_MODEL = permission_kinds.REGISTERED_MODEL.name
+PROMPT = permission_kinds.PROMPT.name
+SCORER = permission_kinds.SCORER.name
+GATEWAY_ENDPOINT = permission_kinds.GATEWAY_ENDPOINT.name
+GATEWAY_SECRET = permission_kinds.GATEWAY_VAULT.name
+GATEWAY_MODEL_DEFINITION = permission_kinds.GATEWAY_MODEL_DEFINITION.name
+MCP_SERVER = permission_kinds.MCP_SERVER.name
 
 #: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
 #: (MCP servers have no pattern sources) skips it silently; only an unknown name is a misconfiguration.
@@ -190,11 +192,12 @@ def best_matching_regex(regexes: Sequence[Any], name: str, label: str, workspace
 class TypeSpec:
     """Where one resource type's grants come from.
 
+    The kind facts — the name, which tables it shares, which key column a pattern matches —
+    come from ``permission_kinds``; this adds only how the store reads them.
+
     Attributes:
-        name: The resource type.
+        kind: The grant kind (``permission_kinds``).
         label: What a pattern is matched against, for the debug log.
-        direct_table: The grant table its direct grants live in; types that share one (prompts
-            and registered models) share one read and one cache entry of them.
         user: Lists the user's direct grants (``store, username``), in precedence order, for bulk contexts.
         group: Lists the grants of the user's groups (``store, username``), one JOIN, for bulk contexts.
         regex: Lists the user's patterns (``store, username``), or None when the type has none.
@@ -205,9 +208,8 @@ class TypeSpec:
         group_one: The strongest grant of the user's groups on one resource, likewise.
     """
 
-    name: str
+    kind: permission_kinds.GrantKind
     label: str
-    direct_table: str
     user: Callable[[Any, str], list]
     group: Callable[[Any, str], list]
     regex: Optional[Callable[[Any, str], list]]
@@ -216,11 +218,21 @@ class TypeSpec:
     user_one: Callable[[Any, str, Optional[str], str], str]
     group_one: Callable[[Any, str, Optional[str], str], str]
 
+    @property
+    def name(self) -> str:
+        """The resource type."""
+        return self.kind.name
 
-TYPE_SPECS: Dict[str, TypeSpec] = {
+    @property
+    def direct_table(self) -> str:
+        """The kind owning the direct-grant tables; kinds that share them (prompts and registered
+        models) share one read and one cache entry of them."""
+        return self.kind.shares_tables_of or self.kind.name
+
+
+_TYPE_SPECS: Dict[str, TypeSpec] = {
     EXPERIMENT: TypeSpec(
-        name=EXPERIMENT,
-        direct_table=EXPERIMENT,
+        kind=permission_kinds.EXPERIMENT,
         label="experiment",
         user=lambda s, u: s.list_user_grants(EXPERIMENT, u),
         group=lambda s, u: s.list_user_groups_grants(EXPERIMENT, u),
@@ -231,8 +243,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_groups_experiment_permission(r, u).permission,
     ),
     REGISTERED_MODEL: TypeSpec(
-        name=REGISTERED_MODEL,
-        direct_table=REGISTERED_MODEL,
+        kind=permission_kinds.REGISTERED_MODEL,
         label="model name",
         user=lambda s, u: s.list_user_grants(REGISTERED_MODEL, u),
         group=lambda s, u: s.list_user_groups_grants(REGISTERED_MODEL, u),
@@ -245,8 +256,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     # Prompts are registered models: their direct grants are the registered-model grants. Only
     # their patterns are their own.
     PROMPT: TypeSpec(
-        name=PROMPT,
-        direct_table=REGISTERED_MODEL,
+        kind=permission_kinds.PROMPT,
         label="prompt name",
         user=lambda s, u: s.list_user_grants(REGISTERED_MODEL, u),
         group=lambda s, u: s.list_user_groups_grants(REGISTERED_MODEL, u),
@@ -257,8 +267,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_groups_registered_model_permission(r, u).permission,
     ),
     SCORER: TypeSpec(
-        name=SCORER,
-        direct_table=SCORER,
+        kind=permission_kinds.SCORER,
         label="scorer name",
         user=lambda s, u: s.list_user_grants(SCORER, u),
         group=lambda s, u: s.list_user_groups_grants(SCORER, u),
@@ -269,8 +278,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_groups_scorer_permission(r, n, u).permission,
     ),
     GATEWAY_ENDPOINT: TypeSpec(
-        name=GATEWAY_ENDPOINT,
-        direct_table=GATEWAY_ENDPOINT,
+        kind=permission_kinds.GATEWAY_ENDPOINT,
         label="gateway name",
         user=lambda s, u: s.list_user_grants(GATEWAY_ENDPOINT, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_ENDPOINT, u),
@@ -281,8 +289,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_gateway_endpoint_group_permission(r, u).permission,
     ),
     GATEWAY_SECRET: TypeSpec(
-        name=GATEWAY_SECRET,
-        direct_table=GATEWAY_SECRET,
+        kind=permission_kinds.GATEWAY_VAULT,
         label="gateway name",
         user=lambda s, u: s.list_user_grants(GATEWAY_SECRET, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_SECRET, u),
@@ -293,8 +300,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_gateway_secret_group_permission(r, u).permission,
     ),
     GATEWAY_MODEL_DEFINITION: TypeSpec(
-        name=GATEWAY_MODEL_DEFINITION,
-        direct_table=GATEWAY_MODEL_DEFINITION,
+        kind=permission_kinds.GATEWAY_MODEL_DEFINITION,
         label="gateway name",
         user=lambda s, u: s.list_user_grants(GATEWAY_MODEL_DEFINITION, u),
         group=lambda s, u: s.list_user_groups_grants(GATEWAY_MODEL_DEFINITION, u),
@@ -306,8 +312,7 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
     ),
     # MCP servers have no pattern grants: no regex / group-regex sources.
     MCP_SERVER: TypeSpec(
-        name=MCP_SERVER,
-        direct_table=MCP_SERVER,
+        kind=permission_kinds.MCP_SERVER,
         label="MCP server name",
         user=lambda s, u: s.list_user_grants(MCP_SERVER, u),
         group=lambda s, u: s.list_user_groups_grants(MCP_SERVER, u),
@@ -318,6 +323,11 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         group_one=lambda s, r, n, u: s.get_user_mcp_server_group_permission(r, u).permission,
     ),
 }
+
+#: Every resource kind ``permission_kinds`` resolves per resource, and how its grants are read. A
+#: kind without a spec fails here, at import; a spec without a kind is never reachable
+#: (``tests/test_permission_kinds.py``).
+PERMISSION_REGISTRY: Dict[str, TypeSpec] = {kind.name: _TYPE_SPECS[kind.name] for kind in permission_kinds.resource_kinds()}
 
 
 def _store() -> Any:
@@ -605,7 +615,7 @@ class GrantContext:
 
     def direct(self, resource_type: str) -> _DirectGrants:
         """All of the user's direct grants on ``resource_type``'s grant table (bulk, exact-``=`` contexts)."""
-        spec = TYPE_SPECS[resource_type]
+        spec = PERMISSION_REGISTRY[resource_type]
         grants = self._direct.get(spec.direct_table)
         if grants is None:
             self._check_scope()
@@ -620,7 +630,7 @@ class GrantContext:
         """The user's (and the user's groups') patterns on ``resource_type``."""
         patterns = self._patterns.get(resource_type)
         if patterns is None:
-            spec = TYPE_SPECS[resource_type]
+            spec = PERMISSION_REGISTRY[resource_type]
             self._check_scope()
             generation = self.generation()
             key = _section_key(self.username, self._scope, spec.name, "patterns")
@@ -745,18 +755,25 @@ def _lookups(
     Patterns apply in ``pattern_workspace``: the context's grant workspace unless the resource is
     known to live in another one.
     """
-    spec = TYPE_SPECS[resource_type]
-    if resource_type == SCORER and name is None:
-        raise ValueError("A scorer is resolved by its experiment id and its scorer name")
-    if resource_type == SCORER:
+    spec = PERMISSION_REGISTRY[resource_type]
+    # The key columns and which of them a pattern matches come from the kind (``permission_kinds``):
+    # a scorer is (experiment id, scorer name) and its patterns match the scorer name; an
+    # experiment's patterns match its name, which only the tracking store knows.
+    kind = spec.kind
+    if len(kind.key_columns) > 1:
+        if name is None:
+            raise ValueError(f"A {kind.name} is resolved by its {' and '.join(kind.key_columns)}")
         key: Any = (str(resource_id), name)
-        pattern_name: Callable[[], str] = lambda: name  # noqa: E731
-    elif resource_type == EXPERIMENT:
+    elif resource_type in _EXPERIMENT_KEYED:
         key = str(resource_id)
-        pattern_name = (lambda: name) if name is not None else (lambda: ctx.experiment_name(resource_id))  # noqa: E731
     else:
         key = resource_id
+    if kind.regex_key_index is None:
+        pattern_name: Callable[[], str] = (lambda: name) if name is not None else (lambda: ctx.experiment_name(resource_id))  # noqa: E731
+    elif kind.regex_key_index == 0:
         pattern_name = lambda: resource_id  # noqa: E731
+    else:
+        pattern_name = lambda: name  # noqa: E731
 
     def direct(source: str) -> Callable[[], Optional[str]]:
         if ctx.names_in_memory():
@@ -840,7 +857,7 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
 
     Parameters:
         ctx: The user's grant context.
-        resource_type: One of :data:`TYPE_SPECS`.
+        resource_type: One of :data:`PERMISSION_REGISTRY`.
         resource_id: The experiment id (experiments, scorers) or the resource name.
         name: For an experiment, its name when the caller has it (else looked up when a pattern
             source is reached); for a scorer, the scorer name (required).

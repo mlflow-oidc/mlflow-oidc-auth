@@ -1,175 +1,123 @@
+"""User pattern grants on registered models and prompts, which share one table (issue #459).
+
+The two repositories differ only in ``extra_filter`` (``prompt`` False / True). Run against a real
+SQLite database so the filter is exercised in SQL, not in a mock.
+"""
+
 import pytest
-from unittest.mock import MagicMock, patch
-from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from mlflow.exceptions import MlflowException
 
-from mlflow_oidc_auth.repository.registered_model_permission_regex import (
-    RegisteredModelPermissionRegexRepository,
-)
+from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission
+from mlflow_oidc_auth.repository import PromptPermissionRegexRepository, RegisteredModelPermissionRegexRepository
+
+USER = "alice@example.com"
 
 
 @pytest.fixture
-def session():
-    s = MagicMock()
-    s.__enter__.return_value = s
-    s.__exit__.return_value = None
-    return s
+def store(tmp_path):
+    from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+    s = SqlAlchemyStore()
+    s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    s.create_user(USER, "Alice")
+    yield s
+    s.engine.dispose()
 
 
-@pytest.fixture
-def session_maker(session):
-    return MagicMock(return_value=session)
+def _rows(store):
+    with store.ManagedSessionMaker() as session:
+        return [(r.regex, bool(r.prompt)) for r in session.query(SqlRegisteredModelRegexPermission).order_by(SqlRegisteredModelRegexPermission.id).all()]
 
 
-@pytest.fixture
-def repo(session_maker):
-    return RegisteredModelPermissionRegexRepository(session_maker)
+def test_store_wires_one_repository_per_kind(store):
+    assert type(store.registered_model_regex_repo) is RegisteredModelPermissionRegexRepository
+    assert type(store.prompt_regex_repo) is PromptPermissionRegexRepository
+    assert dict(store.registered_model_regex_repo.extra_filter) == {"prompt": False}
+    assert dict(store.prompt_regex_repo.extra_filter) == {"prompt": True}
 
 
-def test_grant_success(repo, session):
-    """Test successful grant to cover line 64"""
-    user = MagicMock(id=2)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.add = MagicMock()
-    session.flush = MagicMock()
+def test_grant_records_the_kind(store):
+    store.create_registered_model_regex_permission("^model-.*", 1, "READ", USER)
+    store.create_prompt_regex_permission("^prompt-.*", 1, "EDIT", USER)
 
-    with (
-        patch(
-            "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-            return_value=user,
-        ),
-        patch(
-            "mlflow_oidc_auth.db.models.SqlRegisteredModelRegexPermission",
-            return_value=perm,
-        ),
-        patch("mlflow_oidc_auth.repository.registered_model_permission_regex._validate_permission"),
-        patch("mlflow_oidc_auth.repository.registered_model_permission_regex.validate_regex"),
-    ):
-        result = repo.grant("test_regex", 1, "READ", "user")
-        assert result is not None
-        session.add.assert_called_once()
-        session.flush.assert_called_once()
+    assert _rows(store) == [("^model-.*", False), ("^prompt-.*", True)]
 
 
-def test_grant_integrity_error(repo, session):
-    user = MagicMock(id=2)
-    session.add = MagicMock()
-    session.flush = MagicMock(side_effect=Exception("IntegrityError"))
-    with (
-        patch(
-            "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-            return_value=user,
-        ),
-        patch(
-            "mlflow_oidc_auth.db.models.SqlRegisteredModelRegexPermission",
-            return_value=MagicMock(),
-        ),
-        patch(
-            "mlflow_oidc_auth.repository.registered_model_permission_regex.IntegrityError",
-            Exception,
-        ),
-    ):
-        with pytest.raises(MlflowException):
-            repo.grant("r", 1, "READ", "user", prompt=True)
-
-
-def test_get(repo, session):
-    user = MagicMock(id=3)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one.return_value = perm
-    with patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-        return_value=user,
-    ):
-        result = repo.get("r", "user", prompt=True)
-        assert result == "entity"
-
-
-def test_list_regex_for_user(repo, session):
-    user = MagicMock(id=7)
-    perm1 = MagicMock()
-    perm1.to_mlflow_entity.return_value = "entity1"
-    perm2 = MagicMock()
-    perm2.to_mlflow_entity.return_value = "entity2"
-    session.query().filter().order_by().all.return_value = [perm1, perm2]
-    with patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-        return_value=user,
-    ):
-        result = repo.list_regex_for_user("user", prompt=True)
-        assert result == ["entity1", "entity2"]
-
-
-def test_update(repo, session):
-    user = MagicMock(id=5)
-    perm = MagicMock()
-    perm.to_mlflow_entity.return_value = "entity"
-    session.query().filter().one.return_value = perm
-    session.commit = MagicMock()
-    with patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-        return_value=user,
-    ):
-        result = repo.update(1, "r", 2, "EDIT", "user", prompt=True)
-        assert result == "entity"
-        assert perm.priority == 2
-        assert perm.permission == "EDIT"
-        session.commit.assert_called_once()
-
-
-def test_revoke(repo, session):
-    user = MagicMock(id=6)
-    perm = MagicMock()
-    session.query().filter().one.return_value = perm
-    session.delete = MagicMock()
-    session.commit = MagicMock()
-    with patch(
-        "mlflow_oidc_auth.repository.registered_model_permission_regex.get_user",
-        return_value=user,
-    ):
-        repo.revoke("r", "user", prompt=True)
-        session.delete.assert_called_once_with(perm)
-        session.commit.assert_called_once()
-
-
-def test__get_registered_model_regex_permission_not_found(repo, session):
-    """Test _get_registered_model_regex_permission when no permission is found"""
-    session.query().filter().one.side_effect = NoResultFound()
+def test_same_pattern_may_exist_once_per_kind(store):
+    store.create_registered_model_regex_permission(".*", 1, "READ", USER)
+    store.create_prompt_regex_permission(".*", 1, "READ", USER)
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=False)
-
-    assert "Permission not found for user_id: 1 and id: test_regex" in str(exc.value)
-    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+        store.create_prompt_regex_permission(".*", 2, "EDIT", USER)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
 
 
-def test__get_registered_model_regex_permission_multiple_found(repo, session):
-    """Test _get_registered_model_regex_permission when multiple permissions are found"""
-    session.query().filter().one.side_effect = MultipleResultsFound()
+def test_lists_only_their_own_kind(store):
+    store.create_registered_model_regex_permission("^model-.*", 1, "READ", USER)
+    store.create_prompt_regex_permission("^prompt-.*", 1, "EDIT", USER)
+
+    assert [r.regex for r in store.list_registered_model_regex_permissions(USER)] == ["^model-.*"]
+    assert [r.regex for r in store.list_prompt_regex_permissions(USER)] == ["^prompt-.*"]
+    assert [r.regex for r in store.registered_model_regex_repo.list()] == ["^model-.*"]
+    assert [r.regex for r in store.prompt_regex_repo.list()] == ["^prompt-.*"]
+
+
+@pytest.mark.parametrize("own, other", [("registered_model", "prompt"), ("prompt", "registered_model")])
+def test_get_update_revoke_cannot_reach_the_other_kind(store, own, other):
+    create = {"registered_model": store.create_registered_model_regex_permission, "prompt": store.create_prompt_regex_permission}
+    get = {"registered_model": store.get_registered_model_regex_permission, "prompt": store.get_prompt_regex_permission}
+    update = {"registered_model": store.update_registered_model_regex_permission, "prompt": store.update_prompt_regex_permission}
+    delete = {"registered_model": store.delete_registered_model_regex_permission, "prompt": store.delete_prompt_regex_permission}
+    grant_id = create[other](".*", 1, "READ", USER).id
+
+    for call in (
+        lambda: get[own](grant_id, USER),
+        lambda: update[own](grant_id, ".*", 1, "MANAGE", USER),
+        lambda: delete[own](grant_id, USER),
+    ):
+        with pytest.raises(MlflowException) as exc:
+            call()
+        assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+    assert get[other](grant_id, USER).permission == "READ"
+
+
+@pytest.mark.parametrize("kind", ["registered_model", "prompt"])
+def test_update_and_revoke(store, kind):
+    create = getattr(store, f"create_{kind}_regex_permission")
+    update = getattr(store, f"update_{kind}_regex_permission")
+    delete = getattr(store, f"delete_{kind}_regex_permission")
+    get = getattr(store, f"get_{kind}_regex_permission")
+    grant_id = create("^old-.*", 1, "READ", USER).id
+
+    updated = update(grant_id, "^new-.*", 2, "EDIT", USER)
+
+    assert (updated.regex, updated.priority, updated.permission) == ("^new-.*", 2, "EDIT")
+    assert get(grant_id, USER).regex == "^new-.*"
+    delete(grant_id, USER)
+    with pytest.raises(MlflowException):
+        get(grant_id, USER)
+
+
+@pytest.mark.parametrize("kind", ["registered_model", "prompt"])
+def test_update_to_an_existing_pattern_is_a_conflict(store, kind):
+    create = getattr(store, f"create_{kind}_regex_permission")
+    update = getattr(store, f"update_{kind}_regex_permission")
+    create("^a-.*", 1, "READ", USER)
+    grant_id = create("^b-.*", 1, "READ", USER).id
 
     with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=False)
-
-    assert "Multiple Permissions found for user_id: 1 and id: test_regex" in str(exc.value)
-    assert exc.value.error_code == "INVALID_STATE"
-
-
-def test__get_registered_model_regex_permission_database_error(repo, session):
-    """Test _get_registered_model_regex_permission when database error occurs"""
-    session.query().filter().one.side_effect = Exception("Database connection error")
-
-    with pytest.raises(Exception, match="Database connection error"):
-        repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=False)
+        update(grant_id, "^a-.*", 1, "EDIT", USER)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
+    assert sorted(regex for regex, _ in _rows(store)) == ["^a-.*", "^b-.*"]
 
 
-def test__get_registered_model_regex_permission_prompt_not_found(repo, session):
-    """Test _get_registered_model_regex_permission when no prompt permission is found"""
-    session.query().filter().one.side_effect = NoResultFound()
+def test_invalid_regex_is_rejected(store):
+    with pytest.raises(MlflowException):
+        store.create_prompt_regex_permission("(", 1, "READ", USER)
+    assert _rows(store) == []
 
-    with pytest.raises(MlflowException) as exc:
-        repo._get_registered_model_regex_permission(session, "test_regex", 1, prompt=True)
 
-    assert "Permission not found for user_id: 1 and id: test_regex" in str(exc.value)
-    assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
+def test_unknown_user_lists_nothing(store):
+    assert store.list_prompt_regex_permissions("nobody@example.com") == []
+    assert store.list_registered_model_regex_permissions("nobody@example.com") == []

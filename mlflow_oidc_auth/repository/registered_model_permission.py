@@ -5,15 +5,15 @@ from typing import List
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlRegisteredModelPermission
 from mlflow_oidc_auth.entities import RegisteredModelPermission
 from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 
 
 class RegisteredModelPermissionRepository(BaseUserPermissionRepository[SqlRegisteredModelPermission, RegisteredModelPermission]):
-    model_class = SqlRegisteredModelPermission
+    grant_kind = permission_kinds.REGISTERED_MODEL
     resource_id_attr = "name"
-    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
 
     # --- Aliases preserving backward-compatible method names -----------------
 

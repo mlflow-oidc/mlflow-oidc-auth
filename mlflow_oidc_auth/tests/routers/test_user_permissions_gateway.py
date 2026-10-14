@@ -12,6 +12,8 @@ This module tests all 30 gateway-related endpoints in the user_permissions route
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -133,7 +135,7 @@ class TestUserGatewayEndpointPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_endpoint_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_endpoint_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/endpoints/missing")
         assert resp.status_code == 404
@@ -194,7 +196,7 @@ class TestUserGatewayEndpointPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_endpoint_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_endpoint_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/endpoints-patterns/999")
         assert resp.status_code == 404
@@ -246,7 +248,7 @@ class TestUserGatewayModelDefinitionPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_model_definition_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_model_definition_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/model-definitions/missing")
         assert resp.status_code == 404
@@ -307,7 +309,7 @@ class TestUserGatewayModelDefinitionPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_model_definition_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_model_definition_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/model-definitions-patterns/999")
         assert resp.status_code == 404
@@ -359,7 +361,7 @@ class TestUserGatewaySecretPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing permission."""
-        mock_store.get_gateway_secret_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_secret_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/secrets/missing")
         assert resp.status_code == 404
@@ -420,7 +422,7 @@ class TestUserGatewaySecretPatternPermissions:
 
     def test_get_not_found(self, authenticated_client, mock_store):
         """Test 404 for missing regex permission."""
-        mock_store.get_gateway_secret_regex_permission.side_effect = Exception("Not found")
+        mock_store.get_gateway_secret_regex_permission.side_effect = MlflowException("Not found", error_code=RESOURCE_DOES_NOT_EXIST)
         with patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store):
             resp = authenticated_client.get(f"{USER_BASE}/user@example.com/gateways/secrets-patterns/999")
         assert resp.status_code == 404
@@ -475,32 +477,6 @@ class TestUserGatewayEndpointPermissionsList:
         assert len(body) == 1
         assert body[0]["name"] == "ep-visible"
 
-    @pytest.mark.usefixtures("override_user_non_admin")
-    def test_list_other_user_shows_only_manageable(self, authenticated_client):
-        """Non-admin querying another user sees only endpoints they can manage."""
-        endpoints = [{"name": "ep-manage"}, {"name": "ep-readonly"}]
-        with (
-            patch(f"{_UP}.fetch_all_gateway_endpoints", return_value=endpoints),
-            patch(
-                f"{_UP}.effective_gateway_endpoint_permission",
-                side_effect=[
-                    # target user's permission for ep-manage
-                    _make_perm_result("READ", "user"),
-                    # caller's permission for ep-manage (can_manage=True)
-                    _make_perm_result("MANAGE", "user"),
-                    # target user's permission for ep-readonly
-                    _make_perm_result("READ", "user"),
-                    # caller's permission for ep-readonly (can_manage=False)
-                    _make_perm_result("READ", "regex"),
-                ],
-            ),
-        ):
-            resp = authenticated_client.get(f"{USER_BASE}/other@example.com/gateways/endpoints")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body) == 1
-        assert body[0]["name"] == "ep-manage"
-
     def test_list_error(self, admin_client):
         """Test error handling for list endpoint."""
         with patch(f"{_UP}.fetch_all_gateway_endpoints", side_effect=Exception("DB error")):
@@ -546,28 +522,6 @@ class TestUserGatewayModelDefinitionPermissionsList:
             ),
         ):
             resp = authenticated_client.get(f"{USER_BASE}/test@example.com/gateways/model-definitions")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body) == 1
-        assert body[0]["name"] == "gpt-4"
-
-    @pytest.mark.usefixtures("override_user_non_admin")
-    def test_list_other_user_shows_only_manageable(self, authenticated_client):
-        """Non-admin querying another user sees only model definitions they can manage."""
-        models = [{"name": "gpt-4"}, {"name": "claude-3"}]
-        with (
-            patch(f"{_UP}.fetch_all_gateway_model_definitions", return_value=models),
-            patch(
-                f"{_UP}.effective_gateway_model_definition_permission",
-                side_effect=[
-                    _make_perm_result("READ", "user"),
-                    _make_perm_result("MANAGE", "user"),
-                    _make_perm_result("READ", "user"),
-                    _make_perm_result("READ", "regex"),
-                ],
-            ),
-        ):
-            resp = authenticated_client.get(f"{USER_BASE}/other@example.com/gateways/model-definitions")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 1
@@ -624,30 +578,51 @@ class TestUserGatewaySecretPermissionsList:
         assert len(body) == 1
         assert body[0]["name"] == "visible-key"
 
-    @pytest.mark.usefixtures("override_user_non_admin")
-    def test_list_other_user_shows_only_manageable(self, authenticated_client):
-        """Non-admin querying another user sees only secrets they can manage."""
-        secrets = [{"secret_name": "manageable"}, {"secret_name": "readonly"}]
-        with (
-            patch(f"{_UP}.fetch_all_gateway_secrets", return_value=secrets),
-            patch(
-                f"{_UP}.effective_gateway_secret_permission",
-                side_effect=[
-                    _make_perm_result("READ", "user"),
-                    _make_perm_result("MANAGE", "user"),
-                    _make_perm_result("READ", "user"),
-                    _make_perm_result("READ", "regex"),
-                ],
-            ),
-        ):
-            resp = authenticated_client.get(f"{USER_BASE}/other@example.com/gateways/secrets")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body) == 1
-        assert body[0]["name"] == "manageable"
-
     def test_list_error(self, admin_client):
         """Test error handling for list endpoint."""
         with patch(f"{_UP}.fetch_all_gateway_secrets", side_effect=Exception("DB error")):
             resp = admin_client.get(f"{USER_BASE}/user@example.com/gateways/secrets")
         assert resp.status_code == 500
+
+
+# ========================================================================================
+# GATEWAY LISTINGS FOR ANOTHER USER: filter by the caller first, then resolve the target
+# ========================================================================================
+
+
+@pytest.mark.usefixtures("authenticated_session", "override_user_non_admin")
+@pytest.mark.parametrize(
+    "path, fetch, resolver, items, key",
+    [
+        ("endpoints", "fetch_all_gateway_endpoints", "effective_gateway_endpoint_permission", [{"name": f"ep-{i}"} for i in range(4)], "name"),
+        (
+            "model-definitions",
+            "fetch_all_gateway_model_definitions",
+            "effective_gateway_model_definition_permission",
+            [{"name": f"md-{i}"} for i in range(4)],
+            "name",
+        ),
+        ("secrets", "fetch_all_gateway_secrets", "effective_gateway_secret_permission", [{"secret_name": f"s-{i}"} for i in range(4)], "secret_name"),
+    ],
+)
+def test_list_other_user_resolves_the_target_only_for_manageable_resources(authenticated_client, path, fetch, resolver, items, key):
+    """A non-admin listing another user's grants sees only what they manage, with N + M resolutions, not 2N.
+
+    The caller can manage only the first of N=4 resources. The caller is checked once per resource
+    and the target user only for that one survivor: 5 resolutions, where the old loop did 8.
+    """
+    manageable = items[0][key]
+    resolve = MagicMock(side_effect=lambda name, user: _make_perm_result("MANAGE" if name == manageable else "READ", "user"))
+    with (
+        patch(f"{_UP}.{fetch}", return_value=items),
+        patch(f"{_UP}.{resolver}", resolve),
+        patch(f"mlflow_oidc_auth.utils.permissions.{resolver}", resolve),
+        # The caller's filter resolves every row against one bulk grant context (issue #460).
+        patch("mlflow_oidc_auth.utils.batch_permissions.resolve", side_effect=lambda ctx, resource_type, name: resolve(name, ctx.username)),
+    ):
+        resp = authenticated_client.get(f"{USER_BASE}/other@example.com/gateways/{path}")
+    assert resp.status_code == 200
+    assert [entry["name"] for entry in resp.json()] == [manageable]
+    target_calls = [c for c in resolve.call_args_list if c.args[1] == "other@example.com"]
+    assert [c.args[0] for c in target_calls] == [manageable]
+    assert resolve.call_count == len(items) + 1

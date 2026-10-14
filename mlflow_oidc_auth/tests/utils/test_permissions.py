@@ -27,7 +27,7 @@ from mlflow_oidc_auth.utils import (
     effective_registered_model_permission,
     get_permission_from_store_or_default,
 )
-from mlflow_oidc_auth.utils.grant_context import TYPE_SPECS
+from mlflow_oidc_auth.utils.grant_context import PERMISSION_REGISTRY
 from mlflow_oidc_auth.utils.permissions import (
     _match_regex_permission,
     resolve_permission,
@@ -421,7 +421,7 @@ class TestPermissions(unittest.TestCase):
 
     def test_build_sources_config(self):
         """Every resource type has user and group sources; all but MCP servers have pattern sources."""
-        for resource_type, spec in TYPE_SPECS.items():
+        for resource_type, spec in PERMISSION_REGISTRY.items():
             self.assertIsNotNone(spec.user, resource_type)
             self.assertIsNotNone(spec.group, resource_type)
             has_patterns = resource_type != "mcp_server"
@@ -445,19 +445,19 @@ class TestPermissions(unittest.TestCase):
 
 
 class TestResolvePermission(unittest.TestCase):
-    """Tests for resolve_permission() and TYPE_SPECS."""
+    """Tests for resolve_permission() and PERMISSION_REGISTRY."""
 
     def test_registry_has_eight_entries(self) -> None:
-        """TYPE_SPECS should contain exactly 8 resource types."""
-        self.assertEqual(len(TYPE_SPECS), 8)
-        self.assertIn("mcp_server", TYPE_SPECS)
-        self.assertIn("experiment", TYPE_SPECS)
-        self.assertIn("registered_model", TYPE_SPECS)
-        self.assertIn("prompt", TYPE_SPECS)
-        self.assertIn("scorer", TYPE_SPECS)
-        self.assertIn("gateway_endpoint", TYPE_SPECS)
-        self.assertIn("gateway_secret", TYPE_SPECS)
-        self.assertIn("gateway_model_definition", TYPE_SPECS)
+        """PERMISSION_REGISTRY should contain exactly 8 resource types."""
+        self.assertEqual(len(PERMISSION_REGISTRY), 8)
+        self.assertIn("mcp_server", PERMISSION_REGISTRY)
+        self.assertIn("experiment", PERMISSION_REGISTRY)
+        self.assertIn("registered_model", PERMISSION_REGISTRY)
+        self.assertIn("prompt", PERMISSION_REGISTRY)
+        self.assertIn("scorer", PERMISSION_REGISTRY)
+        self.assertIn("gateway_endpoint", PERMISSION_REGISTRY)
+        self.assertIn("gateway_secret", PERMISSION_REGISTRY)
+        self.assertIn("gateway_model_definition", PERMISSION_REGISTRY)
 
     @patch("mlflow_oidc_auth.utils.permissions.resolve")
     def test_resolve_experiment_calls_builder_and_resolver(self, mock_resolver):

@@ -376,9 +376,9 @@ class TestWhoHasAccessLists:
         with in_workspace("team-a"):
             store.create_group_model_permission("team", "churn", "EDIT")
         with in_workspace("team-b"):
-            assert store.registered_model_group_repo.list_groups_for_model("churn") == []
+            assert store.registered_model_group_repo.list_groups_for_resource("churn") == []
         with in_workspace("team-a"):
-            assert store.registered_model_group_repo.list_groups_for_model("churn") == [("team", "EDIT")]
+            assert store.registered_model_group_repo.list_groups_for_resource("churn") == [("team", "EDIT")]
 
 
 # ---------------------------------------------------------------------------
