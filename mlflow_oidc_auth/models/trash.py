@@ -8,14 +8,16 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from mlflow_oidc_auth.models._base import ResponseModel
 
-class TrashErrorResponse(BaseModel):
+
+class TrashErrorResponse(ResponseModel):
     """The ``{"error": ...}`` body the trash endpoints return for a 400 or 404."""
 
     error: str
 
 
-class DeletedExperiment(BaseModel):
+class DeletedExperiment(ResponseModel):
     """A soft-deleted experiment."""
 
     experiment_id: str
@@ -27,13 +29,13 @@ class DeletedExperiment(BaseModel):
     last_update_time: Optional[int] = None
 
 
-class DeletedExperimentListResponse(BaseModel):
+class DeletedExperimentListResponse(ResponseModel):
     """``GET /oidc/trash/experiments``."""
 
     deleted_experiments: List[DeletedExperiment]
 
 
-class DeletedRun(BaseModel):
+class DeletedRun(ResponseModel):
     """A soft-deleted run."""
 
     run_id: str
@@ -45,28 +47,30 @@ class DeletedRun(BaseModel):
     lifecycle_stage: str
 
 
-class DeletedRunListResponse(BaseModel):
+class DeletedRunListResponse(ResponseModel):
     """``GET /oidc/trash/runs``."""
 
     deleted_runs: List[DeletedRun]
 
 
-class FailedRun(BaseModel):
+class FailedRun(ResponseModel):
     """A run the cleanup could not delete."""
 
     run_id: str
     error: str
 
 
-class FailedExperiment(BaseModel):
+class FailedExperiment(ResponseModel):
     """An experiment the cleanup could not delete."""
 
     experiment_id: str
     error: str
 
 
-class TrashCleanupResponse(BaseModel):
+class TrashCleanupResponse(ResponseModel):
     """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed."""
+
+    __absent_fields__ = frozenset({"failed_runs", "failed_experiments"})
 
     deleted_runs: List[str]
     deleted_experiments: List[str]
@@ -76,7 +80,7 @@ class TrashCleanupResponse(BaseModel):
     failed_experiments: Optional[List[FailedExperiment]] = None
 
 
-class RestoredExperiment(BaseModel):
+class RestoredExperiment(ResponseModel):
     """The experiment a restore brought back."""
 
     experiment_id: str
@@ -85,13 +89,13 @@ class RestoredExperiment(BaseModel):
     last_update_time: Optional[int] = None
 
 
-class RestoredExperimentResponse(BaseModel):
+class RestoredExperimentResponse(ResponseModel):
     """``POST /oidc/trash/experiments/{experiment_id}/restore``."""
 
     experiment: RestoredExperiment
 
 
-class RestoredRun(BaseModel):
+class RestoredRun(ResponseModel):
     """The run a restore brought back."""
 
     run_id: str
@@ -101,7 +105,7 @@ class RestoredRun(BaseModel):
     lifecycle_stage: str
 
 
-class RestoredRunResponse(BaseModel):
+class RestoredRunResponse(ResponseModel):
     """``POST /oidc/trash/runs/{run_id}/restore``."""
 
     run: RestoredRun

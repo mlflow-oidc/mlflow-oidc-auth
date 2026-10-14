@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+
+from mlflow_oidc_auth.models._base import ResponseModel
 
 
 class MessageResponse(BaseModel):
@@ -159,15 +161,12 @@ class GroupRecord(BaseModel):
     group_name: str = Field(..., description="Group name")
 
 
-class CurrentUserProfile(BaseModel):
+class CurrentUserProfile(ResponseModel):
     """Lightweight current-user profile.
 
     This model intentionally excludes permission collections to keep the payload
     small and avoid heavy DB loads on common UI calls.
     """
-
-    # Serialized whole by FastAPI, so every field is present in a response: say so in the schema.
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     display_name: str = Field(..., description="Display name")
     groups: List[GroupRecord] = Field(default_factory=list, description="Groups the user belongs to")
@@ -177,7 +176,7 @@ class CurrentUserProfile(BaseModel):
     username: str = Field(..., description="Username")
 
 
-class RegisteredModelListItem(BaseModel):
+class RegisteredModelListItem(ResponseModel):
     """A registered model or prompt in the list the caller may manage."""
 
     name: str = Field(..., description="Registered model or prompt name")
@@ -186,7 +185,7 @@ class RegisteredModelListItem(BaseModel):
     aliases: Dict[str, Union[str, int]] = Field(default_factory=dict, description="Alias -> version")
 
 
-class McpServerListItem(BaseModel):
+class McpServerListItem(ResponseModel):
     """An MCP server of the request's workspace."""
 
     name: str = Field(..., description="Server name")
@@ -197,7 +196,7 @@ class McpServerListItem(BaseModel):
     workspace: Optional[str] = None
 
 
-class GroupDetail(BaseModel):
+class GroupDetail(ResponseModel):
     """A group with its external id and member count (``GET /permissions/groups/details``)."""
 
     group_name: str = Field(..., description="Group name")

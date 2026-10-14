@@ -1,6 +1,8 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
+
+from mlflow_oidc_auth.models._base import ResponseModel
 
 
 class CreateAccessTokenRequest(BaseModel):
@@ -45,7 +47,7 @@ class ServiceAccountSourceRequest(BaseModel):
 # ---------------------------------------------------------------------------------------------
 
 
-class ServiceAccountSourceOption(BaseModel):
+class ServiceAccountSourceOption(ResponseModel):
     """A source a service account can sign in through: ``internal`` or an OIDC provider."""
 
     id: str = Field(..., description="'internal' or a provider id")
@@ -53,23 +55,23 @@ class ServiceAccountSourceOption(BaseModel):
     type: str = Field(..., description="'internal' or the provider type")
 
 
-class AccessTokenRotateResponse(BaseModel):
+class AccessTokenRotateResponse(ResponseModel):
     """``PATCH /users/access-token``. The plaintext token is returned only here, once."""
 
     token: str = Field(..., description="Plaintext access token, shown once")
-    expires_at: Optional[str] = Field(None, description="ISO 8601 expiry")
+    expires_at: str = Field(..., description="ISO 8601 expiry")
     message: str = Field(..., description="Human-readable message")
 
 
-class UserTokenRecord(BaseModel):
+class UserTokenRecord(ResponseModel):
     """One of a user's named access tokens. Never carries the secret or its hash."""
 
     id: int
     name: str
     token_prefix: Optional[str] = Field(None, description="Non-secret lookup prefix; null for a token from before named tokens")
-    created_at: Optional[str] = Field(None, description="ISO 8601")
+    created_at: str = Field(..., description="ISO 8601")
     created_by: Optional[str] = None
-    expires_at: Optional[str] = Field(None, description="ISO 8601")
+    expires_at: str = Field(..., description="ISO 8601; a token always expires")
     last_used_at: Optional[str] = Field(None, description="ISO 8601")
     active: bool = Field(..., description="False once the token has expired")
 
@@ -80,29 +82,26 @@ class UserTokenCreatedResponse(UserTokenRecord):
     token: str = Field(..., description="Plaintext access token, shown once")
 
 
-class UserTokenListResponse(BaseModel):
+class UserTokenListResponse(ResponseModel):
     """A user's access tokens."""
 
     tokens: List[UserTokenRecord]
 
 
-class DeletedCountResponse(BaseModel):
+class DeletedCountResponse(ResponseModel):
     """How many records a delete removed."""
 
     deleted: int
 
 
-class RevokedCountResponse(BaseModel):
+class RevokedCountResponse(ResponseModel):
     """How many sessions or tokens a revoke removed."""
 
     revoked: int
 
 
-class UserDetail(BaseModel):
+class UserDetail(ResponseModel):
     """A user with its lifecycle state (``GET /users/details``, ``PATCH /users/{username}/active``)."""
-
-    # The handlers always return every field, ``service_account_source`` included (null for a person).
-    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     username: str
     display_name: str
@@ -113,15 +112,17 @@ class UserDetail(BaseModel):
     service_account_source: Optional[str] = Field(None, description="How a service account signs in; null for a person")
 
 
-class MembershipHandover(BaseModel):
+class MembershipHandover(ResponseModel):
     """One group membership handed to a new owner."""
 
     group: str
     from_: Optional[str] = Field(None, alias="from", description="The membership's previous owner")
 
 
-class UserOwnershipResponse(BaseModel):
+class UserOwnershipResponse(ResponseModel):
     """``PATCH /users/ownership``: what changed."""
+
+    __absent_fields__ = frozenset({"memberships"})
 
     username: str
     managed_by: str
@@ -129,7 +130,7 @@ class UserOwnershipResponse(BaseModel):
     memberships: Optional[List[MembershipHandover]] = Field(None, description="Present only when memberships were handed over")
 
 
-class UserSessionRecord(BaseModel):
+class UserSessionRecord(ResponseModel):
     """A live server-side session. Never the full session id: that is a bearer credential."""
 
     pk: int
@@ -140,20 +141,20 @@ class UserSessionRecord(BaseModel):
     expires_at: Optional[str] = None
 
 
-class UserSessionListResponse(BaseModel):
+class UserSessionListResponse(ResponseModel):
     """A user's live sessions."""
 
     sessions: List[UserSessionRecord]
 
 
-class UserIdentity(BaseModel):
+class UserIdentity(ResponseModel):
     """A provider identity that resolves to a user."""
 
     provider_id: str
     subject: str
 
 
-class ServiceAccountSourceResponse(BaseModel):
+class ServiceAccountSourceResponse(ResponseModel):
     """``PUT /users/{username}/service-account-source``."""
 
     username: str

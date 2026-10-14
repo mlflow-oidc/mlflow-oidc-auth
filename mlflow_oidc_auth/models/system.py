@@ -8,8 +8,10 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from mlflow_oidc_auth.models._base import ResponseModel
 
-class AuthProvider(BaseModel):
+
+class AuthProvider(ResponseModel):
     """A provider a browser may log in with. Carries nothing about how it is configured."""
 
     id: str
@@ -18,13 +20,13 @@ class AuthProvider(BaseModel):
     login_url: str = Field(..., description="Same-origin path that begins the login")
 
 
-class AuthProvidersResponse(BaseModel):
+class AuthProvidersResponse(ResponseModel):
     """``GET /providers``."""
 
     providers: List[AuthProvider]
 
 
-class AuthStatusResponse(BaseModel):
+class AuthStatusResponse(ResponseModel):
     """``GET /auth/status``."""
 
     authenticated: bool
@@ -32,21 +34,23 @@ class AuthStatusResponse(BaseModel):
     provider: Optional[str] = Field(None, description="Display name of the provider the session came from")
 
 
-class HealthStatusResponse(BaseModel):
+class HealthStatusResponse(ResponseModel):
     """``GET /health`` and ``GET /health/live``."""
 
     status: str
 
 
-class ReadinessResponse(BaseModel):
+class ReadinessResponse(ResponseModel):
     """``GET /health/ready`` (200 when ready, 503 otherwise)."""
 
     status: str = Field(..., description="'ready' or 'not_ready'")
     checks: Dict[str, bool]
 
 
-class StartupResponse(BaseModel):
+class StartupResponse(ResponseModel):
     """``GET /health/startup`` (200 once started, 503 while initializing)."""
+
+    __absent_fields__ = frozenset({"message"})
 
     status: str = Field(..., description="'started' or 'initializing'")
     oidc_initialized: bool
@@ -54,7 +58,7 @@ class StartupResponse(BaseModel):
     message: Optional[str] = Field(None, description="Present only while initializing")
 
 
-class UiRuntimeConfig(BaseModel):
+class UiRuntimeConfig(ResponseModel):
     """``GET /oidc/ui/config.json``: the SPA's runtime configuration."""
 
     basePath: str

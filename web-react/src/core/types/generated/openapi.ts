@@ -3602,7 +3602,7 @@ export interface components {
              * Expires At
              * @description ISO 8601 expiry
              */
-            expires_at?: string | null;
+            expires_at: string;
             /**
              * Message
              * @description Human-readable message
@@ -3650,9 +3650,9 @@ export interface components {
              * Provider
              * @description Display name of the provider the session came from
              */
-            provider?: string | null;
+            provider: string | null;
             /** Username */
-            username?: string | null;
+            username: string | null;
         };
         /** Body_delete_user_api_2_0_mlflow_users_delete */
         Body_delete_user_api_2_0_mlflow_users_delete: {
@@ -3811,19 +3811,19 @@ export interface components {
          */
         DeletedExperiment: {
             /** Artifact Location */
-            artifact_location?: string | null;
+            artifact_location: string | null;
             /** Creation Time */
-            creation_time?: number | null;
+            creation_time: number | null;
             /** Experiment Id */
             experiment_id: string;
             /** Last Update Time */
-            last_update_time?: number | null;
+            last_update_time: number | null;
             /** Lifecycle Stage */
             lifecycle_stage: string;
             /** Name */
             name: string;
             /** Tags */
-            tags?: {
+            tags: {
                 [key: string]: string;
             };
         };
@@ -3841,7 +3841,7 @@ export interface components {
          */
         DeletedRun: {
             /** End Time */
-            end_time?: number | null;
+            end_time: number | null;
             /** Experiment Id */
             experiment_id: string;
             /** Lifecycle Stage */
@@ -3849,11 +3849,11 @@ export interface components {
             /** Run Id */
             run_id: string;
             /** Run Name */
-            run_name?: string | null;
+            run_name: string | null;
             /** Start Time */
-            start_time?: number | null;
+            start_time: number | null;
             /** Status */
-            status?: string | null;
+            status: string | null;
         };
         /**
          * DeletedRunListResponse
@@ -4114,7 +4114,7 @@ export interface components {
              * External Id
              * @description Directory id, when provisioned
              */
-            external_id?: string | null;
+            external_id: string | null;
             /**
              * Group Name
              * @description Group name
@@ -4527,20 +4527,20 @@ export interface components {
          */
         McpServerListItem: {
             /** Description */
-            description?: string | null;
+            description: string | null;
             /** Display Name */
-            display_name?: string | null;
+            display_name: string | null;
             /** Latest Version */
-            latest_version?: string | null;
+            latest_version: string | null;
             /**
              * Name
              * @description Server name
              */
             name: string;
             /** Status */
-            status?: string | null;
+            status: string | null;
             /** Workspace */
-            workspace?: string | null;
+            workspace: string | null;
         };
         /**
          * MembershipHandover
@@ -4551,7 +4551,7 @@ export interface components {
              * From
              * @description The membership's previous owner
              */
-            from?: string | null;
+            from: string | null;
             /** Group */
             group: string;
         };
@@ -4671,14 +4671,14 @@ export interface components {
              * Aliases
              * @description Alias -> version
              */
-            aliases?: {
+            aliases: {
                 [key: string]: string | number;
             };
             /**
              * Description
              * @description Description
              */
-            description?: string | null;
+            description: string | null;
             /**
              * Name
              * @description Registered model or prompt name
@@ -4688,7 +4688,7 @@ export interface components {
              * Tags
              * @description Tags
              */
-            tags?: {
+            tags: {
                 [key: string]: string;
             };
         };
@@ -4834,7 +4834,7 @@ export interface components {
             /** Experiment Id */
             experiment_id: string;
             /** Last Update Time */
-            last_update_time?: number | null;
+            last_update_time: number | null;
             /** Lifecycle Stage */
             lifecycle_stage: string;
             /** Name */
@@ -4859,9 +4859,9 @@ export interface components {
             /** Run Id */
             run_id: string;
             /** Run Name */
-            run_name?: string | null;
+            run_name: string | null;
             /** Status */
-            status?: string | null;
+            status: string | null;
         };
         /**
          * RestoredRunResponse
@@ -4889,7 +4889,7 @@ export interface components {
              * Next Before
              * @description Cursor for the next page, or null on the last
              */
-            next_before?: number | null;
+            next_before: number | null;
         };
         /**
          * ScimActivityRecord
@@ -4897,11 +4897,11 @@ export interface components {
          */
         ScimActivityRecord: {
             /** At */
-            at?: string | null;
+            at: string | null;
             /** Duration Ms */
-            duration_ms?: number | null;
+            duration_ms: number | null;
             /** Error */
-            error?: string | null;
+            error: string | null;
             /** Id */
             id: number;
             /** Method */
@@ -4917,13 +4917,13 @@ export interface components {
              */
             path: string;
             /** Resource Id */
-            resource_id?: string | null;
+            resource_id: string | null;
             /** Status */
             status: number;
             /** Token Id */
-            token_id?: number | null;
+            token_id: number | null;
             /** Token Name */
-            token_name?: string | null;
+            token_name: string | null;
         };
         /**
          * ScimProvisioningStatus
@@ -4937,18 +4937,18 @@ export interface components {
             /** Healthy Window Seconds */
             healthy_window_seconds: number;
             /** Last Auth Failure At */
-            last_auth_failure_at?: string | null;
+            last_auth_failure_at: string | null;
             /** Last Error */
-            last_error?: string | null;
+            last_error: string | null;
             /** Last Error At */
-            last_error_at?: string | null;
+            last_error_at: string | null;
             /** Last Success At */
-            last_success_at?: string | null;
+            last_success_at: string | null;
             /**
              * Provisioning Healthy
              * @description true: a success within the window; false: none; null: SCIM never used
              */
-            provisioning_healthy?: boolean | null;
+            provisioning_healthy: boolean | null;
             /** Requests 24H */
             requests_24h: number;
             /** Retention Days */
@@ -4964,19 +4964,19 @@ export interface components {
             /** Active */
             active: boolean;
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             /** Created By */
-            created_by?: string | null;
+            created_by: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Id */
             id: number;
             /** Last Used At */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /** Revoked At */
-            revoked_at?: string | null;
+            revoked_at: string | null;
             /**
              * Token
              * @description Plaintext bearer token, shown once
@@ -4993,19 +4993,19 @@ export interface components {
             /** Active */
             active: boolean;
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             /** Created By */
-            created_by?: string | null;
+            created_by: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Id */
             id: number;
             /** Last Used At */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /** Revoked At */
-            revoked_at?: string | null;
+            revoked_at: string | null;
             /** Token Prefix */
             token_prefix: string;
         };
@@ -5017,21 +5017,21 @@ export interface components {
             /** Active */
             active: boolean;
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             /** Created By */
-            created_by?: string | null;
+            created_by: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Id */
             id: number;
             /** Last Used At */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /** Replaces */
             replaces: number;
             /** Revoked At */
-            revoked_at?: string | null;
+            revoked_at: string | null;
             /**
              * Token
              * @description Plaintext bearer token, shown once
@@ -5050,15 +5050,15 @@ export interface components {
             /** Errors 24H */
             errors_24h: number;
             /** Last Error */
-            last_error?: string | null;
+            last_error: string | null;
             /** Last Error At */
-            last_error_at?: string | null;
+            last_error_at: string | null;
             /** Last Error Status */
-            last_error_status?: number | null;
+            last_error_status: number | null;
             /** Last Success At */
-            last_success_at?: string | null;
+            last_success_at: string | null;
             /** Last Used At */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /** Requests 24H */
@@ -5452,7 +5452,7 @@ export interface components {
              */
             memberships?: components["schemas"]["MembershipHandover"][] | null;
             /** Previous */
-            previous?: string | null;
+            previous: string | null;
             /** Username */
             username: string;
         };
@@ -5501,15 +5501,15 @@ export interface components {
          */
         UserSessionRecord: {
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             /** Expires At */
-            expires_at?: string | null;
+            expires_at: string | null;
             /** Last Seen At */
-            last_seen_at?: string | null;
+            last_seen_at: string | null;
             /** Pk */
             pk: number;
             /** Provider Id */
-            provider_id?: string | null;
+            provider_id: string | null;
             /** Session Id Prefix */
             session_id_prefix: string;
         };
@@ -5527,21 +5527,21 @@ export interface components {
              * Created At
              * @description ISO 8601
              */
-            created_at?: string | null;
+            created_at: string;
             /** Created By */
-            created_by?: string | null;
+            created_by: string | null;
             /**
              * Expires At
-             * @description ISO 8601
+             * @description ISO 8601; a token always expires
              */
-            expires_at?: string | null;
+            expires_at: string;
             /** Id */
             id: number;
             /**
              * Last Used At
              * @description ISO 8601
              */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /**
@@ -5553,7 +5553,7 @@ export interface components {
              * Token Prefix
              * @description Non-secret lookup prefix; null for a token from before named tokens
              */
-            token_prefix?: string | null;
+            token_prefix: string | null;
         };
         /**
          * UserTokenListResponse
@@ -5577,28 +5577,28 @@ export interface components {
              * Created At
              * @description ISO 8601
              */
-            created_at?: string | null;
+            created_at: string;
             /** Created By */
-            created_by?: string | null;
+            created_by: string | null;
             /**
              * Expires At
-             * @description ISO 8601
+             * @description ISO 8601; a token always expires
              */
-            expires_at?: string | null;
+            expires_at: string;
             /** Id */
             id: number;
             /**
              * Last Used At
              * @description ISO 8601
              */
-            last_used_at?: string | null;
+            last_used_at: string | null;
             /** Name */
             name: string;
             /**
              * Token Prefix
              * @description Non-secret lookup prefix; null for a token from before named tokens
              */
-            token_prefix?: string | null;
+            token_prefix: string | null;
         };
         /** ValidationError */
         ValidationError: {

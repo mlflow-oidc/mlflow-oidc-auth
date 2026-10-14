@@ -5,16 +5,9 @@
         "description": "``PATCH /users/access-token``. The plaintext token is returned only here, once.",
         "properties": {
           "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "ISO 8601 expiry",
-            "title": "Expires At"
+            "title": "Expires At",
+            "type": "string"
           },
           "message": {
             "description": "Human-readable message",
@@ -29,6 +22,7 @@
         },
         "required": [
           "token",
+          "expires_at",
           "message"
         ],
         "title": "AccessTokenRotateResponse",
@@ -113,7 +107,9 @@
           }
         },
         "required": [
-          "authenticated"
+          "authenticated",
+          "username",
+          "provider"
         ],
         "title": "AuthStatusResponse",
         "type": "object"
@@ -428,7 +424,11 @@
         "required": [
           "experiment_id",
           "name",
-          "lifecycle_stage"
+          "lifecycle_stage",
+          "artifact_location",
+          "tags",
+          "creation_time",
+          "last_update_time"
         ],
         "title": "DeletedExperiment",
         "type": "object"
@@ -513,6 +513,10 @@
         "required": [
           "run_id",
           "experiment_id",
+          "run_name",
+          "status",
+          "start_time",
+          "end_time",
           "lifecycle_stage"
         ],
         "title": "DeletedRun",
@@ -857,6 +861,7 @@
         },
         "required": [
           "group_name",
+          "external_id",
           "member_count"
         ],
         "title": "GroupDetail",
@@ -1472,7 +1477,12 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "display_name",
+          "description",
+          "status",
+          "latest_version",
+          "workspace"
         ],
         "title": "McpServerListItem",
         "type": "object"
@@ -1498,7 +1508,8 @@
           }
         },
         "required": [
-          "group"
+          "group",
+          "from"
         ],
         "title": "MembershipHandover",
         "type": "object"
@@ -1681,7 +1692,10 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "tags",
+          "description",
+          "aliases"
         ],
         "title": "RegisteredModelListItem",
         "type": "object"
@@ -1892,7 +1906,8 @@
         "required": [
           "experiment_id",
           "name",
-          "lifecycle_stage"
+          "lifecycle_stage",
+          "last_update_time"
         ],
         "title": "RestoredExperiment",
         "type": "object"
@@ -1951,6 +1966,8 @@
         "required": [
           "run_id",
           "experiment_id",
+          "run_name",
+          "status",
           "lifecycle_stage"
         ],
         "title": "RestoredRun",
@@ -2007,7 +2024,8 @@
           }
         },
         "required": [
-          "activity"
+          "activity",
+          "next_before"
         ],
         "title": "ScimActivityPage",
         "type": "object"
@@ -2106,10 +2124,16 @@
         },
         "required": [
           "id",
+          "at",
+          "token_id",
+          "token_name",
           "method",
           "path",
+          "resource_id",
           "status",
-          "outcome"
+          "outcome",
+          "error",
+          "duration_ms"
         ],
         "title": "ScimActivityRecord",
         "type": "object"
@@ -2202,9 +2226,14 @@
           }
         },
         "required": [
+          "provisioning_healthy",
+          "last_success_at",
+          "last_error_at",
+          "last_error",
           "requests_24h",
           "errors_24h",
           "auth_failures_24h",
+          "last_auth_failure_at",
           "tokens",
           "healthy_window_seconds",
           "retention_days"
@@ -2296,6 +2325,11 @@
           "id",
           "name",
           "token_prefix",
+          "created_at",
+          "created_by",
+          "last_used_at",
+          "expires_at",
+          "revoked_at",
           "active",
           "token"
         ],
@@ -2381,6 +2415,11 @@
           "id",
           "name",
           "token_prefix",
+          "created_at",
+          "created_by",
+          "last_used_at",
+          "expires_at",
+          "revoked_at",
           "active"
         ],
         "title": "ScimTokenRecord",
@@ -2474,6 +2513,11 @@
           "id",
           "name",
           "token_prefix",
+          "created_at",
+          "created_by",
+          "last_used_at",
+          "expires_at",
+          "revoked_at",
           "active",
           "token",
           "replaces"
@@ -2564,6 +2608,11 @@
           "token_id",
           "name",
           "active",
+          "last_used_at",
+          "last_success_at",
+          "last_error_at",
+          "last_error",
+          "last_error_status",
           "requests_24h",
           "errors_24h"
         ],
@@ -3227,7 +3276,8 @@
         },
         "required": [
           "username",
-          "managed_by"
+          "managed_by",
+          "previous"
         ],
         "title": "UserOwnershipResponse",
         "type": "object"
@@ -3338,7 +3388,11 @@
         },
         "required": [
           "pk",
-          "session_id_prefix"
+          "session_id_prefix",
+          "provider_id",
+          "created_at",
+          "last_seen_at",
+          "expires_at"
         ],
         "title": "UserSessionRecord",
         "type": "object"
@@ -3352,16 +3406,9 @@
             "type": "boolean"
           },
           "created_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "ISO 8601",
-            "title": "Created At"
+            "title": "Created At",
+            "type": "string"
           },
           "created_by": {
             "anyOf": [
@@ -3375,16 +3422,9 @@
             "title": "Created By"
           },
           "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "ISO 8601",
-            "title": "Expires At"
+            "description": "ISO 8601; a token always expires",
+            "title": "Expires At",
+            "type": "string"
           },
           "id": {
             "title": "Id",
@@ -3427,6 +3467,11 @@
         "required": [
           "id",
           "name",
+          "token_prefix",
+          "created_at",
+          "created_by",
+          "expires_at",
+          "last_used_at",
           "active",
           "token"
         ],
@@ -3459,16 +3504,9 @@
             "type": "boolean"
           },
           "created_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "description": "ISO 8601",
-            "title": "Created At"
+            "title": "Created At",
+            "type": "string"
           },
           "created_by": {
             "anyOf": [
@@ -3482,16 +3520,9 @@
             "title": "Created By"
           },
           "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "ISO 8601",
-            "title": "Expires At"
+            "description": "ISO 8601; a token always expires",
+            "title": "Expires At",
+            "type": "string"
           },
           "id": {
             "title": "Id",
@@ -3529,6 +3560,11 @@
         "required": [
           "id",
           "name",
+          "token_prefix",
+          "created_at",
+          "created_by",
+          "expires_at",
+          "last_used_at",
           "active"
         ],
         "title": "UserTokenRecord",

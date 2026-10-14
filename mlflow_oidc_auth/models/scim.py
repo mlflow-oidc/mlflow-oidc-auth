@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mlflow_oidc_auth.models._base import ResponseModel
+
 SCIM_CONTENT_TYPE = "application/scim+json"
 
 USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
@@ -178,7 +180,7 @@ class UserActiveRequest(BaseModel):
 # ---------------------------------------------------------------------------------------------
 
 
-class ScimTokenRecord(BaseModel):
+class ScimTokenRecord(ResponseModel):
     """A SCIM token. Never carries the plaintext or its hash."""
 
     id: int
@@ -204,7 +206,7 @@ class ScimTokenRotatedResponse(ScimTokenCreatedResponse):
     replaces: int
 
 
-class ScimActivityRecord(BaseModel):
+class ScimActivityRecord(ResponseModel):
     """One recorded ``/scim/v2`` request. Never a request body."""
 
     id: int
@@ -220,14 +222,14 @@ class ScimActivityRecord(BaseModel):
     duration_ms: Optional[int] = None
 
 
-class ScimActivityPage(BaseModel):
+class ScimActivityPage(ResponseModel):
     """``GET /api/2.0/mlflow/scim/activity``."""
 
     activity: List[ScimActivityRecord]
     next_before: Optional[int] = Field(None, description="Cursor for the next page, or null on the last")
 
 
-class ScimTokenStatus(BaseModel):
+class ScimTokenStatus(ResponseModel):
     """Provisioning health of one SCIM token."""
 
     token_id: int
@@ -242,7 +244,7 @@ class ScimTokenStatus(BaseModel):
     errors_24h: int
 
 
-class ScimProvisioningStatus(BaseModel):
+class ScimProvisioningStatus(ResponseModel):
     """``GET /api/2.0/mlflow/scim/status``."""
 
     provisioning_healthy: Optional[bool] = Field(None, description="true: a success within the window; false: none; null: SCIM never used")
