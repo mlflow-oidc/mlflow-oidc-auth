@@ -168,26 +168,30 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
         :param permission: The permission to grant.
         :return: The created permission entity.
         """
-        _validate_permission(permission)
         with self._Session(read_only=False) as session:
-            try:
-                user = get_user(session, username)
-                perm = self.model_class(
-                    **{
-                        self.resource_id_attr: resource_id,
-                        "user_id": user.id,
-                        "permission": permission,
-                        **self._new_row_fields(),
-                    }
-                )
-                session.add(perm)
-                session.flush()
-                return perm.to_mlflow_entity()
-            except IntegrityError as e:
-                raise MlflowException(
-                    f"Permission already exists ({resource_id}, {username})",
-                    RESOURCE_ALREADY_EXISTS,
-                ) from e
+            return self._grant_in(session, resource_id, username, permission)
+
+    def _grant_in(self, session: Session, resource_id: str, username: str, permission: str) -> EntityT:
+        """``grant_permission`` inside the caller's session, so it can share a transaction."""
+        _validate_permission(permission)
+        try:
+            user = get_user(session, username)
+            perm = self.model_class(
+                **{
+                    self.resource_id_attr: resource_id,
+                    "user_id": user.id,
+                    "permission": permission,
+                    **self._new_row_fields(),
+                }
+            )
+            session.add(perm)
+            session.flush()
+            return perm.to_mlflow_entity()
+        except IntegrityError as e:
+            raise MlflowException(
+                f"Permission already exists ({resource_id}, {username})",
+                RESOURCE_ALREADY_EXISTS,
+            ) from e
 
     def get_permission(self, resource_id: str, username: str) -> EntityT:
         """Get the permission for a given resource and user.
@@ -259,18 +263,46 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all permissions from old_name to new_name."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
-            for perm in perms:
+            self._rename_in(session, old_name, new_name)
+
+    def _rename_in(self, session: Session, old_name: str, new_name: str) -> None:
+        """``rename`` inside the caller's session, so it can share a transaction."""
+        for perm in session.query(self.model_class).filter(self._resource_is(old_name)).all():
+            setattr(perm, self.resource_id_attr, new_name)
+        session.flush()
+
+    def _ids_in(self, session: Session, resource_id: str) -> list[list]:
+        """``[id, user_id, permission]`` of each row stored under ``resource_id`` in the request's grant workspace.
+
+        A database may give a new row the id of a deleted one, so a row is identified by all three: a
+        row recreated in between only matches if it is identical to the one recorded.
+        """
+        query = session.query(self.model_class.id, self.model_class.user_id, self.model_class.permission).filter(self._resource_is(resource_id))
+        return [[row_id, principal, permission] for row_id, principal, permission in query.all()]
+
+    def _rename_ids_in(self, session: Session, ids: list[list], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, user_id, permission]``, still under ``old_name``) to ``new_name``."""
+        recorded = {tuple(row) for row in ids or []}
+        if not recorded:
+            return
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row[0] for row in recorded]), self._resource_is(old_name))
+        for perm in query.all():
+            if (perm.id, perm.user_id, perm.permission) in recorded:
                 setattr(perm, self.resource_id_attr, new_name)
-            session.flush()
+        session.flush()
 
     def wipe(self, resource_id: str) -> None:
         """Delete all permissions for a resource."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
-            for p in perms:
-                session.delete(p)
-            session.flush()
+            self._wipe_in(session, resource_id)
+
+    def _wipe_in(self, session: Session, resource_id: str) -> int:
+        """``wipe`` inside the caller's session, so it can share a transaction. Returns the rows removed."""
+        perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
+        for perm in perms:
+            session.delete(perm)
+        session.flush()
+        return len(perms)
 
 
 class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT]):
@@ -532,18 +564,46 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
     def rename(self, old_name: str, new_name: str) -> None:
         """Update all group permissions from old_name to new_name."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self._resource_is(old_name)).all()
-            for perm in perms:
+            self._rename_in(session, old_name, new_name)
+
+    def _rename_in(self, session: Session, old_name: str, new_name: str) -> None:
+        """``rename`` inside the caller's session, so it can share a transaction."""
+        for perm in session.query(self.model_class).filter(self._resource_is(old_name)).all():
+            setattr(perm, self.resource_id_attr, new_name)
+        session.flush()
+
+    def _ids_in(self, session: Session, resource_id: str) -> list[list]:
+        """``[id, group_id, permission]`` of each row stored under ``resource_id`` in the request's grant workspace.
+
+        A database may give a new row the id of a deleted one, so a row is identified by all three: a
+        row recreated in between only matches if it is identical to the one recorded.
+        """
+        query = session.query(self.model_class.id, self.model_class.group_id, self.model_class.permission).filter(self._resource_is(resource_id))
+        return [[row_id, principal, permission] for row_id, principal, permission in query.all()]
+
+    def _rename_ids_in(self, session: Session, ids: list[list], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, group_id, permission]``, still under ``old_name``) to ``new_name``."""
+        recorded = {tuple(row) for row in ids or []}
+        if not recorded:
+            return
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row[0] for row in recorded]), self._resource_is(old_name))
+        for perm in query.all():
+            if (perm.id, perm.group_id, perm.permission) in recorded:
                 setattr(perm, self.resource_id_attr, new_name)
-            session.flush()
+        session.flush()
 
     def wipe(self, resource_id: str) -> None:
         """Delete all group permissions for a resource."""
         with self._Session(read_only=False) as session:
-            perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
-            for p in perms:
-                session.delete(p)
-            session.flush()
+            self._wipe_in(session, resource_id)
+
+    def _wipe_in(self, session: Session, resource_id: str) -> int:
+        """``wipe`` inside the caller's session, so it can share a transaction. Returns the rows removed."""
+        perms = session.query(self.model_class).filter(self._resource_is(resource_id)).all()
+        for perm in perms:
+            session.delete(perm)
+        session.flush()
+        return len(perms)
 
 
 def _pattern_workspace_fields(model_class) -> dict:

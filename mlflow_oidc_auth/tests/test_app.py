@@ -156,6 +156,38 @@ class TestCreateApp:
     @patch("mlflow_oidc_auth.app.app")
     @patch("mlflow_oidc_auth.app.before_request_hook")
     @patch("mlflow_oidc_auth.app.after_request_hook")
+    def test_admin_redirect_alone_leaves_mlflows_index_untouched(
+        self,
+        mock_after_request_hook,
+        mock_before_request_hook,
+        mock_flask_app,
+        mock_auth_aware_wsgi_middleware,
+        mock_auth_middleware,
+        mock_get_all_routers,
+        mock_register_exception_handlers,
+        mock_config,
+    ):
+        """A deployment that switched off the menu and re-auth injections keeps MLflow's index as is."""
+        mock_config.SECRET_KEY = "test-secret-key"
+        mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.EXTEND_MLFLOW_REAUTH = False
+        mock_config.EXTEND_MLFLOW_REDIRECT_ADMIN = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_get_all_routers.return_value = []
+        mock_flask_app.view_functions = {}
+
+        create_app()
+
+        assert "serve" not in mock_flask_app.view_functions
+
+    @patch("mlflow_oidc_auth.app.config")
+    @patch("mlflow_oidc_auth.app.register_exception_handlers")
+    @patch("mlflow_oidc_auth.app.get_all_routers")
+    @patch("mlflow_oidc_auth.app.AuthMiddleware")
+    @patch("mlflow_oidc_auth.app.AuthAwareWSGIMiddleware")
+    @patch("mlflow_oidc_auth.app.app")
+    @patch("mlflow_oidc_auth.app.before_request_hook")
+    @patch("mlflow_oidc_auth.app.after_request_hook")
     def test_create_app_router_registration(
         self,
         mock_after_request_hook,
@@ -571,10 +603,12 @@ class TestAppErrorHandling:
             mock_getattr.return_value = True
 
             # Since testing actual import failures is complex and can affect other imports,
-            # we'll test the behavior when EXTEND_MLFLOW_MENU and EXTEND_MLFLOW_REAUTH
-            # are both False — this ensures the hack import code path is not executed.
+            # we'll test the behavior when EXTEND_MLFLOW_MENU, EXTEND_MLFLOW_REAUTH and
+            # EXTEND_MLFLOW_REDIRECT_ADMIN are all False — this ensures the hack import
+            # code path is not executed.
             mock_config.EXTEND_MLFLOW_MENU = False
             mock_config.EXTEND_MLFLOW_REAUTH = False
+            mock_config.EXTEND_MLFLOW_REDIRECT_ADMIN = False
             mock_config.MLFLOW_ENABLE_WORKSPACES = False
 
             # Call the function

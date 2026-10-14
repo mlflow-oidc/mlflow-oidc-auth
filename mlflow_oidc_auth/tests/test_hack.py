@@ -26,6 +26,7 @@ def _menu_only_config():
     with patch("mlflow_oidc_auth.hack.config") as cfg:
         cfg.EXTEND_MLFLOW_MENU = True
         cfg.EXTEND_MLFLOW_REAUTH = False
+        cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = False
         yield cfg
 
 
@@ -890,38 +891,53 @@ class TestHackModulePerformance:
                     assert menu_html in result
 
 
+@pytest.fixture(autouse=True)
+def _fresh_snippet_cache():
+    """index() caches snippet files; every test here controls their content through mocks."""
+    from mlflow_oidc_auth import hack
+
+    hack._read_snippet.cache_clear()
+    yield
+    hack._read_snippet.cache_clear()
+
+
+def _run_index(html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False, script_root: str = ""):
+    """Drive ``hack.index()`` inside a request served under ``script_root``, with a controlled
+    file-system / config state."""
+    from flask import Flask
+
+    mock_app = MagicMock()
+    mock_app.static_folder = "/fake/static"
+
+    def open_side_effect(file_path, mode="r"):
+        if "index.html" in file_path:
+            return mock_open(read_data=html).return_value
+        for key, content in snippets.items():
+            if key in file_path:
+                return mock_open(read_data=content).return_value
+        raise FileNotFoundError(file_path)
+
+    with (
+        patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}),
+        patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
+        patch("builtins.open", mock_open()) as mock_file_open,
+        patch("mlflow_oidc_auth.hack.config") as cfg,
+        Flask(__name__).test_request_context("/", environ_overrides={"SCRIPT_NAME": script_root}),
+    ):
+        cfg.EXTEND_MLFLOW_REAUTH = reauth
+        cfg.EXTEND_MLFLOW_MENU = menu
+        cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = redirect
+        mock_file_open.side_effect = open_side_effect
+        return index()
+
+
 class TestReauthInjection:
     """Cover the EXTEND_MLFLOW_REAUTH flag and the combined injection ordering."""
-
-    def _run_index(self, html: str, snippets: dict, *, reauth: bool, menu: bool):
-        """Drive ``hack.index()`` with a controlled file-system / config state."""
-
-        mock_app = MagicMock()
-        mock_app.static_folder = "/fake/static"
-
-        def open_side_effect(file_path, mode="r"):
-            if "index.html" in file_path:
-                return mock_open(read_data=html).return_value
-            for key, content in snippets.items():
-                if key in file_path:
-                    return mock_open(read_data=content).return_value
-            raise FileNotFoundError(file_path)
-
-        with (
-            patch.dict("sys.modules", {"mlflow.server": MagicMock(app=mock_app)}),
-            patch("mlflow_oidc_auth.hack.os.path.exists", return_value=True),
-            patch("builtins.open", mock_open()) as mock_file_open,
-            patch("mlflow_oidc_auth.hack.config") as cfg,
-        ):
-            cfg.EXTEND_MLFLOW_REAUTH = reauth
-            cfg.EXTEND_MLFLOW_MENU = menu
-            mock_file_open.side_effect = open_side_effect
-            return index()
 
     def test_reauth_only_injection(self):
         """When only reauth is enabled, only the reauth snippet is appended."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<script>REAUTH</script>", "menu.html": "<script>MENU</script>"},
             reauth=True,
@@ -935,7 +951,7 @@ class TestReauthInjection:
         """Reauth must precede menu in the injected output so the fetch patch
         is in place before any later script issues network calls."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"},
             reauth=True,
@@ -946,7 +962,7 @@ class TestReauthInjection:
     def test_both_disabled_returns_unmodified(self):
         """If both flags are off, ``index`` returns the original HTML unchanged."""
         html = "<html><body>Content</body></html>"
-        result = self._run_index(
+        result = _run_index(
             html,
             {"reauth.html": "<!--REAUTH-->", "menu.html": "<!--MENU-->"},
             reauth=False,
@@ -972,3 +988,261 @@ class TestReauthInjection:
         assert "401" in content
         assert "/login?next=" in content
         assert "window.location.hash" in content
+
+
+class TestRedirectInjection:
+    """Cover the EXTEND_MLFLOW_REDIRECT_ADMIN flag and its injection ordering."""
+
+    _SNIPPETS = {"redirect.html": "<!--REDIRECT_MARK-->", "reauth.html": "<!--REAUTH_MARK-->", "menu.html": "<!--MENU_MARK-->"}
+
+    def _run_index(self, *, redirect: bool, reauth: bool, menu: bool):
+        return _run_index("<html><body>Content</body></html>", self._SNIPPETS, reauth=reauth, menu=menu, redirect=redirect)
+
+    @pytest.mark.parametrize(
+        "script_root,expected",
+        [
+            ("", ""),
+            ("/mlflow", "/mlflow"),
+            ("/mlflow/", "/mlflow"),
+            ("//evil.com", ""),
+            ("evil.com", ""),
+            ('/a"</script><script>alert(1)', '/a\\"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)'),
+        ],
+    )
+    def test_base_path_is_filled_in_from_the_request(self, script_root, expected):
+        from mlflow_oidc_auth.hack import BASE_PATH_PLACEHOLDER
+
+        snippets = {"redirect.html": f'<script>var BASE_PATH = "{BASE_PATH_PLACEHOLDER}";</script>'}
+        result = _run_index("<html><body>Content</body></html>", snippets, reauth=False, menu=False, redirect=True, script_root=script_root)
+        assert BASE_PATH_PLACEHOLDER not in result
+        assert f'var BASE_PATH = "{expected}";' in result
+        assert result.count("</script>") == 1
+
+    def test_redirect_snippet_injected_when_enabled(self):
+        result = self._run_index(redirect=True, reauth=False, menu=False)
+        assert "REDIRECT_MARK" in result
+        assert result.index("REDIRECT_MARK") < result.index("</body>")
+        assert "REAUTH_MARK" not in result
+        assert "MENU_MARK" not in result
+
+    def test_redirect_snippet_absent_when_disabled(self):
+        result = self._run_index(redirect=False, reauth=True, menu=True)
+        assert "REDIRECT_MARK" not in result
+        assert "REAUTH_MARK" in result
+        assert "MENU_MARK" in result
+
+    def test_redirect_snippet_injected_before_reauth(self):
+        result = self._run_index(redirect=True, reauth=True, menu=True)
+        assert result.index("REDIRECT_MARK") < result.index("REAUTH_MARK") < result.index("MENU_MARK")
+
+    def test_redirect_snippet_file_exists_in_repo(self):
+        from mlflow_oidc_auth import hack
+
+        snippet_path = os.path.join(hack._HACK_DIR, "redirect.html")
+        assert os.path.isfile(snippet_path)
+        with open(snippet_path) as f:
+            content = f.read()
+        assert "window.__" not in content  # no test hooks on the page
+        assert "window.location.replace" in content
+        for event in ("hashchange", "popstate", '"pushState"', '"replaceState"'):
+            assert event in content
+        assert "encodeURIComponent" in content
+        # No DOM writes and no external requests.
+        for forbidden in ("innerHTML", "outerHTML", "document.write", "fetch(", "XMLHttpRequest", "http://", "https://"):
+            assert forbidden not in content
+
+
+# ── Mapping function, evaluated in node ─────────────────────────────────────
+
+_NODE_HARNESS = r"""
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[1], "utf8").split("__MLFLOW_OIDC_BASE_PATH__").join(process.argv[2]);
+const m = html.match(/<script>([\s\S]*?)<\/script>/);
+if (!m) throw new Error("no <script> in snippet");
+const fn = html.match(/\/\/ BEGIN mapAdminRoute[^\n]*\n([\s\S]*?)\/\/ END mapAdminRoute/);
+if (!fn) throw new Error("no mapAdminRoute markers in snippet");
+const map = new Function(fn[1] + "\nreturn mapAdminRoute;")();
+const replaced = [];
+const listeners = {};
+const history = { pushState() { return "pushed"; }, replaceState() { return "replaced"; } };
+globalThis.window = {
+  location: { hash: "", replace: (t) => replaced.push(t) },
+  history,
+  addEventListener: (name, f) => { listeners[name] = f; },
+};
+new Function(m[1])();
+if (replaced.length !== 0) throw new Error("redirected on an empty hash");
+for (const name of ["hashchange", "popstate"]) {
+  if (typeof listeners[name] !== "function") throw new Error("no " + name + " listener");
+}
+const hashes = JSON.parse(fs.readFileSync(0, "utf8"));
+const mapped = hashes.map((h) => map(h));
+// Drive every real entry point once so the replace() wiring is exercised: a reload-style
+// hashchange, back/forward (popstate), and the router's pushState / replaceState.
+window.location.hash = "#/admin";
+listeners.hashchange();
+window.location.hash = "#/account";
+listeners.popstate();
+window.location.hash = "#/admin/ws?workspace=team-a";
+if (window.history.pushState({}, "", "#/admin/ws?workspace=team-a") !== "pushed") throw new Error("pushState result lost");
+window.location.hash = "#/admin?tab=roles";
+window.history.replaceState({}, "", "#/admin?tab=roles");
+window.location.hash = "#/experiments";
+window.history.pushState({}, "", "#/experiments");
+process.stdout.write(JSON.stringify({ mapped, replaced }));
+"""
+
+_MAPPING_CASES = [
+    # #/admin, any query except tab=roles -> users
+    ("#/admin", "oidc/ui/users"),
+    ("#/admin/", "oidc/ui/users"),
+    ("#/admin?tab=users", "oidc/ui/users"),
+    ("#/admin?foo=bar", "oidc/ui/users"),
+    # roles -> groups
+    ("#/admin?tab=roles", "oidc/ui/groups"),
+    ("#/admin?foo=1&tab=roles", "oidc/ui/groups"),
+    ("#/admin/roles/42", "oidc/ui/groups"),
+    ("#/admin/roles/anything/else?x=1", "oidc/ui/groups"),
+    # users/<u> -> users/<u>/experiments
+    ("#/admin/users/alice", "oidc/ui/users/alice/experiments"),
+    ("#/admin/users/alice%40example.com", "oidc/ui/users/alice%40example.com/experiments"),
+    ("#/admin/users/a%2Fb", "oidc/ui/users/a%2Fb/experiments"),
+    ("#/admin/users/a/b", "oidc/ui/users/a/experiments"),
+    ("#/admin/users/alice/", "oidc/ui/users/alice/experiments"),
+    ("#/admin/users/alice/permissions", "oidc/ui/users/alice/experiments"),
+    ("#/admin/users/a%3Fb", "oidc/ui/users/a%3Fb/experiments"),
+    ("#/admin/users/a%23b", "oidc/ui/users/a%23b/experiments"),
+    ("#/admin/users/a#b", "oidc/ui/users/a%23b/experiments"),
+    ("#/admin/users/100%25", "oidc/ui/users/100%25/experiments"),
+    ("#/admin/users/100%", "oidc/ui/users/100%25/experiments"),
+    ("#/admin/users/a..b", "oidc/ui/users/a..b/experiments"),
+    ("#/admin/users/..", "oidc/ui/users"),
+    ("#/admin/users/%2E%2E", "oidc/ui/users"),
+    ("#/admin/users/../../logout", "oidc/ui/users"),
+    ("#/admin/users/", "oidc/ui/users"),
+    ("#/admin/users", "oidc/ui/users"),
+    # ws?workspace=<w> -> workspaces/<w>
+    ("#/admin/ws?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    ("#/admin/ws?workspace=a%2Fb", "oidc/ui/workspaces/a%2Fb"),
+    ("#/admin/ws?workspace=a/b", "oidc/ui/workspaces/a%2Fb"),
+    ("#/admin/ws?workspace=a%3Fb", "oidc/ui/workspaces/a%3Fb"),
+    ("#/admin/ws?workspace=a%23b", "oidc/ui/workspaces/a%23b"),
+    ("#/admin/ws?workspace=a#b", "oidc/ui/workspaces/a%23b"),
+    ("#/admin/ws?workspace=100%25", "oidc/ui/workspaces/100%25"),
+    ("#/admin/ws?workspace=..", "oidc/ui/workspaces"),
+    ("#/admin/ws?workspace=%2e%2e", "oidc/ui/workspaces"),
+    ("#/admin/ws?workspace=.%2e", "oidc/ui/workspaces"),
+    ("#/admin/users/.%2E", "oidc/ui/users"),
+    ("#/admin/users/%2e.", "oidc/ui/users"),
+    ("#/admin/users/%252e%252e", "oidc/ui/users/%252e%252e/experiments"),
+    ("#/admin/ws?workspace=a..b", "oidc/ui/workspaces/a..b"),
+    ("#/admin/ws?workspace=", "oidc/ui/workspaces"),
+    ("#/admin/ws", "oidc/ui/workspaces"),
+    # Matched like MLflow's router: per segment, decoded, ignoring case
+    ("#/Admin", "oidc/ui/users"),
+    ("#/ACCOUNT", "oidc/ui/user"),
+    ("#/%61dmin", "oidc/ui/users"),
+    ("#/admin/USERS/Alice", "oidc/ui/users/Alice/experiments"),
+    ("#/Admin/WS?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    ("#/admin/?tab=roles", "oidc/ui/groups"),
+    # Only "." and ".." collapse; other dot names are real names
+    ("#/admin/users/...", "oidc/ui/users/.../experiments"),
+    ("#/admin/ws?workspace=...", "oidc/ui/workspaces/..."),
+    ("#/admin/ws/", "oidc/ui/workspaces"),
+    ("#/admin/ws/team-a?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    # Any other page of the admin area -> users
+    ("#/admin/settings", "oidc/ui/users"),
+    ("#/admin/something/else?x=1", "oidc/ui/users"),
+    # account -> user
+    ("#/account", "oidc/ui/user"),
+    ("#/account?tab=tokens", "oidc/ui/user"),
+    # Not admin routes: left alone.
+    ("", None),
+    ("#", None),
+    ("#/", None),
+    ("#/experiments", None),
+    ("#/administrator", None),
+    ("#/admin-tools", None),
+    ("#/accounts", None),
+    ("#/models/admin", None),
+]
+
+_HOSTILE_HASHES = [
+    "#/admin/users/%2F%2Fevil.com",
+    "#/admin/users///evil.com",
+    "#/admin/users/https:%2F%2Fevil.com",
+    "#/admin/users/https://evil.com",
+    "#/admin/users/javascript:alert(1)",
+    "#/admin/users/%5C%5Cevil.com",
+    "#/admin/users/%00",
+    "#/admin/ws?workspace=//evil.com",
+    "#/admin/ws?workspace=https://evil.com",
+    "#/admin/ws?workspace=javascript:alert(1)",
+    "#/admin/ws?workspace=%5C%5Cevil.com",
+    "#/admin/ws?workspace=data:text/html,<script>alert(1)</script>",
+    "#/admin/users/<img src=x onerror=alert(1)>",
+]
+
+
+def _run_node(base_path: str):
+    """Run the shipped snippet's mapping function in node over every case, served under ``base_path``."""
+
+    import json
+    import shutil
+    import subprocess
+
+    from mlflow_oidc_auth import hack
+
+    node = shutil.which("node")
+    # Deliberately a failure, not a skip: this is the negative test for an open redirect.
+    assert node, "node is required to evaluate mlflow_oidc_auth/hack/redirect.html"
+
+    hashes = [h for h, _ in _MAPPING_CASES] + _HOSTILE_HASHES
+    proc = subprocess.run(
+        [node, "-e", _NODE_HARNESS, os.path.join(hack._HACK_DIR, "redirect.html"), base_path],
+        input=json.dumps(hashes),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    out = json.loads(proc.stdout)
+    return dict(zip(hashes, out["mapped"])), out["replaced"]
+
+
+@pytest.fixture(scope="module")
+def _node_mapping():
+    return _run_node("")
+
+
+@pytest.fixture(scope="module")
+def _node_mapping_prefixed():
+    return _run_node("/mlflow")
+
+
+@pytest.mark.parametrize("hash_value,expected", _MAPPING_CASES)
+def test_redirect_mapping(_node_mapping, _node_mapping_prefixed, hash_value, expected):
+    for (mapped, _), prefix in ((_node_mapping, ""), (_node_mapping_prefixed, "/mlflow")):
+        assert mapped[hash_value] == (None if expected is None else f"{prefix}/{expected}")
+
+
+def test_redirect_mapping_uses_location_replace(_node_mapping):
+    _, replaced = _node_mapping
+    assert replaced == ["/oidc/ui/users", "/oidc/ui/user", "/oidc/ui/workspaces/team-a", "/oidc/ui/groups"]
+
+
+@pytest.mark.parametrize("hash_value", _HOSTILE_HASHES)
+def test_redirect_never_absolute(_node_mapping, _node_mapping_prefixed, hash_value):
+    """Hostile hashes never produce a target outside the plugin's UI: no scheme, no
+    protocol-relative URL, no other host, and exactly one encoded segment from the hash."""
+    import re
+
+    for (mapped, _), prefix in ((_node_mapping, ""), (_node_mapping_prefixed, "/mlflow")):
+        target = mapped[hash_value]
+        assert target is not None
+        assert not target.startswith("//")
+        assert "\\" not in target
+        assert not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target)
+        assert target.startswith(f"{prefix}/oidc/ui/")
+        rest = target[len(f"{prefix}/oidc/ui/") :]
+        assert re.fullmatch(r"(users/[^/:<>\\]+/experiments|workspaces/[^/:<>\\]+|users|workspaces)", rest), target
