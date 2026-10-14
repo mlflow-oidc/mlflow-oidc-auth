@@ -229,7 +229,7 @@
 ### Documentation (optional)
 - `/docs` - Swagger UI (controlled by `ENABLE_API_DOCS`)
 - `/redoc` - ReDoc (controlled by `ENABLE_API_DOCS`)
-- `/openapi.json` - OpenAPI spec
+- `/openapi.json` - OpenAPI spec (controlled by `ENABLE_API_DOCS`)
 
 ## Webhooks & Callbacks
 
