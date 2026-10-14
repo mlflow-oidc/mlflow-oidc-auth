@@ -3661,7 +3661,7 @@ export interface components {
              * @description Break glass: delete a row another source owns. Always audited.
              * @default false
              */
-            admin_override: boolean;
+            admin_override?: boolean;
             /**
              * Username
              * @description The username to delete
@@ -3680,7 +3680,7 @@ export interface components {
              * @description Also hand every group membership of the user to the new owner
              * @default false
              */
-            memberships: boolean;
+            memberships?: boolean;
             /**
              * Username
              * @description The user whose ownership is being changed
@@ -3735,12 +3735,12 @@ export interface components {
              * Is Admin
              * @default false
              */
-            is_admin: boolean;
+            is_admin?: boolean;
             /**
              * Is Service Account
              * @default false
              */
-            is_service_account: boolean;
+            is_service_account?: boolean;
             /** Service Account Source */
             service_account_source?: string | null;
             /** Subject */
@@ -4142,7 +4142,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Name
              * @description Experiment name
@@ -4175,7 +4175,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -4218,7 +4218,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -4256,7 +4256,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Name
              * @description Resource name
@@ -4285,7 +4285,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Name
              * @description Group name
@@ -4318,7 +4318,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -4382,7 +4382,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -4430,7 +4430,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted to the group for the scorer
@@ -4463,7 +4463,7 @@ export interface components {
              * @default group
              * @constant
              */
-            kind: "group";
+            kind?: "group";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -4733,7 +4733,7 @@ export interface components {
              * @description True if this permission is for a prompt
              * @default false
              */
-            prompt: boolean;
+            prompt?: boolean;
             /**
              * User Id
              * @description User ID
@@ -4802,7 +4802,7 @@ export interface components {
              * @description True if this pattern applies to prompts
              * @default false
              */
-            prompt: boolean;
+            prompt?: boolean;
             /**
              * Regex
              * @description Regex pattern
@@ -5287,7 +5287,7 @@ export interface components {
              * @default success
              * @constant
              */
-            status: "success";
+            status?: "success";
         };
         /**
          * StatusOnlyResponse
@@ -5300,7 +5300,7 @@ export interface components {
              * @default success
              * @constant
              */
-            status: "success";
+            status?: "success";
         };
         /**
          * TrashCleanupResponse
@@ -5358,7 +5358,7 @@ export interface components {
              * @description Break glass: write a row another source owns. Always audited.
              * @default false
              */
-            admin_override: boolean;
+            admin_override?: boolean;
         };
         /**
          * UserDetail
@@ -5402,7 +5402,7 @@ export interface components {
              * @default user
              * @constant
              */
-            kind: "user";
+            kind?: "user";
             /**
              * Permission
              * @description Permission granted when the regex matches
@@ -5643,7 +5643,7 @@ export interface components {
              * @description Initial status of the webhook
              * @default ACTIVE
              */
-            status: string | null;
+            status?: string | null;
             /**
              * Url
              * @description URL endpoint for the webhook
@@ -5982,13 +5982,13 @@ export interface components {
              * @description A disabled rule holds no grants
              * @default true
              */
-            enabled: boolean;
+            enabled?: boolean;
             /**
              * Mode
              * @description report (write nothing) or enforce
              * @default report
              */
-            mode: string;
+            mode?: string;
             /**
              * Name
              * @description Unique label

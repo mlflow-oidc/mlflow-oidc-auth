@@ -10,7 +10,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "tsc -b && eslint .",
     "format": "prettier --write .",
-    "gen:api": "openapi-typescript ../openapi.json --output src/core/types/generated/openapi.ts",
+    "gen:api": "openapi-typescript ../openapi.json --output src/core/types/generated/openapi.ts --default-non-nullable false",
     "preview": "vite preview",
     "release": "tsc -b && vite build",
     "watch": "tsc -b && vite build --watch"
