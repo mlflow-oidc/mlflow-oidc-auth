@@ -46,9 +46,11 @@ class _KindFilter:
 
     ``extra_filter`` maps columns to the value this kind's rows hold — ``{"prompt": True}`` for
     prompts, ``{"prompt": False}`` for registered model patterns (see ``GrantKind.filter_for``).
-    Every row the repository creates carries it, and every query it runs — lookups, lists, updates,
-    revokes, renames, wipes and permission lookups alike — matches only rows that hold it, so a
-    filtered repository never reads, changes, removes or matches the other kind's rows.
+    Every row the repository creates carries it, and every query it runs — lookups, lists, renames,
+    wipes and permission lookups alike — matches only rows that hold it, so a filtered repository
+    never reads, lists or matches the other kind's rows. The one exception is ``_same_grant``: an
+    update or revoke also reaches the grant's unassigned duplicates of either flag, because
+    permission checks count them all.
 
     The registered model group grant repository is deliberately unfiltered: permission checks count
     its rows whatever their ``prompt`` flag, so managing them must see the same rows.
@@ -165,11 +167,12 @@ class _GrantWorkspaceScope(_KindFilter):
             model.id != row.id,
             getattr(model, self.resource_id_attr) == getattr(row, self.resource_id_attr),
             getattr(model, principal) == getattr(row, principal),
-            self._in_scope(),
+            grant_workspace_condition(model.workspace),
         )
-        # ``_in_scope`` carries the kind filter: a filtered repository (prompt group grants) never
-        # rewrites or removes the other kind's row. Unfiltered ones count every row of the principal
-        # on this name, whatever its ``prompt`` flag, as permission checks do.
+        # Deliberately not ``_in_scope()``: no kind filter. Permission checks count every row of the
+        # principal on this name whatever its ``prompt`` flag, so lowering or revoking a grant —
+        # through the prompt repository too — must reach every such row, or a duplicate of the other
+        # flag would keep granting what was just lowered or revoked.
         return [row, *query.all()]
 
 
@@ -584,6 +587,29 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             )
             return [p.to_mlflow_entity() for p in perms]
 
+    def _group_grant(self, session: Session, resource_id: str, group_id: int, group_name: str) -> ModelT:
+        """The group's grant on ``resource_id`` that an update or revoke acts on.
+
+        Parameters:
+            session: SQLAlchemy session.
+            resource_id: The resource identifier value.
+            group_id: The ID of the group.
+            group_name: The name of the group, for the error message.
+
+        Returns:
+            The grant row.
+
+        Raises:
+            MlflowException: ``RESOURCE_DOES_NOT_EXIST`` when the group has no such grant.
+        """
+        try:
+            return self._one_in_scope(session.query(self.model_class).filter(self._resource_is(resource_id), self.model_class.group_id == group_id))
+        except NoResultFound:
+            raise MlflowException(
+                f"No group permission for {self.resource_id_attr}={resource_id}, group={group_name}",
+                RESOURCE_DOES_NOT_EXIST,
+            )
+
     def update_group_permission(self, group_name: str, resource_id: str, permission: str) -> EntityT:
         """Update the group permission for a given resource and group.
 
@@ -595,12 +621,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         _validate_permission(permission)
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
-            perm = self._one_in_scope(
-                session.query(self.model_class).filter(
-                    self._resource_is(resource_id),
-                    self.model_class.group_id == group.id,
-                )
-            )
+            perm = self._group_grant(session, resource_id, group.id, group_name)
             for row in self._same_grant(session, perm):
                 row.permission = permission
             session.flush()
@@ -614,12 +635,7 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
         """
         with self._Session(read_only=False) as session:
             group = get_group(session, group_name)
-            perm = self._one_in_scope(
-                session.query(self.model_class).filter(
-                    self._resource_is(resource_id),
-                    self.model_class.group_id == group.id,
-                )
-            )
+            perm = self._group_grant(session, resource_id, group.id, group_name)
             for row in self._same_grant(session, perm):
                 session.delete(row)
             session.flush()

@@ -88,11 +88,11 @@ def test_update_and_revoke(store):
 def test_update_and_revoke_cannot_reach_a_model_grant(store):
     store.create_group_model_permission(GROUP, "my-model", "READ")
 
-    # Not found, reported like a missing group grant of any other kind.
-    with pytest.raises(MlflowException, match="No row was found"):
-        store.update_group_prompt_permission(GROUP, "my-model", "MANAGE")
-    with pytest.raises(MlflowException, match="No row was found"):
-        store.delete_group_prompt_permission(GROUP, "my-model")
+    # Not found, reported like a missing grant of any other kind.
+    for call in (lambda: store.update_group_prompt_permission(GROUP, "my-model", "MANAGE"), lambda: store.delete_group_prompt_permission(GROUP, "my-model")):
+        with pytest.raises(MlflowException) as exc:
+            call()
+        assert exc.value.error_code == "RESOURCE_DOES_NOT_EXIST"
     assert _rows(store) == [("my-model", "READ", False)]
 
 
@@ -107,15 +107,48 @@ def _add_rows(store, *rows):
             session.flush()
 
 
-def test_prompt_update_and_revoke_leave_an_unassigned_model_duplicate(store):
-    """With workspaces disabled, unassigned (NULL-workspace) rows are one grant — but only of one kind."""
-    _add_rows(store, ("dup", GROUP, True, None), ("dup", GROUP, False, None))
+@pytest.fixture
+def effective(store, monkeypatch):
+    """``(prompt permission, registered model permission)`` of USER on a name, as requests resolve them."""
+    from mlflow_oidc_auth.utils import permissions
 
-    store.update_group_prompt_permission(GROUP, "dup", "MANAGE")
-    assert sorted(_rows(store)) == [("dup", "MANAGE", True), ("dup", "READ", False)]
+    monkeypatch.setattr(permissions, "store", store)
+
+    def resolve(name):
+        permissions.flush_permission_cache()
+        prompt, model = permissions.effective_prompt_permission(name, USER), permissions.effective_registered_model_permission(name, USER)
+        return (prompt.kind, prompt.permission.name), (model.kind, model.permission.name)
+
+    yield resolve
+    permissions.flush_permission_cache()
+
+
+def test_prompt_update_and_revoke_reach_an_unassigned_duplicate_of_either_flag(store, effective):
+    """With workspaces disabled, unassigned (NULL-workspace) rows of one group on one name are one grant.
+
+    Permission checks count both rows whatever their flag, so lowering or revoking through the prompt
+    side must reach both — a duplicate left behind would keep granting what was revoked.
+    """
+    _add_rows(store, ("dup", GROUP, True, None), ("dup", GROUP, False, None))
+    assert effective("dup") == (("group", "READ"), ("group", "READ"))
+
+    store.update_group_prompt_permission(GROUP, "dup", "NO_PERMISSIONS")
+    assert sorted(_rows(store)) == [("dup", "NO_PERMISSIONS", False), ("dup", "NO_PERMISSIONS", True)]
+    assert effective("dup") == (("group", "NO_PERMISSIONS"), ("group", "NO_PERMISSIONS"))
 
     store.delete_group_prompt_permission(GROUP, "dup")
-    assert _rows(store) == [("dup", "READ", False)]
+    assert _rows(store) == []
+    assert effective("dup")[0][0] == "fallback" and effective("dup")[1][0] == "fallback"
+
+
+def test_model_revoke_reaches_an_unassigned_prompt_duplicate(store, effective):
+    _add_rows(store, ("dup", GROUP, False, None), ("dup", GROUP, True, None))
+    assert effective("dup") == (("group", "READ"), ("group", "READ"))
+
+    store.delete_group_model_permission(GROUP, "dup")
+
+    assert _rows(store) == []
+    assert effective("dup")[0][0] == "fallback" and effective("dup")[1][0] == "fallback"
 
 
 def test_prompt_wipe_and_rename_leave_model_rows(store):
