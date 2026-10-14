@@ -139,3 +139,26 @@ def test_only_an_unparseable_pattern_id_is_a_bad_id(http, path, method):
     store_error = _send(http, method, good_path, ValueError("bad regex"))
     assert store_error.status_code == 500
     assert store_error.json()["detail"].startswith("Failed to ")
+
+
+PATTERN_WRITES = [(path, noun, method) for path, noun, method in PATTERNS if method in ("post", "patch")]
+BAD_REGEXES = {
+    "invalid": ("([", "Invalid regex pattern: ([."),
+    "redos": ("(a+)+$", "Regex pattern rejected: nested quantifiers detected (potential ReDoS)."),
+}
+
+
+def test_pattern_writes_cover_every_kind():
+    assert len(PATTERN_WRITES) == 2 * 14
+
+
+@pytest.mark.parametrize("kind", BAD_REGEXES)
+@pytest.mark.parametrize("path, noun, method", PATTERN_WRITES, ids=[f"{m.upper()} {p}" for p, _, m in PATTERN_WRITES])
+def test_rejected_regex_is_a_400_before_the_store(http, path, noun, method, kind):
+    """An invalid or ReDoS-prone regex is refused with the validator's reason; the store is never called."""
+    regex, reason = BAD_REGEXES[kind]
+    store = RaisingStore(AssertionError("the store must not be called"))
+    with patch.object(user_permissions, "store", store), patch.object(group_permissions, "store", store):
+        response = http.request(method.upper(), path, json={**PATTERN, "regex": regex})
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(reason)

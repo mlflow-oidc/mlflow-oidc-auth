@@ -31,11 +31,13 @@ from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import StatusMessageResponse, StatusOnlyResponse
+from mlflow_oidc_auth.repository.utils import validate_regex
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 
 from ._errors import mlflow_error_status
@@ -156,6 +158,8 @@ class Route:
         audit: ``(resource_type, resource_id, detail)`` of the audit event a write emits.
         failure: How exceptions are reported; ``None`` lets them propagate.
         parse_id: The ``id`` path parameter is a string; one that is not an integer is a 400.
+        check_regex: Validate the body's regex with the repository's own validator before the
+            store call; an invalid or ReDoS-prone regex is a 400 with the validator's reason.
         restate_params: Re-declare the path parameters after ``auth``, so a gate dependency's own
             parameter text does not replace the route's in the OpenAPI document.
     """
@@ -177,6 +181,7 @@ class Route:
     audit: Optional[Tuple[str, Callable[[Args], Any], Callable[[Args], Dict[str, Any]]]] = None
     failure: Optional[Failure] = None
     parse_id: bool = False
+    check_regex: bool = False
     restate_params: bool = False
 
 
@@ -196,6 +201,14 @@ def _execute(route: Route, a: Args) -> Any:
             int(a.id)
         except ValueError:
             raise HTTPException(status_code=400, detail=BAD_PATTERN_ID)
+    if route.check_regex:
+        # The store validates too, but reports a rejected regex as INVALID_STATE, which can also be
+        # a real server-side state error; so the request is refused here, before the store is called.
+        # The reason names only the caller's own regex.
+        try:
+            validate_regex(a.pattern_data.regex)
+        except MlflowException as error:
+            raise HTTPException(status_code=400, detail=error.message)
     if route.failure is None:
         return _perform(route, a)
     try:
@@ -543,5 +556,6 @@ def regex_routes(
                 audit=audit,
                 failure=failure,
                 parse_id=id_type is str and op in ("get", "update", "delete"),
+                check_regex=op in ("create", "update"),
             ),
         )
