@@ -216,7 +216,8 @@ export type WorkspaceListResponse = {
 
 /**
  * The contract types `permission` as a plain string; the server only ever stores a permission
- * level there, so the UI narrows it. Every other field comes from the contract as is.
+ * level there, so the UI narrows it — checked at runtime by `withPermissionLevels`. Every other
+ * field comes from the contract as is.
  */
 type WithPermissionLevel<T extends { permission: string }> = Omit<
   T,

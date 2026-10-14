@@ -1,6 +1,7 @@
 import { createStaticApiFetcher } from "./create-api-fetcher";
 import { request } from "./api-utils";
 import { apiRequest } from "./typed-http";
+import { withPermissionLevels } from "../../shared/utils/permission-level";
 import {
   STATIC_API_ENDPOINTS,
   DYNAMIC_API_ENDPOINTS,
@@ -29,21 +30,27 @@ export const fetchWorkspaceUsers = async (
   workspace: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceUserPermission[]> =>
-  (await apiRequest(
-    "get",
-    "/api/3.0/mlflow/permissions/workspaces/{workspace}/users",
-    { path: { workspace }, signal },
-  )) as WorkspaceUserPermission[];
+  withPermissionLevels(
+    await apiRequest(
+      "get",
+      "/api/3.0/mlflow/permissions/workspaces/{workspace}/users",
+      { path: { workspace }, signal },
+    ),
+    "the workspace users list",
+  );
 
 export const fetchWorkspaceGroups = async (
   workspace: string,
   signal?: AbortSignal,
 ): Promise<WorkspaceGroupPermission[]> =>
-  (await apiRequest(
-    "get",
-    "/api/3.0/mlflow/permissions/workspaces/{workspace}/groups",
-    { path: { workspace }, signal },
-  )) as WorkspaceGroupPermission[];
+  withPermissionLevels(
+    await apiRequest(
+      "get",
+      "/api/3.0/mlflow/permissions/workspaces/{workspace}/groups",
+      { path: { workspace }, signal },
+    ),
+    "the workspace groups list",
+  );
 
 /** MLflow native workspace response wraps the object in a `workspace` key. */
 type MlflowWorkspaceResponse = { workspace: WorkspaceCrudResponse };
