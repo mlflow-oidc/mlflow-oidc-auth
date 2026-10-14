@@ -28,6 +28,8 @@ env:
   SHARD_COUNT: 4
 
 jobs:
+  # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code); holds no secrets
+  # and only the workflow's read-only token; changes no state beyond its own runner.
   frontend:
     name: Frontend (lint, vitest)
     runs-on: ubuntu-latest
@@ -38,9 +40,27 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.14
       - name: Install dependencies
         run: |
           yarn install
+        working-directory: web-react
+      # The committed openapi.json and generated types must match the routers (#458). FastAPI and
+      # Pydantic shape the document, so they are pinned to the versions it was generated with.
+      - name: Check the API contract is current
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . -c scripts/openapi-constraints.txt
+          python scripts/export_openapi.py
+          (cd web-react && yarn gen:api)
+          git diff --exit-code openapi.json web-react/src/core/types/generated/
+      - name: Type check
+        run: |
+          yarn tsc --noEmit -p tsconfig.app.json
+          yarn tsc --noEmit -p tsconfig.node.json
         working-directory: web-react
       - name: Lint
         run: |
