@@ -3,15 +3,15 @@
         "use strict";
 
         // MLflow's bundled UI ships admin pages built for its own basic-auth RBAC
-        // (#/admin, #/admin/users/<u>, #/admin/ws?workspace=<w>, #/account). Those
-        // pages call APIs this plugin does not implement, so send the browser to
-        // the plugin's own UI instead. The hash never reaches the server, so this
-        // has to happen client-side.
+        // (#/admin..., #/account). Those pages call APIs this plugin does not
+        // implement, so send the browser to the plugin's own UI instead. The hash
+        // never reaches the server, so this has to happen client-side.
         //
         // Security: values taken from the hash are only ever passed through
         // encodeURIComponent into a path that is relative to the page and starts
         // with "oidc/ui/". Nothing is written to the DOM.
 
+        // BEGIN mapAdminRoute (tests evaluate the code between these markers)
         var BASE = "oidc/ui/";
 
         function decode(value) {
@@ -39,30 +39,47 @@
             var params = new URLSearchParams(q === -1 ? "" : route.slice(q + 1));
 
             if (path === "/account" || path.indexOf("/account/") === 0) return BASE + "user";
+            if (path !== "/admin" && path.indexOf("/admin/") !== 0) return null;
 
-            if (path === "/admin" || path === "/admin/") {
-                return params.get("tab") === "roles" ? BASE + "groups" : BASE + "users";
-            }
             if (path === "/admin/roles" || path.indexOf("/admin/roles/") === 0) return BASE + "groups";
-            if (path === "/admin/users" || path.indexOf("/admin/users/") === 0) {
-                var user = segment(decode(path.slice("/admin/users/".length)));
+            if (path.indexOf("/admin/users/") === 0) {
+                // The user is the first segment; anything after it is a sub-page of that user.
+                var rest = path.slice("/admin/users/".length);
+                var slash = rest.indexOf("/");
+                var user = segment(decode(slash === -1 ? rest : rest.slice(0, slash)));
                 return user ? BASE + "users/" + user + "/experiments" : BASE + "users";
             }
-            if (path === "/admin/ws" || path === "/admin/ws/") {
+            if (path === "/admin/ws" || path.indexOf("/admin/ws/") === 0) {
                 var ws = segment(params.get("workspace"));
                 return ws ? BASE + "workspaces/" + ws : BASE + "workspaces";
             }
-            return null;
+            if ((path === "/admin" || path === "/admin/") && params.get("tab") === "roles") return BASE + "groups";
+            // Any other page of MLflow's admin area: the plugin's user list.
+            return BASE + "users";
         }
-
-        window.__mlflowOidcMapAdminRoute = mapAdminRoute;
+        // END mapAdminRoute
 
         function redirect() {
             var target = mapAdminRoute(window.location.hash);
             if (target) window.location.replace(target);
         }
 
+        // MLflow's router navigates with history.pushState, which fires neither
+        // hashchange nor popstate, so the history methods are wrapped as well.
+        function wrap(name) {
+            var original = window.history && window.history[name];
+            if (typeof original !== "function") return;
+            window.history[name] = function () {
+                var result = original.apply(this, arguments);
+                redirect();
+                return result;
+            };
+        }
+
+        wrap("pushState");
+        wrap("replaceState");
         window.addEventListener("hashchange", redirect);
+        window.addEventListener("popstate", redirect);
         redirect();
     })();
 </script>

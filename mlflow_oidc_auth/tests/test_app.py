@@ -156,7 +156,7 @@ class TestCreateApp:
     @patch("mlflow_oidc_auth.app.app")
     @patch("mlflow_oidc_auth.app.before_request_hook")
     @patch("mlflow_oidc_auth.app.after_request_hook")
-    def test_create_app_with_only_admin_redirect(
+    def test_admin_redirect_alone_leaves_mlflows_index_untouched(
         self,
         mock_after_request_hook,
         mock_before_request_hook,
@@ -167,9 +167,7 @@ class TestCreateApp:
         mock_register_exception_handlers,
         mock_config,
     ):
-        """The admin-page redirect alone is enough to serve MLflow's index through hack.index."""
-        from mlflow_oidc_auth import hack
-
+        """A deployment that switched off the menu and re-auth injections keeps MLflow's index as is."""
         mock_config.SECRET_KEY = "test-secret-key"
         mock_config.EXTEND_MLFLOW_MENU = False
         mock_config.EXTEND_MLFLOW_REAUTH = False
@@ -180,7 +178,7 @@ class TestCreateApp:
 
         create_app()
 
-        assert mock_flask_app.view_functions["serve"] is hack.index
+        assert "serve" not in mock_flask_app.view_functions
 
     @patch("mlflow_oidc_auth.app.config")
     @patch("mlflow_oidc_auth.app.register_exception_handlers")

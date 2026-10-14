@@ -1008,9 +1008,10 @@ class TestRedirectInjection:
         assert os.path.isfile(snippet_path)
         with open(snippet_path) as f:
             content = f.read()
-        assert "window.__mlflowOidcMapAdminRoute" in content
+        assert "window.__" not in content  # no test hooks on the page
         assert "window.location.replace" in content
-        assert "hashchange" in content
+        for event in ("hashchange", "popstate", '"pushState"', '"replaceState"'):
+            assert event in content
         assert "encodeURIComponent" in content
         # No DOM writes and no external requests.
         for forbidden in ("innerHTML", "outerHTML", "document.write", "fetch(", "XMLHttpRequest", "http://", "https://"):
@@ -1024,21 +1025,36 @@ const fs = require("fs");
 const html = fs.readFileSync(process.argv[1], "utf8");
 const m = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!m) throw new Error("no <script> in snippet");
+const fn = html.match(/\/\/ BEGIN mapAdminRoute[^\n]*\n([\s\S]*?)\/\/ END mapAdminRoute/);
+if (!fn) throw new Error("no mapAdminRoute markers in snippet");
+const map = new Function(fn[1] + "\nreturn mapAdminRoute;")();
 const replaced = [];
 const listeners = {};
+const history = { pushState() { return "pushed"; }, replaceState() { return "replaced"; } };
 globalThis.window = {
   location: { hash: "", replace: (t) => replaced.push(t) },
-  addEventListener: (name, fn) => { listeners[name] = fn; },
+  history,
+  addEventListener: (name, f) => { listeners[name] = f; },
 };
 new Function(m[1])();
 if (replaced.length !== 0) throw new Error("redirected on an empty hash");
-if (typeof listeners.hashchange !== "function") throw new Error("no hashchange listener");
-const map = window.__mlflowOidcMapAdminRoute;
+for (const name of ["hashchange", "popstate"]) {
+  if (typeof listeners[name] !== "function") throw new Error("no " + name + " listener");
+}
 const hashes = JSON.parse(fs.readFileSync(0, "utf8"));
 const mapped = hashes.map((h) => map(h));
-// Drive the real listener once so the replace() wiring is exercised too.
+// Drive every real entry point once so the replace() wiring is exercised: a reload-style
+// hashchange, back/forward (popstate), and the router's pushState / replaceState.
 window.location.hash = "#/admin";
 listeners.hashchange();
+window.location.hash = "#/account";
+listeners.popstate();
+window.location.hash = "#/admin/ws?workspace=team-a";
+if (window.history.pushState({}, "", "#/admin/ws?workspace=team-a") !== "pushed") throw new Error("pushState result lost");
+window.location.hash = "#/admin?tab=roles";
+window.history.replaceState({}, "", "#/admin?tab=roles");
+window.location.hash = "#/experiments";
+window.history.pushState({}, "", "#/experiments");
 process.stdout.write(JSON.stringify({ mapped, replaced }));
 """
 
@@ -1057,7 +1073,9 @@ _MAPPING_CASES = [
     ("#/admin/users/alice", "oidc/ui/users/alice/experiments"),
     ("#/admin/users/alice%40example.com", "oidc/ui/users/alice%40example.com/experiments"),
     ("#/admin/users/a%2Fb", "oidc/ui/users/a%2Fb/experiments"),
-    ("#/admin/users/a/b", "oidc/ui/users/a%2Fb/experiments"),
+    ("#/admin/users/a/b", "oidc/ui/users/a/experiments"),
+    ("#/admin/users/alice/", "oidc/ui/users/alice/experiments"),
+    ("#/admin/users/alice/permissions", "oidc/ui/users/alice/experiments"),
     ("#/admin/users/a%3Fb", "oidc/ui/users/a%3Fb/experiments"),
     ("#/admin/users/a%23b", "oidc/ui/users/a%23b/experiments"),
     ("#/admin/users/a#b", "oidc/ui/users/a%23b/experiments"),
@@ -1066,7 +1084,7 @@ _MAPPING_CASES = [
     ("#/admin/users/a..b", "oidc/ui/users/a..b/experiments"),
     ("#/admin/users/..", "oidc/ui/users"),
     ("#/admin/users/%2E%2E", "oidc/ui/users"),
-    ("#/admin/users/../../logout", "oidc/ui/users/..%2F..%2Flogout/experiments"),
+    ("#/admin/users/../../logout", "oidc/ui/users"),
     ("#/admin/users/", "oidc/ui/users"),
     ("#/admin/users", "oidc/ui/users"),
     # ws?workspace=<w> -> workspaces/<w>
@@ -1086,6 +1104,11 @@ _MAPPING_CASES = [
     ("#/admin/ws?workspace=a..b", "oidc/ui/workspaces/a..b"),
     ("#/admin/ws?workspace=", "oidc/ui/workspaces"),
     ("#/admin/ws", "oidc/ui/workspaces"),
+    ("#/admin/ws/", "oidc/ui/workspaces"),
+    ("#/admin/ws/team-a?workspace=team-a", "oidc/ui/workspaces/team-a"),
+    # Any other page of the admin area -> users
+    ("#/admin/settings", "oidc/ui/users"),
+    ("#/admin/something/else?x=1", "oidc/ui/users"),
     # account -> user
     ("#/account", "oidc/ui/user"),
     ("#/account?tab=tokens", "oidc/ui/user"),
@@ -1152,7 +1175,7 @@ def test_redirect_mapping(_node_mapping, hash_value, expected):
 
 def test_redirect_mapping_uses_location_replace(_node_mapping):
     _, replaced = _node_mapping
-    assert replaced == ["oidc/ui/users"]
+    assert replaced == ["oidc/ui/users", "oidc/ui/user", "oidc/ui/workspaces/team-a", "oidc/ui/groups"]
 
 
 @pytest.mark.parametrize("hash_value", _HOSTILE_HASHES)
