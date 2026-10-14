@@ -77,7 +77,7 @@ from mlflow_oidc_auth.utils.permissions import (
     effective_gateway_secret_permission,
 )
 
-from ._permission_routes import USER, exact_routes, pattern_fields, regex_routes
+from ._permission_routes import USER, exact_routes, pattern_fields, regex_names, regex_routes
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
@@ -809,204 +809,25 @@ async def get_user_registered_models(
     ]
 
 
-@user_permissions_router.post(
+exact_routes(
+    user_permissions_router,
+    USER,
+    "registered model",
+    "user registered model permissions",
     USER_REGISTERED_MODEL_PERMISSION_DETAIL,
-    status_code=201,
-    response_model=StatusMessageResponse,
-    summary="Create registered model permission for a user",
-    description="Creates a new permission for a user to access a specific registered model.",
-    tags=["user registered model permissions"],
+    keys=(("name", "The registered model name to {purpose} permissions for"),),
+    auth=(("current_username", check_registered_model_manage_permission),),
+    body=RegisteredModelPermission,
+    call={
+        "create": lambda a: store.create_registered_model_permission(name=a.name, username=a.username, permission=a.permission_data.permission),
+        "get": lambda a: store.get_registered_model_permission(a.name, a.username),
+        "update": lambda a: store.update_registered_model_permission(name=a.name, username=a.username, permission=a.permission_data.permission),
+        "delete": lambda a: store.delete_registered_model_permission(a.name, a.username),
+    },
+    models={"get": RegisteredModelPermissionResponse},
+    respond={"get": lambda a, rmp: RegisteredModelPermissionResponse(registered_model_permission=RegisteredModelPermissionRecord(**rmp.to_json()))},
+    conflicts=True,
 )
-async def create_user_registered_model_permission(
-    username: str = Path(..., description="The username to grant registered model permission to"),
-    name: str = Path(..., description="The registered model name to set permissions for"),
-    permission_data: RegisteredModelPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Create a permission for a user to access a registered model.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to grant permissions to.
-    name : str
-        The name of the registered model to grant permissions for.
-    permission_data : RegisteredModelPermission
-        The permission data containing the permission level.
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.create_registered_model_permission(
-            name=name,
-            username=username,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="registered_model_permission",
-            resource_id=name,
-            detail={"username": username, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model permission created for {username} on {name}")
-    except MlflowException as e:
-        logger.error(f"Error creating registered model permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
-            raise HTTPException(status_code=409, detail="Registered model permission already exists")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error creating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create registered model permission")
-
-
-@user_permissions_router.get(
-    USER_REGISTERED_MODEL_PERMISSION_DETAIL,
-    response_model=RegisteredModelPermissionResponse,
-    summary="Get registered model permission for a user",
-    description="Retrieves the permission for a user on a specific registered model.",
-    tags=["user registered model permissions"],
-)
-async def get_user_registered_model_permission(
-    username: str = Path(..., description="The username to get registered model permission for"),
-    name: str = Path(..., description="The registered model name to get permissions for"),
-    _: str = Depends(check_registered_model_manage_permission),
-) -> RegisteredModelPermissionResponse:
-    """
-    Get the permission for a user on a registered model.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to get permissions for.
-    name : str
-        The name of the registered model to get permissions for.
-
-    Returns:
-    --------
-    JSONResponse
-        A response containing the registered model permission details.
-    """
-    try:
-        rmp = store.get_registered_model_permission(name, username)
-        return RegisteredModelPermissionResponse(registered_model_permission=RegisteredModelPermissionRecord(**rmp.to_json()))
-    except Exception as e:
-        logger.error(f"Error getting registered model permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Registered model permission not found")
-
-
-@user_permissions_router.patch(
-    USER_REGISTERED_MODEL_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Update registered model permission for a user",
-    description="Updates the permission for a user on a specific registered model.",
-    tags=["user registered model permissions"],
-)
-async def update_user_registered_model_permission(
-    username: str = Path(..., description="The username to update registered model permission for"),
-    name: str = Path(..., description="The registered model name to update permissions for"),
-    permission_data: RegisteredModelPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Update the permission for a user on a registered model.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to update permissions for.
-    name : str
-        The name of the registered model to update permissions for.
-    permission_data : RegisteredModelPermission
-        The updated permission data.
-
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.update_registered_model_permission(
-            name=name,
-            username=username,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="registered_model_permission",
-            resource_id=name,
-            detail={"username": username, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model permission updated for {username} on {name}")
-    except MlflowException as e:
-        logger.error(f"Error updating registered model permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
-            raise HTTPException(status_code=404, detail="Registered model permission does not exist")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error updating registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update registered model permission")
-
-
-@user_permissions_router.delete(
-    USER_REGISTERED_MODEL_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete registered model permission for a user",
-    description="Deletes the permission for a user on a specific registered model.",
-    tags=["user registered model permissions"],
-)
-async def delete_user_registered_model_permission(
-    username: str = Path(..., description="The username to delete registered model permission for"),
-    name: str = Path(..., description="The registered model name to delete permissions for"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Delete the permission for a user on a registered model.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to delete permissions for.
-    name : str
-        The name of the registered model to delete permissions for.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.delete_registered_model_permission(name, username)
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="registered_model_permission",
-            resource_id=name,
-            detail={"username": username},
-        )
-        return StatusMessageResponse(message=f"Registered model permission deleted for {username} on {name}")
-    except Exception as e:
-        logger.error(f"Error deleting registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete registered model permission")
 
 
 @user_permissions_router.get(
@@ -1314,260 +1135,32 @@ async def delete_user_scorer_pattern_permission(
         raise HTTPException(status_code=500, detail="Failed to delete scorer pattern permission")
 
 
-@user_permissions_router.get(
+regex_routes(
+    user_permissions_router,
+    USER,
+    "registered model",
+    "user registered model pattern permissions",
     USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    response_model=List[RegisteredModelRegexPermissionRecord],
-    summary="List registered model pattern permissions for a user",
-    description="Retrieves a list of regex-based registered model permission patterns for the specified user.",
-    tags=["user registered model pattern permissions"],
-)
-async def get_user_registered_model_regex_permissions(
-    username: str = Path(..., description="The username to list registered model pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[RegisteredModelRegexPermissionRecord]:
-    """
-    List all regex-based registered model permission patterns for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to list regex permissions for.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A list of registered model regex permissions for the user.
-    """
-    try:
-        rm = store.list_registered_model_regex_permissions(username=username)
-        return [RegisteredModelRegexPermissionRecord(**r.to_json()) for r in rm]
-    except Exception as e:
-        logger.error(f"Error listing registered model pattern permissions: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve registered model pattern permissions",
-        )
-
-
-@user_permissions_router.post(
-    USER_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    status_code=201,
-    response_model=StatusMessageResponse,
-    summary="Create registered model pattern permission for a user",
-    description="Creates a new regex-based permission pattern for registered model access.",
-    tags=["user registered model pattern permissions"],
-)
-async def create_user_registered_model_regex_permission(
-    username: str = Path(
-        ...,
-        description="The username to create registered model pattern permission for",
-    ),
-    pattern_data: RegisteredModelRegexCreate = Body(..., description="The regex pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a new regex-based permission pattern for registered model access.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to create the pattern permission for.
-    pattern_data : RegisteredModelRegexCreate
-        The regex pattern details including the pattern, priority, and permission level.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.create_registered_model_regex_permission(
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="registered_model_regex_permission",
-            resource_id=username,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model pattern permission created for {username}")
-    except Exception as e:
-        logger.error(f"Error creating registered model pattern permission: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to create registered model pattern permission",
-        )
-
-
-@user_permissions_router.get(
     USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    response_model=RegisteredModelRegexPermissionResponse,
-    summary="Get registered model pattern permission for a user",
-    description="Retrieves a specific regex-based registered model permission pattern for the specified user.",
-    tags=["user registered model pattern permissions"],
+    names=regex_names("user_registered_model"),
+    id_type=str,
+    quiet_delete=True,
+    body=RegisteredModelRegexCreate,
+    item=lambda r: RegisteredModelRegexPermissionRecord(**r.to_json()),
+    item_model=RegisteredModelRegexPermissionRecord,
+    models={"get": RegisteredModelRegexPermissionResponse, "update": RegisteredModelRegexPermissionResponse},
+    respond={
+        op: lambda a, rm: RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
+        for op in ("get", "update")
+    },
+    call={
+        "list": lambda a: store.list_registered_model_regex_permissions(username=a.username),
+        "create": lambda a: store.create_registered_model_regex_permission(**pattern_fields(a), username=a.username),
+        "get": lambda a: store.get_registered_model_regex_permission(id=int(a.id), username=a.username),
+        "update": lambda a: store.update_registered_model_regex_permission(id=int(a.id), **pattern_fields(a), username=a.username),
+        "delete": lambda a: store.delete_registered_model_regex_permission(id=int(a.id), username=a.username),
+    },
 )
-async def get_user_registered_model_regex_permission(
-    username: str = Path(..., description="The username to get registered model pattern permission for"),
-    id: str = Path(..., description="The pattern ID to retrieve"),
-    admin_username: str = Depends(check_admin_permission),
-) -> RegisteredModelRegexPermissionResponse:
-    """
-    Get a specific regex-based registered model permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to get the regex permission for.
-    id : str
-        The unique identifier of the pattern to retrieve.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        The registered model regex permission details.
-    """
-    try:
-        rm = store.get_registered_model_regex_permission(id=int(id), username=username)
-        return RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error getting registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Registered model pattern permission not found")
-
-
-@user_permissions_router.patch(
-    USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    response_model=RegisteredModelRegexPermissionResponse,
-    summary="Update registered model pattern permission for a user",
-    description="Updates a specific regex-based registered model permission pattern for the specified user.",
-    tags=["user registered model pattern permissions"],
-)
-async def update_user_registered_model_regex_permission(
-    username: str = Path(
-        ...,
-        description="The username to update registered model pattern permission for",
-    ),
-    id: str = Path(..., description="The pattern ID to update"),
-    pattern_data: RegisteredModelRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> RegisteredModelRegexPermissionResponse:
-    """
-    Update a specific regex-based registered model permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to update the regex permission for.
-    id : str
-        The unique identifier of the pattern to update.
-    pattern_data : RegisteredModelRegexCreate
-        The updated regex pattern details.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        The updated registered model regex permission details.
-    """
-    try:
-        rm = store.update_registered_model_regex_permission(
-            id=int(id),
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="registered_model_regex_permission",
-            resource_id=username,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error updating registered model pattern permission: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to update registered model pattern permission",
-        )
-
-
-@user_permissions_router.delete(
-    USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    response_model=StatusOnlyResponse,
-    response_model_exclude_none=True,
-    summary="Delete registered model pattern permission for a user",
-    description="Deletes a specific regex-based registered model permission pattern for the specified user.",
-    tags=["user registered model pattern permissions"],
-)
-async def delete_user_registered_model_regex_permission(
-    username: str = Path(
-        ...,
-        description="The username to delete registered model pattern permission for",
-    ),
-    id: str = Path(..., description="The pattern ID to delete"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusOnlyResponse:
-    """
-    Delete a specific regex-based registered model permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to delete the regex permission for.
-    id : str
-        The unique identifier of the pattern to delete.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.delete_registered_model_regex_permission(id=int(id), username=username)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="registered_model_regex_permission",
-            resource_id=username,
-            detail={"id": id},
-        )
-        return StatusOnlyResponse()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error deleting registered model pattern permission: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete registered model pattern permission",
-        )
 
 
 # ========================================================================================

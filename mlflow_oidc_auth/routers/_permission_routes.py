@@ -38,6 +38,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import StatusMessageResponse, StatusOnlyResponse
+from mlflow_oidc_auth.utils import get_is_admin, get_username
 
 logger = get_logger()
 
@@ -48,6 +49,8 @@ Auth = Tuple[Tuple[str, Callable[..., Any]], ...]
 """``(parameter name, dependency)`` pairs. The first one's value is the audit actor."""
 
 ADMIN: Auth = (("admin_username", check_admin_permission),)
+CALLER: Auth = (("current_username", get_username), ("is_admin", get_is_admin))
+"""The caller and whether they are an admin, for a route that checks permission inline with a ``guard``."""
 
 ALL_OPS = ("list", "create", "get", "update", "delete")
 
@@ -65,6 +68,18 @@ _ID_TEXT = {"get": "The pattern ID to retrieve", "update": "The pattern ID to up
 def pattern_fields(a: Args) -> Dict[str, Any]:
     """The regex, priority and permission of a pattern request body, as store keyword arguments."""
     return {"regex": a.pattern_data.regex, "priority": a.pattern_data.priority, "permission": a.pattern_data.permission}
+
+
+def regex_names(kind: str) -> Dict[str, str]:
+    """Endpoint names of the older pattern routes, which say ``regex`` where newer ones say ``pattern``.
+
+    Parameters:
+        kind: Subject and kind, e.g. ``"user_prompt"``.
+
+    Returns:
+        The endpoint name of every op.
+    """
+    return {op: f"{'get' if op == 'list' else op}_{kind}_regex_permission{'s' if op == 'list' else ''}" for op in ALL_OPS}
 
 
 def _cap(text: str) -> str:

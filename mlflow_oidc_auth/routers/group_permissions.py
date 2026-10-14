@@ -53,7 +53,7 @@ from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validat
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
-from ._permission_routes import ALL_OPS, GROUP, exact_routes, pattern_fields, regex_routes
+from ._permission_routes import ALL_OPS, CALLER, GROUP, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -136,6 +136,12 @@ GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name:path}/gateways/secrets"
 GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets/{name:path}"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/secrets-patterns"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets-patterns/{id}"
+
+
+def _can_manage_model(a) -> None:
+    """Inline gate of the group registered-model grant routes: admin, or MANAGE on the model."""
+    if not a.is_admin and not effective_registered_model_permission(a.name, a.current_username).permission.can_manage:
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {a.name}")
 
 
 def _group_pattern(model, prompt: bool = False):
@@ -495,169 +501,24 @@ async def get_group_registered_models(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve group registered model permissions")
 
 
-@group_permissions_router.post(
+exact_routes(
+    group_permissions_router,
+    GROUP,
+    "registered model",
+    "group registered model permissions",
     GROUP_REGISTERED_MODEL_PERMISSION_DETAIL,
-    status_code=201,
-    summary="Create registered model permission for a group",
-    description="Creates a new permission for a group to access a specific registered model.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model permissions"],
+    ops=("create", "update", "delete"),
+    keys=(("name", "The registered model name to {purpose} permissions for"),),
+    auth=CALLER,
+    guard=_can_manage_model,
+    body=RegisteredModelPermission,
+    call={
+        "create": lambda a: store.create_group_model_permission(group_name=a.group_name, name=a.name, permission=a.permission_data.permission),
+        "update": lambda a: store.update_group_model_permission(group_name=a.group_name, name=a.name, permission=a.permission_data.permission),
+        "delete": lambda a: store.delete_group_model_permission(a.group_name, a.name),
+    },
+    on="model {name}",
 )
-async def create_group_registered_model_permission(
-    group_name: str = Path(..., description="The group name to grant registered model permission to"),
-    name: str = Path(..., description="The registered model name to set permissions for"),
-    permission_data: RegisteredModelPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Create a permission for a group to access a registered model.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to grant permissions to.
-    name : str
-        The name of the registered model to grant permissions for.
-    permission_data : RegisteredModelPermission
-        The permission data containing the permission level.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the created permission.
-    """
-    # Check if user can manage this registered model
-    if not is_admin and not effective_registered_model_permission(name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {name}")
-    try:
-        store.create_group_model_permission(
-            group_name=group_name,
-            name=name,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="group_registered_model_permission",
-            resource_id=name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model permission created for group {group_name} on model {name}")
-    except Exception as e:
-        logger.error(f"Error creating group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group registered model permission")
-
-
-@group_permissions_router.patch(
-    GROUP_REGISTERED_MODEL_PERMISSION_DETAIL,
-    summary="Update registered model permission for a group",
-    description="Updates the permission for a group on a specific registered model.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model permissions"],
-)
-async def update_group_registered_model_permission(
-    group_name: str = Path(..., description="The group name to update registered model permission for"),
-    name: str = Path(..., description="The registered model name to update permissions for"),
-    permission_data: RegisteredModelPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Update the permission for a group on a registered model.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to update permissions for.
-    name : str
-        The name of the registered model to update permissions for.
-    permission_data : RegisteredModelPermission
-        The updated permission data.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the updated permission.
-    """
-    # Check if user can manage this registered model
-    if not is_admin and not effective_registered_model_permission(name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {name}")
-    try:
-        store.update_group_model_permission(
-            group_name=group_name,
-            name=name,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="group_registered_model_permission",
-            resource_id=name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model permission updated for group {group_name} on model {name}")
-    except Exception as e:
-        logger.error(f"Error updating group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group registered model permission")
-
-
-@group_permissions_router.delete(
-    GROUP_REGISTERED_MODEL_PERMISSION_DETAIL,
-    summary="Delete registered model permission for a group",
-    description="Deletes the permission for a group on a specific registered model.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model permissions"],
-)
-async def delete_group_registered_model_permission(
-    group_name: str = Path(..., description="The group name to delete registered model permission for"),
-    name: str = Path(..., description="The registered model name to delete permissions for"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Delete the permission for a group on a registered model.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to delete permissions for.
-    name : str
-        The name of the registered model to delete permissions for.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the deleted permission.
-    """
-    # Check if user can manage this registered model
-    if not is_admin and not effective_registered_model_permission(name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {name}")
-    try:
-        store.delete_group_model_permission(group_name, name)
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="group_registered_model_permission",
-            resource_id=name,
-            detail={"group_name": group_name},
-        )
-        return StatusMessageResponse(message=f"Registered model permission deleted for group {group_name} on model {name}")
-    except Exception as e:
-        logger.error(f"Error deleting group registered model permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model permission")
 
 
 @group_permissions_router.get(
@@ -903,195 +764,27 @@ regex_routes(
 )
 
 
-@group_permissions_router.get(
+regex_routes(
+    group_permissions_router,
+    GROUP,
+    "registered model",
+    "group registered model pattern permissions",
     GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    summary="Get group registered model pattern permissions",
-    description="Retrieves all registered model regex pattern permissions for a specific group.",
-    response_model=List[GroupRegisteredModelRegexPermissionItem],
-    tags=["group registered model pattern permissions"],
-)
-async def get_group_registered_model_pattern_permissions(
-    group_name: str = Path(..., description="The group name to get registered model pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupRegisteredModelRegexPermissionItem]:
-    """
-    Get all registered model regex pattern permissions for a group.
-    """
-    try:
-        patterns = store.list_group_registered_model_regex_permissions(group_name)
-        items: List[GroupRegisteredModelRegexPermissionItem] = []
-        for pattern in patterns:
-            payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-            if isinstance(payload, dict):
-                items.append(
-                    GroupRegisteredModelRegexPermissionItem(
-                        id=payload["id"],
-                        regex=payload["regex"],
-                        priority=payload["priority"],
-                        group_id=payload.get("group_id"),
-                        permission=payload["permission"],
-                        workspace=payload.get("workspace"),
-                        prompt=bool(payload.get("prompt", False)),
-                    )
-                )
-            else:
-                items.append(
-                    GroupRegisteredModelRegexPermissionItem(
-                        id=pattern.id,
-                        regex=pattern.regex,
-                        priority=pattern.priority,
-                        group_id=getattr(pattern, "group_id", None),
-                        permission=pattern.permission,
-                        workspace=pattern_workspace_of(pattern),
-                        prompt=bool(getattr(pattern, "prompt", False)),
-                    )
-                )
-
-        return items
-    except Exception as e:
-        logger.error(f"Error getting group registered model pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permissions")
-
-
-@group_permissions_router.post(
-    GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS,
-    status_code=201,
-    summary="Create registered model pattern permission for a group",
-    description="Creates a new regex pattern permission for a group to access registered models.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model pattern permissions"],
-)
-async def create_group_registered_model_pattern_permission(
-    group_name: str = Path(..., description="The group name to create registered model pattern permission for"),
-    pattern_data: RegisteredModelRegexCreate = Body(..., description="The pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a regex pattern permission for a group to access registered models.
-    """
-    try:
-        store.create_group_registered_model_regex_permission(
-            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_registered_model_regex_permission",
-            resource_id=group_name,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model pattern permission created for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error creating group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group registered model pattern permission")
-
-
-@group_permissions_router.get(
     GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    summary="Get specific registered model pattern permission for a group",
-    description="Retrieves a specific registered model regex pattern permission for a group.",
-    response_model=GroupRegisteredModelRegexPermissionItem,
-    tags=["group registered model pattern permissions"],
+    specific=ALL_OPS,
+    plural="registered models",
+    group_failures=True,
+    body=RegisteredModelRegexCreate,
+    item=_group_pattern(GroupRegisteredModelRegexPermissionItem, prompt=True),
+    item_model=GroupRegisteredModelRegexPermissionItem,
+    call={
+        "list": lambda a: store.list_group_registered_model_regex_permissions(a.group_name),
+        "create": lambda a: store.create_group_registered_model_regex_permission(**pattern_fields(a), group_name=a.group_name),
+        "get": lambda a: store.get_group_registered_model_regex_permission(a.group_name, a.id),
+        "update": lambda a: store.update_group_registered_model_regex_permission(id=a.id, group_name=a.group_name, **pattern_fields(a)),
+        "delete": lambda a: store.delete_group_registered_model_regex_permission(a.group_name, a.id),
+    },
 )
-async def get_group_registered_model_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupRegisteredModelRegexPermissionItem:
-    """
-    Get a specific registered model regex pattern permission for a group.
-    """
-    try:
-        pattern = store.get_group_registered_model_regex_permission(group_name, id)
-        payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-        if isinstance(payload, dict):
-            item = GroupRegisteredModelRegexPermissionItem(
-                id=payload["id"],
-                regex=payload["regex"],
-                priority=payload["priority"],
-                group_id=payload.get("group_id"),
-                permission=payload["permission"],
-                workspace=payload.get("workspace"),
-                prompt=bool(payload.get("prompt", False)),
-            )
-        else:
-            item = GroupRegisteredModelRegexPermissionItem(
-                id=pattern.id,
-                regex=pattern.regex,
-                priority=pattern.priority,
-                group_id=getattr(pattern, "group_id", None),
-                permission=pattern.permission,
-                workspace=pattern_workspace_of(pattern),
-                prompt=bool(getattr(pattern, "prompt", False)),
-            )
-
-        return item
-    except Exception as e:
-        logger.error(f"Error getting group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group registered model pattern permission")
-
-
-@group_permissions_router.patch(
-    GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    summary="Update registered model pattern permission for a group",
-    description="Updates a specific registered model regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model pattern permissions"],
-)
-async def update_group_registered_model_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    pattern_data: RegisteredModelRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Update a specific registered model regex pattern permission for a group.
-    """
-    try:
-        store.update_group_registered_model_regex_permission(
-            id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_registered_model_regex_permission",
-            resource_id=group_name,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Registered model pattern permission updated for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error updating group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group registered model pattern permission")
-
-
-@group_permissions_router.delete(
-    GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    summary="Delete registered model pattern permission for a group",
-    description="Deletes a specific registered model regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group registered model pattern permissions"],
-)
-async def delete_group_registered_model_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Delete a specific registered model regex pattern permission for a group.
-    """
-    try:
-        store.delete_group_registered_model_regex_permission(group_name, id)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_registered_model_regex_permission",
-            resource_id=group_name,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Registered model pattern permission deleted for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group registered model pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group registered model pattern permission")
 
 
 @group_permissions_router.get(
