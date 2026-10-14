@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 from flask import Response, g, has_app_context, request
 from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
@@ -44,6 +44,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_
 from mlflow.utils.proto_json_utils import message_to_json, parse_dict
 from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.utils.search_utils import SearchUtils
+from mlflow.utils.workspace_utils import resolve_entity_workspace_name
 
 import json
 
@@ -190,11 +191,10 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     - Resource has no workspace assignment (pre-workspace-era, WSSEC-05)
     - User has at least READ workspace permission via get_workspace_permission_cached (WSSEC-01/02/03/04)
 
-    Memoized for the current request. ``get_workspace_permission_cached`` deliberately
-    does not cache DENIALS, so a user with no grant on the workspace re-ran the full
-    source walk for every row of a search result. The memo uses the same request-scoped
-    dict as the ``_cached_can_read_*`` helpers, so it adds no new staleness window
-    (issue #253).
+    Memoized for the current request. ``get_workspace_permission_cached`` caches grants and
+    (since issue #456) denials; the memo additionally spares a shared-cache round trip per
+    row. It uses the same request-scoped dict as the ``_cached_can_read_*`` helpers, so it
+    adds no new staleness window (issue #253).
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return True
@@ -216,6 +216,67 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
     return cache[key]
 
 
+def _top_up_page(rows: Any, max_results: int, page_token: str, fetch: Callable[[str], Any], keep: Callable[[Any], bool]) -> str:
+    """Fill a filtered page back up to ``max_results`` from the following offset-token pages.
+
+    Each fetched batch is walked in full: a row the user cannot read is skipped, a readable
+    one is appended, and as soon as the page is full the returned token points at the row
+    right after the one that filled it. No fetched row is discarded unexamined, so no row is
+    fetched twice (issue #456) — the earlier loop sliced the *unfiltered* batch to the free
+    space before filtering and advanced the token by the slice, so the tail was re-fetched on
+    the next iteration. Mirrors the logged-models loop in ``_filter_search_logged_models``.
+
+    Parameters:
+        rows: The page's repeated field (or list); readable rows are appended as protos.
+        max_results: The page size the client asked for.
+        page_token: The token for the next unfiltered page, ``""`` when there is none.
+        fetch: Fetches the batch that starts at a token, at most ``max_results`` rows.
+        keep: Whether the current user may see a fetched row. Only kept rows are appended.
+
+    Returns:
+        The token for the next page, or ``""`` when the result set is exhausted.
+    """
+    while len(rows) < max_results and page_token:
+        batch = fetch(page_token)
+        if len(batch) == 0:
+            return ""
+        offset = SearchUtils.parse_start_offset_from_page_token(page_token)
+        # MLflow's PagedList carries ``token=None`` on the last page. Anything without the
+        # attribute is not known to be the last page, so keep paging until an empty batch.
+        is_last_page = hasattr(batch, "token") and batch.token is None
+        last_index = len(batch) - 1
+        for index, row in enumerate(batch):
+            if not keep(row):
+                continue
+            rows.append(row.to_proto())
+            if len(rows) >= max_results:
+                return "" if is_last_page and index == last_index else SearchUtils.create_page_token(offset + index + 1)
+        page_token = "" if is_last_page else SearchUtils.create_page_token(offset + len(batch))
+    return page_token
+
+
+def _search_scope_workspace() -> str:
+    """Return the workspace the current request's search ran in.
+
+    With workspaces enabled MLflow's stores scope every search to the request's active
+    workspace, so every row of a first page lives there. Registered-model and model-version
+    protos carry no ``workspace`` field; this is what ``.workspace`` on the matching entity
+    resolves to, without a per-row store lookup (issue #456). Never None, so a row is never
+    mistaken for a pre-workspace-era resource and waved through.
+    """
+    return resolve_entity_workspace_name(None)
+
+
+def _experiment_proto_workspace(experiment: Any) -> str:
+    """Return the workspace of a first-page experiment proto: its own field, else the search scope."""
+    try:
+        if experiment.HasField("workspace") and experiment.workspace:
+            return experiment.workspace
+    except ValueError:
+        pass
+    return _search_scope_workspace()
+
+
 def _filter_search_experiments(resp: Response):
     if get_fastapi_admin_status():
         return
@@ -231,44 +292,28 @@ def _filter_search_experiments(resp: Response):
         if not _cached_can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
 
-    # Filter by workspace permission (WSSEC-01)
+    # Filter by workspace permission (WSSEC-01). The experiment proto carries its own
+    # workspace, so no per-row store lookup is needed.
     if config.MLFLOW_ENABLE_WORKSPACES:
-        tracking_store = _get_tracking_store()
-        ws_map = {}
         for e in list(response_message.experiments):
-            try:
-                ws_map[e.experiment_id] = tracking_store.get_experiment(e.experiment_id).workspace
-            except Exception:
-                ws_map[e.experiment_id] = None
-        for e in list(response_message.experiments):
-            if not _can_access_workspace(username, ws_map.get(e.experiment_id)):
+            if not _can_access_workspace(username, _experiment_proto_workspace(e)):
                 response_message.experiments.remove(e)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
-    while len(response_message.experiments) < request_message.max_results and response_message.next_page_token != "":
-        refetched = tracking_store.search_experiments(
+    response_message.next_page_token = _top_up_page(
+        response_message.experiments,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: tracking_store.search_experiments(
             view_type=request_message.view_type,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
             filter_string=request_message.filter,
-            page_token=response_message.next_page_token,
-        )
-
-        remaining = request_message.max_results - len(response_message.experiments)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        readable_proto = [
-            e.to_proto() for e in refetched if _cached_can_read_experiment(e.experiment_id, username) and _can_access_workspace(username, e.workspace)
-        ]
-        response_message.experiments.extend(readable_proto)
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda e: _cached_can_read_experiment(e.experiment_id, username) and _can_access_workspace(username, e.workspace),
+    )
 
     resp.data = message_to_json(response_message)
 
@@ -288,42 +333,26 @@ def _filter_search_registered_models(resp: Response):
         if not _cached_can_read_registered_model(rm.name, username):
             response_message.registered_models.remove(rm)
 
-    # Filter by workspace permission (WSSEC-02)
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        model_registry_store_ws = _get_model_registry_store()
-        ws_map = {}
-        for rm in list(response_message.registered_models):
-            try:
-                ws_map[rm.name] = model_registry_store_ws.get_registered_model(rm.name).workspace
-            except Exception:
-                ws_map[rm.name] = None
-        for rm in list(response_message.registered_models):
-            if not _can_access_workspace(username, ws_map.get(rm.name)):
-                response_message.registered_models.remove(rm)
+    # Filter by workspace permission (WSSEC-02). Every first-page row lives in the
+    # workspace the search was scoped to, so one check covers the page.
+    if config.MLFLOW_ENABLE_WORKSPACES and len(response_message.registered_models):
+        if not _can_access_workspace(username, _search_scope_workspace()):
+            del response_message.registered_models[:]
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.registered_models) < request_message.max_results and response_message.next_page_token != "":
-        refetched = model_registry_store.search_registered_models(
+    response_message.next_page_token = _top_up_page(
+        response_message.registered_models,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: model_registry_store.search_registered_models(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
-            page_token=response_message.next_page_token,
-        )
-        remaining = request_message.max_results - len(response_message.registered_models)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        readable_proto = [
-            rm.to_proto() for rm in refetched if _cached_can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace)
-        ]
-        response_message.registered_models.extend(readable_proto)
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda rm: _cached_can_read_registered_model(rm.name, username) and _can_access_workspace(username, rm.workspace),
+    )
 
     resp.data = message_to_json(response_message)
 
@@ -344,41 +373,26 @@ def _filter_search_model_versions(resp: Response):
         if not _cached_can_read_registered_model(mv.name, username):
             response_message.model_versions.remove(mv)
 
-    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their model)
-    if config.MLFLOW_ENABLE_WORKSPACES:
-        model_registry_store_ws = _get_model_registry_store()
-        ws_map: dict[str, str | None] = {}
-        for mv in list(response_message.model_versions):
-            if mv.name not in ws_map:
-                try:
-                    ws_map[mv.name] = model_registry_store_ws.get_registered_model(mv.name).workspace
-                except Exception:
-                    ws_map[mv.name] = None
-            if not _can_access_workspace(username, ws_map.get(mv.name)):
-                response_message.model_versions.remove(mv)
+    # Filter by workspace permission (WSSEC-02 — model versions inherit workspace from their
+    # model). Every first-page row lives in the workspace the search was scoped to.
+    if config.MLFLOW_ENABLE_WORKSPACES and len(response_message.model_versions):
+        if not _can_access_workspace(username, _search_scope_workspace()):
+            del response_message.model_versions[:]
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     model_registry_store = _get_model_registry_store()
-    while len(response_message.model_versions) < request_message.max_results and response_message.next_page_token != "":
-        refetched = model_registry_store.search_model_versions(
+    response_message.next_page_token = _top_up_page(
+        response_message.model_versions,
+        request_message.max_results,
+        response_message.next_page_token,
+        fetch=lambda token: model_registry_store.search_model_versions(
             filter_string=request_message.filter,
             max_results=request_message.max_results,
             order_by=request_message.order_by,
-            page_token=response_message.next_page_token,
-        )
-        remaining = request_message.max_results - len(response_message.model_versions)
-        refetched = refetched[:remaining]
-        if len(refetched) == 0:
-            response_message.next_page_token = ""
-            break
-
-        for mv in refetched:
-            if _cached_can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)):
-                response_message.model_versions.append(mv.to_proto())
-
-        start_offset = SearchUtils.parse_start_offset_from_page_token(response_message.next_page_token)
-        final_offset = start_offset + len(refetched)
-        response_message.next_page_token = SearchUtils.create_page_token(final_offset)
+            page_token=token,
+        ),
+        keep=lambda mv: _cached_can_read_registered_model(mv.name, username) and _can_access_workspace(username, getattr(mv, "workspace", None)),
+    )
 
     resp.data = message_to_json(response_message)
 

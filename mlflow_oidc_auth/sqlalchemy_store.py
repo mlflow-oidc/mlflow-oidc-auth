@@ -1916,6 +1916,35 @@ def _wrap_with_cache_flush(method):
     return wrapper
 
 
+# Membership syncs that report what they did. Interactive login calls ``set_user_groups`` on
+# every sign-in; an unconditional flush wiped the whole permission cache (fleet-wide with Redis)
+# even when nothing changed (issue #456). These flush only when the outcome says the membership
+# actually changed. Anything other than a MembershipOutcome flushes, so an unexpected return
+# can never leave a stale grant behind.
+_MEMBERSHIP_SYNC_METHODS = frozenset({"set_user_groups"})
+
+
+def _wrap_with_cache_flush_if_changed(method):
+    """Wrap a membership sync to flush the permission cache only when membership changed.
+
+    A sync that added or removed nothing cannot change group-scoped resolution, so the cache
+    is still correct. Any result that is not a ``MembershipOutcome`` reporting no change flushes.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        if isinstance(result, MembershipOutcome) and not result.changed:
+            return result
+        flush_permission_cache()
+        return result
+
+    return wrapper
+
+
 def _wrap_with_membership_invalidation(method):
     """Wrap a membership method to drop the mutated user's workspace-cache entries.
 
@@ -1949,7 +1978,8 @@ def _wrap_with_membership_invalidation(method):
 
 for _method_name in _PERMISSION_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
-    setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
+    _wrap = _wrap_with_cache_flush_if_changed if _method_name in _MEMBERSHIP_SYNC_METHODS else _wrap_with_cache_flush
+    setattr(SqlAlchemyStore, _method_name, _wrap(_original))
 
 
 def _wrap_with_workspace_group_invalidation(method):

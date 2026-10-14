@@ -218,12 +218,11 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Opti
     (WSAUTH-C/WSAUTH-04) but is designed for batch resolution in FastAPI route context
     where the workspace is available via MLflow's ContextVar (set by WorkspaceContextMiddleware).
 
-    The workspace permission is the same for every resource in a batch, but
-    ``get_workspace_permission_cached`` deliberately does not cache DENIALS — so without
-    a memo a user with no workspace grant paid a full source walk (measured 7 queries) for
-    EVERY resource in the batch, making a listing 15+7N queries instead of a flat 22.
-    Memoizing on ``ctx`` bounds the lifetime to this one batch call, so unlike a
-    cross-request cache it cannot serve a stale authorization decision (issue #253).
+    The workspace permission is the same for every resource in a batch. Before issue #456
+    ``get_workspace_permission_cached`` did not cache DENIALS, so without a memo a user with
+    no workspace grant paid a full source walk (measured 7 queries) for EVERY resource in the
+    batch (issue #253). Denials are cached now; the memo on ``ctx`` still spares the shared
+    cache round trip (a Redis GET per row) and is bounded to this one batch call.
 
     Parameters:
         result: The PermissionResult from resource-level resolution.

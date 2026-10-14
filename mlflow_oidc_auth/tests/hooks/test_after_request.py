@@ -281,7 +281,7 @@ def test_filter_search_experiments_with_pagination(mock_response, mock_bridge):
             exp_entities.append(e)
 
         tracking_store = MagicMock()
-        tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token=None)
+        tracking_store.search_experiments.return_value = _FakePagedList(exp_entities, token="more")
 
         with (
             patch(
@@ -477,7 +477,7 @@ def test_filter_search_registered_models_with_pagination(mock_response, mock_bri
             rm_entities.append(rm)
 
         model_registry_store = MagicMock()
-        model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token=None)
+        model_registry_store.search_registered_models.return_value = _FakePagedList(rm_entities, token="more")
 
         with (
             patch(
@@ -1393,7 +1393,7 @@ def test_filter_search_model_versions_with_pagination(mock_response, mock_bridge
             mv_entities.append(mv)
 
         model_registry_store = MagicMock()
-        model_registry_store.search_model_versions.return_value = _FakePagedList(mv_entities, token=None)
+        model_registry_store.search_model_versions.return_value = _FakePagedList(mv_entities, token="more")
 
         with (
             patch(
@@ -1598,3 +1598,59 @@ def test_filter_search_logged_models_rewrites_on_unexpected_body(mock_response, 
     rewrote = _run_filter_logged_models(mock_response, can_read=lambda exp_id, user: True)
 
     assert rewrote is True
+
+
+# ---------------------------------------------------------------------------
+# Re-paging correctness (issue #456): page a filtered search to the end.
+# ---------------------------------------------------------------------------
+
+_REPAGING_VISIBILITY = {
+    "every_10th": lambda i: i % 10 == 0,
+    "every_3rd": lambda i: i % 3 == 1,
+    "tail_only": lambda i: i >= 230,
+    "head_only": lambda i: i < 7,
+    "all": lambda i: True,
+    "none": lambda i: False,
+    "pseudo_random": lambda i: (i * 2654435761) % 7 in (0, 3),
+}
+
+
+@pytest.mark.parametrize("kind", ["experiments", "registered_models", "model_versions"])
+@pytest.mark.parametrize("max_results", [1, 7, 25, 100])
+@pytest.mark.parametrize("visibility", sorted(_REPAGING_VISIBILITY))
+def test_repaging_no_row_skipped_or_duplicated(kind, max_results, visibility):
+    """Paging a filtered result to the end yields exactly the readable set, each row once.
+
+    A re-paging bug may drop or duplicate rows; it must never add an unreadable one.
+    """
+    from mlflow_oidc_auth.tests.search_paging_helpers import (
+        FakeSearchStore,
+        make_experiments,
+        make_model_versions,
+        make_registered_models,
+        row_id,
+        run_filtered_page,
+    )
+
+    rows = {"experiments": make_experiments, "registered_models": make_registered_models, "model_versions": make_model_versions}[kind](250)
+    is_visible = _REPAGING_VISIBILITY[visibility]
+    readable = {row_id(kind, r) for i, r in enumerate(rows) if is_visible(i)}
+    store = FakeSearchStore(rows)
+
+    seen: list = []
+    token = None
+    for _ in range(len(rows) + 2):  # bounded: every request consumes at least one row
+        ids, token = run_filtered_page(kind, store, lambda rid: rid in readable, max_results=max_results, page_token=token)
+        assert len(ids) <= max_results
+        assert set(ids) <= readable, "an unreadable row was returned"
+        seen.extend(ids)
+        if not token:
+            break
+    else:
+        pytest.fail("paging did not terminate")
+
+    assert len(seen) == len(set(seen)), "a row was returned twice"
+    assert set(seen) == readable, "a readable row was skipped"
+    # Pages concatenate to the store's order.
+    order = [row_id(kind, r) for r in rows]
+    assert seen == [rid for rid in order if rid in readable]

@@ -249,11 +249,13 @@ class TestWorkspaceFallbackMemo:
     """The workspace fallback must be resolved once per batch, not once per resource."""
 
     def test_workspace_deny_does_not_scale_with_resource_count(self, seeded_store, counter, monkeypatch):
-        """get_workspace_permission_cached never caches DENIALS.
+        """The batch memo bounds a denied user's workspace check to one per batch.
 
-        Without a memo, a user with no workspace grant re-ran the full source walk for
-        every resource, making a listing 21+9N queries. The memo lives on the context, so
-        its lifetime is one batch call and it cannot serve a stale decision.
+        Before issue #456 get_workspace_permission_cached never cached DENIALS, so without
+        a memo a user with no workspace grant re-ran the full source walk for every
+        resource, making a listing 21+9N queries. Denials are cached now; the workspace
+        cache is flushed before each batch below so this still measures the memo alone.
+        The memo lives on the context, so its lifetime is one batch call.
         """
         store, username, _ = seeded_store
         import mlflow_oidc_auth.utils.batch_permissions as bp
@@ -275,6 +277,7 @@ class TestWorkspaceFallbackMemo:
             for n in (1, 5, 20):
                 experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}") for i in range(n)]
                 ctx = bp.build_user_permission_context(username)
+                wsc.flush_workspace_cache()
                 counter.reset()
                 for exp in experiments:
                     bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name)
@@ -389,3 +392,63 @@ class TestGroupPermissionCollapse:
             bp.store = original
 
         assert results[0] == results[1], f"resolution depends on membership insertion order: {results}"
+
+
+class TestSearchRepaging:
+    """The re-paging loop must consume every fetched row (issue #456).
+
+    It used to slice the UNFILTERED batch to the page's free space before filtering, then
+    advance the token by the slice, so the discarded tail was fetched again: 8 MLflow
+    search calls where 6 suffice at 10% visibility. The count includes MLflow's own
+    first-page call.
+    """
+
+    def _page_once(self, kind, rows):
+        from mlflow_oidc_auth.tests.search_paging_helpers import FakeSearchStore, row_id, run_filtered_page
+
+        store = FakeSearchStore(rows)
+        visible = {row_id(kind, r) for i, r in enumerate(rows) if i % 10 == 0}  # 10% visibility, spread evenly
+        ids, token = run_filtered_page(kind, store, lambda rid: rid in visible, max_results=100, page_token=None)
+        return store, visible, ids, token
+
+    def test_search_experiments_repaging_calls_minimum(self):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_experiments
+
+        store, visible, ids, token = self._page_once("experiments", make_experiments(500))
+
+        assert sorted(ids) == sorted(visible), "page must hold every readable row (50 < max_results)"
+        assert token == "", "result set exhausted"
+        assert store.calls <= 6, f"search_experiments called {store.calls} times"
+
+    def test_search_registered_models_repaging_calls_minimum(self):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_registered_models
+
+        store, visible, ids, token = self._page_once("registered_models", make_registered_models(500))
+
+        assert sorted(ids) == sorted(visible)
+        assert token == ""
+        assert store.calls <= 6, f"search_registered_models called {store.calls} times"
+
+
+class TestWorkspaceDenialCache:
+    """A denied user's workspace check must be answered from cache once warm (issue #456)."""
+
+    def test_workspace_denial_warm_zero_statements(self, seeded_store, counter, monkeypatch):
+        store, username, _ = seeded_store
+        import mlflow_oidc_auth.store as store_mod
+        import mlflow_oidc_auth.utils.workspace_cache as wsc
+        from mlflow_oidc_auth.config import config as cfg
+
+        monkeypatch.setattr(cfg, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.setattr(store_mod, "store", store)
+        wsc.flush_workspace_cache()
+        try:
+            counter.reset()
+            assert wsc.get_workspace_permission_cached(username, "ws-none") is None
+            assert counter.count > 0, "cold denial issued no statements; test would be vacuous"
+
+            counter.reset()
+            assert wsc.get_workspace_permission_cached(username, "ws-none") is None
+            assert counter.count == 0, counter.report()
+        finally:
+            wsc.flush_workspace_cache()

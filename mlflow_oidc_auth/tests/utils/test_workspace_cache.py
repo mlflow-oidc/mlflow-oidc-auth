@@ -119,10 +119,49 @@ class TestGetWorkspacePermissionCached:
             # lookup should only be called once (not twice)
             assert mock_lookup.call_count == 1
 
-    def test_does_not_cache_none_results(self):
-        """get_workspace_permission_cached() does NOT cache None results."""
+    def test_caches_denial(self):
+        """A denial is cached (issue #456), but only for that exact user and workspace.
+
+        Before, denials were never cached, so a user with no grant re-walked every source on
+        every request. The cached denial lives under the ``username:workspace`` key, so it must
+        never be served to another user or for another workspace.
+        """
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
+        )
+
+        mock_config = MagicMock()
+        mock_config.MLFLOW_ENABLE_WORKSPACES = True
+        mock_config.WORKSPACE_CACHE_MAX_SIZE = 1024
+        mock_config.WORKSPACE_CACHE_TTL_SECONDS = 300
+
+        grants = {("user2", "ws1"): MANAGE, ("user1", "ws2"): READ}
+
+        with (
+            patch("mlflow_oidc_auth.utils.workspace_cache.config", mock_config),
+            patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
+        ):
+            mock_lookup.side_effect = lambda username, workspace: grants.get((username, workspace))
+
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 1, "denial was not cached"
+
+            # Another user in the same workspace, and the same user in another workspace,
+            # are resolved on their own — the denial is not served to them.
+            assert get_workspace_permission_cached("user2", "ws1") == MANAGE
+            assert get_workspace_permission_cached("user1", "ws2") == READ
+            assert mock_lookup.call_count == 3
+
+            # And the denial itself is unaffected by their grants.
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 3
+
+    def test_grant_clears_cached_denial(self):
+        """The invalidation a grant write performs drops a cached denial, so the grant applies at once."""
+        from mlflow_oidc_auth.utils.workspace_cache import (
+            get_workspace_permission_cached,
+            invalidate_workspace_permission,
         )
 
         mock_config = MagicMock()
@@ -135,12 +174,15 @@ class TestGetWorkspacePermissionCached:
             patch("mlflow_oidc_auth.utils.workspace_cache._lookup_workspace_permission") as mock_lookup,
         ):
             mock_lookup.return_value = None
-            # First call — returns None, should not cache
-            result1 = get_workspace_permission_cached("user1", "ws1")
-            assert result1 is None
-            # Second call — should call lookup again because None was not cached
-            result2 = get_workspace_permission_cached("user1", "ws1")
-            assert result2 is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert get_workspace_permission_cached("user1", "ws1") is None
+            assert mock_lookup.call_count == 1, "precondition: denial cached"
+
+            # A grant is written; the store wrapper invalidates the user's entry.
+            mock_lookup.return_value = READ
+            invalidate_workspace_permission("user1", "ws1")
+
+            assert get_workspace_permission_cached("user1", "ws1") == READ
             assert mock_lookup.call_count == 2
 
 

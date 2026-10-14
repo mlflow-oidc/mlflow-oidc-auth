@@ -6,6 +6,8 @@ including permission retrieval, caching, and access control checks.
 """
 
 import unittest
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -809,3 +811,37 @@ class TestPermissionCacheCompositeKey:
         monkeypatch.setattr(perms, "_get_cache_workspace", lambda: None)
         perms.invalidate_permission_cache("scorer", "1", "bob", scorer_name="mine")
         assert deleted == [perms._make_cache_key("scorer", "1", "bob", None, scorer_name="mine")]
+
+
+class TestPermissionCacheMaxSize:
+    """PERMISSION_CACHE_MAX_SIZE sizes the local permission cache (issue #456)."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self, monkeypatch):
+        import mlflow_oidc_auth.utils.permissions as perms
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "CACHE_BACKEND", "local")
+        monkeypatch.setattr(perms, "_permission_cache", None)
+        yield
+        monkeypatch.setattr(perms, "_permission_cache", None)
+
+    def test_configured_size_is_used(self, monkeypatch):
+        import mlflow_oidc_auth.utils.permissions as perms
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", 123, raising=False)
+        assert perms._get_permission_cache()._cache.maxsize == 123
+
+    def test_default_is_ten_thousand(self):
+        from mlflow_oidc_auth.config import AppConfig
+
+        assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 10000
+
+    @pytest.mark.parametrize("bad", [0, -5, "big", None])
+    def test_unusable_value_falls_back_to_default(self, monkeypatch, bad):
+        import mlflow_oidc_auth.utils.permissions as perms
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", bad, raising=False)
+        assert perms._get_permission_cache()._cache.maxsize == 10000

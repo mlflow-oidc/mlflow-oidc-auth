@@ -167,9 +167,37 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
-    def test_set_user_groups_flushes_cache(self, mock_flush, mock_store):
-        """Changing group membership must flush the cache."""
+    def test_set_user_groups_unchanged_does_not_flush_cache(self, mock_flush, mock_store):
+        """A sync that changed nothing (every login re-asserting membership) must not flush (issue #456)."""
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome()
         mock_store.set_user_groups("user1", ["group1", "group2"])
+        mock_flush.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "outcome_kwargs",
+        [
+            {"added": [("user1", "group2")]},
+            {"removed": [("user1", "group1")]},
+            {"added": [("user1", "group2")], "removed": [("user1", "group1")]},
+        ],
+        ids=["added", "removed", "both"],
+    )
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_changed_flushes_cache(self, mock_flush, mock_store, outcome_kwargs):
+        """A sync that added or removed a membership must flush the cache."""
+        from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+        mock_store.group_repo.set_groups_for_user.return_value = MembershipOutcome(**outcome_kwargs)
+        mock_store.set_user_groups("user1", ["group1", "group2"])
+        mock_flush.assert_called_once()
+
+    @patch(FLUSH_PATCH_PATH)
+    def test_set_user_groups_unknown_result_flushes_cache(self, mock_flush, mock_store):
+        """Anything but a MembershipOutcome reporting no change flushes — fail safe, never stale."""
+        mock_store.group_repo.set_groups_for_user.return_value = None
+        mock_store.set_user_groups("user1", ["group1"])
         mock_flush.assert_called_once()
 
     @patch(FLUSH_PATCH_PATH)
@@ -493,3 +521,62 @@ class TestWorkspaceCacheInvalidationRegressions:
             side_effect=RuntimeError("cache down"),
         ):
             mock_store.set_user_groups("alice", ["g1"])  # must not raise
+
+
+class TestSetUserGroupsRealStore:
+    """End to end with a real store and the real permission cache: no mocks of the flush path.
+
+    Uses registered models because experiment regex resolution reads experiment names from
+    MLflow's tracking store, which these tests do not stand up.
+    """
+
+    @pytest.fixture
+    def real_store(self, tmp_path, monkeypatch):
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        monkeypatch.setattr(config, "PERMISSION_SOURCE_ORDER", ["user", "group", "regex", "group-regex"])
+        store = SqlAlchemyStore()
+        store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+        monkeypatch.setattr(perms, "store", store)
+        perms.flush_permission_cache()
+        yield store
+        perms.flush_permission_cache()
+
+    def test_set_user_groups_removed_member_loses_access_immediately(self, real_store):
+        """Negative test: removing a user from the granting group must not leave a cached READ behind."""
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        real_store.create_user("nina@example.com", "Nina")
+        real_store.populate_groups(["readers", "others"])
+        real_store.set_user_groups("nina@example.com", ["readers", "others"])
+        real_store.create_group_model_permission("readers", "model-1", "READ")
+
+        warm = perms.effective_registered_model_permission("model-1", "nina@example.com")
+        assert warm.permission == READ and warm.kind == "group", "precondition: READ cached through the group"
+
+        real_store.set_user_groups("nina@example.com", ["others"])
+
+        after = perms.effective_registered_model_permission("model-1", "nina@example.com")
+        assert after.permission == NO_PERMISSIONS, "removed member still served the cached group READ"
+
+    def test_set_user_groups_unchanged_keeps_cached_entries(self, real_store):
+        """Re-asserting the same membership (a login) leaves other users' cached decisions in place."""
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        for name in ("olga@example.com", "paul@example.com"):
+            real_store.create_user(name, name)
+        real_store.populate_groups(["readers"])
+        real_store.set_user_groups("olga@example.com", ["readers"])
+        real_store.set_user_groups("paul@example.com", ["readers"])
+        real_store.create_group_model_permission("readers", "model-1", "READ")
+        perms.effective_registered_model_permission("model-1", "paul@example.com")
+        key = perms._make_cache_key("registered_model", "model-1", "paul@example.com", perms._get_cache_workspace())
+        assert perms._get_permission_cache().get(key) is not None, "precondition: entry cached"
+
+        real_store.set_user_groups("olga@example.com", ["readers"])
+
+        assert perms._get_permission_cache().get(key) is not None, "an unchanged login sync flushed the cache"

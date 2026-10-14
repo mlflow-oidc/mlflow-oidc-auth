@@ -39,7 +39,7 @@ logger = get_logger()
 # Permission cache (lazy init to avoid import-time config reads)
 # ---------------------------------------------------------------------------
 
-_PERMISSION_CACHE_MAX_SIZE = 2048
+_PERMISSION_CACHE_DEFAULT_MAX_SIZE = 10000
 _PERMISSION_CACHE_DEFAULT_TTL = 30
 
 _permission_cache: CacheBackend | None = None
@@ -50,7 +50,10 @@ def _get_permission_cache() -> CacheBackend:
     global _permission_cache
     if _permission_cache is None:
         ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        _permission_cache = get_cache_backend("permissions", maxsize=_PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        maxsize = getattr(config, "PERMISSION_CACHE_MAX_SIZE", _PERMISSION_CACHE_DEFAULT_MAX_SIZE)
+        if not isinstance(maxsize, int) or isinstance(maxsize, bool) or maxsize <= 0:
+            maxsize = _PERMISSION_CACHE_DEFAULT_MAX_SIZE
+        _permission_cache = get_cache_backend("permissions", maxsize=maxsize, ttl=ttl)
     return _permission_cache
 
 

@@ -19,6 +19,13 @@ _cache: CacheBackend | None = None
 _WORKSPACE_CACHE_DEFAULT_MAX_SIZE = 1024
 _WORKSPACE_CACHE_DEFAULT_TTL = 300
 
+# Stored in place of a Permission when the lookup found none, so a cached denial is
+# distinguishable from a miss (``cache.get`` returns None for a miss). A plain string so it
+# survives the Redis backend's pickle round trip and compares by value afterwards. It lives
+# under the same ``username:workspace`` key as a grant, so every invalidation path that drops
+# a grant drops a cached denial too, and it can never be served for another user or workspace.
+_DENIED = "::workspace-denied"
+
 
 def _sanitize(value: str) -> str:
     """Strip control characters from a value before logging to prevent log injection."""
@@ -43,7 +50,8 @@ def _get_cache() -> CacheBackend:
 def get_workspace_permission_cached(username: str, workspace: str) -> Permission | None:
     """Get effective workspace permission for a user, with caching.
 
-    Returns None if the user has no workspace permission.
+    Returns None if the user has no workspace permission. Both grants and denials are
+    cached under the same ``username:workspace`` key with the same TTL.
     Only active when MLFLOW_ENABLE_WORKSPACES is True.
 
     Parameters:
@@ -60,11 +68,12 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     key = _make_cache_key(username, workspace)
     cached = cache.get(key)
     if cached is not None:
-        return cached
+        return None if cached == _DENIED else cached
 
     perm = _lookup_workspace_permission(username, workspace)
-    if perm is not None:
-        cache.set(key, perm)  # Only cache non-None to avoid caching denials
+    # Denials are cached too (issue #456): otherwise a user with no grant re-walks every
+    # source on every request. A stale denial fails closed, and grant writes invalidate it.
+    cache.set(key, _DENIED if perm is None else perm)
     return perm
 
 

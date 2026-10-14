@@ -6,8 +6,10 @@ tests in test_store_cache_invalidation.py assert that a helper was *called*, so
 neutering the helpers themselves (delete_prefix, invalidate_user_workspace_entries,
 invalidate_group_workspace_permission) leaves them green. These tests fail instead.
 
-Every case asserts the REVOKED direction. All three bugs fixed here were fail-open —
-denials are never cached, so only a stale *grant* can be served.
+Most cases assert the REVOKED direction: all three bugs fixed here were fail-open.
+Denials are cached too since issue #456, so TestCachedDenialIsCleared asserts the
+GRANTED direction through the same invalidation paths — a stale denial fails closed, but
+it must not outlive the grant that lifts it.
 """
 
 import pytest
@@ -187,3 +189,51 @@ class TestPrefixInvalidationDoesNotOverDelete:
         assert cache.get(_make_cache_key("bob", "ws-prod")) is None, "target not invalidated"
         assert cache.get(_make_cache_key("bob2", "ws-prod")) is not None, "over-deleted bob2"
         assert cache.get(_make_cache_key("bobby", "ws-prod")) is not None, "over-deleted bobby"
+
+
+class TestCachedDenialIsCleared:
+    """A cached denial shares the grant's key, so every grant path must drop it (issue #456)."""
+
+    def _deny_warm(self, ws_store, username, workspace):
+        assert _cached(username, workspace) is None, "precondition: no grant"
+        from mlflow_oidc_auth.utils.workspace_cache import _get_cache, _make_cache_key
+
+        assert _get_cache().get(_make_cache_key(username, workspace)) is not None, "precondition: denial cached"
+
+    def test_user_grant_clears_cached_denial(self, ws_store):
+        ws_store.create_user("ivy@example.com", "Ivy")
+        self._deny_warm(ws_store, "ivy@example.com", "ws-prod")
+
+        ws_store.create_workspace_permission("ws-prod", "ivy@example.com", "READ")
+
+        assert _cached("ivy@example.com", "ws-prod").name == "READ", "cached denial outlived a user grant"
+
+    def test_group_grant_clears_cached_denial(self, ws_store):
+        ws_store.create_user("jack@example.com", "Jack")
+        ws_store.populate_groups(["team-j"])
+        ws_store.set_user_groups("jack@example.com", ["team-j"])
+        self._deny_warm(ws_store, "jack@example.com", "ws-prod")
+
+        ws_store.create_workspace_group_permission("ws-prod", "team-j", "EDIT")
+
+        assert _cached("jack@example.com", "ws-prod").name == "EDIT", "cached denial outlived a group grant"
+
+    def test_joining_a_granted_group_clears_cached_denial(self, ws_store):
+        ws_store.create_user("kate@example.com", "Kate")
+        ws_store.populate_groups(["team-k"])
+        ws_store.create_workspace_group_permission("ws-prod", "team-k", "READ")
+        self._deny_warm(ws_store, "kate@example.com", "ws-prod")
+
+        ws_store.set_user_groups("kate@example.com", ["team-k"])
+
+        assert _cached("kate@example.com", "ws-prod").name == "READ", "cached denial outlived a membership change"
+
+    def test_denial_is_not_shared_across_users_or_workspaces(self, ws_store):
+        ws_store.create_user("liam@example.com", "Liam")
+        ws_store.create_user("mia@example.com", "Mia")
+        ws_store.create_workspace_permission("ws-prod", "mia@example.com", "READ")
+        ws_store.create_workspace_permission("ws-dev", "liam@example.com", "EDIT")
+        self._deny_warm(ws_store, "liam@example.com", "ws-prod")
+
+        assert _cached("mia@example.com", "ws-prod").name == "READ"
+        assert _cached("liam@example.com", "ws-dev").name == "EDIT"
