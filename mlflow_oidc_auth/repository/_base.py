@@ -271,22 +271,23 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
             setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 
-    def _ids_in(self, session: Session, resource_id: str) -> list[list[int]]:
-        """``[id, user_id]`` of each row stored under ``resource_id`` in the request's grant workspace.
+    def _ids_in(self, session: Session, resource_id: str) -> list[list]:
+        """``[id, user_id, permission]`` of each row stored under ``resource_id`` in the request's grant workspace.
 
-        The principal is recorded with the id because a database may reuse the id of a deleted row.
+        A database may give a new row the id of a deleted one, so a row is identified by all three: a
+        row recreated in between only matches if it is identical to the one recorded.
         """
-        query = session.query(self.model_class.id, self.model_class.user_id).filter(self._resource_is(resource_id))
-        return [[row_id, principal] for row_id, principal in query.all()]
+        query = session.query(self.model_class.id, self.model_class.user_id, self.model_class.permission).filter(self._resource_is(resource_id))
+        return [[row_id, principal, permission] for row_id, principal, permission in query.all()]
 
-    def _rename_ids_in(self, session: Session, ids: list[list[int]], old_name: str, new_name: str) -> None:
-        """Move exactly the recorded rows (``[id, user_id]`` pairs, still under ``old_name``) to ``new_name``."""
-        recorded = {(row_id, principal) for row_id, principal in ids or []}
+    def _rename_ids_in(self, session: Session, ids: list[list], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, user_id, permission]``, still under ``old_name``) to ``new_name``."""
+        recorded = {tuple(row) for row in ids or []}
         if not recorded:
             return
-        query = session.query(self.model_class).filter(self.model_class.id.in_([row_id for row_id, _ in recorded]), self._resource_is(old_name))
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row[0] for row in recorded]), self._resource_is(old_name))
         for perm in query.all():
-            if (perm.id, perm.user_id) in recorded:
+            if (perm.id, perm.user_id, perm.permission) in recorded:
                 setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 
@@ -571,22 +572,23 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
             setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 
-    def _ids_in(self, session: Session, resource_id: str) -> list[list[int]]:
-        """``[id, group_id]`` of each row stored under ``resource_id`` in the request's grant workspace.
+    def _ids_in(self, session: Session, resource_id: str) -> list[list]:
+        """``[id, group_id, permission]`` of each row stored under ``resource_id`` in the request's grant workspace.
 
-        The principal is recorded with the id because a database may reuse the id of a deleted row.
+        A database may give a new row the id of a deleted one, so a row is identified by all three: a
+        row recreated in between only matches if it is identical to the one recorded.
         """
-        query = session.query(self.model_class.id, self.model_class.group_id).filter(self._resource_is(resource_id))
-        return [[row_id, principal] for row_id, principal in query.all()]
+        query = session.query(self.model_class.id, self.model_class.group_id, self.model_class.permission).filter(self._resource_is(resource_id))
+        return [[row_id, principal, permission] for row_id, principal, permission in query.all()]
 
-    def _rename_ids_in(self, session: Session, ids: list[list[int]], old_name: str, new_name: str) -> None:
-        """Move exactly the recorded rows (``[id, group_id]`` pairs, still under ``old_name``) to ``new_name``."""
-        recorded = {(row_id, principal) for row_id, principal in ids or []}
+    def _rename_ids_in(self, session: Session, ids: list[list], old_name: str, new_name: str) -> None:
+        """Move exactly the recorded rows (``[id, group_id, permission]``, still under ``old_name``) to ``new_name``."""
+        recorded = {tuple(row) for row in ids or []}
         if not recorded:
             return
-        query = session.query(self.model_class).filter(self.model_class.id.in_([row_id for row_id, _ in recorded]), self._resource_is(old_name))
+        query = session.query(self.model_class).filter(self.model_class.id.in_([row[0] for row in recorded]), self._resource_is(old_name))
         for perm in query.all():
-            if (perm.id, perm.group_id) in recorded:
+            if (perm.id, perm.group_id, perm.permission) in recorded:
                 setattr(perm, self.resource_id_attr, new_name)
         session.flush()
 

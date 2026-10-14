@@ -707,6 +707,31 @@ class TestRenamingAModelDefinitionThroughTheHook:
             assert self._permission("prod-llm", VICTOR) == "MANAGE"
             assert self._permission("prod-llm-v2", VICTOR) == "NO_PERMISSIONS"
 
+    def test_a_recreated_row_with_a_reused_id_does_not_move(self, store):
+        """SQLite may give a new row the id of a deleted one; only a row identical to the recorded
+        one may move, so a grant written in between never travels with the rename."""
+        import json
+
+        from flask import Flask, g
+
+        from mlflow_oidc_auth.hooks.after_request import _rename_gateway_model_definition_permission
+
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", VICTOR, "READ")
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "MANAGE")
+            ids = store.gateway_model_definition_permission_ids("prod-llm")
+            # A new model definition takes the released name; its creator row may reuse a freed id.
+            store.grant_creator_gateway_model_definition_permission("prod-llm", VICTOR)
+            flask_app = Flask(__name__)
+            response = flask_app.response_class(response=json.dumps({"model_definition": {"name": "prod-llm-v2"}}), mimetype="application/json")
+            with flask_app.test_request_context():
+                g._updating_gateway_model_definition_old_name = "prod-llm"
+                g._updating_gateway_model_definition_permission_ids = ids
+                _rename_gateway_model_definition_permission(response)
+        with in_workspace("team-a", VICTOR):
+            assert self._permission("prod-llm-v2", VICTOR) == "NO_PERMISSIONS"
+            assert self._permission("prod-llm", VICTOR) == "MANAGE"
+
     def test_renaming_in_one_workspace_leaves_the_others(self, store):
         with in_workspace("team-b"):
             store.create_gateway_model_definition_permission("prod-llm", ALICE, "USE")
