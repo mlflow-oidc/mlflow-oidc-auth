@@ -318,6 +318,9 @@ def exact_routes(
         text: OpenAPI text overrides, by op and then by ``summary``, ``description``,
             ``subject``, ``body`` or a key name.
     """
+    if guard is not None and "list" in ops:
+        # A guard checks one resource; a listing has none, so it would run unguarded and unfiltered.
+        raise ValueError("an inline guard cannot protect a list route; write a filtering listing instead")
     who, noun, snake = subject.who, f"{subject.prefix}{label} permission", _snake(label)
     resource_key = keys[-1][0]
     on = on or "{" + resource_key + "}"
@@ -387,7 +390,7 @@ def exact_routes(
                 status_code=created if op == "create" else None,
                 audit=audit,
                 failure=failure,
-                guard=guard if op != "list" else None,
+                guard=guard,
             ),
         )
 

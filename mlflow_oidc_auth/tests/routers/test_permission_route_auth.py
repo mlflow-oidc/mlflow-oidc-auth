@@ -257,7 +257,8 @@ async def test_inline_route_refuses_a_non_manager(item):
         with pytest.raises(HTTPException) as raised:
             await route.endpoint(**_inline_kwargs(route, is_admin=False))
     assert raised.value.status_code == 403
-    assert effective.call_args.args[1] == "mallory"
+    target_name = "prompt-a" if EXPECTED[(item[0], route.path)] == INLINE_PROMPT else "model-a"
+    assert effective.call_args.args == (target_name, "mallory"), "the guard must check the caller on the route's own resource"
     assert store.mock_calls == []
 
 
@@ -270,3 +271,26 @@ async def test_inline_route_lets_a_manager_through(item):
     with patch.object(group_permissions, "store", store), patch.object(group_permissions, target, _effective(can_manage=True)):
         await route.endpoint(**_inline_kwargs(route, is_admin=False))
     assert len(store.mock_calls) == 1
+
+
+def test_factory_refuses_a_guarded_list_route():
+    """A guard checks one resource; a generated listing behind one would be unguarded and unfiltered."""
+    from fastapi import APIRouter
+
+    from mlflow_oidc_auth.routers._permission_routes import CALLER, GROUP, exact_routes
+
+    with pytest.raises(ValueError, match="list"):
+        exact_routes(
+            APIRouter(),
+            GROUP,
+            "registered model",
+            "t",
+            "/{group_name:path}/m/{name:path}",
+            ops=("list",),
+            list_path="/{group_name:path}/m",
+            keys=(("name", "n"),),
+            auth=CALLER,
+            call={"list": lambda a: []},
+            body=None,
+            guard=lambda a: None,
+        )
