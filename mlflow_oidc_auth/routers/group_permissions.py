@@ -5,7 +5,7 @@ This router handles permission management endpoints for groups, including
 experiment, model, and prompt permissions at the group level.
 """
 
-from typing import List, Union
+from typing import List, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response
 from fastapi.responses import JSONResponse
@@ -53,7 +53,7 @@ from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validat
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
-from ._permission_routes import ALL_OPS, CALLER, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
+from ._permission_routes import ADMIN, ALL_OPS, CALLER, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -756,279 +756,82 @@ regex_routes(
 # ========================================================================================
 
 
-@group_permissions_router.get(
-    GROUP_GATEWAY_ENDPOINT_PERMISSIONS,
-    response_model=List[GroupNamedPermissionItem],
-    summary="List gateway endpoint permissions for a group",
-    description="Retrieves a list of gateway endpoint permissions for the specified group.",
-    tags=["group gateway endpoint permissions"],
-)
-async def get_group_gateway_endpoint_permissions(
-    group_name: str = Path(..., description="The group name to get gateway endpoint permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupNamedPermissionItem]:
-    """List gateway endpoint permissions for a group."""
-    try:
-        perms = store.list_group_gateway_endpoint_permissions(group_name=group_name)
-        return [GroupNamedPermissionItem(name=p.endpoint_id, permission=p.permission) for p in perms]
-    except Exception as e:
-        logger.error(f"Error listing group gateway endpoint permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve group gateway endpoint permissions")
+def _gateway_routes(label: str, id_attr: str, paths: Tuple[str, str, str, str]) -> None:
+    """Add a group's admin-only routes for one gateway resource kind: exact grants and pattern grants.
 
+    :param label: The kind as the texts name it, e.g. ``"gateway endpoint"``.
+    :param id_attr: Attribute of a stored grant holding the resource name.
+    :param paths: The listing, grant, pattern and pattern-detail paths.
+    """
+    snake = label.replace(" ", "_")
+    listing, detail, patterns, pattern_detail = paths
 
-@group_permissions_router.post(
-    GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
-    status_code=201,
-    response_model=GroupNamedPermissionItem,
-    summary="Create gateway endpoint permission for a group",
-    description="Creates a new permission for a group to access a specific gateway endpoint.",
-    tags=["group gateway endpoint permissions"],
-)
-async def create_group_gateway_endpoint_permission(
-    group_name: str = Path(..., description="The group name to grant gateway endpoint permission to"),
-    name: str = Path(..., description="The gateway endpoint name to set permissions for"),
-    permission_data: GatewayPermission = Body(..., description="The permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupNamedPermissionItem:
-    """Create a gateway endpoint permission for a group."""
-    try:
-        perm = store.create_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_permission",
-            resource_id=name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return GroupNamedPermissionItem(name=perm.endpoint_id, permission=perm.permission)
-    except Exception as e:
-        logger.error(f"Error creating group gateway endpoint permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create group gateway endpoint permission")
+    def named(perm) -> GroupNamedPermissionItem:
+        return GroupNamedPermissionItem(name=getattr(perm, id_attr), permission=perm.permission)
 
+    exact_routes(
+        group_permissions_router,
+        GROUP,
+        label,
+        f"group {label} permissions",
+        detail,
+        ops=ALL_OPS,
+        list_path=listing,
+        keys=(("name", f"The {label} name to {{purpose}} permissions for"),),
+        auth=ADMIN,
+        body=GatewayPermission,
+        call={
+            "list": lambda a: getattr(store, f"list_group_{snake}_permissions")(group_name=a.group_name),
+            "create": lambda a: getattr(store, f"create_group_{snake}_permission")(
+                group_name=a.group_name, gateway_name=a.name, permission=a.permission_data.permission
+            ),
+            "get": lambda a: getattr(store, f"get_user_groups_{snake}_permission")(gateway_name=a.name, group_name=a.group_name),
+            "update": lambda a: getattr(store, f"update_group_{snake}_permission")(
+                group_name=a.group_name, gateway_name=a.name, permission=a.permission_data.permission
+            ),
+            "delete": lambda a: getattr(store, f"delete_group_{snake}_permission")(group_name=a.group_name, gateway_name=a.name),
+        },
+        models={"list": List[GroupNamedPermissionItem], "create": GroupNamedPermissionItem, "get": GroupNamedPermissionItem},
+        respond={"list": lambda a, perms: [named(p) for p in perms], "create": lambda a, perm: named(perm), "get": lambda a, perm: named(perm)},
+    )
 
-@group_permissions_router.get(
-    GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
-    response_model=GroupNamedPermissionItem,
-    summary="Get gateway endpoint permission for a group",
-    description="Retrieves the permission for a group on a specific gateway endpoint.",
-    tags=["group gateway endpoint permissions"],
-)
-async def get_group_gateway_endpoint_permission(
-    group_name: str = Path(..., description="The group name to get gateway endpoint permission for"),
-    name: str = Path(..., description="The gateway endpoint name to get permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupNamedPermissionItem:
-    """Get a gateway endpoint permission for a group."""
-    try:
-        perm = store.get_user_groups_gateway_endpoint_permission(gateway_name=name, group_name=group_name)
-        return GroupNamedPermissionItem(name=perm.endpoint_id, permission=perm.permission)
-    except Exception as e:
-        logger.error(f"Error getting group gateway endpoint permission: {str(e)}")
-        raise HTTPException(status_code=404, detail="Group gateway endpoint permission not found")
-
-
-@group_permissions_router.patch(
-    GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Update gateway endpoint permission for a group",
-    description="Updates the permission for a group on a specific gateway endpoint.",
-    tags=["group gateway endpoint permissions"],
-)
-async def update_group_gateway_endpoint_permission(
-    group_name: str = Path(..., description="The group name to update gateway endpoint permission for"),
-    name: str = Path(..., description="The gateway endpoint name to update permissions for"),
-    permission_data: GatewayPermission = Body(..., description="Updated permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """Update a gateway endpoint permission for a group."""
-    try:
-        store.update_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name, permission=permission_data.permission)
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_permission",
-            resource_id=name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Gateway endpoint permission updated for group {group_name} on {name}")
-    except Exception as e:
-        logger.error(f"Error updating group gateway endpoint permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update group gateway endpoint permission")
-
-
-@group_permissions_router.delete(
-    GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete gateway endpoint permission for a group",
-    description="Deletes the permission for a group on a specific gateway endpoint.",
-    tags=["group gateway endpoint permissions"],
-)
-async def delete_group_gateway_endpoint_permission(
-    group_name: str = Path(..., description="The group name to delete gateway endpoint permission for"),
-    name: str = Path(..., description="The gateway endpoint name to delete permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """Delete a gateway endpoint permission for a group."""
-    try:
-        store.delete_group_gateway_endpoint_permission(group_name=group_name, gateway_name=name)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_permission",
-            resource_id=name,
-            detail={"group_name": group_name},
-        )
-        return StatusMessageResponse(message=f"Gateway endpoint permission deleted for group {group_name} on {name}")
-    except Exception as e:
-        logger.error(f"Error deleting group gateway endpoint permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete group gateway endpoint permission")
-
-
-# ========================================================================================
-# GATEWAY ENDPOINT PATTERN PERMISSIONS
-# ========================================================================================
-
-
-@group_permissions_router.get(
-    GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS,
-    response_model=List[GroupGatewayRegexPermissionItem],
-    summary="List gateway endpoint pattern permissions for a group",
-    description="Retrieves a list of regex-based gateway endpoint permission patterns for the specified group.",
-    tags=["group gateway endpoint pattern permissions"],
-)
-async def get_group_gateway_endpoint_pattern_permissions(
-    group_name: str = Path(..., description="The group name to list gateway endpoint pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupGatewayRegexPermissionItem]:
-    """List gateway endpoint pattern permissions for a group."""
-    try:
-        perms = store.list_group_gateway_endpoint_regex_permissions(group_name=group_name)
-        return [
-            GroupGatewayRegexPermissionItem(
-                id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission, workspace=pattern_workspace_of(p)
-            )
-            for p in perms
-        ]
-    except Exception as e:
-        logger.error(f"Error listing group gateway endpoint pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve group gateway endpoint pattern permissions")
-
-
-@group_permissions_router.post(
-    GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS,
-    status_code=201,
-    response_model=GroupGatewayRegexPermissionItem,
-    summary="Create gateway endpoint pattern permission for a group",
-    description="Creates a new regex-based permission pattern for gateway endpoint access.",
-    tags=["group gateway endpoint pattern permissions"],
-)
-async def create_group_gateway_endpoint_pattern_permission(
-    group_name: str = Path(..., description="The group name to create gateway endpoint pattern permission for"),
-    pattern_data: GatewayRegexCreate = Body(..., description="The regex pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupGatewayRegexPermissionItem:
-    """Create a gateway endpoint pattern permission for a group."""
-    try:
-        perm = store.create_group_gateway_endpoint_regex_permission(
-            group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_regex_permission",
-            resource_id=group_name,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
+    def item(p) -> GroupGatewayRegexPermissionItem:
         return GroupGatewayRegexPermissionItem(
-            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
+            id=p.id, regex=p.regex, priority=p.priority, group_id=p.group_id, permission=p.permission, workspace=pattern_workspace_of(p)
         )
-    except Exception as e:
-        logger.error(f"Error creating group gateway endpoint pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create group gateway endpoint pattern permission")
+
+    regex_routes(
+        group_permissions_router,
+        GROUP,
+        label,
+        f"group {label} pattern permissions",
+        patterns,
+        pattern_detail,
+        body=GatewayRegexCreate,
+        item=item,
+        item_model=GroupGatewayRegexPermissionItem,
+        models={"create": GroupGatewayRegexPermissionItem, "update": GroupGatewayRegexPermissionItem},
+        respond={"create": lambda a, perm: item(perm), "update": lambda a, perm: item(perm)},
+        call={
+            "list": lambda a: getattr(store, f"list_group_{snake}_regex_permissions")(group_name=a.group_name),
+            "create": lambda a: getattr(store, f"create_group_{snake}_regex_permission")(group_name=a.group_name, **pattern_fields(a)),
+            "get": lambda a: getattr(store, f"get_group_{snake}_regex_permission")(id=a.id, group_name=a.group_name),
+            "update": lambda a: getattr(store, f"update_group_{snake}_regex_permission")(id=a.id, group_name=a.group_name, **pattern_fields(a)),
+            "delete": lambda a: getattr(store, f"delete_group_{snake}_regex_permission")(id=a.id, group_name=a.group_name),
+        },
+    )
 
 
-@group_permissions_router.get(
-    GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
-    response_model=GroupGatewayRegexPermissionItem,
-    summary="Get gateway endpoint pattern permission for a group",
-    description="Retrieves a specific regex-based gateway endpoint permission pattern for the specified group.",
-    tags=["group gateway endpoint pattern permissions"],
+_gateway_routes(
+    "gateway endpoint",
+    "endpoint_id",
+    (
+        GROUP_GATEWAY_ENDPOINT_PERMISSIONS,
+        GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL,
+        GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS,
+        GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
+    ),
 )
-async def get_group_gateway_endpoint_pattern_permission(
-    group_name: str = Path(..., description="The group name to get gateway endpoint pattern permission for"),
-    id: int = Path(..., description="The pattern ID to retrieve"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupGatewayRegexPermissionItem:
-    """Get a gateway endpoint pattern permission for a group."""
-    try:
-        perm = store.get_group_gateway_endpoint_regex_permission(id=id, group_name=group_name)
-        return GroupGatewayRegexPermissionItem(
-            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
-        )
-    except Exception as e:
-        logger.error(f"Error getting group gateway endpoint pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail="Group gateway endpoint pattern permission not found")
-
-
-@group_permissions_router.patch(
-    GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
-    response_model=GroupGatewayRegexPermissionItem,
-    summary="Update gateway endpoint pattern permission for a group",
-    description="Updates a specific regex-based gateway endpoint permission pattern for the specified group.",
-    tags=["group gateway endpoint pattern permissions"],
-)
-async def update_group_gateway_endpoint_pattern_permission(
-    group_name: str = Path(..., description="The group name to update gateway endpoint pattern permission for"),
-    id: int = Path(..., description="The pattern ID to update"),
-    pattern_data: GatewayRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupGatewayRegexPermissionItem:
-    """Update a gateway endpoint pattern permission for a group."""
-    try:
-        perm = store.update_group_gateway_endpoint_regex_permission(
-            id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_regex_permission",
-            resource_id=group_name,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return GroupGatewayRegexPermissionItem(
-            id=perm.id, regex=perm.regex, priority=perm.priority, group_id=perm.group_id, permission=perm.permission, workspace=pattern_workspace_of(perm)
-        )
-    except Exception as e:
-        logger.error(f"Error updating group gateway endpoint pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update group gateway endpoint pattern permission")
-
-
-@group_permissions_router.delete(
-    GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete gateway endpoint pattern permission for a group",
-    description="Deletes a specific regex-based gateway endpoint permission pattern for the specified group.",
-    tags=["group gateway endpoint pattern permissions"],
-)
-async def delete_group_gateway_endpoint_pattern_permission(
-    group_name: str = Path(..., description="The group name to delete gateway endpoint pattern permission for"),
-    id: int = Path(..., description="The pattern ID to delete"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """Delete a gateway endpoint pattern permission for a group."""
-    try:
-        store.delete_group_gateway_endpoint_regex_permission(id=id, group_name=group_name)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_gateway_endpoint_regex_permission",
-            resource_id=group_name,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Gateway endpoint pattern permission deleted for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group gateway endpoint pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete group gateway endpoint pattern permission")
 
 
 # ========================================================================================
