@@ -20,9 +20,6 @@ export const STATIC_API_ENDPOINTS = {
   WORKSPACE_RULES_PREVIEW: "/api/3.0/mlflow/workspace-rules/preview",
 
   // User management
-  GET_CURRENT_USER: "/api/2.0/mlflow/users/current",
-  USERS_RESOURCE: "/api/2.0/mlflow/users",
-  USERS_DETAILS: "/api/2.0/mlflow/users/details",
   SERVICE_ACCOUNT_SOURCES: "/api/2.0/mlflow/users/service-account-sources",
   // The signed-in user's own API tokens
   CURRENT_USER_TOKENS: "/api/2.0/mlflow/users/current/tokens",
@@ -44,10 +41,6 @@ export const STATIC_API_ENDPOINTS = {
 
 export const DYNAMIC_API_ENDPOINTS = {
   // User permissions for resources
-  GET_USER_DETAILS: (userName: string) =>
-    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}`,
-  USER_ACTIVE: (userName: string) =>
-    `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/active`,
   USER_SESSIONS: (userName: string) =>
     `/api/2.0/mlflow/users/${encodeURIComponent(userName)}/sessions`,
   USER_SERVICE_ACCOUNT_SOURCE: (userName: string) =>
