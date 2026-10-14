@@ -101,6 +101,16 @@ def test_prompt_update_and_revoke(store):
     assert _rows(store) == []
 
 
+def test_update_to_an_existing_pattern_is_a_conflict(store):
+    store.create_group_prompt_regex_permission("^a-.*", 1, "READ", GROUP)
+    grant_id = store.create_group_prompt_regex_permission("^b-.*", 1, "READ", GROUP).id
+
+    with pytest.raises(MlflowException) as exc:
+        store.update_group_prompt_regex_permission(grant_id, "^a-.*", 1, "EDIT", GROUP)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
+    assert sorted(regex for regex, _ in _rows(store)) == ["^a-.*", "^b-.*"]
+
+
 def test_invalid_regex_is_rejected(store):
     with pytest.raises(MlflowException):
         store.create_group_prompt_regex_permission("(", 1, "READ", GROUP)

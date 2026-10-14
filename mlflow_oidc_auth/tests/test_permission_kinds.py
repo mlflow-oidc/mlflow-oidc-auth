@@ -47,9 +47,18 @@ def test_a_kind_sharing_tables_uses_exactly_its_owners_tables():
 def test_kind_names_are_unique():
     names = [kind.name for kind in GRANT_KINDS]
     assert len(names) == len(set(names))
-    assert permission_kinds.kind("prompt") is permission_kinds.PROMPT
-    with pytest.raises(KeyError):
-        permission_kinds.kind("no-such-kind")
+
+
+def test_kind_names_are_the_single_source_of_resource_type_strings():
+    from mlflow_oidc_auth import orphans
+    from mlflow_oidc_auth.utils import permissions
+
+    assert permissions.EXPERIMENT == orphans.EXPERIMENT == permission_kinds.EXPERIMENT.name == "experiment"
+    assert permissions.REGISTERED_MODEL == orphans.REGISTERED_MODEL == "registered_model"
+    assert permissions.PROMPT == "prompt"
+    assert permissions.GATEWAY_SECRET == permission_kinds.GATEWAY_VAULT.name == "gateway_secret"
+    assert orphans.WORKSPACE == permission_kinds.WORKSPACE.name == "workspace"
+    assert permissions._RESOURCE_TYPE_LOG_NAMES == tuple(kind.name for kind in resource_kinds())
 
 
 def test_key_columns_exist_on_the_grant_tables():
@@ -82,25 +91,80 @@ def test_filtered_repositories_use_the_registry_filter():
         PromptPermissionGroupRepository,
         PromptPermissionRegexRepository,
         RegisteredModelGroupRegexPermissionRepository,
+        RegisteredModelPermissionGroupRepository,
         RegisteredModelPermissionRegexRepository,
     )
 
     for repo in (PromptGroupRegexPermissionRepository, PromptPermissionGroupRepository, PromptPermissionRegexRepository):
         assert repo.extra_filter is permission_kinds.PROMPT.extra_filter, repo.__name__
-    for repo in (RegisteredModelGroupRegexPermissionRepository, RegisteredModelPermissionRegexRepository):
+    for repo in (RegisteredModelGroupRegexPermissionRepository, RegisteredModelPermissionRegexRepository, RegisteredModelPermissionGroupRepository):
         assert repo.extra_filter is permission_kinds.REGISTERED_MODEL.extra_filter, repo.__name__
+    # The user grant table has no prompt column: its grants are shared by both kinds.
+    assert {role for role in permission_kinds.ROLES if permission_kinds.PROMPT.filter_for(role)} == {"group", "user_regex", "group_regex"}
+    assert {role for role in permission_kinds.ROLES if permission_kinds.REGISTERED_MODEL.filter_for(role)} == {"group", "user_regex", "group_regex"}
 
 
-def test_extra_filter_on_a_missing_column_is_refused():
-    """A filter the table cannot apply would match every row of the shared table: refused at class creation."""
+def _repository_classes():
+    import mlflow_oidc_auth.repository  # noqa: F401 - imports every repository module
+    from mlflow_oidc_auth.repository._base import _KindFilter
+
+    found, pending = set(), list(_KindFilter.__subclasses__())
+    while pending:
+        cls = pending.pop()
+        if cls not in found:
+            found.add(cls)
+            pending.extend(cls.__subclasses__())
+    return {cls for cls in found if cls.__module__.startswith("mlflow_oidc_auth.repository.") and not cls.__module__.endswith("._base")}
+
+
+def test_every_permission_repository_is_bound_to_a_kind():
+    """``model_class``, ``workspace_scoped`` and ``extra_filter`` are the kind's, never hand-copied."""
+    classes = _repository_classes()
+
+    assert len(classes) >= 30
+    for cls in classes:
+        kind = cls.grant_kind
+        assert kind in GRANT_KINDS, cls.__name__
+        assert cls.model_class is kind.model_for(cls.grant_role), cls.__name__
+        assert cls.extra_filter is kind.filter_for(cls.grant_role), cls.__name__
+        if cls.grant_role in ("user", "group"):
+            assert cls.workspace_scoped is kind.workspace_scoped, cls.__name__
+    bound_tables = {cls.model_class for cls in classes}
+    # Every grant table has a repository except the workspace grant tables, whose repositories
+    # (workspace_permission.py, workspace_group_permission.py) predate the shared base classes.
+    assert _permission_models() - bound_tables == {db_models.SqlWorkspacePermission, db_models.SqlWorkspaceGroupPermission}
+
+
+def test_hand_set_derived_attributes_are_refused():
     from mlflow_oidc_auth.db.models import SqlExperimentRegexPermission
     from mlflow_oidc_auth.repository import BaseRegexPermissionRepository
 
-    with pytest.raises(TypeError, match="prompt"):
+    for attributes in ({"model_class": SqlExperimentRegexPermission}, {"extra_filter": {"prompt": True}}, {"workspace_scoped": True}):
+        with pytest.raises(TypeError, match="derived from grant_kind"):
+            type("Broken", (BaseRegexPermissionRepository,), {"grant_kind": permission_kinds.EXPERIMENT, **attributes})
 
-        class _Broken(BaseRegexPermissionRepository):  # noqa: F841 - defining it is the test
-            model_class = SqlExperimentRegexPermission
-            extra_filter = {"prompt": True}
+
+def test_a_kind_without_the_role_table_is_refused():
+    from mlflow_oidc_auth.repository import BaseRegexPermissionRepository
+
+    with pytest.raises(TypeError, match="no user_regex table"):
+        type("Broken", (BaseRegexPermissionRepository,), {"grant_kind": permission_kinds.MCP_SERVER})
+
+
+def test_a_filter_some_tables_only_partly_have_is_refused():
+    """Filtering on part of the columns would match the other kind's rows on the rest."""
+    with pytest.raises(ValueError, match="has only"):
+        permission_kinds.GrantKind(
+            "broken",
+            db_models.SqlRegisteredModelPermission,
+            db_models.SqlRegisteredModelGroupPermission,
+            ("name",),
+            extra_filter={"prompt": True, "no_such_column": 1},
+        )
+    with pytest.raises(ValueError, match="no table"):
+        permission_kinds.GrantKind(
+            "broken", db_models.SqlExperimentPermission, db_models.SqlExperimentGroupPermission, ("experiment_id",), extra_filter={"prompt": True}
+        )
 
 
 # --- derived lists -----------------------------------------------------------------------------
@@ -127,17 +191,18 @@ def test_orphan_specs_cover_the_table_owning_kinds():
 
     specs = _specs()
 
-    assert [spec.resource_type for spec in specs] == [
+    assert all(isinstance(spec, permission_kinds.GrantKind) for spec in specs)
+    assert [spec.name for spec in specs] == [
         "experiment",
         "registered_model",
         "scorer",
         "gateway_endpoint",
-        "gateway_model_definition",
         "gateway_secret",
+        "gateway_model_definition",
         "mcp_server",
         "workspace",
     ]
-    by_type = {spec.resource_type: spec for spec in specs}
+    by_type = {spec.name: spec for spec in specs}
     assert by_type["experiment"].regex_key_index is None
     assert by_type["scorer"].key_columns == ("experiment_id", "scorer_name") and by_type["scorer"].regex_key_index == 1
     assert by_type["mcp_server"].user_regex_model is None and by_type["mcp_server"].group_regex_model is None
@@ -150,10 +215,11 @@ def test_orphan_specs_cover_the_table_owning_kinds():
     }
 
 
-def test_workspace_scoped_grant_tables_are_the_hand_maintained_set():
+def test_workspace_scoped_grant_tables_are_the_hand_maintained_list_in_order():
+    """The order is the one the hand-maintained list had, so backfill order and its logs do not change."""
     from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_grant_tables
 
-    assert set(workspace_scoped_grant_tables()) == {
+    assert workspace_scoped_grant_tables() == (
         (db_models.SqlRegisteredModelPermission, "name", "user_id", "registered_model"),
         (db_models.SqlRegisteredModelGroupPermission, "name", "group_id", "registered_model"),
         (db_models.SqlGatewayEndpointPermission, "endpoint_id", "user_id", "gateway_endpoint"),
@@ -164,19 +230,17 @@ def test_workspace_scoped_grant_tables_are_the_hand_maintained_set():
         (db_models.SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
         (db_models.SqlMCPServerPermission, "name", "user_id", "mcp_server"),
         (db_models.SqlMCPServerGroupPermission, "name", "group_id", "mcp_server"),
-    }
-    assert len(workspace_scoped_grant_tables()) == 10
+    )
     for model, *_ in workspace_scoped_grant_tables():
         assert hasattr(model, "workspace")
 
 
-def test_workspace_scoped_pattern_tables_are_the_hand_maintained_set():
+def test_workspace_scoped_pattern_tables_are_the_hand_maintained_list_in_order():
     from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_pattern_tables
 
     tables = workspace_scoped_pattern_tables()
 
-    assert len(tables) == len(set(tables)) == 12
-    assert set(tables) == {
+    assert tables == (
         db_models.SqlExperimentRegexPermission,
         db_models.SqlExperimentGroupRegexPermission,
         db_models.SqlRegisteredModelRegexPermission,
@@ -189,9 +253,45 @@ def test_workspace_scoped_pattern_tables_are_the_hand_maintained_set():
         db_models.SqlGatewaySecretGroupRegexPermission,
         db_models.SqlGatewayModelDefinitionRegexPermission,
         db_models.SqlGatewayModelDefinitionGroupRegexPermission,
-    }
+    )
     for model in tables:
         assert hasattr(model, "workspace")
+
+
+def test_workspace_cascade_deletes_from_the_registry_tables(tmp_path):
+    """Deleting a workspace removes the grants on it and every grant and pattern recorded in it."""
+    from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
+
+    s = SqlAlchemyStore()
+    s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    try:
+        s.create_user(USER, "Alice")
+        user_id = s.user_repo.get(USER).id
+        s.group_repo.create_group(GROUP)
+        expected = 0
+        with s.ManagedSessionMaker(read_only=False) as session:
+            from mlflow_oidc_auth.db.models import SqlGroup
+
+            group_id = session.query(SqlGroup.id).filter(SqlGroup.group_name == GROUP).scalar()
+            for kind in table_owning_kinds():
+                if kind.workspace_level:
+                    session.add(kind.user_model(workspace="ws", user_id=user_id, permission="READ"))
+                    session.add(kind.group_model(workspace="ws", group_id=group_id, permission="READ"))
+                    expected += 2
+                    continue
+                if kind.workspace_scoped:
+                    (column,) = kind.key_columns
+                    session.add(kind.user_model(**{column: "r"}, workspace="ws", user_id=user_id, permission="READ"))
+                    session.add(kind.group_model(**{column: "r"}, workspace="ws", group_id=group_id, permission="READ"))
+                    expected += 2
+                for model in kind.regex_models:
+                    owner = {"user_id": user_id} if hasattr(model, "user_id") else {"group_id": group_id}
+                    session.add(model(regex=".*", priority=0, permission="READ", workspace="ws", **owner))
+                    expected += 1
+
+        assert s.wipe_workspace_permissions("ws") == expected == 2 + 10 + 12
+    finally:
+        s.engine.dispose()
 
 
 # --- negative: a pattern of one kind never resolves the other ----------------------------------

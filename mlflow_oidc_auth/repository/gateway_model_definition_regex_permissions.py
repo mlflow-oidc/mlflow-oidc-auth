@@ -4,6 +4,7 @@ Parameter order differs from the base class (``id`` comes first in
 ``get``, ``update`` and ``revoke``), so those methods are overridden.
 """
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlGatewayModelDefinitionRegexPermission
 from mlflow_oidc_auth.entities import GatewayModelDefinitionRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
@@ -14,7 +15,7 @@ from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 class GatewayModelDefinitionPermissionRegexRepository(
     BaseRegexPermissionRepository[SqlGatewayModelDefinitionRegexPermission, GatewayModelDefinitionRegexPermission]
 ):
-    model_class = SqlGatewayModelDefinitionRegexPermission
+    grant_kind = permission_kinds.GATEWAY_MODEL_DEFINITION
 
     # -- Parameter-order overrides --------------------------------------------
 

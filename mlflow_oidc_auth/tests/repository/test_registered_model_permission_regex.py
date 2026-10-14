@@ -99,6 +99,19 @@ def test_update_and_revoke(store, kind):
         get(grant_id, USER)
 
 
+@pytest.mark.parametrize("kind", ["registered_model", "prompt"])
+def test_update_to_an_existing_pattern_is_a_conflict(store, kind):
+    create = getattr(store, f"create_{kind}_regex_permission")
+    update = getattr(store, f"update_{kind}_regex_permission")
+    create("^a-.*", 1, "READ", USER)
+    grant_id = create("^b-.*", 1, "READ", USER).id
+
+    with pytest.raises(MlflowException) as exc:
+        update(grant_id, "^a-.*", 1, "EDIT", USER)
+    assert exc.value.error_code == "RESOURCE_ALREADY_EXISTS"
+    assert sorted(regex for regex, _ in _rows(store)) == ["^a-.*", "^b-.*"]
+
+
 def test_invalid_regex_is_rejected(store):
     with pytest.raises(MlflowException):
         store.create_prompt_regex_permission("(", 1, "READ", USER)

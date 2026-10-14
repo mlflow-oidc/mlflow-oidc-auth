@@ -103,7 +103,7 @@ async def get_registered_model_groups(
     """List groups with explicit permissions for a registered model."""
 
     try:
-        groups = store.registered_model_group_repo.list_groups_for_model(str(name))
+        groups = store.registered_model_group_repo.list_groups_for_resource(str(name))
         return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving registered model group permissions: {str(e)}")

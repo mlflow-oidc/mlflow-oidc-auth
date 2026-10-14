@@ -11,7 +11,5 @@ from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
 
 
 class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
-    model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
-    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
-    extra_filter = permission_kinds.PROMPT.extra_filter
+    grant_kind = permission_kinds.PROMPT

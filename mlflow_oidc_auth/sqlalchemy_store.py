@@ -1316,10 +1316,12 @@ class SqlAlchemyStore:
         """
         # One transaction: a failure part way must not leave grants behind that a workspace later
         # created under the same name would bring back to life.
-        from mlflow_oidc_auth.db.models import SqlWorkspaceGroupPermission, SqlWorkspacePermission
+        from mlflow_oidc_auth.permission_kinds import table_owning_kinds
         from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_grant_tables, workspace_scoped_pattern_tables
 
-        models = [SqlWorkspacePermission, SqlWorkspaceGroupPermission]
+        # The grants *on* the workspace (its patterns match workspace names and stay), then every
+        # grant and pattern recorded in it — all three lists from the grant-kind registry.
+        models = [model for kind in table_owning_kinds() if kind.workspace_level for model in (kind.user_model, kind.group_model)]
         models += [model for model, *_ in workspace_scoped_grant_tables()] + list(workspace_scoped_pattern_tables())
         with self.ManagedSessionMaker(read_only=False) as session:
             return sum(session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model in models)

@@ -48,8 +48,11 @@ from mlflow_oidc_auth.db.models import (
 
 _NO_FILTER: Mapping[str, Any] = MappingProxyType({})
 
+#: The table roles a kind has, as named by a repository's ``grant_role``: the model is ``<role>_model``.
+ROLES: Tuple[str, ...] = ("user", "group", "user_regex", "group_regex")
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, eq=False)
 class GrantKind:
     """The grant tables of one resource type and how their rows name a resource.
 
@@ -69,11 +72,11 @@ class GrantKind:
             names and have no workspace of their own, and they are resolved by the workspace
             cache rather than through ``PERMISSION_REGISTRY``.
         extra_filter: Column values that pick this kind's rows out of tables it shares with another
-            kind — prompts are registered models, told apart by the ``prompt`` flag. The registered
-            model pattern repositories and the prompt grant repositories (patterns and group grants)
-            filter on it and write it into every row they create; see ``repository/_base.py``.
-            The user grant table has no ``prompt`` column, so user grants on a prompt and on a
-            registered model of the same name are one grant.
+            kind — prompts are registered models, told apart by the ``prompt`` flag. It applies to
+            every table of the kind that has those columns (:meth:`filter_for`): the repositories
+            bound to such a table filter on it and write it into every row they create; see
+            ``repository/_base.py``. The user grant table has no ``prompt`` column, so user grants
+            on a prompt and on a registered model of the same name are one grant.
         shares_tables_of: The kind whose tables these grants are stored in, or None when the kind
             owns its tables. Code that walks every table walks only the owners.
     """
@@ -89,6 +92,33 @@ class GrantKind:
     workspace_level: bool = False
     extra_filter: Mapping[str, Any] = _NO_FILTER
     shares_tables_of: Optional[str] = None
+
+    def __post_init__(self):
+        for role in ROLES:
+            model = self.model_for(role)
+            present = [column for column in self.extra_filter if model is not None and hasattr(model, column)]
+            if present and len(present) != len(self.extra_filter):
+                # Filtering on part of the columns would match the other kind's rows on the rest.
+                raise ValueError(f"{self.name}: {model.__name__} has only {present} of extra_filter {dict(self.extra_filter)}")
+        if self.extra_filter and not any(self.filter_for(role) for role in ROLES):
+            raise ValueError(f"{self.name}: no table of the kind has the extra_filter columns {list(self.extra_filter)}")
+
+    def model_for(self, role: str) -> Optional[type]:
+        """The table playing ``role`` (one of :data:`ROLES`), or None for an absent pattern table.
+
+        Raises:
+            ValueError: For an unknown role.
+        """
+        if role not in ROLES:
+            raise ValueError(f"unknown grant role {role!r}")
+        return getattr(self, f"{role}_model")
+
+    def filter_for(self, role: str) -> Mapping[str, Any]:
+        """``extra_filter`` if the table playing ``role`` has its columns, else no filter."""
+        model = self.model_for(role)
+        if model is None or not self.extra_filter or not all(hasattr(model, column) for column in self.extra_filter):
+            return _NO_FILTER
+        return self.extra_filter
 
     @property
     def models(self) -> Tuple[type, ...]:
@@ -183,15 +213,16 @@ WORKSPACE = GrantKind(
     workspace_level=True,
 )
 
-#: Every kind, in the order the orphan report walks them.
+#: Every kind. Code walking the tables walks them in this order: the grant-workspace backfill, the
+#: workspace cascade and the orphan report (``tests/test_permission_kinds.py`` pins it).
 GRANT_KINDS: Tuple[GrantKind, ...] = (
     EXPERIMENT,
     REGISTERED_MODEL,
     PROMPT,
     SCORER,
     GATEWAY_ENDPOINT,
-    GATEWAY_MODEL_DEFINITION,
     GATEWAY_VAULT,
+    GATEWAY_MODEL_DEFINITION,
     MCP_SERVER,
     WORKSPACE,
 )
@@ -205,15 +236,3 @@ def table_owning_kinds() -> Tuple[GrantKind, ...]:
 def resource_kinds() -> Tuple[GrantKind, ...]:
     """The kinds resolved per resource through ``PERMISSION_REGISTRY`` (every kind but workspaces)."""
     return tuple(kind for kind in GRANT_KINDS if not kind.workspace_level)
-
-
-def kind(name: str) -> GrantKind:
-    """The kind called ``name``.
-
-    Raises:
-        KeyError: For a name no kind has.
-    """
-    for candidate in GRANT_KINDS:
-        if candidate.name == name:
-            return candidate
-    raise KeyError(name)

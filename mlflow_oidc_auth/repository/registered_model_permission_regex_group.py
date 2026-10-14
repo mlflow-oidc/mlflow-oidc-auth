@@ -9,9 +9,8 @@ from mlflow_oidc_auth.repository._base import BaseGroupRegexPermissionRepository
 class RegisteredModelGroupRegexPermissionRepository(
     BaseGroupRegexPermissionRepository[SqlRegisteredModelGroupRegexPermission, RegisteredModelGroupRegexPermission]
 ):
-    model_class = SqlRegisteredModelGroupRegexPermission
-    extra_filter = permission_kinds.REGISTERED_MODEL.extra_filter
+    grant_kind = permission_kinds.REGISTERED_MODEL
 
 
 class PromptGroupRegexPermissionRepository(RegisteredModelGroupRegexPermissionRepository):
-    extra_filter = permission_kinds.PROMPT.extra_filter
+    grant_kind = permission_kinds.PROMPT

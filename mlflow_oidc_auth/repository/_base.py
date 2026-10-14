@@ -8,7 +8,7 @@ Provides common CRUD patterns for:
 """
 
 from types import MappingProxyType
-from typing import Any, Callable, Generic, List, Mapping, Type, TypeVar
+from typing import Any, Callable, Generic, List, Mapping, Optional, Type, TypeVar
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import (
@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
+from mlflow_oidc_auth.permission_kinds import GrantKind
 from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions, regex_grant_order
 from mlflow_oidc_auth.repository.utils import (
     get_group,
@@ -36,26 +37,47 @@ EntityT = TypeVar("EntityT")
 
 
 class _KindFilter:
-    """The rows of a shared table that belong to this repository's grant kind.
+    """Binds a repository to the grant kind and table it serves (:mod:`mlflow_oidc_auth.permission_kinds`).
+
+    A concrete repository sets ``grant_kind``; its base class sets ``grant_role`` (``user``,
+    ``group``, ``user_regex`` or ``group_regex``). ``model_class``, ``workspace_scoped`` and
+    ``extra_filter`` are derived from the two when the class is created and may not be set by hand,
+    so a repository can never disagree with the registry.
 
     ``extra_filter`` maps columns to the value this kind's rows hold — ``{"prompt": True}`` for
-    prompts, ``{"prompt": False}`` for registered models, which share their pattern tables and their
-    group grant table (see :mod:`mlflow_oidc_auth.permission_kinds`). Every row the repository
-    creates carries it, and every grant it looks up, lists, updates or revokes must match it, so a
-    prompt pattern is never read, changed or matched as a registered model pattern, or the reverse.
+    prompts, ``{"prompt": False}`` for registered models, which share their group grant table and
+    their pattern tables. Every row the repository creates carries it, and every grant it looks up,
+    lists, updates or revokes must match it, so a prompt grant is never read, changed or matched
+    as a registered model grant, or the reverse.
 
     The exact-grant permission lookups (``get_group_permission_for_user_resource``,
     ``list_permissions_for_user_groups``, ``_same_grant``) and the per-resource cascades (rename,
     wipe) do not filter: a grant on a name counts for that name whatever its flag, as it always has.
     """
 
+    grant_kind: Optional[GrantKind] = None
+    grant_role: str
     extra_filter: Mapping[str, Any] = MappingProxyType({})
+    workspace_scoped: bool = False
     model_class: Type
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        model = getattr(cls, "model_class", None)
-        missing = [column for column in cls.extra_filter if model is not None and not hasattr(model, column)]
+        hand_set = [attr for attr in _DERIVED_FROM_KIND if attr in cls.__dict__]
+        if hand_set:
+            raise TypeError(f"{cls.__name__} sets {hand_set} by hand; they are derived from grant_kind")
+        kind = cls.grant_kind
+        if kind is None:
+            if cls.extra_filter:
+                raise TypeError(f"{cls.__name__} has an extra_filter but no grant_kind to take its table from")
+            return
+        model = kind.model_for(cls.grant_role)
+        if model is None:
+            raise TypeError(f"{cls.__name__}: grant kind {kind.name!r} has no {cls.grant_role} table")
+        cls.model_class = model
+        cls.workspace_scoped = kind.workspace_scoped and cls.grant_role in ("user", "group")
+        cls.extra_filter = kind.filter_for(cls.grant_role)
+        missing = [column for column in cls.extra_filter if not hasattr(model, column)]
         if missing:
             # A filter on a column the table lacks would silently match every row of the shared table.
             raise TypeError(f"{cls.__name__}.extra_filter names columns {missing} that {model.__name__} does not have")
@@ -69,18 +91,19 @@ class _KindFilter:
         return dict(self.extra_filter)
 
 
+_DERIVED_FROM_KIND = ("model_class", "workspace_scoped", "extra_filter")
+
+
 class _GrantWorkspaceScope(_KindFilter):
     """Workspace scoping for grants on name-keyed resources (see utils/grant_workspace.py).
 
-    Subclasses whose resources MLflow keeps unique per ``(workspace, name)`` — registered models
-    and prompts, gateway endpoints, secrets and model definitions — set ``workspace_scoped``: every
+    Repositories whose resources MLflow keeps unique per ``(workspace, name)`` — registered models
+    and prompts, gateway endpoints, secrets, model definitions and MCP servers — have
+    ``workspace_scoped`` (from their kind): every
     lookup by resource and every per-principal list then matches only the request's grant
     workspace, and every new grant records it. Experiments (globally unique ids) and scorers leave
     it unset and are unaffected. Deleting all of one principal's grants stays global.
     """
-
-    workspace_scoped: bool = False
-    model_class: Type
 
     def _in_scope(self):
         if not self.workspace_scoped:
@@ -155,10 +178,12 @@ class BaseUserPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, EntityT
     """Base class for user-level permission repositories.
 
     Subclasses must set:
-        model_class: The SQLAlchemy model class (e.g. SqlExperimentPermission)
+        grant_kind: The kind they serve (``permission_kinds``); ``model_class`` is its user table.
         resource_id_attr: The column name on the model for the resource identifier
                           (e.g. "experiment_id", "name", "endpoint_id")
     """
+
+    grant_role = "user"
 
     model_class: Type[ModelT]
     resource_id_attr: str
@@ -346,9 +371,11 @@ class BaseGroupPermissionRepository(_GrantWorkspaceScope, Generic[ModelT, Entity
     """Base class for group-level permission repositories.
 
     Subclasses must set:
-        model_class: The SQLAlchemy model class (e.g. SqlExperimentGroupPermission)
+        grant_kind: The kind they serve (``permission_kinds``); ``model_class`` is its group table.
         resource_id_attr: The column name on the model for the resource identifier
     """
+
+    grant_role = "group"
 
     model_class: Type[ModelT]
     resource_id_attr: str
@@ -660,8 +687,10 @@ class BaseRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
     """Base class for regex-based user permission repositories.
 
     Subclasses must set:
-        model_class: The SQLAlchemy model class (e.g. SqlExperimentRegexPermission)
+        grant_kind: The kind they serve (``permission_kinds``); ``model_class`` is its user pattern table.
     """
+
+    grant_role = "user_regex"
 
     model_class: Type[ModelT]
 
@@ -747,10 +776,7 @@ class BaseRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
         :return: A list of all permission entities.
         """
         with self._Session() as session:
-            query = session.query(self.model_class)
-            if self.extra_filter:
-                query = query.filter(*self._kind_is())
-            rows = query.order_by(*regex_grant_order(self.model_class)).all()
+            rows = session.query(self.model_class).filter(*self._kind_is()).order_by(*regex_grant_order(self.model_class)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def list_regex_for_user(self, username: str) -> List[EntityT]:
@@ -791,7 +817,10 @@ class BaseRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
             perm.priority = priority
             perm.permission = permission
             perm.regex = regex
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError as e:
+                raise MlflowException(f"Regex perm exists ({regex},{username})", RESOURCE_ALREADY_EXISTS) from e
             return perm.to_mlflow_entity()
 
     def revoke(self, username: str, id: int) -> None:
@@ -812,8 +841,10 @@ class BaseGroupRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
     """Base class for regex-based group permission repositories.
 
     Subclasses must set:
-        model_class: The SQLAlchemy model class (e.g. SqlExperimentGroupRegexPermission)
+        grant_kind: The kind they serve (``permission_kinds``); ``model_class`` is its group pattern table.
     """
+
+    grant_role = "group_regex"
 
     model_class: Type[ModelT]
 
@@ -923,7 +954,10 @@ class BaseGroupRegexPermissionRepository(_KindFilter, Generic[ModelT, EntityT]):
             perm.permission = permission
             perm.regex = regex
             perm.priority = priority
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError as e:
+                raise MlflowException(f"Group regex perm exists ({regex},{group_name})", RESOURCE_ALREADY_EXISTS) from e
             return perm.to_mlflow_entity()
 
     def revoke(self, group_name: str, id: int) -> None:
