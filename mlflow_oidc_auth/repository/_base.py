@@ -647,7 +647,9 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
             return [r.to_mlflow_entity() for r in rows]
 
     def list_regex_for_user(self, username: str) -> List[EntityT]:
-        """List all regex permissions for a user, ordered by priority.
+        """List all regex permissions for a user, ordered by priority, then id.
+
+        Ties on priority resolve by id (oldest grant first) so the first match is deterministic.
 
         :param username: The username of the user.
         :return: A list of permission entities.
@@ -659,7 +661,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
                 .filter(SqlUser.username == username)
-                .order_by(self.model_class.priority)
+                .order_by(self.model_class.priority, self.model_class.id)
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]
@@ -741,13 +743,15 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
             )
 
     def _list_group_permissions(self, session: Session, groups: List[int]) -> list:
-        """List all permissions for a list of group IDs, ordered by priority.
+        """List all permissions for a list of group IDs, ordered by priority, then id.
+
+        Ties on priority resolve by id (oldest grant first) so the first match is deterministic.
 
         :param session: SQLAlchemy session
         :param groups: A list of group IDs.
         :return: A list of permission model instances.
         """
-        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(self.model_class.priority).all()
+        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(self.model_class.priority, self.model_class.id).all()
 
     def grant(self, group_name: str, regex: str, priority: int, permission: str) -> EntityT:
         """Create a new group regex permission.

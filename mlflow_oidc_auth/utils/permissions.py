@@ -183,6 +183,29 @@ def _match_regex_permission(regexes, name: str, label: str, workspace: str | Non
     raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
 
 
+def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: str | None = None) -> str | None:
+    """Non-raising form of :func:`_match_regex_permission`, for callers where no match is not an error.
+
+    Parameters:
+        regexes: Regex permission entities, in the order they are tried (priority, then id).
+        name: The resource name to match.
+        label: The resource type, for the debug log.
+        workspace: The resource's workspace; the request's grant workspace when omitted.
+
+    Returns:
+        The permission of the first in-scope pattern that matches ``name``, or ``None``.
+
+    Raises:
+        MlflowException: Any error other than ``RESOURCE_DOES_NOT_EXIST``.
+    """
+    try:
+        return _match_regex_permission(regexes, name, label, workspace)
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return None
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Experiment-specific regex wrappers (experiment_id → experiment_name lookup)
 # ---------------------------------------------------------------------------

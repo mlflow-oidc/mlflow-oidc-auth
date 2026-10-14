@@ -5,7 +5,6 @@ resources (experiments, models, prompts) in a single operation, minimizing datab
 queries compared to per-item permission lookups.
 """
 
-import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -22,7 +21,7 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, compare_permissions, get_permission
 from mlflow_oidc_auth.store import store
-from mlflow_oidc_auth.utils.permissions import EXPERIMENT, PROMPT, REGISTERED_MODEL, record_permission_fallback
+from mlflow_oidc_auth.utils.permissions import EXPERIMENT, PROMPT, REGISTERED_MODEL, _match_regex_permission_or_none, record_permission_fallback
 
 logger = get_logger()
 
@@ -259,27 +258,6 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, ctx: Opti
     return result
 
 
-def _find_regex_permission(regexes: List, name: str) -> Optional[str]:
-    """Find the first matching regex permission for a given name.
-
-    Parameters:
-        regexes: List of regex permission objects with .regex and .permission attributes.
-        name: The name to match against regexes.
-
-    Returns:
-        The permission string if a match is found, None otherwise.
-    """
-    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
-
-    for regex_perm in regexes:
-        # Only patterns that apply in the request's workspace, as in utils/permissions.py.
-        if not pattern_in_scope(regex_perm):
-            continue
-        if re.match(regex_perm.regex, name):
-            return regex_perm.permission
-    return None
-
-
 def resolve_experiment_permission_from_context(
     ctx: UserPermissionContext,
     experiment_id: str,
@@ -303,8 +281,11 @@ def resolve_experiment_permission_from_context(
     # Look up permissions from context (no DB queries)
     user_direct = ctx.user_experiment_permissions.get(experiment_id)
     group_direct = ctx.group_experiment_permissions.get(experiment_id)
-    user_regex = _find_regex_permission(ctx.experiment_regex_permissions, experiment_name)
-    group_regex = _find_regex_permission(ctx.group_experiment_regex_permissions, experiment_name)
+    # Only patterns that apply in the request's grant workspace count. The workspace is left to
+    # pattern_in_scope to resolve: an explicit "*" there means "every pattern applies", which must
+    # never come from the request.
+    user_regex = _match_regex_permission_or_none(ctx.experiment_regex_permissions, experiment_name, "experiment")
+    group_regex = _match_regex_permission_or_none(ctx.group_experiment_regex_permissions, experiment_name, "experiment")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
@@ -329,8 +310,8 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
     """
     user_direct = ctx.user_model_permissions.get(model_name)
     group_direct = ctx.group_model_permissions.get(model_name)
-    user_regex = _find_regex_permission(ctx.model_regex_permissions, model_name)
-    group_regex = _find_regex_permission(ctx.group_model_regex_permissions, model_name)
+    user_regex = _match_regex_permission_or_none(ctx.model_regex_permissions, model_name, "registered model")
+    group_regex = _match_regex_permission_or_none(ctx.group_model_regex_permissions, model_name, "registered model")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
@@ -359,8 +340,8 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     user_direct = ctx.user_model_permissions.get(prompt_name)
     group_direct = ctx.group_model_permissions.get(prompt_name)
     # But use prompt-specific regex patterns
-    user_regex = _find_regex_permission(ctx.prompt_regex_permissions, prompt_name)
-    group_regex = _find_regex_permission(ctx.group_prompt_regex_permissions, prompt_name)
+    user_regex = _match_regex_permission_or_none(ctx.prompt_regex_permissions, prompt_name, "prompt")
+    group_regex = _match_regex_permission_or_none(ctx.group_prompt_regex_permissions, prompt_name, "prompt")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
