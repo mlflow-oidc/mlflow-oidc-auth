@@ -3,9 +3,23 @@
 Uses the pluggable CacheBackend (local TTLCache by default, Redis for
 multi-replica) with lazy initialization to avoid import-time config reads.
 Only active when MLFLOW_ENABLE_WORKSPACES is True.
+
+Two caches, both keyed ``username:workspace``:
+
+* the **grant cache** holds resolved permissions for ``WORKSPACE_CACHE_TTL_SECONDS``;
+* the **denial cache** remembers "resolved, no grant" (issue #456) for at most
+  ``PERMISSION_CACHE_TTL_SECONDS``.
+
+They are separate on purpose. The workspace name comes from the client (a header, a URL, a
+ListWorkspaces response), so denials can be produced for arbitrarily many names; in their own
+bounded cache they can only evict other denials, never a real grant. The short TTL bounds how
+long a denial cached on one replica of a local-backend deployment can outlive a grant written
+through another. A lookup that hit an error is never cached in either.
 """
 
 import re
+import uuid
+from urllib.parse import quote
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
@@ -15,9 +29,18 @@ from mlflow_oidc_auth.permissions import Permission, get_permission, in_regex_gr
 logger = get_logger()
 
 _cache: CacheBackend | None = None
+_denial_cache: CacheBackend | None = None
+_generation_cache: CacheBackend | None = None
+
+# The one key of the generation cache. Invalidation stores a fresh random value under it.
+_GENERATION_KEY = "generation"
+# How long a generation value is kept. A lookup is only fooled if a value is written and then
+# expires within the few milliseconds of one lookup, so this only has to be long.
+_GENERATION_MIN_TTL = 3600
 
 _WORKSPACE_CACHE_DEFAULT_MAX_SIZE = 1024
 _WORKSPACE_CACHE_DEFAULT_TTL = 300
+_PERMISSION_CACHE_DEFAULT_TTL = 30
 
 
 def _sanitize(value: str) -> str:
@@ -25,25 +48,96 @@ def _sanitize(value: str) -> str:
     return value.replace("\n", "").replace("\r", "").replace("\t", "")
 
 
+def _key_part(value: str) -> str:
+    """Percent-encode one key component. ``:`` and ``%`` never survive unencoded."""
+    return quote(value, safe="")
+
+
 def _make_cache_key(username: str, workspace: str) -> str:
-    """Build a string cache key for workspace permission lookups."""
-    return f"{username}:{workspace}"
+    """Build a collision-free ``username:workspace`` cache key.
+
+    Both parts are percent-encoded, so the only literal ``:`` is the separator: user ``a``
+    in workspace ``b:c`` and user ``a:b`` in workspace ``c`` get different keys.
+    """
+    return f"{_key_part(username)}:{_key_part(workspace)}"
+
+
+def _user_key_prefix(username: str) -> str:
+    """The key prefix of every entry of ``username``, and of no other user."""
+    return f"{_key_part(username)}:"
 
 
 def _get_cache() -> CacheBackend:
-    """Get or create the workspace permission cache (lazy init)."""
+    """Get or create the workspace grant cache (lazy init). It never holds a denial."""
     global _cache
     if _cache is None:
         maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
         ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
-        _cache = get_cache_backend("workspace", maxsize=maxsize, ttl=ttl)
+        # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
+        _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
     return _cache
+
+
+def _denial_ttl() -> int:
+    """Denials live no longer than a cached permission decision, nor than a cached grant."""
+    grant_ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
+    permission_ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
+    return min(grant_ttl, permission_ttl)
+
+
+def _get_denial_cache() -> CacheBackend:
+    """Get or create the workspace denial cache (lazy init).
+
+    Same size bound as the grant cache but a separate store, so a flood of denials for
+    made-up workspace names evicts only other denials. The Redis namespace
+    ``workspace_denials`` does not share the grant namespace's ``workspace_v2:`` prefix, so
+    neither cache's prefix delete or clear reaches into the other.
+    """
+    global _denial_cache
+    if _denial_cache is None:
+        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+        _denial_cache = get_cache_backend("workspace_denials", maxsize=maxsize, ttl=_denial_ttl())
+    return _denial_cache
+
+
+def _caches() -> tuple[CacheBackend, CacheBackend]:
+    return _get_cache(), _get_denial_cache()
+
+
+def _get_generation_cache() -> CacheBackend:
+    """Get or create the one-entry cache holding the invalidation generation (lazy init).
+
+    Its own store, so no flood of other entries can evict the generation. On Redis it is
+    shared, so an invalidation on any replica is seen by a lookup on every replica.
+    """
+    global _generation_cache
+    if _generation_cache is None:
+        ttl = max(getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL), _GENERATION_MIN_TTL)
+        _generation_cache = get_cache_backend("workspace_generation", maxsize=1, ttl=ttl)
+    return _generation_cache
+
+
+def _current_generation():
+    return _get_generation_cache().get(_GENERATION_KEY)
+
+
+def _bump_generation() -> None:
+    """Record that an invalidation is happening. Invalidations call it BEFORE and AFTER their deletes.
+
+    The bump before means a lookup that checks the generation after writing its entry sees
+    the move whenever the delete could still be pending; the bump after means a lookup that
+    read the generation before the delete sees it too. A random value rather than a
+    counter: any change is detected, and no atomic increment is needed on either backend.
+    """
+    _get_generation_cache().set(_GENERATION_KEY, uuid.uuid4().hex)
 
 
 def get_workspace_permission_cached(username: str, workspace: str) -> Permission | None:
     """Get effective workspace permission for a user, with caching.
 
-    Returns None if the user has no workspace permission.
+    Returns None if the user has no workspace permission, or if the lookup failed (fail
+    closed). A grant is cached in the grant cache; a clean "no grant" in the denial cache;
+    a failed lookup is not cached at all, so the next request tries again.
     Only active when MLFLOW_ENABLE_WORKSPACES is True.
 
     Parameters:
@@ -56,34 +150,54 @@ def get_workspace_permission_cached(username: str, workspace: str) -> Permission
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
 
-    cache = _get_cache()
     key = _make_cache_key(username, workspace)
-    cached = cache.get(key)
+    grants, denials = _caches()
+    cached = grants.get(key)
     if cached is not None:
         return cached
+    if denials.get(key) is not None:
+        return None
 
-    perm = _lookup_workspace_permission(username, workspace)
-    if perm is not None:
-        cache.set(key, perm)  # Only cache non-None to avoid caching denials
+    # An invalidation that runs while this lookup is in flight may delete the key before we
+    # write it, so the result could be stale (a denial read just before a grant was committed,
+    # or a grant read just before a revoke). Invalidations bump the generation before and
+    # after their deletes, so:
+    # - moved before the write: answer this request but cache nothing;
+    # - moved after the write: delete what we wrote. An invalidation that bumps only after
+    #   this last check also deletes only after it, so it removes our entry itself.
+    generation = _current_generation()
+    perm, errored = _resolve_workspace_permission(username, workspace)
+    if errored:
+        return None
+    if _current_generation() != generation:
+        return perm
+    target = grants if perm is not None else denials
+    target.set(key, perm if perm is not None else True)
+    if _current_generation() != generation:
+        target.delete(key)
     return perm
 
 
 def invalidate_workspace_permission(username: str, workspace: str) -> None:
-    """Remove a specific user+workspace entry from cache (per D-13).
+    """Remove a specific user+workspace entry from both caches (per D-13).
 
     Called by workspace permission router after successful CUD operations.
     """
-    cache = _get_cache()
-    cache.delete(_make_cache_key(username, workspace))
+    key = _make_cache_key(username, workspace)
+    _bump_generation()
+    for cache in _caches():
+        cache.delete(key)
+    _bump_generation()
 
 
 def invalidate_user_workspace_entries(username: str) -> None:
-    """Drop every cached workspace entry for one user.
+    """Drop every cached workspace entry, grant or denial, for one user.
 
     Group membership drives the group-scoped branch of workspace resolution, so a
     membership change can alter this user's permission in ANY workspace — but only
-    this user's. Keys are ``username:workspace``, so a prefix delete is exact and
-    bounded, and leaves every other user's entries warm.
+    this user's. Keys are ``username:workspace`` with both parts percent-encoded, so the
+    prefix ``username:`` is exact — it cannot match another user whose name merely starts
+    with this one — and leaves every other user's entries warm.
 
     This matters for throughput as well as correctness: OIDC login re-syncs group
     membership on every sign-in, so a full flush here would wipe the cache fleet-wide
@@ -94,8 +208,10 @@ def invalidate_user_workspace_entries(username: str) -> None:
         # otherwise every login pays a Redis keyspace SCAN for no benefit. Mirrors
         # the guard in get_workspace_permission_cached.
         return
-    cache = _get_cache()
-    cache.delete_prefix(f"{username}:")
+    _bump_generation()
+    for cache in _caches():
+        cache.delete_prefix(_user_key_prefix(username))
+    _bump_generation()
     logger.debug("Workspace cache entries invalidated for user %s", _sanitize(username))
 
 
@@ -126,9 +242,13 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
         flush_workspace_cache()
         return
 
-    cache = _get_cache()
+    caches = _caches()
+    _bump_generation()
     for member in members:
-        cache.delete(_make_cache_key(member.username, workspace))
+        key = _make_cache_key(member.username, workspace)
+        for cache in caches:
+            cache.delete(key)
+    _bump_generation()
     logger.debug(
         "Workspace cache invalidated for %d member(s) of group %s in workspace %s",
         len(members),
@@ -138,13 +258,15 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
 
 
 def flush_workspace_cache() -> None:
-    """Flush entire workspace permission cache (per D-09).
+    """Flush both workspace caches (per D-09).
 
     Called by workspace regex permission router after any CUD operation.
     Full flush is necessary because regex changes can affect any user+workspace combo.
     """
-    cache = _get_cache()
-    cache.clear()
+    _bump_generation()
+    for cache in _caches():
+        cache.clear()
+    _bump_generation()
     logger.debug("Workspace permission cache fully flushed (regex CUD)")
 
 
@@ -186,7 +308,20 @@ def _match_workspace_regex_permission(regexes, workspace: str) -> Permission | N
     return best_perm
 
 
-def _resolve_user_direct(store, username: str, workspace: str) -> Permission | None:
+def _record_error(errors: list | None, source: str) -> None:
+    """Note that ``source`` failed, as opposed to finding no grant."""
+    if errors is not None:
+        errors.append(source)
+
+
+def _is_not_found(error: Exception) -> bool:
+    """Whether ``error`` is the store saying "no such row" — no grant, not a failure."""
+    from mlflow.exceptions import MlflowException
+
+    return isinstance(error, MlflowException) and error.error_code == "RESOURCE_DOES_NOT_EXIST"
+
+
+def _resolve_user_direct(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
     """Resolve user-direct workspace permission."""
     from mlflow.exceptions import MlflowException
 
@@ -207,6 +342,7 @@ def _resolve_user_direct(store, username: str, workspace: str) -> Permission | N
                 _sanitize(workspace),
                 e,
             )
+            _record_error(errors, "user-direct")
         return None
     except Exception as e:
         logger.warning(
@@ -215,10 +351,11 @@ def _resolve_user_direct(store, username: str, workspace: str) -> Permission | N
             _sanitize(workspace),
             e,
         )
+        _record_error(errors, "user-direct")
         return None
 
 
-def _resolve_group_direct(store, username: str, workspace: str) -> Permission | None:
+def _resolve_group_direct(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
     """Resolve group-direct workspace permission (highest across user's groups)."""
     from mlflow.exceptions import MlflowException
 
@@ -239,6 +376,7 @@ def _resolve_group_direct(store, username: str, workspace: str) -> Permission | 
                 _sanitize(workspace),
                 e,
             )
+            _record_error(errors, "group-direct")
         return None
     except Exception as e:
         logger.warning(
@@ -247,10 +385,11 @@ def _resolve_group_direct(store, username: str, workspace: str) -> Permission | 
             _sanitize(workspace),
             e,
         )
+        _record_error(errors, "group-direct")
         return None
 
 
-def _resolve_user_regex(store, username: str, workspace: str) -> Permission | None:
+def _resolve_user_regex(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
     """Resolve user-regex workspace permission.
 
     Lists user's regex permissions (sorted by priority) and matches against workspace name.
@@ -261,16 +400,19 @@ def _resolve_user_regex(store, username: str, workspace: str) -> Permission | No
             return None
         return _match_workspace_regex_permission(regexes, workspace)
     except Exception as e:
+        if _is_not_found(e):
+            return None
         logger.warning(
             "Error resolving user-regex workspace permission for %s@%s: %s",
             _sanitize(username),
             _sanitize(workspace),
             e,
         )
+        _record_error(errors, "user-regex")
         return None
 
 
-def _resolve_group_regex(store, username: str, workspace: str) -> Permission | None:
+def _resolve_group_regex(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
     """Resolve group-regex workspace permission.
 
     Gets user's group IDs, lists all group regex permissions for those groups,
@@ -285,12 +427,15 @@ def _resolve_group_regex(store, username: str, workspace: str) -> Permission | N
             return None
         return _match_workspace_regex_permission(regexes, workspace)
     except Exception as e:
+        if _is_not_found(e):
+            return None
         logger.warning(
             "Error resolving group-regex workspace permission for %s@%s: %s",
             _sanitize(username),
             _sanitize(workspace),
             e,
         )
+        _record_error(errors, "group-regex")
         return None
 
 
@@ -301,12 +446,33 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     Per D-04: First match wins (short-circuit).
     Per D-05: Not hardcoded — configurable.
 
+    A failed lookup returns None (fail closed); use :func:`_resolve_workspace_permission`
+    to tell a failure from "no grant".
+
     Parameters:
         username: The username to look up.
         workspace: The workspace name.
 
     Returns:
-        Permission object or None if no permission found.
+        Permission object or None if no permission found or the lookup failed.
+    """
+    return _resolve_workspace_permission(username, workspace)[0]
+
+
+def _resolve_workspace_permission(username: str, workspace: str) -> tuple[Permission | None, bool]:
+    """Resolve a workspace permission, reporting whether any source failed.
+
+    A source that errors before a match makes the answer unknown: a lower-priority source's
+    grant may be wider than what the failed source holds, so the walk is denied (fail closed)
+    rather than falling through to it.
+
+    Parameters:
+        username: The username to look up.
+        workspace: The workspace name.
+
+    Returns:
+        ``(permission, errored)``. ``errored`` True means the result must not be cached;
+        the permission is then always None.
     """
     from mlflow_oidc_auth.store import store  # Lazy import to avoid circular dependency
 
@@ -317,11 +483,12 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
     )
 
     # Build source resolution functions keyed by source name
+    errors: list[str] = []
     source_resolvers = {
-        "user": lambda: _resolve_user_direct(store, username, workspace),
-        "group": lambda: _resolve_group_direct(store, username, workspace),
-        "regex": lambda: _resolve_user_regex(store, username, workspace),
-        "group-regex": lambda: _resolve_group_regex(store, username, workspace),
+        "user": lambda: _resolve_user_direct(store, username, workspace, errors),
+        "group": lambda: _resolve_group_direct(store, username, workspace, errors),
+        "regex": lambda: _resolve_user_regex(store, username, workspace, errors),
+        "group-regex": lambda: _resolve_group_regex(store, username, workspace, errors),
     }
 
     logger.debug("Source order: %s", config.PERMISSION_SOURCE_ORDER)
@@ -332,6 +499,14 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
             logger.warning("Invalid workspace permission source: %s", source_name)
             continue
         result = resolver()
+        if errors:
+            logger.warning(
+                "Workspace permission lookup for %s@%s failed in source(s) %s; denying without caching",
+                _sanitize(username),
+                _sanitize(workspace),
+                ", ".join(errors),
+            )
+            return None, True
         if result is not None:
             logger.debug(
                 "Workspace permission found via source '%s' for %s@%s: %s",
@@ -340,7 +515,7 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
                 _sanitize(workspace),
                 result,
             )
-            return result
+            return result, False
         logger.debug(
             "Source '%s' returned None for %s@%s",
             source_name,
@@ -353,4 +528,4 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
         _sanitize(username),
         _sanitize(workspace),
     )
-    return None
+    return None, False

@@ -2054,17 +2054,44 @@ def _wrap_with_cache_flush(method):
     return wrapper
 
 
-def _wrap_with_membership_invalidation(method):
-    """Wrap a membership method to drop the mutated user's workspace-cache entries.
+# Membership syncs that report what they did. Interactive login calls ``set_user_groups`` on
+# every sign-in; unconditional invalidation wiped the whole permission cache (fleet-wide with
+# Redis) and prefix-deleted the user's workspace entries (two Redis SCANs) even when nothing
+# changed (issue #456). These invalidate only when the outcome says the membership actually
+# changed. Anything other than a MembershipOutcome invalidates, so an unexpected return can
+# never leave a stale grant behind.
+_MEMBERSHIP_SYNC_METHODS = frozenset({"set_user_groups"})
 
-    The username is the first positional argument (or the ``username`` keyword).
-    Invalidation failures are logged, never raised — the mutation already succeeded,
-    and masking it would be worse than a short staleness window.
+
+def _wrap_with_membership_invalidation(method, *, only_if_changed: bool = False):
+    """Wrap a membership method to invalidate what a membership change can make stale.
+
+    Membership drives group-scoped resolution, so a change flushes the permission cache and
+    drops the mutated user's workspace-cache entries. The username is the first positional
+    argument (or the ``username`` keyword).
+
+    Parameters:
+        method: The store method.
+        only_if_changed: Skip both invalidations when the method returns a
+            ``MembershipOutcome`` reporting no change.
+
+    A failed permission-cache flush raises, as for every other permission write; a failed
+    workspace invalidation is logged, never raised — the mutation already succeeded, and the
+    entries expire via TTL.
     """
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         result = method(self, *args, **kwargs)
+        if only_if_changed:
+            from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+            if isinstance(result, MembershipOutcome) and not result.changed:
+                return result
+
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
         username = kwargs.get("username") if "username" in kwargs else (args[0] if args else None)
         if username:
             try:
@@ -2086,6 +2113,8 @@ def _wrap_with_membership_invalidation(method):
 
 
 for _method_name in _PERMISSION_CUD_METHODS:
+    if _method_name in _MEMBERSHIP_CUD_METHODS:
+        continue  # wrapped once, below, by the membership wrapper (it flushes too)
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
 
@@ -2123,7 +2152,7 @@ def _wrap_with_workspace_group_invalidation(method):
 
 for _method_name in _MEMBERSHIP_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
-    setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original))
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original, only_if_changed=_method_name in _MEMBERSHIP_SYNC_METHODS))
 
 
 def _wrap_with_workspace_user_invalidation(method):

@@ -163,11 +163,23 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
+| `PERMISSION_CACHE_MAX_SIZE` | Integer | `10000` | Maximum number of entries in the permission resolution cache (per replica for `local`; ignored by `redis`, whose size is bounded by the Redis server). A single list page checks one entry per row, so a value too small for the number of concurrent users makes them evict each other and re-query the database |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
 | `CACHE_KEY_PREFIX` | String | `mlflow_oidc_auth:` | Key prefix for Redis cache entries. Useful when sharing a Redis instance with other applications |
 
 > **Note:** Permission caches are automatically invalidated when permissions are created, updated, or deleted through the plugin's API. The TTL acts as a safety net, not the primary invalidation mechanism.
+
+> **Multiple replicas:** invalidation reaches every replica only with `CACHE_BACKEND=redis`. With `local`, each replica has its own cache, and a write invalidates only the replica that served it. Elsewhere, a revoked or changed permission can be served until its entry expires: up to `PERMISSION_CACHE_TTL_SECONDS` for resource decisions and `WORKSPACE_CACHE_TTL_SECONDS` for workspace grants. A *new* workspace grant can likewise be refused on another replica while that replica still holds a cached denial for the user and workspace. Denials are therefore kept no longer than `PERMISSION_CACHE_TTL_SECONDS` (default 30 s). A workspace lookup that fails (for example on a database error) is refused and not cached.
+
+> **Upgrading with a shared Redis cache:** this release changes the workspace cache's key format: usernames and workspace names are now percent-encoded, so `alice@x.com` is stored as `alice%40x.com`. The workspace grant cache also moves to a new namespace, `workspace_v2`. New replicas never read old-format keys. However, while old and new replicas run side by side against one Redis, neither can invalidate the other's workspace entries, so a revoked workspace grant can be served for up to `WORKSPACE_CACHE_TTL_SECONDS`. With `CACHE_BACKEND=redis`, either restart all replicas together, or, once the last old replica is gone, delete these keys (shown with the default `CACHE_KEY_PREFIX=mlflow_oidc_auth:`):
+>
+> - `mlflow_oidc_auth:workspace:*` (old format; unused after the upgrade, and otherwise left to expire)
+> - `mlflow_oidc_auth:workspace_v2:*`
+> - `mlflow_oidc_auth:workspace_denials:*`
+> - `mlflow_oidc_auth:workspace_generation:*`
+>
+> The permission cache (`mlflow_oidc_auth:permissions:*`) keeps its key format and needs no action. With `CACHE_BACKEND=local` there is nothing to do.
 
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 
@@ -182,8 +194,8 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `OIDC_WORKSPACE_DETECTION_PLUGIN` | String | None | Python module path for a custom workspace detection plugin. Used to extract workspace assignments from the OIDC token |
 | `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` | Boolean | `false` | Reject workspace-gated create requests when no workspace context is present |
 | `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` | Boolean | `false` | Reject non-admin workspace-gated create requests that resolve to the `default` workspace, including requests that send no workspace context |
-| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache |
-| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for workspace permission cache entries |
+| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache. Grants and denials are kept in two separate caches of this size, so denials can never evict a grant |
+| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for cached workspace grants. Cached denials expire after the smaller of this and `PERMISSION_CACHE_TTL_SECONDS` |
 | `WORKSPACE_RULES_MAX_PERMISSION` | String | `EDIT` | Highest permission a [workspace group rule](workspaces#group-rules) may grant: `READ`, `USE`, `EDIT` or `MANAGE`. `MANAGE` logs a startup warning; an unrecognised value is treated as `READ`. Grants held by a rule above it are removed at startup |
 
 ### SCIM

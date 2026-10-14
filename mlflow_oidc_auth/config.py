@@ -184,6 +184,9 @@ class AppConfig:
         self.MANAGED_BY_ENFORCEMENT = parse_enforcement(config_manager.get("MANAGED_BY_ENFORCEMENT", "report"))
 
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
+        # Entries in the permission resolution cache (issue #456). Each entry is one small
+        # (user, resource, decision) tuple; a single list page can fill hundreds of slots.
+        self.PERMISSION_CACHE_MAX_SIZE = config_manager.get_positive_int("PERMISSION_CACHE_MAX_SIZE", default=10000)
 
         # username source
         self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
@@ -233,7 +236,7 @@ class AppConfig:
         self.MLFLOW_ENABLE_WORKSPACES = config_manager.get_bool("MLFLOW_ENABLE_WORKSPACES", default=False)
 
         # Workspace cache settings
-        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
+        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_positive_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
         self.WORKSPACE_CACHE_TTL_SECONDS = config_manager.get_int("WORKSPACE_CACHE_TTL_SECONDS", default=300)
         # The highest permission a workspace group rule may grant (issue #418). MANAGE is reachable
         # only by raising this, and is warned about at startup. Normalised by

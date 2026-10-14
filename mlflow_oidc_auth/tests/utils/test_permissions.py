@@ -6,6 +6,8 @@ including permission retrieval, caching, and access control checks.
 """
 
 import unittest
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -498,6 +500,11 @@ class TestResolvePermissionWorkspaceFallback(unittest.TestCase):
     """Tests for resolve_permission() workspace fallback logic (WSAUTH-C/WSAUTH-04)."""
 
     def setUp(self) -> None:
+        # The tests below replace ``config`` with a MagicMock; build the cache from the real
+        # config first so its size is a real integer.
+        from mlflow_oidc_auth.utils import permissions as perms
+
+        perms._get_permission_cache()
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
         self.app_context = self.app.app_context()
@@ -809,3 +816,50 @@ class TestPermissionCacheCompositeKey:
         monkeypatch.setattr(perms, "_get_cache_workspace", lambda: None)
         perms.invalidate_permission_cache("scorer", "1", "bob", scorer_name="mine")
         assert deleted == [perms._make_cache_key("scorer", "1", "bob", None, scorer_name="mine")]
+
+
+class TestPermissionCacheMaxSize:
+    """PERMISSION_CACHE_MAX_SIZE sizes the local permission cache (issue #456)."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self, monkeypatch):
+        from mlflow_oidc_auth.utils import permissions as perms
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "CACHE_BACKEND", "local")
+        monkeypatch.setattr(perms, "_permission_cache", None)
+        yield
+        monkeypatch.setattr(perms, "_permission_cache", None)
+
+    def test_configured_size_is_used(self, monkeypatch):
+        from mlflow_oidc_auth.utils import permissions as perms
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", 123)
+        assert perms._get_permission_cache()._cache.maxsize == 123
+
+    def test_default_is_ten_thousand(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.delenv("PERMISSION_CACHE_MAX_SIZE", raising=False)
+        assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 10000
+
+    def test_env_value_is_read(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.setenv("PERMISSION_CACHE_MAX_SIZE", "250")
+        assert AppConfig().PERMISSION_CACHE_MAX_SIZE == 250
+
+    @pytest.mark.parametrize(("setting", "default"), [("PERMISSION_CACHE_MAX_SIZE", 10000), ("WORKSPACE_CACHE_MAX_SIZE", 1024)])
+    @pytest.mark.parametrize("bad", ["0", "-5", "big", "1.5"])
+    def test_invalid_value_warns_and_uses_default(self, monkeypatch, bad, setting, default):
+        from mlflow_oidc_auth.config import AppConfig
+        from mlflow_oidc_auth.config_providers import manager as manager_module
+
+        monkeypatch.setenv(setting, bad)
+        with patch.object(manager_module.logger, "warning") as warn:
+            assert getattr(AppConfig(), setting) == default
+        assert any(len(call.args) > 1 and call.args[1] == setting for call in warn.call_args_list), "no warning named the setting"
+        # The rejected value is never logged: the same lookup serves secrets from config providers.
+        for call in warn.call_args_list:
+            assert repr(bad) not in (call.args[0] % call.args[1:] if len(call.args) > 1 else str(call.args[0]))
