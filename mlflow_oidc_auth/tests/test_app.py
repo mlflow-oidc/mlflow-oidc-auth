@@ -156,6 +156,40 @@ class TestCreateApp:
     @patch("mlflow_oidc_auth.app.app")
     @patch("mlflow_oidc_auth.app.before_request_hook")
     @patch("mlflow_oidc_auth.app.after_request_hook")
+    def test_create_app_with_only_admin_redirect(
+        self,
+        mock_after_request_hook,
+        mock_before_request_hook,
+        mock_flask_app,
+        mock_auth_aware_wsgi_middleware,
+        mock_auth_middleware,
+        mock_get_all_routers,
+        mock_register_exception_handlers,
+        mock_config,
+    ):
+        """The admin-page redirect alone is enough to serve MLflow's index through hack.index."""
+        from mlflow_oidc_auth import hack
+
+        mock_config.SECRET_KEY = "test-secret-key"
+        mock_config.EXTEND_MLFLOW_MENU = False
+        mock_config.EXTEND_MLFLOW_REAUTH = False
+        mock_config.EXTEND_MLFLOW_REDIRECT_ADMIN = True
+        mock_config.MLFLOW_ENABLE_WORKSPACES = False
+        mock_get_all_routers.return_value = []
+        mock_flask_app.view_functions = {}
+
+        create_app()
+
+        assert mock_flask_app.view_functions["serve"] is hack.index
+
+    @patch("mlflow_oidc_auth.app.config")
+    @patch("mlflow_oidc_auth.app.register_exception_handlers")
+    @patch("mlflow_oidc_auth.app.get_all_routers")
+    @patch("mlflow_oidc_auth.app.AuthMiddleware")
+    @patch("mlflow_oidc_auth.app.AuthAwareWSGIMiddleware")
+    @patch("mlflow_oidc_auth.app.app")
+    @patch("mlflow_oidc_auth.app.before_request_hook")
+    @patch("mlflow_oidc_auth.app.after_request_hook")
     def test_create_app_router_registration(
         self,
         mock_after_request_hook,
