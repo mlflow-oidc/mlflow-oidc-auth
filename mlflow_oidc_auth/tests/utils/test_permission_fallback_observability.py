@@ -5,7 +5,6 @@ explicit grant is handed out by configuration. Nothing recorded that, which is w
 exposure was invisible in running deployments. It is surfaced before the default changes.
 """
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,20 +40,22 @@ def captured_logger(monkeypatch):
 
 
 @pytest.fixture
-def grant_store(monkeypatch):
-    """A store holding no grants at all (every list is empty), with workspaces disabled.
-
-    Patched where the grant context reads it, so both resolution paths see it.
-    """
+def grant_store(monkeypatch, tmp_path):
+    """A real store holding no grants, made the one the grant context reads, with workspaces disabled."""
     from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
     from mlflow_oidc_auth.utils import grant_context
 
-    store = MagicMock()
-    store.get_groups_ids_for_user.return_value = []
+    store = SqlAlchemyStore()
+    store.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    store.create_user("alice", "Alice")
     monkeypatch.setattr(grant_context, "_store", lambda: store)
     monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+    # No pattern grants: a pattern source never needs an experiment's name.
+    monkeypatch.setattr(P, "_get_tracking_store", lambda: MagicMock())
     P.flush_permission_cache()
-    return store
+    yield store
+    store.engine.dispose()
 
 
 def _empty_context(username="alice"):
@@ -83,7 +84,7 @@ class TestFallbackRecording:
 
     def test_log_names_cover_every_resource_type(self):
         """A type missing from the literal list would be logged as a generic 'resource'."""
-        assert set(P._RESOURCE_TYPE_LOG_NAMES) == set(P.PERMISSION_REGISTRY)
+        assert set(P._RESOURCE_TYPE_LOG_NAMES) == set(P.TYPE_SPECS)
 
     def test_a_denying_fallback_never_warns(self, captured_logger):
         """No access was handed out, so there is nothing for an operator to act on."""
@@ -128,7 +129,8 @@ class TestResolutionPathsRecord:
         assert P.get_permission_fallback_counts() == {"experiment": 1}
 
     def test_a_real_grant_is_not_recorded_as_a_fallback(self, grant_store):
-        grant_store.list_experiment_permissions.return_value = [SimpleNamespace(experiment_id="43", permission="READ")]
+        grant_store.create_experiment_permission("43", "alice", "READ")
+        P.reset_permission_fallback_counts()
 
         result = P.resolve_permission("experiment", "43", "alice")
 

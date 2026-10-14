@@ -86,20 +86,18 @@ from mlflow_oidc_auth.utils.workspace_cache import (
 # Request-scoped grant context and permission memo
 # ---------------------------------------------------------------------------
 # A filter pass resolves one permission per listed row. Every row is resolved in
-# memory against the caller's grant context (utils/grant_context.py, issue #460):
-# the caller's grants are read once per resource type for the whole request — a
-# fixed number of statements however many rows are scanned — rather than through
-# per-row store lookups. A request-scoped dict additionally memoizes each row's
-# answer, for rows checked more than once (model versions of one model, top-up
-# pages).
+# memory against the caller's bulk grant context (utils/grant_context.py, issue
+# #460), built once per request: the caller's grants are read once per resource
+# type — a fixed number of statements however many rows are scanned — and the
+# context memoizes each decision, for rows checked more than once (model versions
+# of one model, top-up pages).
 # ---------------------------------------------------------------------------
 
 
 def _get_request_permission_cache() -> dict:
     """Return a dict scoped to the current Flask request via ``flask.g``.
 
-    Each filter function uses this to memoize ``can_read_*`` results for the
-    duration of a single after-request handler invocation.
+    Holds the request's grant context and the workspace-access memo.
     """
     cache = getattr(g, "_after_request_perm_cache", None)
     if cache is None:
@@ -109,110 +107,63 @@ def _get_request_permission_cache() -> dict:
 
 
 def _request_grant_context(username: str) -> GrantContext:
-    """The caller's grant context for this request, loaded once per request and user.
+    """The caller's bulk grant context for this request, built once per request and user.
 
     Outside a Flask request context (direct calls, tests) a fresh context is returned.
     """
     if not has_app_context():
-        return load_grant_context(username)
+        return load_grant_context(username, bulk=True)
     cache = _get_request_permission_cache()
     key = ("grant_context", username)
     ctx = cache.get(key)
     if ctx is None:
-        ctx = load_grant_context(username)
+        ctx = load_grant_context(username, bulk=True)
         cache[key] = ctx
     return ctx
 
 
-def _note_experiment(username: str, experiment: Any) -> None:
+def _note_experiment(ctx: GrantContext, experiment: Any) -> None:
     """Hand an experiment's name and workspace, from an MLflow entity or proto, to the grant context.
 
     Spares the per-row tracking-store lookups a pattern match and the workspace fallback would
     otherwise make. Only rows MLflow itself returned are noted.
     """
-    _request_grant_context(username).note_experiment(
+    ctx.note_experiment(
         str(experiment.experiment_id),
         getattr(experiment, "name", None) or None,
         getattr(experiment, "workspace", None) or None,
     )
 
 
-def can_read_experiment(experiment_id: str, username: str) -> bool:
-    """Whether ``username`` can read an experiment, resolved against the request's grant context."""
-    ctx = _request_grant_context(username)
+def _can_read_experiment(ctx: GrantContext, experiment_id: str) -> bool:
+    """Whether the context's user can read an experiment (using what was noted about it)."""
     name, workspace = ctx.experiment_hint(experiment_id)
     return resolve(ctx, EXPERIMENT, str(experiment_id), name=name, resource_workspace=workspace).permission.can_read
 
 
-def can_read_registered_model(model_name: str, username: str) -> bool:
-    """Whether ``username`` can read a registered model, resolved against the request's grant context."""
-    return resolve(_request_grant_context(username), REGISTERED_MODEL, model_name).permission.can_read
+def _can_read_registered_model(ctx: GrantContext, model_name: str) -> bool:
+    """Whether the context's user can read a registered model."""
+    return resolve(ctx, REGISTERED_MODEL, model_name).permission.can_read
 
 
-def can_read_gateway_endpoint(gateway_name: str, username: str) -> bool:
-    """Whether ``username`` can read a gateway endpoint, resolved against the request's grant context."""
-    return resolve(_request_grant_context(username), GATEWAY_ENDPOINT, gateway_name).permission.can_read
+def _can_read_gateway_endpoint(ctx: GrantContext, gateway_name: str) -> bool:
+    """Whether the context's user can read a gateway endpoint."""
+    return resolve(ctx, GATEWAY_ENDPOINT, gateway_name).permission.can_read
 
 
-def can_read_gateway_secret(gateway_name: str, username: str) -> bool:
-    """Whether ``username`` can read a gateway secret, resolved against the request's grant context."""
-    return resolve(_request_grant_context(username), GATEWAY_SECRET, gateway_name).permission.can_read
+def _can_read_gateway_secret(ctx: GrantContext, gateway_name: str) -> bool:
+    """Whether the context's user can read a gateway secret."""
+    return resolve(ctx, GATEWAY_SECRET, gateway_name).permission.can_read
 
 
-def can_read_gateway_model_definition(gateway_name: str, username: str) -> bool:
-    """Whether ``username`` can read a gateway model definition, resolved against the request's grant context."""
-    return resolve(_request_grant_context(username), GATEWAY_MODEL_DEFINITION, gateway_name).permission.can_read
+def _can_read_gateway_model_definition(ctx: GrantContext, gateway_name: str) -> bool:
+    """Whether the context's user can read a gateway model definition."""
+    return resolve(ctx, GATEWAY_MODEL_DEFINITION, gateway_name).permission.can_read
 
 
-def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
-    """A scorer's effective permission (its own grant, else its experiment's), from the request's grant context."""
-    ctx = _request_grant_context(user)
+def _scorer_permission(ctx: GrantContext, experiment_id: str, scorer_name: str) -> PermissionResult:
+    """A scorer's effective permission (its own grant, else its experiment's)."""
     return resolve_scorer(ctx, str(experiment_id), scorer_name, resource_workspace=ctx.experiment_hint(experiment_id)[1])
-
-
-def _cached_can_read_experiment(experiment_id: str, username: str) -> bool:
-    """can_read_experiment with request-scoped memoization."""
-    cache = _get_request_permission_cache()
-    key = ("exp", experiment_id, username)
-    if key not in cache:
-        cache[key] = can_read_experiment(experiment_id, username)
-    return cache[key]
-
-
-def _cached_can_read_registered_model(model_name: str, username: str) -> bool:
-    """can_read_registered_model with request-scoped memoization."""
-    cache = _get_request_permission_cache()
-    key = ("rm", model_name, username)
-    if key not in cache:
-        cache[key] = can_read_registered_model(model_name, username)
-    return cache[key]
-
-
-def _cached_can_read_gateway_endpoint(name: str, username: str) -> bool:
-    """can_read_gateway_endpoint with request-scoped memoization."""
-    cache = _get_request_permission_cache()
-    key = ("gw_ep", name, username)
-    if key not in cache:
-        cache[key] = can_read_gateway_endpoint(name, username)
-    return cache[key]
-
-
-def _cached_can_read_gateway_secret(name: str, username: str) -> bool:
-    """can_read_gateway_secret with request-scoped memoization."""
-    cache = _get_request_permission_cache()
-    key = ("gw_secret", name, username)
-    if key not in cache:
-        cache[key] = can_read_gateway_secret(name, username)
-    return cache[key]
-
-
-def _cached_can_read_gateway_model_definition(name: str, username: str) -> bool:
-    """can_read_gateway_model_definition with request-scoped memoization."""
-    cache = _get_request_permission_cache()
-    key = ("gw_md", name, username)
-    if key not in cache:
-        cache[key] = can_read_gateway_model_definition(name, username)
-    return cache[key]
 
 
 def _set_can_manage_experiment_permission(resp: Response):
@@ -262,7 +213,7 @@ def _can_access_workspace(username: str, workspace: str | None) -> bool:
 
     Memoized for the current request. ``get_workspace_permission_cached`` caches grants and
     (since issue #456) denials; the memo additionally spares a shared-cache round trip per
-    row. It uses the same request-scoped dict as the ``_cached_can_read_*`` helpers, so it
+    row. It uses the same request-scoped dict as the request's grant context, so it
     adds no new staleness window (issue #253).
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
@@ -379,15 +330,16 @@ def _filter_search_experiments(resp: Response):
         resp.data = message_to_json(response_message)
         return
 
-    # Filter out unreadable experiments from the current response page.
-    for e in list(response_message.experiments):
-        _note_experiment(username, e)
-        if not _cached_can_read_experiment(e.experiment_id, username):
-            response_message.experiments.remove(e)
+    ctx = _request_grant_context(username)
 
     def _keep(e) -> bool:
-        _note_experiment(username, e)
-        return _cached_can_read_experiment(e.experiment_id, username)
+        _note_experiment(ctx, e)
+        return _can_read_experiment(ctx, e.experiment_id)
+
+    # Filter out unreadable experiments from the current response page.
+    for e in list(response_message.experiments):
+        if not _keep(e):
+            response_message.experiments.remove(e)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
@@ -426,9 +378,11 @@ def _filter_search_registered_models(resp: Response):
         resp.data = message_to_json(response_message)
         return
 
+    ctx = _request_grant_context(username)
+
     # Filter out unreadable models from the current response page.
     for rm in list(response_message.registered_models):
-        if not _cached_can_read_registered_model(rm.name, username):
+        if not _can_read_registered_model(ctx, rm.name):
             response_message.registered_models.remove(rm)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
@@ -443,7 +397,7 @@ def _filter_search_registered_models(resp: Response):
             order_by=request_message.order_by,
             page_token=token,
         ),
-        keep=lambda rm: _cached_can_read_registered_model(rm.name, username),
+        keep=lambda rm: _can_read_registered_model(ctx, rm.name),
     )
 
     resp.data = message_to_json(response_message)
@@ -469,9 +423,11 @@ def _filter_search_model_versions(resp: Response):
         resp.data = message_to_json(response_message)
         return
 
+    ctx = _request_grant_context(username)
+
     # Filter out unreadable model versions from the current response page.
     for mv in list(response_message.model_versions):
-        if not _cached_can_read_registered_model(mv.name, username):
+        if not _can_read_registered_model(ctx, mv.name):
             response_message.model_versions.remove(mv)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
@@ -486,13 +442,13 @@ def _filter_search_model_versions(resp: Response):
             order_by=request_message.order_by,
             page_token=token,
         ),
-        keep=lambda mv: _cached_can_read_registered_model(mv.name, username),
+        keep=lambda mv: _can_read_registered_model(ctx, mv.name),
     )
 
     resp.data = message_to_json(response_message)
 
 
-def _search_logged_models_needs_no_filtering(payload: Any, username: str) -> bool:
+def _search_logged_models_needs_no_filtering(payload: Any, ctx: GrantContext) -> bool:
     """Report whether the already-decoded response body can be passed through untouched.
 
     Rewriting the body costs a `parse_dict` into protobuf plus a full re-serialisation
@@ -533,7 +489,7 @@ def _search_logged_models_needs_no_filtering(payload: Any, username: str) -> boo
         experiment_id = info.get("experiment_id")
         if not isinstance(experiment_id, str):
             return False
-        if not _cached_can_read_experiment(experiment_id, username):
+        if not _can_read_experiment(ctx, experiment_id):
             return False
 
     return True
@@ -559,7 +515,8 @@ def _filter_search_logged_models(resp: Response) -> None:
         resp.data = message_to_json(response_message)
         return
 
-    if _search_logged_models_needs_no_filtering(payload, username):
+    ctx = _request_grant_context(username)
+    if _search_logged_models_needs_no_filtering(payload, ctx):
         return
 
     response_message = SearchLoggedModels.Response()  # type: ignore
@@ -568,7 +525,7 @@ def _filter_search_logged_models(resp: Response) -> None:
 
     # Remove unreadable models from the current response page.
     for m in list(response_message.models):
-        if not _cached_can_read_experiment(m.info.experiment_id, username):
+        if not _can_read_experiment(ctx, m.info.experiment_id):
             response_message.models.remove(m)
 
     from mlflow.utils.search_utils import SearchLoggedModelsPaginationToken as Token
@@ -598,7 +555,7 @@ def _filter_search_logged_models(resp: Response) -> None:
         max_results,
         response_message.next_page_token,
         fetch=lambda token: tracking_store.search_logged_models(max_results=max_results, page_token=token, **params),
-        keep=lambda model: _cached_can_read_experiment(model.experiment_id, username),
+        keep=lambda model: _can_read_experiment(ctx, model.experiment_id),
         decode_offset=lambda token: Token.decode(token).offset,
         encode_offset=lambda offset: Token(offset=offset, **params).encode(),
     )
@@ -740,7 +697,7 @@ def _set_can_manage_gateway_model_definition_permission(resp: Response):
     store.grant_creator_gateway_model_definition_permission(name, username)
 
 
-def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str) -> bool:
+def _can_read_listed_scorer(ctx: GrantContext, experiment_id: str, scorer_name: str) -> bool:
     """Whether a ``ListScorers`` row is visible to ``username``.
 
     READ on the scorer's experiment is always required. A grant on the scorer itself then
@@ -748,9 +705,9 @@ def _can_read_listed_scorer(experiment_id: str, scorer_name: str, username: str)
     of its own follows its experiment. Any lookup error hides the row.
     """
     try:
-        if not _cached_can_read_experiment(experiment_id, username):
+        if not _can_read_experiment(ctx, experiment_id):
             return False
-        return bool(effective_scorer_permission(experiment_id=experiment_id, scorer_name=scorer_name, user=username).permission.can_read)
+        return bool(_scorer_permission(ctx, experiment_id, scorer_name).permission.can_read)
     except Exception:
         get_logger().debug("Scorer permission lookup failed while filtering ListScorers")
         return False
@@ -768,10 +725,10 @@ def _filter_list_scorers(resp: Response) -> None:
 
     response_message = ListScorers.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    username = get_fastapi_username()
+    ctx = _request_grant_context(get_fastapi_username())
 
     for scorer in list(response_message.scorers):
-        if not _can_read_listed_scorer(str(scorer.experiment_id), scorer.scorer_name, username):
+        if not _can_read_listed_scorer(ctx, str(scorer.experiment_id), scorer.scorer_name):
             response_message.scorers.remove(scorer)
 
     resp.data = message_to_json(response_message)
@@ -784,13 +741,13 @@ def _filter_list_gateway_endpoints(resp: Response) -> None:
 
     response_message = ListGatewayEndpoints.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    username = get_fastapi_username()
+    ctx = _request_grant_context(get_fastapi_username())
     logger = get_logger()
 
     for endpoint in list(response_message.endpoints):
-        if not _cached_can_read_gateway_endpoint(endpoint.name, username):
+        if not _can_read_gateway_endpoint(ctx, endpoint.name):
             response_message.endpoints.remove(endpoint)
-            logger.debug(f"Filtered gateway endpoint '{endpoint.name}' for user '{username}'")
+            logger.debug(f"Filtered gateway endpoint '{endpoint.name}' for user '{ctx.username}'")
 
     resp.data = message_to_json(response_message)
 
@@ -802,13 +759,13 @@ def _filter_list_gateway_secrets(resp: Response) -> None:
 
     response_message = ListGatewaySecretInfos.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    username = get_fastapi_username()
+    ctx = _request_grant_context(get_fastapi_username())
     logger = get_logger()
 
     for secret in list(response_message.secrets):
-        if not _cached_can_read_gateway_secret(secret.secret_name, username):
+        if not _can_read_gateway_secret(ctx, secret.secret_name):
             response_message.secrets.remove(secret)
-            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{username}'")
+            logger.debug(f"Filtered gateway secret '{secret.secret_name}' for user '{ctx.username}'")
 
     resp.data = message_to_json(response_message)
 
@@ -820,13 +777,13 @@ def _filter_list_gateway_model_definitions(resp: Response) -> None:
 
     response_message = ListGatewayModelDefinitions.Response()  # type: ignore
     parse_dict(resp.json, response_message)
-    username = get_fastapi_username()
+    ctx = _request_grant_context(get_fastapi_username())
     logger = get_logger()
 
     for model_def in list(response_message.model_definitions):
-        if not _cached_can_read_gateway_model_definition(model_def.name, username):
+        if not _can_read_gateway_model_definition(ctx, model_def.name):
             response_message.model_definitions.remove(model_def)
-            logger.debug(f"Filtered gateway model definition '{model_def.name}' for user '{username}'")
+            logger.debug(f"Filtered gateway model definition '{model_def.name}' for user '{ctx.username}'")
 
     resp.data = message_to_json(response_message)
 
@@ -935,16 +892,8 @@ def _filter_list_workspaces(response: Response) -> None:
     data = response.get_json(silent=True)
     if not data or "workspaces" not in data:
         return
-    memo = _get_request_permission_cache()
-
-    def _readable(workspace: str) -> bool:
-        key = ("ws-list", workspace, auth_context.username)
-        if key not in memo:
-            perm = get_workspace_permission_cached(auth_context.username, workspace)
-            memo[key] = perm is not None and perm.can_read
-        return memo[key]
-
-    filtered = [ws for ws in data["workspaces"] if _readable(ws.get("name", ""))]
+    ctx = _request_grant_context(auth_context.username)
+    filtered = [ws for ws in data["workspaces"] if (perm := ctx.workspace_permission(ws.get("name", ""))) is not None and perm.can_read]
     data["workspaces"] = filtered
     response.set_data(json.dumps(data))
 
@@ -964,7 +913,7 @@ def _filter_search_evaluation_datasets(resp: Response) -> None:
         return
     from mlflow_oidc_auth.validators.dataset import dataset_experiment_ids
 
-    username = get_fastapi_username()
+    ctx = _request_grant_context(get_fastapi_username())
 
     def _readable(dataset: Any) -> bool:
         if not isinstance(dataset, dict) or not dataset.get("dataset_id"):
@@ -972,7 +921,7 @@ def _filter_search_evaluation_datasets(resp: Response) -> None:
         # MLflow serializes a dataset's links only when they were loaded, which a search
         # does not do, so resolve them from the store.
         experiment_ids = dataset_experiment_ids(str(dataset["dataset_id"]))
-        return bool(experiment_ids) and all(_cached_can_read_experiment(e, username) for e in experiment_ids)
+        return bool(experiment_ids) and all(_can_read_experiment(ctx, e) for e in experiment_ids)
 
     data["datasets"] = [d for d in data["datasets"] if _readable(d)]
     resp.set_data(json.dumps(data))
@@ -1009,6 +958,7 @@ def _filter_list_artifact_root(resp: Response) -> None:
         return
 
     username = get_fastapi_username()
+    ctx = _request_grant_context(username)
     workspaces_enabled = bool(config.MLFLOW_ENABLE_WORKSPACES)
     allowed_workspaces: set = set()
     if workspaces_enabled:
@@ -1028,8 +978,8 @@ def _filter_list_artifact_root(resp: Response) -> None:
         experiment = active.get(name) if isinstance(name, str) else None
         if experiment is None or getattr(experiment, "lifecycle_stage", None) != LifecycleStage.ACTIVE:
             return False
-        _note_experiment(username, experiment)
-        if not _cached_can_read_experiment(name, username):
+        _note_experiment(ctx, experiment)
+        if not _can_read_experiment(ctx, name):
             return False
         if workspaces_enabled:
             from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME

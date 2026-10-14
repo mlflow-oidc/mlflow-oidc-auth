@@ -2,7 +2,7 @@
 Permission resolution utilities for MLflow OIDC Auth.
 
 ``resolve_permission()`` is the single entry point for one resource's permission, for all 8
-resource types in ``PERMISSION_REGISTRY``. The decision is made by ``utils/grant_context.py``
+resource types in ``grant_context.TYPE_SPECS``. The decision is made by ``utils/grant_context.py``
 (issue #460), the one resolver shared with the list filters and the FastAPI batch path: the
 user's grants are read once per resource type and resolved in memory.
 
@@ -18,7 +18,9 @@ Existing public functions (effective_*, can_*) are thin wrappers around
 resolve_permission() and remain backward-compatible.
 """
 
-from typing import Callable, Dict
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Sequence
 from urllib.parse import quote
 
 from mlflow.exceptions import MlflowException
@@ -44,13 +46,31 @@ _permission_cache: CacheBackend | None = None
 
 
 def _get_permission_cache() -> CacheBackend:
-    """Get or create the permission resolution cache (lazy init)."""
+    """Get or create the permission resolution cache (lazy init).
+
+    "_v2": entries are :class:`_CachedDecision` since issue #460, so a replica still on the old
+    format never reads one, nor this one an old entry.
+    """
     global _permission_cache
     if _permission_cache is None:
         ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
         # Validated once in config.py (positive int, default 10000).
-        _permission_cache = get_cache_backend("permissions", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
     return _permission_cache
+
+
+@dataclass(frozen=True)
+class _CachedDecision:
+    """A cached decision and the time it stops being valid.
+
+    A decision is built from grant reads that may themselves be cached, possibly by another
+    replica. Its expiry is capped at theirs, so a revoke is never served longer than one
+    ``PERMISSION_CACHE_TTL_SECONDS`` after the grants were read — not one TTL after the decision
+    was made from grants already nearly that old.
+    """
+
+    result: PermissionResult
+    expires_at: float
 
 
 # Distinguishes "no workspace context on this request" from a workspace literally named
@@ -148,7 +168,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     GATEWAY_ENDPOINT,
     GATEWAY_MODEL_DEFINITION,
     GATEWAY_SECRET,
-    KNOWN_PERMISSION_SOURCES,
+    GUARD,
     MCP_SERVER,
     NON_EXPLICIT_PERMISSION_KINDS,
     PROMPT,
@@ -156,12 +176,11 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     SCORER,
     TYPE_SPECS,
     best_matching_regex,
-    current_generation,
     flush_grant_contexts,
     invalidate_user_grant_contexts,
     load_grant_context,
+    permission_cache_ttl,
     resolve,
-    source_label,
     walk_sources,
     workspace_fallback,
 )
@@ -169,7 +188,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
 # The same names as literals, for log messages. CodeQL treats anything derived from a
 # constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
 # the matching literal here rather than by echoing the value it was given. Kept in step
-# with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+# with grant_context.TYPE_SPECS by test_permission_fallback_observability.py.
 _RESOURCE_TYPE_LOG_NAMES = (
     "experiment",
     "registered_model",
@@ -186,10 +205,8 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # Pattern matcher. The one implementation is grant_context.best_matching_regex.
 # ---------------------------------------------------------------------------
 
-_best_matching_regex = best_matching_regex
 
-
-def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: str | None = None) -> str | None:
+def _match_regex_permission_or_none(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> str | None:
     """Non-raising matcher, for callers where no match is not an error.
 
     Parameters:
@@ -199,14 +216,14 @@ def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: s
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The permission of the deciding pattern (see :func:`_best_matching_regex`), or ``None``.
+        The permission of the deciding pattern (see ``grant_context.best_matching_regex``), or ``None``.
     """
-    regex = _best_matching_regex(regexes, name, label, workspace)
+    regex = best_matching_regex(regexes, name, label, workspace)
     return regex.permission if regex is not None else None
 
 
-def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
-    """Raising matcher, for the creation-time source chain (see :func:`_best_matching_regex`).
+def _match_regex_permission(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> str:
+    """Raising matcher, for the creation-time source chain (see ``grant_context.best_matching_regex``).
 
     Parameters:
         regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
@@ -220,23 +237,16 @@ def _match_regex_permission(regexes, name: str, label: str, workspace: str | Non
     Raises:
         MlflowException: ``RESOURCE_DOES_NOT_EXIST`` when no pattern matches.
     """
-    regex = _best_matching_regex(regexes, name, label, workspace)
+    regex = best_matching_regex(regexes, name, label, workspace)
     if regex is None:
         raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
     return regex.permission
 
 
 # ---------------------------------------------------------------------------
-# Permission registry and resolve_permission()
+# resolve_permission() and its workspace fallback. Resolution itself is grant_context.resolve
+# (issue #460): one implementation for single checks, list filters and the FastAPI batch path.
 # ---------------------------------------------------------------------------
-
-#: The resource types ``resolve_permission`` serves, and where each type's grants are read from.
-#: Resolution itself is ``grant_context.resolve`` (issue #460): one implementation for single
-#: checks, list filters and the FastAPI batch path.
-PERMISSION_REGISTRY = TYPE_SPECS
-
-_KNOWN_PERMISSION_SOURCES = KNOWN_PERMISSION_SOURCES
-_source_label = source_label
 
 
 def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
@@ -370,35 +380,42 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
         )
 
 
-def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
+def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs: str) -> PermissionResult:
     """Single entry point for one resource's permission. Per D-01 (REFAC-01).
 
-    Resolves against the user's grant context (``grant_context.resolve``), whose grants are read
-    once per resource type and cached across requests. The decision itself is also cached with a
-    short TTL, keyed ``resource_type:resource_id:username`` plus every kwarg, which identify
-    composite resources (``scorer_name`` for a scorer).
+    Resolves with a single-resource grant context (``grant_context.resolve``): direct grants by
+    their indexed per-resource queries, patterns from the user's cached pattern read. The decision
+    is cached too, keyed ``resource_type:resource_id:username`` plus every kwarg, which identify
+    composite resources (``scorer_name`` for a scorer), until the earlier of one TTL from now and
+    one TTL from the oldest grant read it was built from.
 
     Raises:
         KeyError: For an unknown resource type.
     """
-    PERMISSION_REGISTRY[resource_type]  # an unknown type is an error, not a cache miss
+    if resource_type not in TYPE_SPECS:
+        # An unknown type is an error, never a cache miss or a fallback decision.
+        raise KeyError(resource_type)
     cache = _get_permission_cache()
     # kwargs identify the resource beyond its id (scorer_name for a scorer), so they are part of the key.
     cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(), **kwargs)
 
     cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    # The grant-context generation guards this entry as it guards the grant sections: a decision
-    # an invalidation overlapped answers this request but is not cached (or is deleted again).
-    generation = current_generation()
-    result = resolve(load_grant_context(username), resource_type, resource_id, name=kwargs.get("scorer_name"))
-    if current_generation() != generation:
-        return result
-    cache.set(cache_key, result)
-    if current_generation() != generation:
+    if isinstance(cached, _CachedDecision):
+        if time.time() < cached.expires_at:
+            return cached.result
         cache.delete(cache_key)
+
+    # The grant-context generation guards this entry as it guards the grant reads: a decision an
+    # invalidation overlapped answers this request but is not cached (or is deleted again).
+    generation = GUARD.current()
+    ctx = load_grant_context(username)
+    result = resolve(ctx, resource_type, resource_id, name=kwargs.get("scorer_name"))
+    ttl = permission_cache_ttl()
+    expires_at = time.time() + ttl
+    if ctx.oldest_read is not None:
+        expires_at = min(expires_at, ctx.oldest_read + ttl)
+    if expires_at > time.time():
+        GUARD.store_unless_raced(cache, cache_key, _CachedDecision(result, expires_at), generation)
     return result
 
 
@@ -492,10 +509,6 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     return resolve_permission(PROMPT, prompt_name, user)
 
 
-# Kinds of a resolved permission that are not a grant on the resource itself.
-_NON_EXPLICIT_PERMISSION_KINDS = NON_EXPLICIT_PERMISSION_KINDS
-
-
 def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
     """Resolve effective permission for a scorer.
 
@@ -512,7 +525,7 @@ def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str)
         The scorer's grant, or the experiment's effective permission when there is none.
     """
     result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
-    if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
+    if result.kind in NON_EXPLICIT_PERMISSION_KINDS:
         return effective_experiment_permission(experiment_id, user)
     return result
 

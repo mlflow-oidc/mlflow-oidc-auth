@@ -8,12 +8,15 @@ fallback as every other path. That includes the experiment-in-request-workspace 
 experiment entity's own ``workspace`` where the caller passes entities.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.utils.grant_context import (
     EXPERIMENT,
+    GATEWAY_ENDPOINT,
+    GATEWAY_MODEL_DEFINITION,
+    GATEWAY_SECRET,
     PROMPT,
     REGISTERED_MODEL,
     GrantContext,
@@ -22,9 +25,6 @@ from mlflow_oidc_auth.utils.grant_context import (
 )
 
 logger = get_logger()
-
-#: The batch context is the grant context. Kept as a name for callers of the old dataclass.
-UserPermissionContext = GrantContext
 
 
 def _batch_workspace() -> Optional[str]:
@@ -43,10 +43,11 @@ def _batch_workspace() -> Optional[str]:
 
 
 def build_user_permission_context(username: str) -> GrantContext:
-    """A grant context for ``username`` for one batch.
+    """A bulk grant context for ``username`` for one batch.
 
-    Grants are read lazily, once per resource type, so a batch costs a fixed number of
-    statements regardless of the number of resources.
+    Grants are read lazily, once per resource type, so on databases whose ``=`` compares names
+    exactly a batch costs a fixed number of statements regardless of the number of resources.
+    Elsewhere direct grants are looked up per resource in SQL (see ``grant_context``).
 
     Parameters:
         username: The username to build context for.
@@ -54,7 +55,7 @@ def build_user_permission_context(username: str) -> GrantContext:
     Returns:
         The grant context.
     """
-    return load_grant_context(username, _batch_workspace())
+    return load_grant_context(username, _batch_workspace(), bulk=True)
 
 
 def resolve_experiment_permission_from_context(
@@ -197,21 +198,20 @@ def filter_manageable_prompts(username: str, prompts: List) -> List:
     return [prompt for prompt in prompts if permissions[prompt.name].permission.can_manage]
 
 
-def _filter_manageable_by_name(items: List, name_of, can_manage) -> List:
-    """The items of a gateway listing the user can manage.
+def _filter_manageable_by_name(username: str, resource_type: str, items: List, name_of: Callable[[Any], str]) -> List:
+    """The items of a gateway listing ``username`` can manage, resolved against one bulk context.
 
-    Each item is checked through the single-resource gateway check, itself a call into the grant
-    context (``resolve_permission``), whose grants are read once per resource type and cached:
-    the workspace fallback applies in the workspace the request names, as for every other gateway
-    check. An item without a name, or one whose check fails, is not manageable.
+    The workspace fallback applies in the workspace the request names, as for the single-resource
+    gateway checks. An item without a name, or one whose resolution fails, is not manageable.
     """
+    ctx = load_grant_context(username, bulk=True)
     manageable = []
     for item in items:
         name = name_of(item)
         if not name:
             continue
         try:
-            if can_manage(name):
+            if resolve(ctx, resource_type, name).permission.can_manage:
                 manageable.append(item)
         except Exception:
             # Treat errors (missing resource etc.) as not manageable. The name is not logged: for
@@ -230,11 +230,7 @@ def filter_manageable_gateway_endpoints(username: str, endpoints: List) -> List:
     Returns:
         List of endpoint dictionaries the user can manage.
     """
-    from mlflow_oidc_auth.utils import permissions
-
-    return _filter_manageable_by_name(
-        endpoints, lambda endpoint: endpoint.get("name", ""), lambda name: permissions.can_manage_gateway_endpoint(name, username)
-    )
+    return _filter_manageable_by_name(username, GATEWAY_ENDPOINT, endpoints, lambda endpoint: endpoint.get("name", ""))
 
 
 def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
@@ -247,13 +243,9 @@ def filter_manageable_gateway_secrets(username: str, secrets: List) -> List:
     Returns:
         List of secret dictionaries the user can manage.
     """
-    from mlflow_oidc_auth.utils import permissions
-
     # MLflow GatewaySecretInfo uses 'secret_name'; fall back to 'name'/'key' for compatibility
     return _filter_manageable_by_name(
-        secrets,
-        lambda secret: secret.get("secret_name") or secret.get("name") or secret.get("key", ""),
-        lambda name: permissions.can_manage_gateway_secret(name, username),
+        username, GATEWAY_SECRET, secrets, lambda secret: secret.get("secret_name") or secret.get("name") or secret.get("key", "")
     )
 
 
@@ -267,6 +259,4 @@ def filter_manageable_gateway_model_definitions(username: str, models: List) -> 
     Returns:
         List of model definition dictionaries the user can manage.
     """
-    from mlflow_oidc_auth.utils import permissions
-
-    return _filter_manageable_by_name(models, lambda model: model.get("name", ""), lambda name: permissions.can_manage_gateway_model_definition(name, username))
+    return _filter_manageable_by_name(username, GATEWAY_MODEL_DEFINITION, models, lambda model: model.get("name", ""))

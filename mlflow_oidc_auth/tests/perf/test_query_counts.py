@@ -364,7 +364,7 @@ class TestGroupPermissionCollapse:
         original = store_mod.store
         store_mod.store = store
         try:
-            batch = bp.build_user_permission_context("dora@example.com").section("experiment").group["e0"]
+            batch = bp.build_user_permission_context("dora@example.com").direct("experiment").group["e0"]
         finally:
             store_mod.store = original
 
@@ -386,7 +386,7 @@ class TestGroupPermissionCollapse:
             results = []
             for order in (["ga", "gz"], ["gz", "ga"]):
                 store.set_user_groups("eve@example.com", order)
-                results.append(bp.build_user_permission_context("eve@example.com").section("experiment").group["e0"])
+                results.append(bp.build_user_permission_context("eve@example.com").direct("experiment").group["e0"])
         finally:
             store_mod.store = original
 
@@ -533,7 +533,7 @@ class TestSearchFilterStatements:
 
         make = make_experiments if kind == "experiments" else make_registered_models
         key = "experiment_id" if kind == "experiments" else "name"
-        ident = (lambda i: str(i)) if kind == "experiments" else (lambda i: f"model-{i}")
+        ident = str if kind == "experiments" else "model-{}".format
 
         count_100, listed_100 = self._cold_count(counter, kind, make(100))
         report_100 = counter.report()
@@ -544,3 +544,83 @@ class TestSearchFilterStatements:
         assert [row[key] for row in listed_500] == [ident(i) for i in range(0, 500, 10)]
         assert count_100 == count_500, f"{count_100} statements for 100 rows, {count_500} for 500\n{report_100}\n{counter.report()}"
         assert 0 < count_500 <= 20, counter.report()
+
+
+class TestSingleCheckCost:
+    """A single-resource check must not read the user's whole grant set (issue #460 review).
+
+    Accounts that create resources accumulate a direct grant per resource; a check of one of them
+    looks its grants up by index, as before the grant context, so its cost does not grow with them.
+    """
+
+    def _count_one_check(self, counter, monkeypatch, username, experiment_id):
+        from types import SimpleNamespace
+
+        from mlflow_oidc_auth.utils import permissions
+
+        tracking = SimpleNamespace(get_experiment=lambda experiment_id: SimpleNamespace(name=f"exp-{experiment_id}"))
+        monkeypatch.setattr(permissions, "_get_tracking_store", lambda: tracking)
+        permissions.flush_permission_cache()
+        counter.reset()
+        result = permissions.resolve_permission("experiment", experiment_id, username)
+        return counter.count, result
+
+    @pytest.mark.parametrize("experiment_id, granted", [("5", True), ("no-grant", False)])
+    def test_single_check_statements_do_not_grow_with_direct_grants(self, store, counter, monkeypatch, experiment_id, granted):
+        import mlflow_oidc_auth.store as store_mod
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(store_mod, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        counts = {}
+        for n_grants in (10, 1000):
+            username = f"creator{n_grants}@example.com"
+            store.create_user(username, username)
+            for i in range(n_grants):
+                store.create_experiment_permission(str(i), username, "MANAGE")
+            counts[n_grants], result = self._count_one_check(counter, monkeypatch, username, experiment_id)
+            assert result.permission.can_manage is granted
+        assert counts[10] == counts[1000], f"a single check scales with the user's grants: {counts}"
+        # Found directly: one indexed lookup. Not found: the two direct lookups, the group ids and
+        # the user's pattern list (no groups, so no group pattern list).
+        assert counts[1000] == (1 if granted else 4), counter.report()
+
+
+def _gateway_item(key):
+    return lambda i: {key: f"gw-{i}"}
+
+
+class TestGatewayManageableFilterStatements:
+    """The gateway 'manageable' filters resolve every row against one bulk context (issue #460 review)."""
+
+    @pytest.mark.parametrize(
+        "filter_name, grant, item",
+        [
+            ("filter_manageable_gateway_endpoints", "create_gateway_endpoint_permission", _gateway_item("name")),
+            ("filter_manageable_gateway_secrets", "create_gateway_secret_permission", _gateway_item("secret_name")),
+            ("filter_manageable_gateway_model_definitions", "create_gateway_model_definition_permission", _gateway_item("name")),
+        ],
+    )
+    def test_gateway_filter_statements_constant_in_rows(self, store, counter, monkeypatch, filter_name, grant, item):
+        import mlflow_oidc_auth.store as store_mod
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        monkeypatch.setattr(store_mod, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        store.create_user("gw@example.com", "Gateway user")
+        for i in range(0, 200, 10):
+            getattr(store, grant)(f"gw-{i}", "gw@example.com", "MANAGE")
+
+        counts = {}
+        for n in (50, 200):
+            flush_permission_cache()
+            counter.reset()
+            manageable = getattr(bp, filter_name)("gw@example.com", [item(i) for i in range(n)])
+            counts[n] = counter.count
+            assert len(manageable) == n // 10
+        assert counts[50] == counts[200], f"statements scale with rows: {counts}"
+        assert counts[200] <= 6, counter.report()

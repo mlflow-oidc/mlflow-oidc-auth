@@ -98,7 +98,31 @@ def _scorer_store(user=(), group=(), regex=(), group_regex=(), experiment=()):
     store.list_experiment_regex_permissions.return_value = []
     store.list_group_experiment_regex_permissions_for_groups_ids.return_value = []
     store.list_user_groups_grants.side_effect = lambda resource_type, username: list(group) if resource_type == "scorer" else []
+    # Single checks look direct grants up one at a time (issue #460 review): the same rows, by key.
+    store.get_scorer_permission.side_effect = lambda exp, scorer, username: _one(
+        [r for r in user if (str(r.experiment_id), r.scorer_name) == (str(exp), scorer)], strongest=False
+    )
+    store.get_user_groups_scorer_permission.side_effect = lambda exp, scorer, username: _one(
+        [r for r in group if (str(r.experiment_id), r.scorer_name) == (str(exp), scorer)], strongest=True
+    )
+    store.get_experiment_permission.side_effect = lambda exp, username: _one([r for r in experiment if str(r.experiment_id) == str(exp)], strongest=False)
+    store.get_user_groups_experiment_permission.side_effect = lambda exp, username: _one([], strongest=True)
     return store
+
+
+def _one(rows, strongest):
+    """The grant a per-resource query returns: the row (or, across groups, the strongest), else RESOURCE_DOES_NOT_EXIST."""
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+    from mlflow_oidc_auth.permissions import compare_permissions
+
+    if not rows:
+        raise MlflowException("no grant", RESOURCE_DOES_NOT_EXIST)
+    best = rows[0]
+    for row in rows[1:]:
+        if strongest and compare_permissions(best.permission, row.permission):
+            best = row
+    return best
 
 
 class TestScorerSources:
@@ -123,7 +147,7 @@ class TestScorerSources:
         store = _scorer_store(user=[SimpleNamespace(experiment_id="exp-1", scorer_name="scorer-1", permission="READ")])
         result = self._resolve(store)
         assert (result.kind, result.permission.name) == ("user", "READ")
-        store.list_scorer_permissions.assert_called_once_with("alice")
+        store.get_scorer_permission.assert_called_once_with("exp-1", "scorer-1", "alice")
 
     def test_group_source_reads_the_users_groups_scorer_grants(self) -> None:
         """The group source is the strongest grant of the user's groups on that scorer."""
@@ -135,7 +159,7 @@ class TestScorerSources:
         )
         result = self._resolve(store)
         assert (result.kind, result.permission.name) == ("group", "EDIT")
-        store.list_user_groups_grants.assert_any_call("scorer", "alice")
+        store.get_user_groups_scorer_permission.assert_called_once_with("exp-1", "scorer-1", "alice")
 
     def test_a_grant_on_another_scorer_or_experiment_does_not_apply(self) -> None:
         """Both parts of the key count: same name in another experiment, other name in the same one."""

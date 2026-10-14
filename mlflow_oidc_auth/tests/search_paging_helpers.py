@@ -69,7 +69,7 @@ _KINDS = {
         "search_experiments",
         lambda r: r.experiment_id,
         "_filter_search_experiments",
-        "_cached_can_read_experiment",
+        "_can_read_experiment",
     ),
     "registered_models": (
         SearchRegisteredModels,
@@ -77,7 +77,7 @@ _KINDS = {
         "search_registered_models",
         lambda r: r.name,
         "_filter_search_registered_models",
-        "_cached_can_read_registered_model",
+        "_can_read_registered_model",
     ),
     "model_versions": (
         SearchModelVersions,
@@ -85,7 +85,7 @@ _KINDS = {
         "search_model_versions",
         lambda r: r.name,
         "_filter_search_model_versions",
-        "_cached_can_read_registered_model",
+        "_can_read_registered_model",
     ),
 }
 
@@ -133,7 +133,7 @@ def run_filtered_page(
         stack.enter_context(patch(f"{_AR}._get_request_message", return_value=request_message))
         stack.enter_context(patch(f"{_AR}._get_tracking_store", return_value=store))
         stack.enter_context(patch(f"{_AR}._get_model_registry_store", return_value=store))
-        stack.enter_context(patch(f"{_AR}.{can_read_name}", side_effect=lambda rid, _user: readable(rid)))
+        stack.enter_context(patch(f"{_AR}.{can_read_name}", side_effect=lambda _ctx, rid: readable(rid)))
         stack.enter_context(patch.object(ar.config, "MLFLOW_ENABLE_WORKSPACES", can_access_workspace is not None))
         if can_access_workspace is not None:
             stack.enter_context(patch(f"{_AR}._can_access_workspace", side_effect=can_access_workspace))

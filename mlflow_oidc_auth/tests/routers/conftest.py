@@ -399,7 +399,6 @@ def _patch_router_stores(mock_store):
         # the lazy singleton last pointed at — which passes in isolation and fails when the
         # whole suite shares a process.
         patch("mlflow_oidc_auth.routers.auth.store", mock_store),
-        patch("mlflow_oidc_auth.utils.batch_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store),

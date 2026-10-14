@@ -135,6 +135,8 @@ def _fake_store(
 ):
     """A store holding exactly the given grants, as the grant context reads them (issue #460)."""
     store = MagicMock()
+    # An exact-``=`` database: a bulk context matches direct grants in memory.
+    store.engine.dialect.name = "sqlite"
     store.get_groups_ids_for_user.return_value = list(group_ids)
     store.list_experiment_permissions.return_value = [SimpleNamespace(experiment_id=k, permission=v) for k, v in (user_experiments or {}).items()]
     store.list_experiment_regex_permissions.return_value = list(experiment_regex)

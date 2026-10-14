@@ -1,4 +1,4 @@
-"""One load-once grant resolver for permission checks and list filtering (issue #460).
+"""One grant resolver for permission checks and list filtering (issue #460).
 
 Before this module, permission resolution was implemented three times: per resource in
 ``utils/permissions.py`` (one store round trip per source, per resource), in the FastAPI batch
@@ -9,18 +9,24 @@ decision; the three call sites are thin wrappers over it.
 
 The model:
 
-* A :class:`GrantContext` belongs to one user and one request. It holds the request workspace
-  (for the workspace fallback) and the grant workspace (for name-keyed grants and pattern scope).
-* Its grants are loaded per resource type, on first use, as a :class:`_Section`: the user's direct
-  grants, the folded grants of the user's groups, and the user's and the user's groups' patterns.
-  A section is a fixed number of statements however many resources are resolved against it
-  (1 for the group ids, shared by the context, plus at most 4 per type), so a filter pass over 500
-  rows costs what a pass over 100 does.
-* Sections are cached across requests per ``(user, grant scope, resource type)`` in their own
+* A :class:`GrantContext` belongs to one user and one request (or one batch). It holds the request
+  workspace (for the workspace fallback) and the grant workspace (for name-keyed grants and pattern
+  scope).
+* **Patterns** (the user's and the user's groups' regex grants) are read once per resource type, on
+  first use, and matched in memory.
+* **Direct grants** (the user's own, and the folded grants of the user's groups) are read in one of
+  two ways. A *single-resource* context looks each one up with the same indexed per-resource query
+  as before, so a check never reads a user's whole grant set. A *bulk* context (list filters,
+  batch endpoints) reads all of the user's direct grants on the type once and matches names in
+  memory — but only on databases whose ``=`` compares names exactly (SQLite, PostgreSQL). Where
+  ``=`` ignores case, accents or trailing spaces (MySQL, MariaDB, SQL Server, ...), names are never
+  matched in Python: every direct grant is looked up in SQL, with the database's own semantics.
+* Both reads are cached across requests per ``(user, grant scope, resource type)`` in their own
   namespace, for ``PERMISSION_CACHE_TTL_SECONDS``. Every store wrapper that flushes the permission
-  cache flushes them too (see ``permissions.flush_permission_cache``), behind a generation guard
-  like the workspace cache's: a load racing an invalidation is used for its own request but never
-  cached. A failed load raises and caches nothing.
+  cache flushes them too (see ``permissions.flush_permission_cache``), behind the shared
+  invalidation generation guard (``cache/generation.py``): a load racing an invalidation is used
+  for its own request but never cached. A failed load raises and caches nothing. Each read records
+  when it was made, so a decision derived from it is never cached past the read's own expiry.
 * :func:`resolve` applies the semantics once: ``PERMISSION_SOURCE_ORDER`` first match, the
   strongest grant within a source, ``DEFAULT_MLFLOW_PERMISSION`` as the fallback, and the
   workspace fallback including the experiment-in-request-workspace check.
@@ -30,16 +36,16 @@ resolve permissions, so the authentication path's statement budget is unchanged.
 """
 
 import re
-import uuid
+import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
-from urllib.parse import quote
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
@@ -106,7 +112,7 @@ class _Pattern:
     compiled: Optional[re.Pattern]
 
 
-def _compile_pattern(rule) -> _Pattern:
+def _compile_pattern(rule: Any) -> _Pattern:
     """Precompile one pattern grant. A pattern that does not compile is kept uncompiled.
 
     Patterns are validated when created, so this does not happen in practice; if it does, the
@@ -128,14 +134,14 @@ def _compile_pattern(rule) -> _Pattern:
     )
 
 
-def _pattern_matches(rule, name: str) -> bool:
+def _pattern_matches(rule: Any, name: str) -> bool:
     compiled = getattr(rule, "compiled", None)
     if isinstance(compiled, re.Pattern):
         return compiled.match(name) is not None
     return re.match(rule.regex, name) is not None
 
 
-def best_matching_regex(regexes, name: str, label: str, workspace: str | None = None):
+def best_matching_regex(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> Optional[Any]:
     """The pattern that decides ``name``'s permission, or None when none matches.
 
     Only in-scope patterns that match ``name`` count — in scope meaning they apply in the resource's
@@ -187,11 +193,14 @@ class TypeSpec:
     Attributes:
         name: The resource type.
         label: What a pattern is matched against, for the debug log.
-        user: Lists the user's direct grants (``store, username``).
-        group: Lists the grants of the user's groups (``store, username``), one JOIN.
+        user: Lists the user's direct grants (``store, username``), for bulk contexts.
+        group: Lists the grants of the user's groups (``store, username``), one JOIN, for bulk contexts.
         regex: Lists the user's patterns (``store, username``), or None when the type has none.
         group_regex: Lists the patterns of the user's groups (``store, group_ids``), or None.
         key: The resource key of a direct grant, as :func:`resolve` looks it up.
+        user_one: The user's direct grant on one resource (``store, resource id, name, username``),
+            the indexed per-resource query; raises ``RESOURCE_DOES_NOT_EXIST`` when there is none.
+        group_one: The strongest grant of the user's groups on one resource, likewise.
     """
 
     name: str
@@ -201,6 +210,8 @@ class TypeSpec:
     regex: Optional[Callable[[Any, str], list]]
     group_regex: Optional[Callable[[Any, List[int]], list]]
     key: Callable[[Any], Any]
+    user_one: Callable[[Any, str, Optional[str], str], str]
+    group_one: Callable[[Any, str, Optional[str], str], str]
 
 
 TYPE_SPECS: Dict[str, TypeSpec] = {
@@ -212,6 +223,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_experiment_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_experiment_regex_permissions_for_groups_ids(ids),
         key=lambda p: str(p.experiment_id),
+        user_one=lambda s, r, n, u: s.get_experiment_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_groups_experiment_permission(r, u).permission,
     ),
     REGISTERED_MODEL: TypeSpec(
         name=REGISTERED_MODEL,
@@ -221,6 +234,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_registered_model_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_registered_model_regex_permissions_for_groups_ids(ids),
         key=lambda p: p.name,
+        user_one=lambda s, r, n, u: s.get_registered_model_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_groups_registered_model_permission(r, u).permission,
     ),
     # Prompts are registered models: their direct grants are the registered-model grants. Only
     # their patterns are their own.
@@ -232,6 +247,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_prompt_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_prompt_regex_permissions_for_groups_ids(ids),
         key=lambda p: p.name,
+        user_one=lambda s, r, n, u: s.get_registered_model_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_groups_registered_model_permission(r, u).permission,
     ),
     SCORER: TypeSpec(
         name=SCORER,
@@ -241,6 +258,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_scorer_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_scorer_regex_permissions_for_groups_ids(ids),
         key=lambda p: (str(p.experiment_id), p.scorer_name),
+        user_one=lambda s, r, n, u: s.get_scorer_permission(r, n, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_groups_scorer_permission(r, n, u).permission,
     ),
     GATEWAY_ENDPOINT: TypeSpec(
         name=GATEWAY_ENDPOINT,
@@ -250,6 +269,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_gateway_endpoint_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_endpoint_regex_permissions_for_groups_ids(ids),
         key=lambda p: p.endpoint_id,
+        user_one=lambda s, r, n, u: s.get_gateway_endpoint_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_gateway_endpoint_group_permission(r, u).permission,
     ),
     GATEWAY_SECRET: TypeSpec(
         name=GATEWAY_SECRET,
@@ -259,6 +280,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_gateway_secret_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_secret_regex_permissions_for_groups_ids(ids),
         key=lambda p: p.secret_id,
+        user_one=lambda s, r, n, u: s.get_gateway_secret_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_gateway_secret_group_permission(r, u).permission,
     ),
     GATEWAY_MODEL_DEFINITION: TypeSpec(
         name=GATEWAY_MODEL_DEFINITION,
@@ -268,6 +291,8 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=lambda s, u: s.list_gateway_model_definition_regex_permissions(u),
         group_regex=lambda s, ids: s.list_group_gateway_model_definition_regex_permissions_for_groups_ids(ids),
         key=lambda p: p.model_definition_id,
+        user_one=lambda s, r, n, u: s.get_gateway_model_definition_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_gateway_model_definition_group_permission(r, u).permission,
     ),
     # MCP servers have no pattern grants: no regex / group-regex sources.
     MCP_SERVER: TypeSpec(
@@ -278,11 +303,13 @@ TYPE_SPECS: Dict[str, TypeSpec] = {
         regex=None,
         group_regex=None,
         key=lambda p: p.name,
+        user_one=lambda s, r, n, u: s.get_mcp_server_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_mcp_server_group_permission(r, u).permission,
     ),
 }
 
 
-def _store():
+def _store() -> Any:
     """The store singleton, read at call time so a test that swaps it is honored."""
     import mlflow_oidc_auth.store as store_module
 
@@ -295,56 +322,55 @@ def _store():
 
 
 @dataclass(frozen=True)
-class _Section:
-    """One resource type's grants for one user in one grant scope. Immutable once built.
+class _DirectGrants:
+    """All of one user's direct grants on one resource type in one grant scope (bulk contexts).
 
     Attributes:
         user: Resource key -> the user's direct grant.
         group: Resource key -> the strongest grant of any of the user's groups.
-        regex: The user's patterns, in ``(priority, id)`` order, precompiled.
-        group_regex: The user's groups' patterns, in ``(priority, id)`` order, precompiled.
-        fold_case: Whether resource keys are compared without regard to case (see
-            :func:`_case_insensitive_keys`); :meth:`key` applies it to a looked-up key.
+        loaded_at: When it was read (``time.time()``).
     """
 
     user: Mapping[Any, str]
     group: Mapping[Any, str]
+    loaded_at: float
+
+
+@dataclass(frozen=True)
+class _Patterns:
+    """One user's pattern grants on one resource type.
+
+    Attributes:
+        regex: The user's patterns, in ``(priority, id)`` order, precompiled.
+        group_regex: The user's groups' patterns, in ``(priority, id)`` order, precompiled.
+        loaded_at: When they were read (``time.time()``).
+    """
+
     regex: Tuple[_Pattern, ...]
     group_regex: Tuple[_Pattern, ...]
-    fold_case: bool = False
-
-    def key(self, resource_key: Any) -> Any:
-        """``resource_key`` as the direct-grant maps hold it."""
-        return _fold_key(resource_key) if self.fold_case else resource_key
+    loaded_at: float
 
 
-#: SQL dialects whose default collation compares strings without regard to case.
-_CASE_INSENSITIVE_DIALECTS = frozenset(("mysql", "mariadb"))
+#: SQL dialects whose ``=`` on a name column compares exactly (byte for byte, case and accents
+#: included) under their default collation. Only on these are names matched in Python.
+_EXACT_MATCH_DIALECTS = frozenset(("sqlite", "postgresql"))
 
 
-def _case_insensitive_keys(store) -> bool:
-    """Whether the auth database matches resource names without regard to case.
+def _names_match_exactly(store: Any) -> bool:
+    """Whether the auth database's ``=`` compares resource names exactly.
 
-    The per-resource lookups found a direct grant with a SQL ``=``, which MySQL's and MariaDB's
-    default collations evaluate case-insensitively: a grant written as ``CHURN`` applies to the
-    model ``churn`` there. The in-memory maps must match exactly what that query matched, or an
-    explicit ``NO_PERMISSIONS`` written in another case would stop applying.
+    MySQL and MariaDB (case-, accent- and trailing-space-insensitive by default), SQL Server
+    (case-insensitive by default) and any unknown backend answer no: there, a direct grant is
+    always looked up in SQL, so it matches exactly what the per-resource query matched before —
+    including an explicit ``NO_PERMISSIONS`` written in another case.
     """
     try:
-        return getattr(store.engine.dialect, "name", None) in _CASE_INSENSITIVE_DIALECTS
+        return getattr(store.engine.dialect, "name", None) in _EXACT_MATCH_DIALECTS
     except Exception:
         return False
 
 
-def _fold_key(resource_key: Any) -> Any:
-    if isinstance(resource_key, str):
-        return resource_key.lower()
-    if isinstance(resource_key, tuple):
-        return tuple(part.lower() if isinstance(part, str) else part for part in resource_key)
-    return resource_key
-
-
-def _fold_group_grants(rows, key: Callable[[Any], Any]) -> Dict[Any, str]:
+def _fold_group_grants(rows: Sequence[Any], key: Callable[[Any], Any]) -> Dict[Any, str]:
     """The strongest grant per resource across the user's groups.
 
     The same ``compare_permissions`` fold as the per-resource group lookup
@@ -361,7 +387,7 @@ def _fold_group_grants(rows, key: Callable[[Any], Any]) -> Dict[Any, str]:
     return folded
 
 
-def _direct_user_grants(rows, key: Callable[[Any], Any]) -> Dict[Any, str]:
+def _direct_user_grants(rows: Sequence[Any], key: Callable[[Any], Any]) -> Dict[Any, str]:
     """The user's direct grant per resource.
 
     The unique constraints allow one grant per user and resource in a workspace. The one exception
@@ -396,17 +422,21 @@ def _less_capable(a: str, b: str) -> str:
     return a if get_permission(a).priority <= get_permission(b).priority else b
 
 
-def _load_section(spec: TypeSpec, username: str, group_ids: Callable[[], List[int]]) -> _Section:
-    """Read one resource type's grants for ``username`` from the store.
-
-    At most four statements, plus the group ids when the type has group patterns and they are not
-    known yet. Any error propagates: a section that could not be read completely is never used.
-    """
+def _load_direct(spec: TypeSpec, username: str) -> _DirectGrants:
+    """Read all of ``username``'s direct grants on one type: two statements. Errors propagate."""
     store = _store()
-    fold_case = _case_insensitive_keys(store)
-    key = (lambda row: _fold_key(spec.key(row))) if fold_case else spec.key
-    user = _direct_user_grants(spec.user(store, username), key)
-    group = _fold_group_grants(spec.group(store, username), key)
+    loaded_at = time.time()
+    return _DirectGrants(
+        user=_direct_user_grants(spec.user(store, username), spec.key),
+        group=_fold_group_grants(spec.group(store, username), spec.key),
+        loaded_at=loaded_at,
+    )
+
+
+def _load_patterns(spec: TypeSpec, username: str, group_ids: Callable[[], List[int]]) -> _Patterns:
+    """Read ``username``'s patterns on one type: two statements, plus the group ids if not known yet."""
+    store = _store()
+    loaded_at = time.time()
     regex: Tuple[_Pattern, ...] = ()
     group_regex: Tuple[_Pattern, ...] = ()
     if spec.regex is not None:
@@ -415,115 +445,84 @@ def _load_section(spec: TypeSpec, username: str, group_ids: Callable[[], List[in
         ids = group_ids()
         if ids:
             group_regex = tuple(_compile_pattern(r) for r in in_regex_grant_order(list(spec.group_regex(store, ids))))
-    return _Section(user=user, group=group, regex=regex, group_regex=group_regex, fold_case=fold_case)
+    return _Patterns(regex=regex, group_regex=group_regex, loaded_at=loaded_at)
 
 
 # ---------------------------------------------------------------------------
-# Section cache, with an invalidation generation guard
+# Cache of grant reads, with the shared invalidation generation guard
 # ---------------------------------------------------------------------------
 
 _PERMISSION_CACHE_DEFAULT_TTL = 30
-_GENERATION_KEY = "generation"
-_GENERATION_MIN_TTL = 3600
 
 # Grant scope of a deployment with workspaces disabled. MLflow's workspace names cannot contain ":".
 _WORKSPACES_OFF_SCOPE = "::workspaces-off"
 
 _section_cache: CacheBackend | None = None
-_generation_cache: CacheBackend | None = None
+
+
+def permission_cache_ttl() -> int:
+    """``PERMISSION_CACHE_TTL_SECONDS``: how long grant reads (and decisions) are cached."""
+    return getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
+
+
+#: The invalidation generation of the grant reads and of the decisions built from them.
+GUARD = GenerationGuard("grant_context_generation", permission_cache_ttl)
 
 
 def _get_section_cache() -> CacheBackend:
-    """The cross-request section cache (lazy init).
+    """The cross-request cache of grant reads (lazy init).
 
     Its own namespace: neither the permission cache's nor the workspace caches' clear or prefix
-    delete reaches into it, nor its into theirs.
+    delete reaches into it, nor its into theirs. "_v2": entries changed shape in this release.
     """
     global _section_cache
     if _section_cache is None:
-        ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        _section_cache = get_cache_backend("grant_context_v1", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
     return _section_cache
 
 
-def _get_generation_cache() -> CacheBackend:
-    """The one-entry cache holding the invalidation generation (lazy init).
-
-    Its own store, so no flood of sections can evict it. On Redis it is shared, so an invalidation
-    on any replica is seen by a load on every replica.
-    """
-    global _generation_cache
-    if _generation_cache is None:
-        ttl = max(getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL), _GENERATION_MIN_TTL)
-        _generation_cache = get_cache_backend("grant_context_generation", maxsize=1, ttl=ttl)
-    return _generation_cache
-
-
-def current_generation():
+def current_generation() -> Any:
     """The invalidation generation; changes whenever cached grants are invalidated."""
-    return _get_generation_cache().get(_GENERATION_KEY)
+    return GUARD.current()
 
 
-def _bump_generation() -> None:
-    """Record that an invalidation is happening. Invalidations call it BEFORE and AFTER their deletes.
-
-    A random value rather than a counter: any change is detected, and no atomic increment is
-    needed on either backend.
-    """
-    _get_generation_cache().set(_GENERATION_KEY, uuid.uuid4().hex)
-
-
-def _key_part(value: str) -> str:
-    """Percent-encode one key component. ``:`` and ``%`` never survive unencoded."""
-    return quote(str(value), safe="")
-
-
-def _section_key(username: str, scope: str, resource_type: str) -> str:
-    """``user:scope:type``, every part percent-encoded, so the only literal ``:`` are separators."""
-    return f"{_key_part(username)}:{_key_part(scope)}:{_key_part(resource_type)}"
+def _section_key(username: str, scope: str, resource_type: str, part: str) -> str:
+    """``user:scope:type:part``, every component percent-encoded."""
+    return make_key(username, scope, resource_type, part)
 
 
 def flush_grant_contexts() -> None:
-    """Drop every cached section of every user (full-flush semantics for grant changes).
+    """Drop every cached grant read of every user (full-flush semantics for grant changes).
 
     Called from ``permissions.flush_permission_cache``, so every store wrapper that flushes the
     permission cache flushes this too, and a membership sync flushes it only when the membership
     actually changed.
     """
-    _bump_generation()
-    _get_section_cache().clear()
-    _bump_generation()
+    with GUARD.invalidating():
+        _get_section_cache().clear()
     logger.debug("Grant context cache fully flushed")
 
 
 def invalidate_user_grant_contexts(username: str) -> None:
-    """Drop every cached section of one user, in every grant scope."""
-    _bump_generation()
-    _get_section_cache().delete_prefix(f"{_key_part(username)}:")
-    _bump_generation()
+    """Drop every cached grant read of one user, in every grant scope."""
+    with GUARD.invalidating():
+        _get_section_cache().delete_prefix(f"{key_part(username)}:")
 
 
-def _cached_section(spec: TypeSpec, username: str, scope: str, group_ids: Callable[[], List[int]]) -> _Section:
-    """One section from the cache, loading and caching it on a miss.
+def _cached(key: str, kind: type, load: Callable[[], Any]) -> Any:
+    """A grant read from the cache, reading and caching it on a miss.
 
-    A load that fails raises and caches nothing. A load that an invalidation overlapped answers
-    this request but is not cached (or is deleted again), exactly as the workspace cache does:
-    invalidations bump the generation before and after their deletes, so a change seen before the
-    write skips the write, and a change seen after it deletes what was written.
+    A read that fails raises and caches nothing. A read that an invalidation overlapped answers
+    this request but is not cached (or is deleted again): see ``GenerationGuard``.
     """
     cache = _get_section_cache()
-    key = _section_key(username, scope, spec.name)
     cached = cache.get(key)
-    if isinstance(cached, _Section):
+    if isinstance(cached, kind):
         return cached
-    generation = current_generation()
-    section = _load_section(spec, username, group_ids)
-    if current_generation() != generation:
-        return section
-    cache.set(key, section)
-    if current_generation() != generation:
-        cache.delete(key)
-    return section
+    generation = GUARD.current()
+    value = load()
+    GUARD.store_unless_raced(cache, key, value, generation)
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -537,8 +536,8 @@ def _grant_scope() -> Tuple[str, str]:
     """The grant workspace of the current request, and the cache scope its grants are read in.
 
     Direct grants on name-keyed resources are read for the request's grant workspace (with
-    workspaces disabled, ``default``'s and unassigned ones), so a section is only valid for the
-    scope it was read in; the scope is part of its cache key.
+    workspaces disabled, ``default``'s and unassigned ones), so a read is only valid for the
+    scope it was made in; the scope is part of its cache key.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return DEFAULT_WORKSPACE_NAME, _WORKSPACES_OFF_SCOPE
@@ -556,28 +555,44 @@ def _request_workspace() -> str | None:
 
 
 class GrantContext:
-    """One user's grants for one request, loaded once per resource type and resolved in memory.
+    """One user's grants for one request (or batch), resolved in memory where that is exact.
 
     Build it with :func:`load_grant_context`. It is cheap to create: nothing is read until a
-    resource type is first resolved. It is not shared between requests; only its sections are, through
-    the section cache.
+    resource is resolved. It is not shared between requests; only its grant reads are, through the
+    section cache.
 
     Attributes:
         username: The user the grants are for.
         request_workspace: The workspace the workspace fallback uses; None skips it.
         grant_workspace: The workspace name-keyed grants and patterns are read in.
+        bulk: Whether direct grants are read in full (lists) rather than one by one (checks).
     """
 
-    def __init__(self, username: str, request_workspace: str | None, grant_workspace: str, scope: str) -> None:
+    def __init__(self, username: str, request_workspace: str | None, grant_workspace: str, scope: str, bulk: bool = False) -> None:
         self.username = username
         self.request_workspace = request_workspace
         self.grant_workspace = grant_workspace
+        self.bulk = bulk
         self._scope = scope
-        self._sections: Dict[str, _Section] = {}
+        self._direct: Dict[str, _DirectGrants] = {}
+        self._patterns: Dict[str, _Patterns] = {}
+        self._in_memory_names: Optional[bool] = None
         self._group_ids: Optional[List[int]] = None
         self._workspace_permissions: Dict[str, Optional[Permission]] = {}
         self._experiment_names: Dict[str, str] = {}
         self._experiment_hints: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+        self._decisions: Dict[Tuple[str, str, Optional[str], Optional[str]], PermissionResult] = {}
+        self.oldest_read: Optional[float] = None
+
+    def _check_scope(self) -> None:
+        # The repositories read name-keyed grants in the grant workspace current at read time; the
+        # cache key must name that same scope, or one workspace's grants would be cached (and, on
+        # Redis, shared) as another's. Refuse rather than mislabel.
+        if _grant_scope() != (self.grant_workspace, self._scope):
+            raise RuntimeError("The request's grant workspace changed after its grant context was built")
+
+    def _note_read(self, loaded_at: float) -> None:
+        self.oldest_read = loaded_at if self.oldest_read is None else min(self.oldest_read, loaded_at)
 
     def group_ids(self) -> List[int]:
         """The ids of the user's groups, read once per context."""
@@ -585,24 +600,43 @@ class GrantContext:
             self._group_ids = list(_store().get_groups_ids_for_user(self.username))
         return self._group_ids
 
-    def section(self, resource_type: str) -> _Section:
-        """The user's grants on ``resource_type``. Raises ``KeyError`` for an unknown type."""
-        section = self._sections.get(resource_type)
-        if section is None:
+    def names_in_memory(self) -> bool:
+        """Whether direct grants are matched in memory: a bulk context on an exact-``=`` database."""
+        if self._in_memory_names is None:
+            self._in_memory_names = self.bulk and _names_match_exactly(_store())
+        return self._in_memory_names
+
+    def direct(self, resource_type: str) -> _DirectGrants:
+        """All of the user's direct grants on ``resource_type``. Only for :meth:`names_in_memory` contexts."""
+        grants = self._direct.get(resource_type)
+        if grants is None:
             spec = TYPE_SPECS[resource_type]
-            # The repositories read name-keyed grants in the grant workspace current at load time;
-            # the cache key must name that same scope, or one workspace's grants would be cached
-            # (and, on Redis, shared) as another's. Refuse rather than mislabel.
-            if _grant_scope() != (self.grant_workspace, self._scope):
-                raise RuntimeError("The request's grant workspace changed after its grant context was built")
-            section = _cached_section(spec, self.username, self._scope, self.group_ids)
-            self._sections[resource_type] = section
-        return section
+            self._check_scope()
+            key = _section_key(self.username, self._scope, spec.name, "direct")
+            grants = _cached(key, _DirectGrants, lambda: _load_direct(spec, self.username))
+            self._direct[resource_type] = grants
+            self._note_read(grants.loaded_at)
+        return grants
+
+    def patterns(self, resource_type: str) -> _Patterns:
+        """The user's (and the user's groups') patterns on ``resource_type``."""
+        patterns = self._patterns.get(resource_type)
+        if patterns is None:
+            spec = TYPE_SPECS[resource_type]
+            self._check_scope()
+            key = _section_key(self.username, self._scope, spec.name, "patterns")
+            patterns = _cached(key, _Patterns, lambda: _load_patterns(spec, self.username, self.group_ids))
+            self._patterns[resource_type] = patterns
+            self._note_read(patterns.loaded_at)
+        return patterns
 
     def preload(self, *resource_types: str) -> "GrantContext":
-        """Load the sections of ``resource_types`` now (all eight when none is named)."""
+        """Read the grants of ``resource_types`` now (all eight when none is named)."""
         for resource_type in resource_types or tuple(TYPE_SPECS):
-            self.section(resource_type)
+            if self.names_in_memory():
+                self.direct(resource_type)
+            if TYPE_SPECS[resource_type].regex is not None:
+                self.patterns(resource_type)
         return self
 
     def workspace_permission(self, workspace: str) -> Optional[Permission]:
@@ -647,24 +681,25 @@ class GrantContext:
         return name
 
 
-def load_grant_context(username: str, workspace: Any = _REQUEST) -> GrantContext:
+def load_grant_context(username: str, workspace: Any = _REQUEST, *, bulk: bool = False) -> GrantContext:
     """A grant context for ``username`` in the current request.
 
-    Loading is lazy: each resource type's grants are read (or taken from the section cache) the
-    first time a resource of that type is resolved, a fixed number of statements however many
-    resources follow. :meth:`GrantContext.preload` reads them eagerly.
+    Nothing is read until a resource is resolved.
 
     Parameters:
         username: The user whose grants to resolve.
         workspace: The workspace the workspace fallback applies in. Omitted, the workspace the
             request names (None for a header-less request, or with workspaces disabled).
+        bulk: For resolving many resources (list filters, batch endpoints): direct grants are
+            read once per type and matched in memory where the database's ``=`` is exact.
+            Leave it off for a single check, which then reads only the grants it needs.
 
     Returns:
         The context.
     """
     grant_workspace, scope = _grant_scope()
     request_workspace = _request_workspace() if workspace is _REQUEST else workspace
-    return GrantContext(username, request_workspace, grant_workspace, scope)
+    return GrantContext(username, request_workspace, grant_workspace, scope, bulk=bulk)
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +709,7 @@ def load_grant_context(username: str, workspace: Any = _REQUEST) -> GrantContext
 
 def walk_sources(
     lookups: Mapping[str, Callable[[], Optional[str]]],
-    source_order,
+    source_order: Sequence[str],
     default_permission: str,
     to_permission: Callable[[str], Permission] = get_permission,
 ) -> PermissionResult:
@@ -713,11 +748,10 @@ def walk_sources(
 
 
 def _lookups(ctx: GrantContext, resource_type: str, resource_id: str, name: str | None) -> Dict[str, Callable[[], Optional[str]]]:
-    """The in-memory source lookups of one resource, against the context's section."""
+    """The source lookups of one resource. Each reads only when the walk reaches it."""
     spec = TYPE_SPECS[resource_type]
     if resource_type == SCORER and name is None:
         raise ValueError("A scorer is resolved by its experiment id and its scorer name")
-    section = ctx.section(resource_type)
     if resource_type == SCORER:
         key: Any = (str(resource_id), name)
         pattern_name: Callable[[], str] = lambda: name  # noqa: E731
@@ -728,20 +762,29 @@ def _lookups(ctx: GrantContext, resource_type: str, resource_id: str, name: str 
         key = resource_id
         pattern_name = lambda: resource_id  # noqa: E731
 
-    def match(patterns: Tuple[_Pattern, ...]) -> Optional[str]:
-        if not patterns:
+    def direct(source: str) -> Callable[[], Optional[str]]:
+        if ctx.names_in_memory():
+            grants = ctx.direct(resource_type)
+            table = grants.user if source == "user" else grants.group
+            return lambda: table.get(key)
+        one = spec.user_one if source == "user" else spec.group_one
+        # The indexed per-resource query, with the database's own name comparison; a miss raises
+        # RESOURCE_DOES_NOT_EXIST, which the walk reads as "no grant".
+        return lambda: one(_store(), str(resource_id) if resource_type in _EXPERIMENT_KEYED else resource_id, name, ctx.username)
+
+    def match(group: bool) -> Optional[str]:
+        patterns = ctx.patterns(resource_type)
+        rules = patterns.group_regex if group else patterns.regex
+        if not rules:
             return None
-        rule = best_matching_regex(patterns, pattern_name(), spec.label, ctx.grant_workspace)
+        rule = best_matching_regex(rules, pattern_name(), spec.label, ctx.grant_workspace)
         return rule.permission if rule is not None else None
 
-    lookups: Dict[str, Callable[[], Optional[str]]] = {
-        "user": lambda: section.user.get(section.key(key)),
-        "group": lambda: section.group.get(section.key(key)),
-    }
+    lookups: Dict[str, Callable[[], Optional[str]]] = {"user": direct("user"), "group": direct("group")}
     if spec.regex is not None:
-        lookups["regex"] = lambda: match(section.regex)
+        lookups["regex"] = lambda: match(False)
     if spec.group_regex is not None:
-        lookups["group-regex"] = lambda: match(section.group_regex)
+        lookups["group-regex"] = lambda: match(True)
     return lookups
 
 
@@ -805,8 +848,10 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
         resource_id: The experiment id (experiments, scorers) or the resource name.
         name: For an experiment, its name when the caller has it (else looked up when a pattern
             source is reached); for a scorer, the scorer name (required).
-        resource_workspace: The experiment's workspace when the caller has its entity; otherwise
-            the workspace fallback asks MLflow whether it is in the request's workspace.
+        resource_workspace: The experiment's workspace when the caller has its entity. With
+            workspaces enabled, one that differs from the workspace the request is served from is
+            denied before any source is read. Omitted, the workspace fallback asks MLflow whether
+            the experiment is in the request's workspace.
 
     Returns:
         The decision and the source it came from.
@@ -814,6 +859,19 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
     Raises:
         KeyError: For an unknown resource type.
     """
+    memo_key = (resource_type, str(resource_id), name, resource_workspace)
+    known = ctx._decisions.get(memo_key)
+    if known is not None:
+        return known
+    if resource_type in _EXPERIMENT_KEYED and resource_workspace is not None and config.MLFLOW_ENABLE_WORKSPACES:
+        # The caller holds the experiment's entity: one of another workspace than the one this
+        # request is served from gets nothing — not a direct grant, not a pattern, not the
+        # workspace permission. Pattern scope and grant reads both belong to the request's
+        # workspace, so no source may speak for an entity outside it.
+        if resource_workspace != (ctx.request_workspace or ctx.grant_workspace):
+            result = PermissionResult(NO_PERMISSIONS, "workspace-deny")
+            ctx._decisions[memo_key] = result
+            return result
     result = walk_sources(_lookups(ctx, resource_type, resource_id, name), config.PERMISSION_SOURCE_ORDER, config.DEFAULT_MLFLOW_PERMISSION)
     request_workspace = ctx.request_workspace
     result = workspace_fallback(
@@ -831,6 +889,7 @@ def resolve(ctx: GrantContext, resource_type: str, resource_id: str, *, name: st
         from mlflow_oidc_auth.utils.permissions import record_permission_fallback
 
         record_permission_fallback(resource_type, str(resource_id), ctx.username, result.permission)
+    ctx._decisions[memo_key] = result
     return result
 
 
@@ -872,7 +931,7 @@ def _is_not_found(error: Exception) -> bool:
     return isinstance(error, MlflowException) and error.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST)
 
 
-def match_workspace_pattern(regexes, workspace: str) -> Optional[Permission]:
+def match_workspace_pattern(regexes: Sequence[Any], workspace: str) -> Optional[Permission]:
     """The permission the best workspace pattern grants on ``workspace``, or None.
 
     The same matcher as every resource type: best priority tier, then permission rank
@@ -883,7 +942,7 @@ def match_workspace_pattern(regexes, workspace: str) -> Optional[Permission]:
     return get_permission(rule.permission) if rule is not None else None
 
 
-def resolve_workspace_permission(username: str, workspace: str, source_order=None) -> Tuple[Optional[Permission], bool]:
+def resolve_workspace_permission(username: str, workspace: str, source_order: Optional[Sequence[str]] = None) -> Tuple[Optional[Permission], bool]:
     """The user's permission on a workspace, walking ``PERMISSION_SOURCE_ORDER``; reports failures.
 
     Sources are read lazily in order and the first grant wins. A source that errors before a match
@@ -902,7 +961,7 @@ def resolve_workspace_permission(username: str, workspace: str, source_order=Non
     store = _store()
     order = config.PERMISSION_SOURCE_ORDER if source_order is None else source_order
 
-    def direct(read) -> Callable[[], Optional[Permission]]:
+    def direct(read: Callable[[], Any]) -> Callable[[], Optional[Permission]]:
         return lambda: get_permission(read().permission)
 
     def group_patterns() -> Optional[Permission]:

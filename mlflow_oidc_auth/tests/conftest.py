@@ -58,10 +58,10 @@ def _fresh_grant_context_cache():
     import mlflow_oidc_auth.utils.grant_context as grant_context
 
     grant_context._section_cache = None
-    grant_context._generation_cache = None
+    grant_context.GUARD.reset()
     yield
     grant_context._section_cache = None
-    grant_context._generation_cache = None
+    grant_context.GUARD.reset()
 
 
 @pytest.fixture(autouse=True)

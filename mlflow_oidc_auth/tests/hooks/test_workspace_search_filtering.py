@@ -180,7 +180,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -263,7 +263,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -348,7 +348,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -439,7 +439,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -520,7 +520,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -596,7 +596,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -677,7 +677,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -771,7 +771,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -852,7 +852,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -927,7 +927,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -1014,7 +1014,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -1104,7 +1104,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(

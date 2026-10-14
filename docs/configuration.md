@@ -179,7 +179,14 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 > - `mlflow_oidc_auth:workspace_denials:*`
 > - `mlflow_oidc_auth:workspace_generation:*`
 >
-> The permission cache (`mlflow_oidc_auth:permissions:*`) keeps its key format and needs no action. With `CACHE_BACKEND=local` there is nothing to do.
+> The permission decision cache moves to a new namespace too, `permissions_v2` (its entries now carry their own expiry, capped by the grants they were built from), and the grants each user is resolved against are cached in `grant_context_v2`, guarded by `grant_context_generation`. Old replicas never read these, nor new replicas the old `permissions` entries; while both run side by side, neither invalidates the other's entries, so a revoked grant can be served for up to `PERMISSION_CACHE_TTL_SECONDS`. Once the last old replica is gone, delete:
+>
+> - `mlflow_oidc_auth:permissions:*` (old format; otherwise left to expire)
+> - `mlflow_oidc_auth:permissions_v2:*`
+> - `mlflow_oidc_auth:grant_context_v2:*`
+> - `mlflow_oidc_auth:grant_context_generation:*`
+>
+> With `CACHE_BACKEND=local` there is nothing to do.
 
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 

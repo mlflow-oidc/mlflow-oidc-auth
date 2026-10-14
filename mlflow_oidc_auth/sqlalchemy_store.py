@@ -2179,6 +2179,18 @@ def _wrap_with_workspace_group_invalidation(method):
     return wrapper
 
 
+# Deleting a user drops every grant and membership of theirs. Their cached grant reads and
+# decisions must go with them, or an account re-created under the same name within the TTL would
+# be served the deleted account's grants (issue #460 review).
+_USER_DELETE_METHODS = [
+    "delete_user",
+    "delete_user_with_hook",
+]
+
+for _method_name in _USER_DELETE_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
+
 for _method_name in _MEMBERSHIP_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original, only_if_changed=_method_name in _MEMBERSHIP_SYNC_METHODS))

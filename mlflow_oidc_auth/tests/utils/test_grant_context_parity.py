@@ -345,22 +345,24 @@ def test_resolve_matches_pre_refactor_resolve_permission(world, seed):
                 grant_context.flush_grant_contexts()
                 for user in USERS:
                     with as_request(user, request_workspace):
-                        ctx = load_grant_context(user)
-                        for resource_type, resource_id, scorer in _resources():
-                            kwargs = {"scorer_name": scorer} if scorer else {}
-                            expected = oracle_resolve_permission(store, tracking, resource_type, resource_id, user, **kwargs)
-                            actual = resolve(ctx, resource_type, resource_id, name=scorer)
-                            assert actual == expected, (seed, enabled, request_workspace, user, resource_type, resource_id, scorer)
-                            compared += 1
-                            if resource_type == "experiment":
-                                # The caller holds the entity: MLflow found it in the request's workspace.
-                                try:
-                                    entity = tracking().get_experiment(resource_id)
-                                except MlflowException:
-                                    continue
-                                actual = resolve(ctx, "experiment", resource_id, name=entity.name, resource_workspace=entity.workspace)
-                                assert actual == expected, (seed, enabled, request_workspace, user, resource_id, "entity")
-    assert compared > 500
+                        # A single-check context (direct grants by SQL) and a bulk one (in memory).
+                        for bulk in (False, True):
+                            ctx = load_grant_context(user, bulk=bulk)
+                            for resource_type, resource_id, scorer in _resources():
+                                kwargs = {"scorer_name": scorer} if scorer else {}
+                                expected = oracle_resolve_permission(store, tracking, resource_type, resource_id, user, **kwargs)
+                                actual = resolve(ctx, resource_type, resource_id, name=scorer)
+                                assert actual == expected, (seed, bulk, enabled, request_workspace, user, resource_type, resource_id, scorer)
+                                compared += 1
+                                if resource_type == "experiment":
+                                    # The caller holds the entity: MLflow found it in the request's workspace.
+                                    try:
+                                        entity = tracking().get_experiment(resource_id)
+                                    except MlflowException:
+                                        continue
+                                    actual = resolve(ctx, "experiment", resource_id, name=entity.name, resource_workspace=entity.workspace)
+                                    assert actual == expected, (seed, bulk, enabled, request_workspace, user, resource_id, "entity")
+    assert compared > 1000
 
 
 @pytest.mark.parametrize("seed", range(4))
@@ -442,13 +444,13 @@ def test_revoke_invalidates_context(world):
 
     with _deny_by_default():
         assert resolve_permission("experiment", "1", "alice").permission.can_manage
-        assert resolve(load_grant_context("alice"), "experiment", "1", name="alpha-1").permission.can_manage
+        assert resolve(load_grant_context("alice", bulk=True), "experiment", "1", name="alpha-1").permission.can_manage
         assert _cached_section_keys(), "precondition: the context is cached"
 
         store.delete_group_experiment_permission("team", "1")
 
         assert resolve_permission("experiment", "1", "alice") == PermissionResult(NO_PERMISSIONS, "fallback")
-        assert resolve(load_grant_context("alice"), "experiment", "1", name="alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
+        assert resolve(load_grant_context("alice", bulk=True), "experiment", "1", name="alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
 
 
 @pytest.mark.parametrize("removal", ["remove_user_from_group", "set_user_groups"])
@@ -465,7 +467,8 @@ def test_membership_removal_invalidates_context(world, removal):
 
     with _deny_by_default():
         assert resolve_permission("registered_model", "alpha-1", "alice").permission.can_update
-        assert resolve(load_grant_context("alice"), "experiment", "1", name="alpha-1").kind == "group-regex"
+        assert resolve(load_grant_context("alice", bulk=True), "registered_model", "alpha-1").permission.can_update
+        assert resolve(load_grant_context("alice", bulk=True), "experiment", "1", name="alpha-1").kind == "group-regex"
 
         if removal == "remove_user_from_group":
             store.remove_user_from_group("alice", "team")
@@ -473,7 +476,7 @@ def test_membership_removal_invalidates_context(world, removal):
             store.set_user_groups("alice", ["other"])
 
         assert resolve_permission("registered_model", "alpha-1", "alice") == PermissionResult(NO_PERMISSIONS, "fallback")
-        ctx = load_grant_context("alice")
+        ctx = load_grant_context("alice", bulk=True)
         assert resolve(ctx, "registered_model", "alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
         assert resolve(ctx, "experiment", "1", name="alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
 
@@ -487,7 +490,7 @@ def test_unchanged_membership_sync_keeps_the_context(world):
     store.create_group_model_permission("team", "alpha-1", "EDIT")
 
     with _deny_by_default():
-        resolve(load_grant_context("alice"), "registered_model", "alpha-1")
+        resolve(load_grant_context("alice", bulk=True), "registered_model", "alpha-1")
         before = _cached_section_keys()
         store.set_user_groups("alice", ["team"])
         assert _cached_section_keys() == before != []
@@ -546,3 +549,66 @@ def test_no_permissions_grant_beats_lower_source(world):
         other = resolve(load_grant_context("ws"), "experiment", "5", name="other", resource_workspace="default")
     assert actual == expected == PermissionResult(NO_PERMISSIONS, "user")
     assert other.kind == "workspace" and other.permission.can_manage
+
+
+def test_pattern_grant_does_not_cross_into_entity_workspace(world):
+    """An entity of another workspace gets nothing, whatever source would match it.
+
+    alice holds a ``.*`` MANAGE pattern for ws-a and a direct grant on the experiment. A request in
+    ws-a handed the entity of an experiment in ws-b must not read either for it: grant reads and
+    pattern scope belong to the request's workspace.
+    """
+    from mlflow_oidc_auth.utils.batch_permissions import batch_resolve_experiment_permissions
+
+    store, _ = world
+    store.create_user("alice", "Alice")
+    with patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True), as_request("admin", "ws-a"):
+        store.create_experiment_regex_permission(".*", 1, "MANAGE", "alice")
+    store.create_experiment_permission("2", "alice", "MANAGE")
+    foreign = SimpleNamespace(experiment_id="2", name="beta-2", workspace="ws-b")
+    local = SimpleNamespace(experiment_id="1", name="alpha-1", workspace="ws-a")
+
+    with (
+        patch.object(config, "MLFLOW_ENABLE_WORKSPACES", True),
+        patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS"),
+        patch("mlflow.utils.workspace_context.get_request_workspace", return_value="ws-a"),
+        as_request("alice", "ws-a"),
+    ):
+        for bulk in (False, True):
+            ctx = load_grant_context("alice", bulk=bulk)
+            denied = resolve(ctx, "experiment", "2", name="beta-2", resource_workspace="ws-b")
+            assert denied == PermissionResult(NO_PERMISSIONS, "workspace-deny"), bulk
+            # Control: the same pattern does reach an experiment of the request's workspace.
+            assert resolve(ctx, "experiment", "1", name="alpha-1", resource_workspace="ws-a").kind == "regex"
+        results = batch_resolve_experiment_permissions("alice", [foreign, local])
+
+    assert results["2"] == PermissionResult(NO_PERMISSIONS, "workspace-deny")
+    assert results["1"].kind == "regex" and results["1"].permission.can_manage
+
+
+@pytest.mark.parametrize("delete", ["delete_user", "delete_user_with_hook"])
+def test_deleted_user_grants_do_not_reach_a_recreated_account(world, delete):
+    """A user re-created under a deleted user's name within the TTL starts with no grants."""
+    from mlflow_oidc_auth.utils.permissions import resolve_permission
+
+    store, _ = world
+    store.create_user("alice", "Alice")
+    store.populate_groups(["team"])
+    store.set_user_groups("alice", ["team"])
+    store.create_group_model_permission("team", "alpha-1", "MANAGE")
+    store.create_registered_model_regex_permission("^beta", 1, "MANAGE", "alice")
+
+    with _deny_by_default():
+        ctx = load_grant_context("alice", bulk=True)
+        assert resolve(ctx, "registered_model", "alpha-1").permission.can_manage
+        assert resolve_permission("registered_model", "beta-2", "alice").permission.can_manage
+        assert _cached_section_keys(), "precondition: alice's grants are cached"
+
+        if delete == "delete_user":
+            store.delete_user("alice", admin_override=True)
+        else:
+            store.delete_user_with_hook("alice", lambda session, user: None, admin_override=True)
+        store.create_user("alice", "Alice again")
+
+        assert resolve(load_grant_context("alice", bulk=True), "registered_model", "alpha-1") == PermissionResult(NO_PERMISSIONS, "fallback")
+        assert resolve_permission("registered_model", "beta-2", "alice") == PermissionResult(NO_PERMISSIONS, "fallback")
