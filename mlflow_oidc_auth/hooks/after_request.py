@@ -54,20 +54,24 @@ from mlflow_oidc_auth.bridge.user import get_auth_context
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import MANAGE
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import (
-    can_read_experiment,
-    can_read_registered_model,
-    effective_scorer_permission,
     get_experiment_ids,
     get_model_name,
     get_request_param,
 )
-from mlflow_oidc_auth.utils.permissions import (
-    can_read_gateway_endpoint,
-    can_read_gateway_model_definition,
-    can_read_gateway_secret,
+from mlflow_oidc_auth.utils.grant_context import (
+    EXPERIMENT,
+    GATEWAY_ENDPOINT,
+    GATEWAY_MODEL_DEFINITION,
+    GATEWAY_SECRET,
+    REGISTERED_MODEL,
+    GrantContext,
+    load_grant_context,
+    resolve,
+    resolve_scorer,
 )
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
@@ -79,13 +83,15 @@ from mlflow_oidc_auth.utils.workspace_cache import (
 )
 
 # ---------------------------------------------------------------------------
-# Request-scoped permission cache
+# Request-scoped grant context and permission memo
 # ---------------------------------------------------------------------------
-# During search-result filtering, the same permission may be checked many times
-# (e.g. multiple model versions from the same registered model, or re-fetch
-# loops). The global permission cache (30s TTL) already deduplicates DB
-# lookups across requests, but a request-scoped dict avoids even the cache
-# hash/lookup overhead for repeated checks within a single filter pass.
+# A filter pass resolves one permission per listed row. Every row is resolved in
+# memory against the caller's grant context (utils/grant_context.py, issue #460):
+# the caller's grants are read once per resource type for the whole request — a
+# fixed number of statements however many rows are scanned — rather than through
+# per-row store lookups. A request-scoped dict additionally memoizes each row's
+# answer, for rows checked more than once (model versions of one model, top-up
+# pages).
 # ---------------------------------------------------------------------------
 
 
@@ -100,6 +106,68 @@ def _get_request_permission_cache() -> dict:
         cache = {}
         g._after_request_perm_cache = cache
     return cache
+
+
+def _request_grant_context(username: str) -> GrantContext:
+    """The caller's grant context for this request, loaded once per request and user.
+
+    Outside a Flask request context (direct calls, tests) a fresh context is returned.
+    """
+    if not has_app_context():
+        return load_grant_context(username)
+    cache = _get_request_permission_cache()
+    key = ("grant_context", username)
+    ctx = cache.get(key)
+    if ctx is None:
+        ctx = load_grant_context(username)
+        cache[key] = ctx
+    return ctx
+
+
+def _note_experiment(username: str, experiment: Any) -> None:
+    """Hand an experiment's name and workspace, from an MLflow entity or proto, to the grant context.
+
+    Spares the per-row tracking-store lookups a pattern match and the workspace fallback would
+    otherwise make. Only rows MLflow itself returned are noted.
+    """
+    _request_grant_context(username).note_experiment(
+        str(experiment.experiment_id),
+        getattr(experiment, "name", None) or None,
+        getattr(experiment, "workspace", None) or None,
+    )
+
+
+def can_read_experiment(experiment_id: str, username: str) -> bool:
+    """Whether ``username`` can read an experiment, resolved against the request's grant context."""
+    ctx = _request_grant_context(username)
+    name, workspace = ctx.experiment_hint(experiment_id)
+    return resolve(ctx, EXPERIMENT, str(experiment_id), name=name, resource_workspace=workspace).permission.can_read
+
+
+def can_read_registered_model(model_name: str, username: str) -> bool:
+    """Whether ``username`` can read a registered model, resolved against the request's grant context."""
+    return resolve(_request_grant_context(username), REGISTERED_MODEL, model_name).permission.can_read
+
+
+def can_read_gateway_endpoint(gateway_name: str, username: str) -> bool:
+    """Whether ``username`` can read a gateway endpoint, resolved against the request's grant context."""
+    return resolve(_request_grant_context(username), GATEWAY_ENDPOINT, gateway_name).permission.can_read
+
+
+def can_read_gateway_secret(gateway_name: str, username: str) -> bool:
+    """Whether ``username`` can read a gateway secret, resolved against the request's grant context."""
+    return resolve(_request_grant_context(username), GATEWAY_SECRET, gateway_name).permission.can_read
+
+
+def can_read_gateway_model_definition(gateway_name: str, username: str) -> bool:
+    """Whether ``username`` can read a gateway model definition, resolved against the request's grant context."""
+    return resolve(_request_grant_context(username), GATEWAY_MODEL_DEFINITION, gateway_name).permission.can_read
+
+
+def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
+    """A scorer's effective permission (its own grant, else its experiment's), from the request's grant context."""
+    ctx = _request_grant_context(user)
+    return resolve_scorer(ctx, str(experiment_id), scorer_name, resource_workspace=ctx.experiment_hint(experiment_id)[1])
 
 
 def _cached_can_read_experiment(experiment_id: str, username: str) -> bool:
@@ -313,8 +381,13 @@ def _filter_search_experiments(resp: Response):
 
     # Filter out unreadable experiments from the current response page.
     for e in list(response_message.experiments):
+        _note_experiment(username, e)
         if not _cached_can_read_experiment(e.experiment_id, username):
             response_message.experiments.remove(e)
+
+    def _keep(e) -> bool:
+        _note_experiment(username, e)
+        return _cached_can_read_experiment(e.experiment_id, username)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
     tracking_store = _get_tracking_store()
@@ -329,7 +402,7 @@ def _filter_search_experiments(resp: Response):
             filter_string=request_message.filter,
             page_token=token,
         ),
-        keep=lambda e: _cached_can_read_experiment(e.experiment_id, username),
+        keep=_keep,
     )
 
     resp.data = message_to_json(response_message)
@@ -862,9 +935,16 @@ def _filter_list_workspaces(response: Response) -> None:
     data = response.get_json(silent=True)
     if not data or "workspaces" not in data:
         return
-    filtered = [
-        ws for ws in data["workspaces"] if (perm := get_workspace_permission_cached(auth_context.username, ws.get("name", ""))) is not None and perm.can_read
-    ]
+    memo = _get_request_permission_cache()
+
+    def _readable(workspace: str) -> bool:
+        key = ("ws-list", workspace, auth_context.username)
+        if key not in memo:
+            perm = get_workspace_permission_cached(auth_context.username, workspace)
+            memo[key] = perm is not None and perm.can_read
+        return memo[key]
+
+    filtered = [ws for ws in data["workspaces"] if _readable(ws.get("name", ""))]
     data["workspaces"] = filtered
     response.set_data(json.dumps(data))
 
@@ -948,6 +1028,7 @@ def _filter_list_artifact_root(resp: Response) -> None:
         experiment = active.get(name) if isinstance(name, str) else None
         if experiment is None or getattr(experiment, "lifecycle_stage", None) != LifecycleStage.ACTIVE:
             return False
+        _note_experiment(username, experiment)
         if not _cached_can_read_experiment(name, username):
             return False
         if workspaces_enabled:

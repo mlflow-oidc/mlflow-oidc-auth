@@ -5,6 +5,7 @@ explicit grant is handed out by configuration. Nothing recorded that, which is w
 exposure was invisible in running deployments. It is surfaced before the default changes.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,7 +14,7 @@ from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import get_permission
 from mlflow_oidc_auth.utils import permissions as P
 from mlflow_oidc_auth.utils.batch_permissions import (
-    UserPermissionContext,
+    build_user_permission_context,
     resolve_model_permission_from_context,
 )
 
@@ -39,21 +40,25 @@ def captured_logger(monkeypatch):
     return logger
 
 
+@pytest.fixture
+def grant_store(monkeypatch):
+    """A store holding no grants at all (every list is empty), with workspaces disabled.
+
+    Patched where the grant context reads it, so both resolution paths see it.
+    """
+    from mlflow_oidc_auth.config import config
+    from mlflow_oidc_auth.utils import grant_context
+
+    store = MagicMock()
+    store.get_groups_ids_for_user.return_value = []
+    monkeypatch.setattr(grant_context, "_store", lambda: store)
+    monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+    P.flush_permission_cache()
+    return store
+
+
 def _empty_context(username="alice"):
-    return UserPermissionContext(
-        username=username,
-        group_ids=[],
-        user_experiment_permissions={},
-        group_experiment_permissions={},
-        experiment_regex_permissions=[],
-        group_experiment_regex_permissions=[],
-        user_model_permissions={},
-        group_model_permissions={},
-        model_regex_permissions=[],
-        group_model_regex_permissions=[],
-        prompt_regex_permissions=[],
-        group_prompt_regex_permissions=[],
-    )
+    return build_user_permission_context(username)
 
 
 class TestFallbackRecording:
@@ -112,27 +117,25 @@ class TestFallbackRecording:
 class TestResolutionPathsRecord:
     """Both resolution paths must report — the batch one bypasses resolve_permission."""
 
-    def test_single_resource_resolution_records_the_fallback(self, monkeypatch):
-        monkeypatch.setattr(P, "get_permission_from_store_or_default", lambda cfg: PermissionResult(get_permission("MANAGE"), "fallback"))
-        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username, *_: result)
-        monkeypatch.setitem(P.PERMISSION_REGISTRY, "experiment", lambda resource_id, username, **kw: {})
-        P.flush_permission_cache()
+    def test_single_resource_resolution_records_the_fallback(self, monkeypatch, grant_store):
+        from mlflow_oidc_auth.config import config
 
-        P.resolve_permission("experiment", "42", "alice")
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "MANAGE")
+        # No pattern grants, so the experiment's name is never needed.
+        result = P.resolve_permission("experiment", "42", "alice")
 
+        assert result == PermissionResult(get_permission("MANAGE"), "fallback")
         assert P.get_permission_fallback_counts() == {"experiment": 1}
 
-    def test_a_real_grant_is_not_recorded_as_a_fallback(self, monkeypatch):
-        monkeypatch.setattr(P, "get_permission_from_store_or_default", lambda cfg: PermissionResult(get_permission("READ"), "user"))
-        monkeypatch.setattr(P, "_apply_workspace_fallback", lambda result, username, *_: result)
-        monkeypatch.setitem(P.PERMISSION_REGISTRY, "experiment", lambda resource_id, username, **kw: {})
-        P.flush_permission_cache()
+    def test_a_real_grant_is_not_recorded_as_a_fallback(self, grant_store):
+        grant_store.list_experiment_permissions.return_value = [SimpleNamespace(experiment_id="43", permission="READ")]
 
-        P.resolve_permission("experiment", "43", "alice")
+        result = P.resolve_permission("experiment", "43", "alice")
 
+        assert result == PermissionResult(get_permission("READ"), "user")
         assert P.get_permission_fallback_counts() == {}, "an explicit grant is not a fallback"
 
-    def test_batch_resolution_records_the_fallback(self):
+    def test_batch_resolution_records_the_fallback(self, grant_store):
         """filter_manageable_* run entirely off pre-fetched context, bypassing resolve_permission."""
         result = resolve_model_permission_from_context(_empty_context(), "some-model")
 

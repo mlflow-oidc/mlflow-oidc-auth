@@ -544,6 +544,35 @@ class SqlAlchemyStore:
     def list_user_groups_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
         return self.registered_model_group_repo.list_for_user(username)
 
+    def list_user_groups_grants(self, resource_type: str, username: str) -> list:
+        """Every grant on ``resource_type`` held by a group ``username`` belongs to, in one JOIN.
+
+        For the grant context (``utils/grant_context.py``), which folds them per resource. Grants
+        on name-keyed resources are those of the request's grant workspace, as for the
+        per-resource lookups. Prompts are registered models: pass ``"registered_model"``.
+
+        Parameters:
+            resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+            username: The user.
+
+        Returns:
+            The grant entities, ordered by group id.
+
+        Raises:
+            KeyError: For a resource type without group grants.
+        """
+        repos = {
+            "experiment": self.experiment_group_repo,
+            "registered_model": self.registered_model_group_repo,
+            "scorer": self.scorer_group_repo,
+            "gateway_endpoint": self.gateway_endpoint_group_repo,
+            "gateway_secret": self.gateway_secret_group_repo,
+            "gateway_model_definition": self.gateway_model_definition_group_repo,
+            "mcp_server": self.mcp_server_group_repo,
+        }
+        return repos[resource_type].list_permissions_for_user_groups(username)
+
     def update_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.registered_model_repo.update(name, username, permission)
 

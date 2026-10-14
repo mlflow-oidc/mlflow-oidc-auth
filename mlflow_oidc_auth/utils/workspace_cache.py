@@ -17,14 +17,14 @@ long a denial cached on one replica of a local-backend deployment can outlive a 
 through another. A lookup that hit an error is never cached in either.
 """
 
-import re
 import uuid
 from urllib.parse import quote
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.permissions import Permission, get_permission, in_regex_grant_order
+from mlflow_oidc_auth.permissions import Permission
+from mlflow_oidc_auth.utils.grant_context import match_workspace_pattern, resolve_workspace_permission
 
 logger = get_logger()
 
@@ -271,172 +271,20 @@ def flush_workspace_cache() -> None:
 
 
 def _match_workspace_regex_permission(regexes, workspace: str) -> Permission | None:
-    """Match workspace name against sorted regex permissions.
+    """The permission the best workspace pattern grants on ``workspace``, or None.
 
-    Per D-07: regexes are tried by priority (lower number = higher priority).
-    Per D-04: first match wins (short-circuit).
-    Per D-08: when multiple regexes match at the same priority, return most permissive.
-
-    The early stop relies on priority order, so input not already in ``(priority, id)`` order
-    (``permissions.regex_grant_order``) is sorted first; ordered input, the usual case from the
-    repositories, is only checked.
+    Per D-07 the best (lowest-number) priority tier decides; within it permission rank decides
+    (D-08), ``NO_PERMISSIONS`` first, else the most permissive. This is the matcher every resource
+    type uses (``grant_context.best_matching_regex``), so the two cannot drift.
 
     Parameters:
-        regexes: List of regex permission entities, normally sorted by priority ascending.
+        regexes: Workspace pattern entities, normally sorted by priority ascending.
         workspace: The workspace name to match against.
 
     Returns:
         Permission object or None if no regex matches.
     """
-    best_perm = None
-    best_priority = None
-
-    for regex_perm in in_regex_grant_order(regexes):
-        # If we already found a match at a higher priority (lower number), stop
-        if best_priority is not None and regex_perm.priority > best_priority:
-            break
-
-        if re.match(regex_perm.regex, workspace):
-            perm = get_permission(regex_perm.permission)
-            if best_perm is None:
-                best_perm = perm
-                best_priority = regex_perm.priority
-            elif perm.priority > best_perm.priority:
-                # Same priority tier, more permissive wins (D-08)
-                best_perm = perm
-
-    return best_perm
-
-
-def _record_error(errors: list | None, source: str) -> None:
-    """Note that ``source`` failed, as opposed to finding no grant."""
-    if errors is not None:
-        errors.append(source)
-
-
-def _is_not_found(error: Exception) -> bool:
-    """Whether ``error`` is the store saying "no such row" — no grant, not a failure."""
-    from mlflow.exceptions import MlflowException
-
-    return isinstance(error, MlflowException) and error.error_code == "RESOURCE_DOES_NOT_EXIST"
-
-
-def _resolve_user_direct(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
-    """Resolve user-direct workspace permission."""
-    from mlflow.exceptions import MlflowException
-
-    try:
-        perm = store.get_workspace_permission(workspace, username)
-        return get_permission(perm.permission)
-    except MlflowException as e:
-        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug(
-                "No user-direct workspace permission for %s@%s",
-                _sanitize(username),
-                _sanitize(workspace),
-            )
-        else:
-            logger.warning(
-                "Unexpected MlflowException resolving user-direct workspace permission for %s@%s: %s",
-                _sanitize(username),
-                _sanitize(workspace),
-                e,
-            )
-            _record_error(errors, "user-direct")
-        return None
-    except Exception as e:
-        logger.warning(
-            "Unexpected error resolving user-direct workspace permission for %s@%s: %s",
-            _sanitize(username),
-            _sanitize(workspace),
-            e,
-        )
-        _record_error(errors, "user-direct")
-        return None
-
-
-def _resolve_group_direct(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
-    """Resolve group-direct workspace permission (highest across user's groups)."""
-    from mlflow.exceptions import MlflowException
-
-    try:
-        perm = store.get_user_groups_workspace_permission(workspace, username)
-        return get_permission(perm.permission)
-    except MlflowException as e:
-        if e.error_code == "RESOURCE_DOES_NOT_EXIST":
-            logger.debug(
-                "No group-direct workspace permission for %s@%s",
-                _sanitize(username),
-                _sanitize(workspace),
-            )
-        else:
-            logger.warning(
-                "Unexpected MlflowException resolving group-direct workspace permission for %s@%s: %s",
-                _sanitize(username),
-                _sanitize(workspace),
-                e,
-            )
-            _record_error(errors, "group-direct")
-        return None
-    except Exception as e:
-        logger.warning(
-            "Unexpected error resolving group-direct workspace permission for %s@%s: %s",
-            _sanitize(username),
-            _sanitize(workspace),
-            e,
-        )
-        _record_error(errors, "group-direct")
-        return None
-
-
-def _resolve_user_regex(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
-    """Resolve user-regex workspace permission.
-
-    Lists user's regex permissions (sorted by priority) and matches against workspace name.
-    """
-    try:
-        regexes = store.list_workspace_regex_permissions(username)
-        if not regexes:
-            return None
-        return _match_workspace_regex_permission(regexes, workspace)
-    except Exception as e:
-        if _is_not_found(e):
-            return None
-        logger.warning(
-            "Error resolving user-regex workspace permission for %s@%s: %s",
-            _sanitize(username),
-            _sanitize(workspace),
-            e,
-        )
-        _record_error(errors, "user-regex")
-        return None
-
-
-def _resolve_group_regex(store, username: str, workspace: str, errors: list | None = None) -> Permission | None:
-    """Resolve group-regex workspace permission.
-
-    Gets user's group IDs, lists all group regex permissions for those groups,
-    and matches against workspace name.
-    """
-    try:
-        group_ids = store.get_groups_ids_for_user(username)
-        if not group_ids:
-            return None
-        regexes = store.list_workspace_group_regex_permissions_for_groups_ids(group_ids)
-        if not regexes:
-            return None
-        return _match_workspace_regex_permission(regexes, workspace)
-    except Exception as e:
-        if _is_not_found(e):
-            return None
-        logger.warning(
-            "Error resolving group-regex workspace permission for %s@%s: %s",
-            _sanitize(username),
-            _sanitize(workspace),
-            e,
-        )
-        _record_error(errors, "group-regex")
-        return None
+    return match_workspace_pattern(regexes, workspace)
 
 
 def _lookup_workspace_permission(username: str, workspace: str) -> Permission | None:
@@ -462,9 +310,10 @@ def _lookup_workspace_permission(username: str, workspace: str) -> Permission | 
 def _resolve_workspace_permission(username: str, workspace: str) -> tuple[Permission | None, bool]:
     """Resolve a workspace permission, reporting whether any source failed.
 
-    A source that errors before a match makes the answer unknown: a lower-priority source's
-    grant may be wider than what the failed source holds, so the walk is denied (fail closed)
-    rather than falling through to it.
+    The source walk is ``grant_context.resolve_workspace_permission`` (issue #460). A source that
+    errors before a match makes the answer unknown: a lower-priority source's grant may be wider
+    than what the failed source holds, so the walk is denied (fail closed) rather than falling
+    through to it.
 
     Parameters:
         username: The username to look up.
@@ -474,58 +323,4 @@ def _resolve_workspace_permission(username: str, workspace: str) -> tuple[Permis
         ``(permission, errored)``. ``errored`` True means the result must not be cached;
         the permission is then always None.
     """
-    from mlflow_oidc_auth.store import store  # Lazy import to avoid circular dependency
-
-    logger.debug(
-        "Looking up workspace permission for %s@%s",
-        _sanitize(username),
-        _sanitize(workspace),
-    )
-
-    # Build source resolution functions keyed by source name
-    errors: list[str] = []
-    source_resolvers = {
-        "user": lambda: _resolve_user_direct(store, username, workspace, errors),
-        "group": lambda: _resolve_group_direct(store, username, workspace, errors),
-        "regex": lambda: _resolve_user_regex(store, username, workspace, errors),
-        "group-regex": lambda: _resolve_group_regex(store, username, workspace, errors),
-    }
-
-    logger.debug("Source order: %s", config.PERMISSION_SOURCE_ORDER)
-
-    for source_name in config.PERMISSION_SOURCE_ORDER:
-        resolver = source_resolvers.get(source_name)
-        if resolver is None:
-            logger.warning("Invalid workspace permission source: %s", source_name)
-            continue
-        result = resolver()
-        if errors:
-            logger.warning(
-                "Workspace permission lookup for %s@%s failed in source(s) %s; denying without caching",
-                _sanitize(username),
-                _sanitize(workspace),
-                ", ".join(errors),
-            )
-            return None, True
-        if result is not None:
-            logger.debug(
-                "Workspace permission found via source '%s' for %s@%s: %s",
-                source_name,
-                _sanitize(username),
-                _sanitize(workspace),
-                result,
-            )
-            return result, False
-        logger.debug(
-            "Source '%s' returned None for %s@%s",
-            source_name,
-            _sanitize(username),
-            _sanitize(workspace),
-        )
-
-    logger.warning(
-        "No workspace permission found for %s@%s after checking all sources",
-        _sanitize(username),
-        _sanitize(workspace),
-    )
-    return None, False
+    return resolve_workspace_permission(username, workspace, config.PERMISSION_SOURCE_ORDER)

@@ -5,9 +5,9 @@ tier the permission rank decides, by the same rule direct group grants use
 (``compare_permissions``): any ``NO_PERMISSIONS`` match wins; otherwise the most capable
 permission (MANAGE > EDIT > USE > READ). Row id plays no part in the result.
 
-Every case runs through the single-resource path (the permission source builders that
-``resolve_permission`` uses) and the batch path (``resolve_*_from_context``), for user and group
-patterns and for registered models and prompts, and both must agree.
+Every case runs through the single-resource path (``resolve_permission``) and the batch path
+(``resolve_*_from_context``), for user and group patterns and for registered models and prompts,
+and both must agree. Since issue #460 both are calls into the one grant-context resolver.
 """
 
 from types import SimpleNamespace
@@ -16,15 +16,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from mlflow_oidc_auth.utils.batch_permissions import (
-    UserPermissionContext,
+    build_user_permission_context,
     resolve_model_permission_from_context,
     resolve_prompt_permission_from_context,
 )
 from mlflow_oidc_auth.utils.permissions import (
-    _build_prompt_sources,
-    _build_registered_model_sources,
     _match_regex_permission,
     _match_regex_permission_or_none,
+    flush_permission_cache,
+    resolve_permission,
 )
 
 
@@ -68,48 +68,50 @@ def test_matcher(rules, name, expected):
     assert _match_regex_permission_or_none(rules, name, "model name") == expected
 
 
-def _single_path(kind: str, source: str, rules, name: str) -> str:
-    """The regex source the single-resource path (``resolve_permission``) evaluates."""
+def _fake_store(kind: str, source: str, rules):
+    """A store whose only grants are ``rules``, as the user's (``regex``) or their groups' patterns."""
     fake_store = MagicMock()
     fake_store.get_groups_ids_for_user.return_value = [1, 2]
-    fake_store.list_registered_model_regex_permissions.return_value = rules
-    fake_store.list_group_registered_model_regex_permissions_for_groups_ids.return_value = rules
-    fake_store.list_prompt_regex_permissions.return_value = rules
-    fake_store.list_group_prompt_regex_permissions_for_groups_ids.return_value = rules
-    builder = _build_prompt_sources if kind == "prompt" else _build_registered_model_sources
-    with patch("mlflow_oidc_auth.utils.permissions.store", fake_store):
-        return builder(name, "alice")[source]()
+    for method in (
+        "list_registered_model_permissions",
+        "list_registered_model_regex_permissions",
+        "list_group_registered_model_regex_permissions_for_groups_ids",
+        "list_prompt_regex_permissions",
+        "list_group_prompt_regex_permissions_for_groups_ids",
+    ):
+        getattr(fake_store, method).return_value = []
+    fake_store.list_user_groups_grants.return_value = []
+    prefix = "list_" if source == "regex" else "list_group_"
+    target = "prompt" if kind == "prompt" else "registered_model"
+    suffix = "_regex_permissions" if source == "regex" else "_regex_permissions_for_groups_ids"
+    getattr(fake_store, f"{prefix}{target}{suffix}").return_value = rules
+    return fake_store
+
+
+def _resolve(kind: str, source: str, rules, resolver):
+    from mlflow_oidc_auth.config import config
+
+    flush_permission_cache()
+    with (
+        patch("mlflow_oidc_auth.utils.grant_context._store", return_value=_fake_store(kind, source, rules)),
+        patch.object(config, "PERMISSION_SOURCE_ORDER", [source]),
+        patch.object(config, "DEFAULT_MLFLOW_PERMISSION", "READ"),
+    ):
+        result = resolver()
+    flush_permission_cache()
+    assert result.kind == source
+    return result.permission.name
+
+
+def _single_path(kind: str, source: str, rules, name: str) -> str:
+    """The decision of the single-resource path (``resolve_permission``), with only that source configured."""
+    return _resolve(kind, source, rules, lambda: resolve_permission(kind, name, "alice"))
 
 
 def _batch_path(kind: str, source: str, rules, name: str) -> str:
     """The same decision through the batch resolver, with only that source configured."""
-    lists = {
-        "model_regex_permissions": [],
-        "group_model_regex_permissions": [],
-        "prompt_regex_permissions": [],
-        "group_prompt_regex_permissions": [],
-    }
-    prefix = "" if source == "regex" else "group_"
-    lists[f"{prefix}{'prompt' if kind == 'prompt' else 'model'}_regex_permissions"] = rules
-    ctx = UserPermissionContext(
-        username="alice",
-        group_ids=[1, 2],
-        user_experiment_permissions={},
-        group_experiment_permissions={},
-        experiment_regex_permissions=[],
-        group_experiment_regex_permissions=[],
-        user_model_permissions={},
-        group_model_permissions={},
-        **lists,
-    )
     resolve = resolve_prompt_permission_from_context if kind == "prompt" else resolve_model_permission_from_context
-    with patch("mlflow_oidc_auth.utils.batch_permissions.config") as mock_config:
-        mock_config.PERMISSION_SOURCE_ORDER = [source]
-        mock_config.DEFAULT_MLFLOW_PERMISSION = "READ"
-        mock_config.MLFLOW_ENABLE_WORKSPACES = False
-        result = resolve(ctx, name)
-    assert result.kind == source
-    return result.permission.name
+    return _resolve(kind, source, rules, lambda: resolve(build_user_permission_context("alice"), name))
 
 
 @pytest.mark.parametrize("kind", ["registered_model", "prompt"])

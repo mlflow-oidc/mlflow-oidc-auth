@@ -200,47 +200,46 @@ class TestFoldedQueriesDoNotOverGrant:
 
 
 class TestPermissionContextBuild:
-    """build_user_permission_context backs the admin/listing batch paths."""
+    """The batch context backs the admin/listing batch paths (the grant context since issue #460)."""
 
-    def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter):
-        """Each pre-fetch used to re-resolve the same user (7x) and memberships (3x).
+    TYPES = ("experiment", "registered_model", "prompt")
 
-        Folding those into JOINs took the build from 20 statements to 15. The assertion
-        is exact so a regression, or a further improvement, has to be acknowledged.
+    def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter, monkeypatch):
+        """Reading the experiment, model and prompt grants the old build fetched, without identity lookups.
+
+        Each read used to re-resolve the same user (7x) and memberships (3x); folding those into
+        JOINs took the old build from 20 statements to 15. The grant context reads the group ids
+        once and each type's four lists (the model and prompt pattern reads each resolve the user
+        first, and prompts re-read the registered-model direct grants they share): 15 as well. The assertion is exact so a
+        regression, or a further improvement, has to be acknowledged.
         """
-        store, username, _ = seeded_store
+        import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        original = bp.store
-        bp.store = store
-        try:
-            counter.reset()
-            ctx = bp.build_user_permission_context(username)
-        finally:
-            bp.store = original
+        store, username, _ = seeded_store
+        monkeypatch.setattr(store_mod, "store", store)
+        counter.reset()
+        ctx = bp.build_user_permission_context(username).preload(*self.TYPES)
 
         assert ctx.username == username
         assert counter.count == 15, counter.report()
 
-    def test_context_build_is_constant_in_group_count(self, store, counter):
-        counts = {}
+    def test_context_build_is_constant_in_group_count(self, store, counter, monkeypatch):
+        import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        original = bp.store
-        bp.store = store
-        try:
-            for n_groups in (1, 4, 8):
-                username = f"ctx{n_groups}@example.com"
-                groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
-                store.create_user(username, username)
-                store.populate_groups(groups)
-                store.set_user_groups(username, groups)
+        monkeypatch.setattr(store_mod, "store", store)
+        counts = {}
+        for n_groups in (1, 4, 8):
+            username = f"ctx{n_groups}@example.com"
+            groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
+            store.create_user(username, username)
+            store.populate_groups(groups)
+            store.set_user_groups(username, groups)
 
-                counter.reset()
-                bp.build_user_permission_context(username)
-                counts[n_groups] = counter.count
-        finally:
-            bp.store = original
+            counter.reset()
+            bp.build_user_permission_context(username).preload(*self.TYPES)
+            counts[n_groups] = counter.count
 
         assert len(set(counts.values())) == 1, f"context build scales with group count: {counts}"
 
@@ -266,24 +265,20 @@ class TestWorkspaceFallbackMemo:
 
         monkeypatch.setattr(cfg, "MLFLOW_ENABLE_WORKSPACES", True)
         monkeypatch.setattr("mlflow.utils.workspace_context.get_request_workspace", lambda: "ws-none")
-        # workspace_cache resolves through the store singleton, not bp.store.
+        # The grant context and workspace_cache both resolve through the store singleton.
         monkeypatch.setattr(store_mod, "store", store)
         wsc.flush_workspace_cache()
 
-        original = bp.store
-        bp.store = store
-        try:
-            counts = {}
-            for n in (1, 5, 20):
-                experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}") for i in range(n)]
-                ctx = bp.build_user_permission_context(username)
-                wsc.flush_workspace_cache()
-                counter.reset()
-                for exp in experiments:
-                    bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name)
-                counts[n] = counter.count
-        finally:
-            bp.store = original
+        counts = {}
+        for n in (1, 5, 20):
+            # Experiments of the request's workspace, as MLflow's search returns them.
+            experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}", workspace="ws-none") for i in range(n)]
+            ctx = bp.build_user_permission_context(username).preload("experiment")
+            wsc.flush_workspace_cache()
+            counter.reset()
+            for exp in experiments:
+                bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name, exp.workspace)
+            counts[n] = counter.count
 
         finally_counts = counts
         assert len(set(finally_counts.values())) == 1, f"workspace deny cost scales with resource count: {finally_counts}"
@@ -364,12 +359,14 @@ class TestGroupPermissionCollapse:
 
         per_resource = store.experiment_group_repo.get_group_permission_for_user_resource("e0", "dora@example.com").permission
 
-        original = bp.store
-        bp.store = store
+        import mlflow_oidc_auth.store as store_mod
+
+        original = store_mod.store
+        store_mod.store = store
         try:
-            batch = bp.build_user_permission_context("dora@example.com").group_experiment_permissions["e0"]
+            batch = bp.build_user_permission_context("dora@example.com").section("experiment").group["e0"]
         finally:
-            bp.store = original
+            store_mod.store = original
 
         assert batch == per_resource, "batch and per-resource paths disagree on multi-group resolution"
 
@@ -381,15 +378,17 @@ class TestGroupPermissionCollapse:
         store.create_group_experiment_permission("ga", "e0", "MANAGE")
         store.create_group_experiment_permission("gz", "e0", "READ")
 
-        original = bp.store
-        bp.store = store
+        import mlflow_oidc_auth.store as store_mod
+
+        original = store_mod.store
+        store_mod.store = store
         try:
             results = []
             for order in (["ga", "gz"], ["gz", "ga"]):
                 store.set_user_groups("eve@example.com", order)
-                results.append(bp.build_user_permission_context("eve@example.com").group_experiment_permissions["e0"])
+                results.append(bp.build_user_permission_context("eve@example.com").section("experiment").group["e0"])
         finally:
-            bp.store = original
+            store_mod.store = original
 
         assert results[0] == results[1], f"resolution depends on membership insertion order: {results}"
 
@@ -452,3 +451,96 @@ class TestWorkspaceDenialCache:
             assert counter.count == 0, counter.report()
         finally:
             wsc.flush_workspace_cache()
+
+
+class TestSearchFilterStatements:
+    """A search filter's auth-DB cost must not grow with the rows it scans (issue #460).
+
+    Each listed row used to be resolved through the per-resource path: about five statements per
+    scanned row on a cold cache (2,355 for 500 experiments at 10% visibility). The filters now
+    resolve every row in memory against the caller's grant context, read once per resource type.
+    """
+
+    USERNAME = "reader@example.com"
+
+    @pytest.fixture
+    def grants(self, store, monkeypatch):
+        """A non-admin in 5 groups, with grants on 10% of the rows and patterns that match none."""
+        import mlflow_oidc_auth.store as store_module
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(store_module, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        groups = [f"team-{i}" for i in range(5)]
+        store.create_user(self.USERNAME, "Reader")
+        store.populate_groups(groups)
+        store.set_user_groups(self.USERNAME, groups)
+        for i in range(0, 500, 20):
+            store.create_experiment_permission(str(i), self.USERNAME, "READ")
+            store.create_registered_model_permission(f"model-{i}", self.USERNAME, "READ")
+        for i in range(10, 500, 20):
+            store.create_group_experiment_permission(groups[i % 5], str(i), "READ")
+            store.create_group_model_permission(groups[i % 5], f"model-{i}", "READ")
+        store.create_experiment_regex_permission("^no-such-experiment", 1, "MANAGE", self.USERNAME)
+        store.create_group_experiment_regex_permission(groups[0], "^no-such-experiment", 1, "MANAGE")
+        store.create_registered_model_regex_permission("^no-such-model", 1, "MANAGE", self.USERNAME)
+        store.create_group_registered_model_regex_permission(groups[0], "^no-such-model", 1, "MANAGE")
+        return store
+
+    def _filter(self, kind, rows):
+        """Serve one request: MLflow's unfiltered first page, then the plugin's filter, for real."""
+        import json
+        from contextlib import ExitStack
+        from unittest.mock import patch
+
+        from flask import Flask, Response
+        from mlflow.utils.proto_json_utils import message_to_json
+
+        import mlflow_oidc_auth.hooks.after_request as ar
+        from mlflow_oidc_auth.tests.search_paging_helpers import _KINDS, FakeSearchStore
+
+        request_cls, field, method, _ident, filter_name, _seam = _KINDS[kind]
+        fake = FakeSearchStore(rows)
+        first = getattr(fake, method)(max_results=100, page_token=None)
+        response = request_cls.Response()
+        getattr(response, field).extend([row.to_proto() for row in first])
+        if first.token:
+            response.next_page_token = first.token
+        resp = Response(message_to_json(response), mimetype="application/json")
+        target = "mlflow_oidc_auth.hooks.after_request"
+        with ExitStack() as stack:
+            stack.enter_context(Flask(__name__).test_request_context())
+            stack.enter_context(patch(f"{target}.get_fastapi_admin_status", return_value=False))
+            stack.enter_context(patch(f"{target}.get_fastapi_username", return_value=self.USERNAME))
+            stack.enter_context(patch(f"{target}._get_request_message", return_value=request_cls(max_results=100)))
+            stack.enter_context(patch(f"{target}._get_tracking_store", return_value=fake))
+            stack.enter_context(patch(f"{target}._get_model_registry_store", return_value=fake))
+            getattr(ar, filter_name)(resp)
+        return json.loads(resp.get_data(as_text=True)).get(field, [])
+
+    def _cold_count(self, counter, kind, rows):
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
+        counter.reset()
+        listed = self._filter(kind, rows)
+        return counter.count, listed
+
+    @pytest.mark.parametrize("kind", ["experiments", "registered_models"])
+    def test_search_filter_statements_constant_in_rows(self, grants, counter, kind):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_experiments, make_registered_models
+
+        make = make_experiments if kind == "experiments" else make_registered_models
+        key = "experiment_id" if kind == "experiments" else "name"
+        ident = (lambda i: str(i)) if kind == "experiments" else (lambda i: f"model-{i}")
+
+        count_100, listed_100 = self._cold_count(counter, kind, make(100))
+        report_100 = counter.report()
+        count_500, listed_500 = self._cold_count(counter, kind, make(500))
+
+        # The filter really filtered: exactly the rows granted directly or through a group.
+        assert [row[key] for row in listed_100] == [ident(i) for i in range(0, 100, 10)]
+        assert [row[key] for row in listed_500] == [ident(i) for i in range(0, 500, 10)]
+        assert count_100 == count_500, f"{count_100} statements for 100 rows, {count_500} for 500\n{report_100}\n{counter.report()}"
+        assert 0 < count_500 <= 20, counter.report()
