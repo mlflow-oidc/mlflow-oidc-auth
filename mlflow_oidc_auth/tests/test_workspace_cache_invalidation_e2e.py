@@ -13,6 +13,7 @@ it must not outlive the grant that lifts it.
 """
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -296,7 +297,8 @@ class TestLookupErrorsAreNotCached:
             raise RuntimeError("database unavailable")
 
         monkeypatch.setattr(ws_store, "get_workspace_permission", _db_down)
-        monkeypatch.setattr(ar, "get_auth_context", lambda: type("Ctx", (), {"username": "sam@example.com", "is_admin": False})())
+        context = SimpleNamespace(username="sam@example.com", is_admin=False)
+        monkeypatch.setattr(ar, "get_auth_context", lambda: context)
 
         resp = Response(json.dumps({"workspaces": [{"name": "ws-prod"}]}), mimetype="application/json")
         with Flask(__name__).test_request_context("/"):
@@ -326,7 +328,8 @@ class TestDenialsCannotEvictGrants:
         assert _cached("tess@example.com", "ws-prod").name == "READ"
 
         # Ugo lists 50 workspaces he cannot read: 50 denials.
-        monkeypatch.setattr(ar, "get_auth_context", lambda: type("Ctx", (), {"username": "ugo@example.com", "is_admin": False})())
+        context = SimpleNamespace(username="ugo@example.com", is_admin=False)
+        monkeypatch.setattr(ar, "get_auth_context", lambda: context)
         names = [{"name": f"ws-{i}"} for i in range(50)]
         resp = Response(json.dumps({"workspaces": names}), mimetype="application/json")
         with Flask(__name__).test_request_context("/"):

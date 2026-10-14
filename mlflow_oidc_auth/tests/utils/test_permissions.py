@@ -823,7 +823,7 @@ class TestPermissionCacheMaxSize:
 
     @pytest.fixture(autouse=True)
     def _fresh_cache(self, monkeypatch):
-        import mlflow_oidc_auth.utils.permissions as perms
+        from mlflow_oidc_auth.utils import permissions as perms
         from mlflow_oidc_auth.config import config
 
         monkeypatch.setattr(config, "CACHE_BACKEND", "local")
@@ -832,7 +832,7 @@ class TestPermissionCacheMaxSize:
         monkeypatch.setattr(perms, "_permission_cache", None)
 
     def test_configured_size_is_used(self, monkeypatch):
-        import mlflow_oidc_auth.utils.permissions as perms
+        from mlflow_oidc_auth.utils import permissions as perms
         from mlflow_oidc_auth.config import config
 
         monkeypatch.setattr(config, "PERMISSION_CACHE_MAX_SIZE", 123)
@@ -853,12 +853,12 @@ class TestPermissionCacheMaxSize:
     @pytest.mark.parametrize(("setting", "default"), [("PERMISSION_CACHE_MAX_SIZE", 10000), ("WORKSPACE_CACHE_MAX_SIZE", 1024)])
     @pytest.mark.parametrize("bad", ["0", "-5", "big", "1.5"])
     def test_invalid_value_warns_and_uses_default(self, monkeypatch, bad, setting, default):
-        import mlflow_oidc_auth.config as config_module
-        import mlflow_oidc_auth.config_providers.manager as manager_module
+        from mlflow_oidc_auth.config import AppConfig
+        from mlflow_oidc_auth.config_providers import manager as manager_module
 
         monkeypatch.setenv(setting, bad)
         with patch.object(manager_module.logger, "warning") as warn:
-            assert getattr(config_module.AppConfig(), setting) == default
+            assert getattr(AppConfig(), setting) == default
         assert any(len(call.args) > 1 and call.args[1] == setting for call in warn.call_args_list), "no warning named the setting"
         # The rejected value is never logged: the same lookup serves secrets from config providers.
         for call in warn.call_args_list:
