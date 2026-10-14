@@ -38,15 +38,6 @@ export const fetchServiceAccountsPage = createPagedFetcher<
   queryParams: { service: true },
 });
 
-export const fetchUserDetails = (
-  username: string,
-  signal?: AbortSignal,
-): Promise<CurrentUser> =>
-  apiRequest("get", "/api/2.0/mlflow/users/{username}", {
-    path: { username },
-    signal,
-  });
-
 /**
  * Create a user or service account (admin-only). For a service account,
  * `service_account_source` is "internal" (default) or the id of the provider it

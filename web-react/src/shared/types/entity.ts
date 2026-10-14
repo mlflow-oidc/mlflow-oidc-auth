@@ -215,14 +215,25 @@ export type WorkspaceListResponse = {
 };
 
 /**
+ * A permission value the server returned that is not a {@link PermissionLevel}. It should never
+ * happen; when it does the UI shows the raw value as is rather than failing the page.
+ */
+export type UnrecognizedPermission = string & {
+  readonly __unrecognizedPermission: true;
+};
+
+/** A grant's permission as the UI receives it: a level, or a value it shows as is. */
+export type GrantedPermission = PermissionLevel | UnrecognizedPermission;
+
+/**
  * The contract types `permission` as a plain string; the server only ever stores a permission
- * level there, so the UI narrows it — checked at runtime by `withPermissionLevels`. Every other
- * field comes from the contract as is.
+ * level there, so the UI narrows it — checked at runtime by `withPermissionLevels`, which keeps
+ * an unrecognized value rather than dropping the row. Every other field comes from the contract.
  */
 type WithPermissionLevel<T extends { permission: string }> = Omit<
   T,
   "permission"
-> & { permission: PermissionLevel };
+> & { permission: GrantedPermission };
 
 /** A user's grant on a workspace. Generated from the API contract. */
 export type WorkspaceUserPermission = WithPermissionLevel<

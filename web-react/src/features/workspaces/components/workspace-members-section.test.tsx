@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspaceMembersSection from "./workspace-members-section";
 
-import type { PermissionLevel } from "../../../shared/types/entity";
+import type { GrantedPermission, UnrecognizedPermission } from "../../../shared/types/entity";
 
 const mockShowToast = vi.fn();
 
@@ -49,7 +49,7 @@ vi.mock("../../../shared/components/button", () => ({
 
 const defaultProps = {
   title: "Users",
-  members: [] as Array<{ name: string; permission: PermissionLevel }>,
+  members: [] as Array<{ name: string; permission: GrantedPermission }>,
   isLoading: false,
   error: null,
   onUpdate: vi.fn().mockResolvedValue(undefined),
@@ -170,5 +170,20 @@ describe("WorkspaceMembersSection", () => {
     );
 
     expect(screen.getByText("Actions")).toBeInTheDocument();
+  });
+
+  it("shows an unrecognized permission as is, alongside the other members", () => {
+    render(
+      <WorkspaceMembersSection
+        {...defaultProps}
+        members={[
+          { name: "alice", permission: "READ" },
+          { name: "bob", permission: "OWNER" as UnrecognizedPermission },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("OWNER")).toBeInTheDocument();
   });
 });
