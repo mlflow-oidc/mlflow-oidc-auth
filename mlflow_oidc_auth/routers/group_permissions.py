@@ -53,6 +53,7 @@ from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validat
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
+from ._permission_routes import ALL_OPS, GROUP, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -135,6 +136,41 @@ GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name:path}/gateways/secrets"
 GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets/{name:path}"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/secrets-patterns"
 GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets-patterns/{id}"
+
+
+def _group_pattern(model, prompt: bool = False):
+    """Turn a stored group pattern into ``model``, the list and get response of a group's pattern routes.
+
+    :param model: The response model.
+    :param prompt: Whether the model carries the ``prompt`` flag.
+    :return: A function from a stored pattern to ``model``.
+    """
+
+    def item(pattern):
+        payload = pattern.to_json() if hasattr(pattern, "to_json") else None
+        if isinstance(payload, dict):
+            flag = {"prompt": bool(payload.get("prompt", False))} if prompt else {}
+            return model(
+                id=payload["id"],
+                regex=payload["regex"],
+                priority=payload["priority"],
+                group_id=payload.get("group_id"),
+                permission=payload["permission"],
+                workspace=payload.get("workspace"),
+                **flag,
+            )
+        flag = {"prompt": bool(getattr(pattern, "prompt", False))} if prompt else {}
+        return model(
+            id=pattern.id,
+            regex=pattern.regex,
+            priority=pattern.priority,
+            group_id=getattr(pattern, "group_id", None),
+            permission=pattern.permission,
+            workspace=pattern_workspace_of(pattern),
+            **flag,
+        )
+
+    return item
 
 
 @group_permissions_router.get(
@@ -388,151 +424,23 @@ async def get_group_experiments(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve group experiment permissions")
 
 
-@group_permissions_router.post(
+exact_routes(
+    group_permissions_router,
+    GROUP,
+    "experiment",
+    "group experiment permissions",
     GROUP_EXPERIMENT_PERMISSION_DETAIL,
-    status_code=201,
-    summary="Create experiment permission for a group",
-    description="Creates a new permission for a group to access a specific experiment.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment permissions"],
+    ops=("create", "update", "delete"),
+    keys=(("experiment_id", "The experiment ID to {purpose} permissions for"),),
+    auth=(("current_username", check_experiment_manage_permission),),
+    body=ExperimentPermission,
+    call={
+        "create": lambda a: store.create_group_experiment_permission(a.group_name, a.experiment_id, a.permission_data.permission),
+        "update": lambda a: store.update_group_experiment_permission(a.group_name, a.experiment_id, a.permission_data.permission),
+        "delete": lambda a: store.delete_group_experiment_permission(a.group_name, a.experiment_id),
+    },
+    on="experiment {experiment_id}",
 )
-async def create_group_experiment_permission(
-    group_name: str = Path(..., description="The group name to grant experiment permission to"),
-    experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
-    permission_data: ExperimentPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Create a permission for a group to access an experiment.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to grant permissions to.
-    experiment_id : str
-        The ID of the experiment to grant permissions for.
-    permission_data : ExperimentPermission
-        The permission data containing the permission level.
-    current_username : str
-        The username of the authenticated user who can manage this experiment (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the created permission.
-    """
-    try:
-        store.create_group_experiment_permission(
-            group_name,
-            experiment_id,
-            permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="group_experiment_permission",
-            resource_id=experiment_id,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment permission created for group {group_name} on experiment {experiment_id}")
-    except Exception as e:
-        logger.error(f"Error creating group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group experiment permission")
-
-
-@group_permissions_router.patch(
-    GROUP_EXPERIMENT_PERMISSION_DETAIL,
-    summary="Update experiment permission for a group",
-    description="Updates the permission for a group on a specific experiment.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment permissions"],
-)
-async def update_group_experiment_permission(
-    group_name: str = Path(..., description="The group name to update experiment permission for"),
-    experiment_id: str = Path(..., description="The experiment ID to update permissions for"),
-    permission_data: ExperimentPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Update the permission for a group on an experiment.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to update permissions for.
-    experiment_id : str
-        The ID of the experiment to update permissions for.
-    permission_data : ExperimentPermission
-        The updated permission data.
-    current_username : str
-        The username of the authenticated user who can manage this experiment (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the updated permission.
-    """
-    try:
-        store.update_group_experiment_permission(
-            group_name,
-            experiment_id,
-            permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="group_experiment_permission",
-            resource_id=experiment_id,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment permission updated for group {group_name} on experiment {experiment_id}")
-    except Exception as e:
-        logger.error(f"Error updating group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group experiment permission")
-
-
-@group_permissions_router.delete(
-    GROUP_EXPERIMENT_PERMISSION_DETAIL,
-    summary="Delete experiment permission for a group",
-    description="Deletes the permission for a group on a specific experiment.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment permissions"],
-)
-async def delete_group_experiment_permission(
-    group_name: str = Path(..., description="The group name to delete experiment permission for"),
-    experiment_id: str = Path(..., description="The experiment ID to delete permissions for"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Delete the permission for a group on an experiment.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to delete permissions for.
-    experiment_id : str
-        The ID of the experiment to delete permissions for.
-    current_username : str
-        The username of the authenticated user who can manage this experiment (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the deleted permission.
-    """
-    try:
-        store.delete_group_experiment_permission(group_name, experiment_id)
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="group_experiment_permission",
-            resource_id=experiment_id,
-            detail={"group_name": group_name},
-        )
-        return StatusMessageResponse(message=f"Experiment permission deleted for group {group_name} on experiment {experiment_id}")
-    except Exception as e:
-        logger.error(f"Error deleting group experiment permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment permission")
 
 
 @group_permissions_router.get(
@@ -972,191 +880,27 @@ async def delete_group_prompt_permission(
         raise HTTPException(status_code=500, detail=f"Failed to delete group prompt permission")
 
 
-@group_permissions_router.get(
+regex_routes(
+    group_permissions_router,
+    GROUP,
+    "experiment",
+    "group experiment pattern permissions",
     GROUP_EXPERIMENT_PATTERN_PERMISSIONS,
-    summary="Get group experiment pattern permissions",
-    description="Retrieves all experiment regex pattern permissions for a specific group.",
-    response_model=List[GroupExperimentRegexPermissionItem],
-    tags=["group experiment pattern permissions"],
-)
-async def get_group_experiment_pattern_permissions(
-    group_name: str = Path(..., description="The group name to get experiment pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupExperimentRegexPermissionItem]:
-    """
-    Get all experiment regex pattern permissions for a group.
-    """
-    try:
-        patterns = store.list_group_experiment_regex_permissions(group_name)
-        items: List[GroupExperimentRegexPermissionItem] = []
-        for pattern in patterns:
-            payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-            if isinstance(payload, dict):
-                items.append(
-                    GroupExperimentRegexPermissionItem(
-                        id=payload["id"],
-                        regex=payload["regex"],
-                        priority=payload["priority"],
-                        group_id=payload.get("group_id"),
-                        permission=payload["permission"],
-                        workspace=payload.get("workspace"),
-                    )
-                )
-            else:
-                items.append(
-                    GroupExperimentRegexPermissionItem(
-                        id=pattern.id,
-                        regex=pattern.regex,
-                        priority=pattern.priority,
-                        group_id=getattr(pattern, "group_id", None),
-                        permission=pattern.permission,
-                        workspace=pattern_workspace_of(pattern),
-                    )
-                )
-
-        return items
-    except Exception as e:
-        logger.error(f"Error getting group experiment pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permissions")
-
-
-@group_permissions_router.post(
-    GROUP_EXPERIMENT_PATTERN_PERMISSIONS,
-    status_code=201,
-    summary="Create experiment pattern permission for a group",
-    description="Creates a new regex pattern permission for a group to access experiments.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment pattern permissions"],
-)
-async def create_group_experiment_pattern_permission(
-    group_name: str = Path(..., description="The group name to create experiment pattern permission for"),
-    pattern_data: ExperimentRegexCreate = Body(..., description="The pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a regex pattern permission for a group to access experiments.
-    """
-    try:
-        store.create_group_experiment_regex_permission(
-            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_experiment_regex_permission",
-            resource_id=group_name,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission created for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error creating group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group experiment pattern permission")
-
-
-@group_permissions_router.get(
     GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    summary="Get specific experiment pattern permission for a group",
-    description="Retrieves a specific experiment regex pattern permission for a group.",
-    response_model=GroupExperimentRegexPermissionItem,
-    tags=["group experiment pattern permissions"],
+    specific=ALL_OPS,
+    plural="experiments",
+    group_failures=True,
+    body=ExperimentRegexCreate,
+    item=_group_pattern(GroupExperimentRegexPermissionItem),
+    item_model=GroupExperimentRegexPermissionItem,
+    call={
+        "list": lambda a: store.list_group_experiment_regex_permissions(a.group_name),
+        "create": lambda a: store.create_group_experiment_regex_permission(**pattern_fields(a), group_name=a.group_name),
+        "get": lambda a: store.get_group_experiment_regex_permission(a.group_name, a.id),
+        "update": lambda a: store.update_group_experiment_regex_permission(id=a.id, group_name=a.group_name, **pattern_fields(a)),
+        "delete": lambda a: store.delete_group_experiment_regex_permission(a.group_name, a.id),
+    },
 )
-async def get_group_experiment_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupExperimentRegexPermissionItem:
-    """
-    Get a specific experiment regex pattern permission for a group.
-    """
-    try:
-        pattern = store.get_group_experiment_regex_permission(group_name, id)
-        payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-        if isinstance(payload, dict):
-            item = GroupExperimentRegexPermissionItem(
-                id=payload["id"],
-                regex=payload["regex"],
-                priority=payload["priority"],
-                group_id=payload.get("group_id"),
-                permission=payload["permission"],
-                workspace=payload.get("workspace"),
-            )
-        else:
-            item = GroupExperimentRegexPermissionItem(
-                id=pattern.id,
-                regex=pattern.regex,
-                priority=pattern.priority,
-                group_id=getattr(pattern, "group_id", None),
-                permission=pattern.permission,
-                workspace=pattern_workspace_of(pattern),
-            )
-
-        return item
-    except Exception as e:
-        logger.error(f"Error getting group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group experiment pattern permission")
-
-
-@group_permissions_router.patch(
-    GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    summary="Update experiment pattern permission for a group",
-    description="Updates a specific experiment regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment pattern permissions"],
-)
-async def update_group_experiment_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    pattern_data: ExperimentRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Update a specific experiment regex pattern permission for a group.
-    """
-    try:
-        store.update_group_experiment_regex_permission(
-            id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_experiment_regex_permission",
-            resource_id=group_name,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission updated for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error updating group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group experiment pattern permission")
-
-
-@group_permissions_router.delete(
-    GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    summary="Delete experiment pattern permission for a group",
-    description="Deletes a specific experiment regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group experiment pattern permissions"],
-)
-async def delete_group_experiment_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Delete a specific experiment regex pattern permission for a group.
-    """
-    try:
-        store.delete_group_experiment_regex_permission(group_name, id)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_experiment_regex_permission",
-            resource_id=group_name,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission deleted for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group experiment pattern permission")
 
 
 @group_permissions_router.get(

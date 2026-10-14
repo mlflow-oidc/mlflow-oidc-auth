@@ -77,6 +77,7 @@ from mlflow_oidc_auth.utils.permissions import (
     effective_gateway_secret_permission,
 )
 
+from ._permission_routes import USER, exact_routes, pattern_fields, regex_routes
 from ._prefix import USER_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
@@ -194,367 +195,70 @@ async def get_user_experiment_permissions(
     ]
 
 
-@user_permissions_router.post(
+exact_routes(
+    user_permissions_router,
+    USER,
+    "experiment",
+    "user experiment permissions",
     USER_EXPERIMENT_PERMISSION_DETAIL,
-    response_model=MessageResponse,
-    summary="Create experiment permission for a user",
-    description="Creates a permission for a user to access a specific experiment.",
-    tags=["user experiment permissions"],
+    keys=(("experiment_id", "The experiment ID to {purpose} permissions for"),),
+    auth=(("current_username", check_experiment_manage_permission),),
+    body=ExperimentPermission,
+    call={
+        "create": lambda a: store.create_experiment_permission(a.experiment_id, a.username, a.permission_data.permission),
+        "get": lambda a: store.get_experiment_permission(a.experiment_id, a.username),
+        "update": lambda a: store.update_experiment_permission(a.experiment_id, a.username, a.permission_data.permission),
+        "delete": lambda a: store.delete_experiment_permission(a.experiment_id, a.username),
+    },
+    models={"get": ExperimentPermissionResponse},
+    respond={"get": lambda a, ep: ExperimentPermissionResponse(experiment_permission=ExperimentPermissionRecord(**ep.to_json()))},
+    message_model=MessageResponse,
+    messages={
+        "create": "Experiment permission has been created.",
+        "update": "Experiment permission has been changed.",
+        "delete": "Experiment permission has been deleted.",
+    },
+    created=None,
+    handled=False,
+    text={
+        "create": {
+            "description": "Creates a permission for a user to access a specific experiment.",
+            "subject": "The username to grant permissions to",
+            "body": "The permission level to grant",
+        },
+        "get": {"subject": "The username to grant permissions to", "experiment_id": "The experiment ID to set permissions for"},
+        "update": {
+            "subject": "The username to grant permissions to",
+            "experiment_id": "The experiment ID to set permissions for",
+            "body": "The permission level to grant",
+        },
+        "delete": {"subject": "The username to revoke permissions from", "experiment_id": "The experiment ID to revoke permissions for"},
+    },
 )
-async def create_user_experiment_permission(
-    username: str = Path(..., description="The username to grant permissions to"),
-    experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
-    permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> MessageResponse:
-    store.create_experiment_permission(
-        experiment_id,
-        username,
-        permission_data.permission,
-    )
-    emit_audit_event(
-        "permission.create",
-        actor=current_username,
-        resource_type="experiment_permission",
-        resource_id=experiment_id,
-        detail={"username": username, "permission": permission_data.permission},
-    )
-    return MessageResponse(message="Experiment permission has been created.")
 
-
-@user_permissions_router.get(
-    USER_EXPERIMENT_PERMISSION_DETAIL,
-    response_model=ExperimentPermissionResponse,
-    summary="Get experiment permission for a user",
-    description="Retrieves the permission for a user on a specific experiment.",
-    tags=["user experiment permissions"],
-)
-async def get_user_experiment_permission(
-    username: str = Path(..., description="The username to grant permissions to"),
-    experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
-    _: None = Depends(check_experiment_manage_permission),
-) -> ExperimentPermissionResponse:
-    ep = store.get_experiment_permission(experiment_id, username)
-    return ExperimentPermissionResponse(experiment_permission=ExperimentPermissionRecord(**ep.to_json()))
-
-
-@user_permissions_router.patch(
-    USER_EXPERIMENT_PERMISSION_DETAIL,
-    response_model=MessageResponse,
-    summary="Update experiment permission for a user",
-    description="Updates the permission for a user on a specific experiment.",
-    tags=["user experiment permissions"],
-)
-async def update_user_experiment_permission(
-    username: str = Path(..., description="The username to grant permissions to"),
-    experiment_id: str = Path(..., description="The experiment ID to set permissions for"),
-    permission_data: ExperimentPermission = Body(..., description="The permission level to grant"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> MessageResponse:
-    store.update_experiment_permission(
-        experiment_id,
-        username,
-        permission_data.permission,
-    )
-    emit_audit_event(
-        "permission.update",
-        actor=current_username,
-        resource_type="experiment_permission",
-        resource_id=experiment_id,
-        detail={"username": username, "permission": permission_data.permission},
-    )
-    return MessageResponse(message="Experiment permission has been changed.")
-
-
-@user_permissions_router.delete(
-    USER_EXPERIMENT_PERMISSION_DETAIL,
-    response_model=MessageResponse,
-    summary="Delete experiment permission for a user",
-    description="Deletes the permission for a user on a specific experiment.",
-    tags=["user experiment permissions"],
-)
-async def delete_user_experiment_permission(
-    username: str = Path(..., description="The username to revoke permissions from"),
-    experiment_id: str = Path(..., description="The experiment ID to revoke permissions for"),
-    current_username: str = Depends(check_experiment_manage_permission),
-) -> MessageResponse:
-    store.delete_experiment_permission(experiment_id, username)
-    emit_audit_event(
-        "permission.delete",
-        actor=current_username,
-        resource_type="experiment_permission",
-        resource_id=experiment_id,
-        detail={"username": username},
-    )
-    return MessageResponse(message="Experiment permission has been deleted.")
-
-
-@user_permissions_router.post(
+regex_routes(
+    user_permissions_router,
+    USER,
+    "experiment",
+    "user experiment pattern permissions",
     USER_EXPERIMENT_PATTERN_PERMISSIONS,
-    status_code=201,
-    summary="Create experiment pattern permission",
-    description="Creates a new regex-based permission pattern for experiment access.",
-    tags=["user experiment pattern permissions"],
-)
-async def create_user_experiment_pattern_permission(
-    username: str = Path(..., description="The username to create pattern permission for"),
-    pattern_data: ExperimentRegexCreate = Body(..., description="The regex pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a new regex-based permission pattern for experiment access.
-
-    This endpoint allows administrators to define regex patterns that automatically
-    grant specific permission levels to a user for experiments matching the pattern.
-    Patterns are evaluated based on priority (lower numbers = higher priority).
-
-    Parameters:
-    -----------
-    username : str
-        The username to create the pattern permission for.
-    pattern_data : ExperimentRegexCreate
-        The regex pattern details including the pattern, priority, and permission level.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-
-    Raises:
-    -------
-    HTTPException
-        If there's an error creating the permission pattern.
-    """
-    try:
-        store.create_experiment_regex_permission(
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="experiment_regex_permission",
-            resource_id=username,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission created for {username}")
-    except Exception as e:
-        logger.error(f"Error creating experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create experiment pattern permission")
-
-
-@user_permissions_router.get(
-    USER_EXPERIMENT_PATTERN_PERMISSIONS,
-    response_model=List[ExperimentRegexPermission],
-    summary="List experiment pattern permissions for a user",
-    description="Retrieves a list of regex-based experiment permission patterns for the specified user.",
-    tags=["user experiment pattern permissions"],
-)
-async def list_user_experiment_pattern_permissions(
-    username: str = Path(..., description="The username to list pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[ExperimentRegexPermission]:
-    """
-    List all regex-based experiment permission patterns for a user.
-
-    This endpoint returns all regex patterns that define experiment permissions
-    for the specified user. Only administrators can access this information.
-
-    Parameters:
-    -----------
-    username : str
-        The username to list regex permissions for.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    List[ExperimentRegexPermission]
-        A list of experiment regex permissions for the user.
-
-    Raises:
-    -------
-    HTTPException
-        If there's an error retrieving the permissions.
-    """
-    try:
-        permissions = store.list_experiment_regex_permissions(username=username)
-        return [
-            ExperimentRegexPermission(
-                id=str(perm.id),
-                regex=perm.regex,
-                priority=perm.priority,
-                permission=perm.permission,
-                workspace=pattern_workspace_of(perm),
-            )
-            for perm in permissions
-        ]
-    except Exception as e:
-        logger.error(f"Error listing experiment pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve experiment pattern permissions")
-
-
-@user_permissions_router.get(
     USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    response_model=ExperimentRegexPermission,
-    summary="Get experiment pattern permission for a user",
-    description="Retrieves a specific regex-based experiment permission pattern for the specified user.",
-    tags=["user experiment pattern permissions"],
+    ops=("create", "list", "get", "update", "delete"),
+    names={"list": "list_user_experiment_pattern_permissions"},
+    id_type=str,
+    lab="",
+    body=ExperimentRegexCreate,
+    item=lambda p: ExperimentRegexPermission(id=str(p.id), regex=p.regex, priority=p.priority, permission=p.permission, workspace=pattern_workspace_of(p)),
+    item_model=ExperimentRegexPermission,
+    call={
+        "list": lambda a: store.list_experiment_regex_permissions(username=a.username),
+        "create": lambda a: store.create_experiment_regex_permission(**pattern_fields(a), username=a.username),
+        "get": lambda a: store.get_experiment_regex_permission(a.username, int(a.id)),
+        "update": lambda a: store.update_experiment_regex_permission(id=int(a.id), **pattern_fields(a), username=a.username),
+        "delete": lambda a: store.delete_experiment_regex_permission(a.username, int(a.id)),
+    },
+    text={"create": {"summary": "Create experiment pattern permission"}},
 )
-async def get_user_experiment_pattern_permission(
-    username: str = Path(..., description="The username to get pattern permission for"),
-    id: str = Path(..., description="The pattern ID to retrieve"),
-    admin_username: str = Depends(check_admin_permission),
-) -> ExperimentRegexPermission:
-    """
-    Get a specific regex-based experiment permission pattern for a user.
-
-    Parameters:
-    -----------
-    username : str
-        The username to get the regex permission for.
-    id : str
-        The unique identifier of the pattern to retrieve.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    ExperimentRegexPermission
-        The experiment regex permission details.
-
-    Raises:
-    -------
-    HTTPException
-        If the pattern is not found or there's an error retrieving it.
-    """
-    try:
-        permission = store.get_experiment_regex_permission(username, int(id))
-        return ExperimentRegexPermission(
-            id=str(permission.id),
-            regex=permission.regex,
-            priority=permission.priority,
-            permission=permission.permission,
-            workspace=pattern_workspace_of(permission),
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error getting experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Experiment pattern permission not found")
-
-
-@user_permissions_router.patch(
-    USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    summary="Update experiment pattern permission for a user",
-    description="Updates a specific regex-based experiment permission pattern for the specified user.",
-    tags=["user experiment pattern permissions"],
-)
-async def update_user_experiment_pattern_permission(
-    username: str = Path(..., description="The username to update pattern permission for"),
-    id: str = Path(..., description="The pattern ID to update"),
-    pattern_data: ExperimentRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Update a specific regex-based experiment permission pattern for a user.
-
-    Parameters:
-    -----------
-    username : str
-        The username to update the regex permission for.
-    id : str
-        The unique identifier of the pattern to update.
-    pattern_data : ExperimentRegexCreate
-        The updated regex pattern details.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-
-    Raises:
-    -------
-    HTTPException
-        If the pattern is not found or there's an error updating it.
-    """
-    try:
-        store.update_experiment_regex_permission(
-            id=int(id),
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="experiment_regex_permission",
-            resource_id=username,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission updated for {username}")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error updating experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update experiment pattern permission")
-
-
-@user_permissions_router.delete(
-    USER_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    summary="Delete experiment pattern permission for a user",
-    description="Deletes a specific regex-based experiment permission pattern for the specified user.",
-    tags=["user experiment pattern permissions"],
-)
-async def delete_user_experiment_pattern_permission(
-    username: str = Path(..., description="The username to delete pattern permission for"),
-    id: str = Path(..., description="The pattern ID to delete"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Delete a specific regex-based experiment permission pattern for a user.
-
-    Parameters:
-    -----------
-    username : str
-        The username to delete the regex permission for.
-    id : str
-        The unique identifier of the pattern to delete.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-
-    Raises:
-    -------
-    HTTPException
-        If the pattern is not found or there's an error deleting it.
-    """
-    try:
-        store.delete_experiment_regex_permission(username, int(id))
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="experiment_regex_permission",
-            resource_id=username,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Experiment pattern permission deleted for {username}")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error deleting experiment pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete experiment pattern permission")
 
 
 @user_permissions_router.get(
