@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError, MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
-from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions
+from mlflow_oidc_auth.permissions import _validate_permission, compare_permissions, regex_grant_order
 from mlflow_oidc_auth.repository.utils import (
     get_group,
     get_user,
@@ -698,16 +698,18 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
             return perm.to_mlflow_entity()
 
     def list(self) -> List[EntityT]:
-        """List all regex permissions.
+        """List all regex permissions, ordered by priority, then id.
 
         :return: A list of all permission entities.
         """
         with self._Session() as session:
-            rows = session.query(self.model_class).all()
+            rows = session.query(self.model_class).order_by(*regex_grant_order(self.model_class)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def list_regex_for_user(self, username: str) -> List[EntityT]:
-        """List all regex permissions for a user, ordered by priority.
+        """List all regex permissions for a user, ordered by priority, then id.
+
+        Rows within a priority come back by id, so the list never depends on the backend's row order.
 
         :param username: The username of the user.
         :return: A list of permission entities.
@@ -719,7 +721,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
                 .filter(SqlUser.username == username)
-                .order_by(self.model_class.priority)
+                .order_by(*regex_grant_order(self.model_class))
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]
@@ -801,13 +803,15 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
             )
 
     def _list_group_permissions(self, session: Session, groups: List[int]) -> list:
-        """List all permissions for a list of group IDs, ordered by priority.
+        """List all permissions for a list of group IDs, ordered by priority, then id.
+
+        Rows within a priority come back by id, so the list never depends on the backend's row order.
 
         :param session: SQLAlchemy session
         :param groups: A list of group IDs.
         :return: A list of permission model instances.
         """
-        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(self.model_class.priority).all()
+        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(*regex_grant_order(self.model_class)).all()
 
     def grant(self, group_name: str, regex: str, priority: int, permission: str) -> EntityT:
         """Create a new group regex permission.
