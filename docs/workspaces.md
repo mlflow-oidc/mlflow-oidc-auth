@@ -2,7 +2,7 @@
 
 Workspaces provide multi-tenant resource isolation for MLflow. When enabled, each workspace acts as an independent namespace — users only see experiments, models, webhooks, and trash from the workspace they are currently working in.
 
-> **Requires MLflow >=3.10.** Workspaces are gated by the `MLFLOW_ENABLE_WORKSPACES` feature flag (default: `false`).
+> Workspaces are gated by the `MLFLOW_ENABLE_WORKSPACES` feature flag (default: `false`).
 
 ## Overview
 
