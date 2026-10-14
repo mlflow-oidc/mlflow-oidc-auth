@@ -89,11 +89,16 @@ def _config_module_guard():
 
 @pytest.fixture(autouse=True)
 def _enforce_response_contract(monkeypatch):
-    """Check every ``TestClient`` response against the model its route declares (#458).
+    """Check every response a test receives through ``TestClient`` against its route's model (#458).
 
     Handlers that return their own ``JSONResponse`` are never validated by FastAPI, so without
     this a body could drift from the OpenAPI contract — or grow an undocumented field — and every
-    test would still pass. See ``mlflow_oidc_auth/tests/contract.py``.
+    test would still pass.
+
+    Coverage is exactly this: responses obtained through ``TestClient``. A handler a test awaits
+    directly is checked only when the test wraps it with ``contract.checked()``; one awaited bare
+    is not. A JSON response on a plugin path that resolves to no route fails. See
+    ``mlflow_oidc_auth/tests/contract.py``.
     """
     from starlette.testclient import TestClient
 
@@ -103,18 +108,9 @@ def _enforce_response_contract(monkeypatch):
 
     def request(self, *args, **kwargs):
         response = original(self, *args, **kwargs)
-        check_response(self.app, response)
+        root_path = getattr(getattr(self, "_transport", None), "root_path", "") or ""
+        check_response(self.app, response, root_path=root_path)
         return response
 
     monkeypatch.setattr(TestClient, "request", request)
     yield
-
-
-def pytest_sessionfinish(session, exitstatus):
-    """With ``CONTRACT_COVERAGE=<file>``, write which routes had a response checked (#458)."""
-    target = os.environ.get("CONTRACT_COVERAGE")
-    if target:
-        from mlflow_oidc_auth.tests.contract import CHECKED
-
-        with open(target, "w") as handle:
-            handle.writelines(f"{method} {path} {status}\n" for method, path, status in sorted(CHECKED))

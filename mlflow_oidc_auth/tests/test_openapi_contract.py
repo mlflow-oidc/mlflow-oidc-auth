@@ -28,26 +28,11 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from mlflow_oidc_auth.tests.contract import ContractViolation, check_body
+from mlflow_oidc_auth.tests.contract import CREDENTIAL_PROPERTIES, ContractViolation, check_body, check_response
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXPORTER = REPO_ROOT / "scripts" / "export_openapi.py"
 CONSTRAINTS = REPO_ROOT / "scripts" / "openapi-constraints.txt"
-
-#: Property names no response may document, compared case-insensitively at any depth.
-CREDENTIAL_PROPERTIES = {
-    "password",
-    "password_hash",
-    "token",
-    "token_hash",
-    "secret",
-    "client_secret",
-    "session_id",
-    "access_token",
-    "refresh_token",
-    "id_token",
-    "encrypted_tokens",
-}
 
 #: The documented exceptions: ``(method, path, property) -> why it is allowed``. Each is a
 #: one-time token-creation response — the only moment the plaintext exists — sent with
@@ -275,3 +260,54 @@ def test_checker_runs_on_every_test_client_response():
 
     with pytest.raises(ContractViolation, match="password_hash"):
         TestClient(app).get("/leaky")
+
+
+def test_checker_resolves_routes_under_mounts_and_root_path():
+    """A route behind a Mount, or served under a root_path, is still found and checked."""
+    inner = FastAPI()
+
+    @inner.get("/api/2.0/mlflow/thing", response_model=_Outer)
+    async def thing():
+        return JSONResponse({"id": 1, "session_id": "x"})
+
+    outer = FastAPI()
+    outer.mount("/prefix", inner)
+    with pytest.raises(ContractViolation, match="session_id"):
+        TestClient(outer).get("/prefix/api/2.0/mlflow/thing")
+    with pytest.raises(ContractViolation, match="session_id"):
+        TestClient(inner, root_path="/proxy").get("/proxy/api/2.0/mlflow/thing")
+
+
+def test_checker_fails_a_plugin_response_no_route_resolves():
+    """A JSON body on a plugin path that no route explains is a failure, not a skip."""
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def answer(request, call_next):
+        return JSONResponse({"anything": True})
+
+    with pytest.raises(ContractViolation, match="no route resolves"):
+        TestClient(app).get("/api/2.0/mlflow/users/nobody-routes-this")
+
+
+def test_checker_leaves_router_404s_and_non_plugin_paths_alone():
+    assert TestClient(FastAPI()).get("/api/2.0/mlflow/does-not-exist").status_code == 404
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def answer(request, call_next):
+        return JSONResponse({"anything": True})
+
+    assert TestClient(app).get("/elsewhere").status_code == 200
+
+
+def test_checker_skips_non_json_and_unmodelled_responses():
+    app = FastAPI()
+
+    @app.get("/api/2.0/mlflow/plain")
+    async def plain():
+        return {"free": "form"}
+
+    response = TestClient(app).get("/api/2.0/mlflow/plain")
+    check_response(app, response)
