@@ -554,6 +554,22 @@ def _pattern_workspace_fields(model_class) -> dict:
     return {"workspace": new_pattern_workspace()} if hasattr(model_class, "workspace") else {}
 
 
+def _regex_order(model_class) -> tuple:
+    """The order regex (pattern) grants are tried in: priority, then id.
+
+    The single definition every regex grant query orders by, so the first matching grant is
+    deterministic — ties on priority resolve to the lower id (the older grant). Pass the result
+    to ``Query.order_by(*_regex_order(model_class))``.
+
+    Parameters:
+        model_class: A regex permission model with ``priority`` and ``id`` columns.
+
+    Returns:
+        The ``(priority, id)`` columns to order by.
+    """
+    return (model_class.priority, model_class.id)
+
+
 class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
     """Base class for regex-based user permission repositories.
 
@@ -661,7 +677,7 @@ class BaseRegexPermissionRepository(Generic[ModelT, EntityT]):
                 session.query(self.model_class)
                 .join(SqlUser, SqlUser.id == self.model_class.user_id)
                 .filter(SqlUser.username == username)
-                .order_by(self.model_class.priority, self.model_class.id)
+                .order_by(*_regex_order(self.model_class))
                 .all()
             )
             return [r.to_mlflow_entity() for r in rows]
@@ -751,7 +767,7 @@ class BaseGroupRegexPermissionRepository(Generic[ModelT, EntityT]):
         :param groups: A list of group IDs.
         :return: A list of permission model instances.
         """
-        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(self.model_class.priority, self.model_class.id).all()
+        return session.query(self.model_class).filter(self.model_class.group_id.in_(groups)).order_by(*_regex_order(self.model_class)).all()
 
     def grant(self, group_name: str, regex: str, priority: int, permission: str) -> EntityT:
         """Create a new group regex permission.

@@ -27,7 +27,7 @@ from mlflow_oidc_auth.utils.permissions import _match_regex_permission_or_none
 
 
 def _find(regexes, name, workspace=None):
-    return _match_regex_permission_or_none(regexes, name, "registered model", workspace)
+    return _match_regex_permission_or_none(regexes, name, "model name", workspace)
 
 
 class TestMatchRegexPermissionOrNone:
@@ -52,12 +52,12 @@ class TestMatchRegexPermissionOrNone:
         assert result is None
 
     def test_returns_first_matching_regex(self):
-        """Should return the first matching regex permission."""
-        regex_perm1 = MagicMock()
+        """Should return the first matching regex permission in (priority, id) order."""
+        regex_perm1 = MagicMock(priority=1, id=1)
         regex_perm1.regex = ".*"
         regex_perm1.permission = "READ"
 
-        regex_perm2 = MagicMock()
+        regex_perm2 = MagicMock(priority=1, id=2)
         regex_perm2.regex = "^model-.*"
         regex_perm2.permission = "MANAGE"
 
@@ -90,16 +90,13 @@ class TestMatchRegexPermissionOrNone:
         assert _find([regex_perm], "model-test", workspace="team-b") == "MANAGE"
 
     def test_other_errors_propagate(self):
-        """Only RESOURCE_DOES_NOT_EXIST means no match; any other error is raised, never swallowed."""
-        from mlflow.exceptions import MlflowException
-        from mlflow.protos.databricks_pb2 import INTERNAL_ERROR
+        """No match means None; any other error (here an invalid stored pattern) is raised, never swallowed."""
+        import re
 
-        with patch(
-            "mlflow_oidc_auth.utils.permissions._match_regex_permission",
-            side_effect=MlflowException("boom", error_code=INTERNAL_ERROR),
-        ):
-            with pytest.raises(MlflowException, match="boom"):
-                _find([MagicMock()], "model-test")
+        regex_perm = MagicMock(regex="(", permission="MANAGE", priority=1, id=1)
+
+        with pytest.raises(re.error):
+            _find([regex_perm], "model-test")
 
 
 class TestResolvePermissionFromContext:

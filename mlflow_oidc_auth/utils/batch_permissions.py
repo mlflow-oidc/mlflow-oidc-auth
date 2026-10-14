@@ -310,8 +310,8 @@ def resolve_model_permission_from_context(ctx: UserPermissionContext, model_name
     """
     user_direct = ctx.user_model_permissions.get(model_name)
     group_direct = ctx.group_model_permissions.get(model_name)
-    user_regex = _match_regex_permission_or_none(ctx.model_regex_permissions, model_name, "registered model")
-    group_regex = _match_regex_permission_or_none(ctx.group_model_regex_permissions, model_name, "registered model")
+    user_regex = _match_regex_permission_or_none(ctx.model_regex_permissions, model_name, "model name")
+    group_regex = _match_regex_permission_or_none(ctx.group_model_regex_permissions, model_name, "model name")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,
@@ -340,8 +340,8 @@ def resolve_prompt_permission_from_context(ctx: UserPermissionContext, prompt_na
     user_direct = ctx.user_model_permissions.get(prompt_name)
     group_direct = ctx.group_model_permissions.get(prompt_name)
     # But use prompt-specific regex patterns
-    user_regex = _match_regex_permission_or_none(ctx.prompt_regex_permissions, prompt_name, "prompt")
-    group_regex = _match_regex_permission_or_none(ctx.group_prompt_regex_permissions, prompt_name, "prompt")
+    user_regex = _match_regex_permission_or_none(ctx.prompt_regex_permissions, prompt_name, "model name")
+    group_regex = _match_regex_permission_or_none(ctx.group_prompt_regex_permissions, prompt_name, "model name")
 
     result = _resolve_permission_from_context(
         config.PERMISSION_SOURCE_ORDER,

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from mlflow_oidc_auth.db.models import SqlRegisteredModelRegexPermission
 from mlflow_oidc_auth.entities import RegisteredModelRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository
+from mlflow_oidc_auth.repository._base import BaseRegexPermissionRepository, _regex_order
 from mlflow_oidc_auth.repository.utils import get_user, validate_regex
 from mlflow_oidc_auth.utils.grant_workspace import new_pattern_workspace
 
@@ -95,7 +95,7 @@ class RegisteredModelPermissionRegexRepository(BaseRegexPermissionRepository[Sql
                     SqlRegisteredModelRegexPermission.user_id == user.id,
                     SqlRegisteredModelRegexPermission.prompt == prompt,
                 )
-                .order_by(SqlRegisteredModelRegexPermission.priority)
+                .order_by(*_regex_order(SqlRegisteredModelRegexPermission))
                 .all()
             )
             return [p.to_mlflow_entity() for p in perms]

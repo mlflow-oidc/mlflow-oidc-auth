@@ -8,15 +8,27 @@ equal-priority matches, the older grant (lower id) wins.
 Rows are inserted with explicit ids, the higher id first, so insertion order disagrees with id
 order. SQLite happens to scan in rowid order, which would hide a missing tie-break, so each test
 also asserts the ``ORDER BY`` the repository sends to the database.
+
+Covered: the shared base classes (via experiments) and the registered-model / prompt
+repositories, which override every list method to filter on the ``prompt`` flag.
 """
+
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import event
 
-from mlflow_oidc_auth.db.models import SqlExperimentGroupRegexPermission, SqlExperimentRegexPermission
-from mlflow_oidc_auth.utils.permissions import _match_regex_permission
+from mlflow_oidc_auth.db.models import (
+    SqlExperimentGroupRegexPermission,
+    SqlExperimentRegexPermission,
+    SqlRegisteredModelGroupRegexPermission,
+    SqlRegisteredModelRegexPermission,
+)
+from mlflow_oidc_auth.utils.permissions import _match_regex_permission, _match_regex_permission_or_none
 
 LOW_ID, HIGH_ID = 10, 20
+USER = "alice@example.com"
+GROUP = "team"
 
 
 @pytest.fixture
@@ -25,11 +37,27 @@ def store(tmp_path):
 
     s = SqlAlchemyStore()
     s.init_db(f"sqlite:///{tmp_path / 'auth.db'}")
+    s.create_user(USER, "Alice")
+    s.group_repo.create_group(GROUP)
+    s.add_user_to_group(USER, GROUP)
     yield s
     s.engine.dispose()
 
 
-def _insert(store, rows) -> None:
+def _user_id(store) -> int:
+    return store.user_repo.get(USER).id
+
+
+def _group_ids(store) -> list:
+    return store.get_groups_ids_for_user(USER)
+
+
+def _insert_tied(store, model_class, owner: dict, **extra) -> None:
+    """Two grants matching ``team-exp`` at equal priority, the higher id inserted first."""
+    rows = [
+        model_class(id=HIGH_ID, regex="^team-.*", priority=1, permission="MANAGE", workspace="*", **owner, **extra),
+        model_class(id=LOW_ID, regex="^team-exp$", priority=1, permission="READ", workspace="*", **owner, **extra),
+    ]
     with store.ManagedSessionMaker(read_only=False) as session:
         for row in rows:
             session.add(row)
@@ -51,7 +79,13 @@ def _select_statements(store, fn):
     return result, statements
 
 
-def _assert_ordered_by_priority_then_id(statements, table: str) -> None:
+def _assert_lower_id_wins(store, model_class, list_fn) -> None:
+    regexes, statements = _select_statements(store, list_fn)
+
+    assert [r.id for r in regexes] == [LOW_ID, HIGH_ID]
+    assert _match_regex_permission(regexes, "team-exp", "name") == "READ"
+
+    table = model_class.__tablename__
     order_bys = [s.split("ORDER BY", 1)[1] for s in statements if f"FROM {table}" in s and "ORDER BY" in s]
     assert order_bys, f"no ordered SELECT on {table} in {statements}"
     for clause in order_bys:
@@ -59,58 +93,77 @@ def _assert_ordered_by_priority_then_id(statements, table: str) -> None:
         assert normalized.startswith(f"{table}.priority, {table}.id"), normalized
 
 
+# --- shared base classes (experiment, scorer, gateway, workspace repositories) ---------------
+
+
 def test_user_regex_equal_priority_ordered_by_id(store):
-    store.create_user("alice@example.com", "Alice")
-    user_id = store.user_repo.get("alice@example.com").id
-    # Higher id inserted first, both match "team-exp", same priority.
-    _insert(
-        store,
-        [
-            SqlExperimentRegexPermission(id=HIGH_ID, regex="^team-.*", priority=1, user_id=user_id, permission="MANAGE", workspace="*"),
-            SqlExperimentRegexPermission(id=LOW_ID, regex="^team-exp$", priority=1, user_id=user_id, permission="READ", workspace="*"),
-        ],
-    )
-
-    regexes, statements = _select_statements(store, lambda: store.list_experiment_regex_permissions("alice@example.com"))
-
-    assert [r.id for r in regexes] == [LOW_ID, HIGH_ID]
-    assert _match_regex_permission(regexes, "team-exp", "experiment") == "READ"
-    _assert_ordered_by_priority_then_id(statements, SqlExperimentRegexPermission.__tablename__)
+    _insert_tied(store, SqlExperimentRegexPermission, {"user_id": _user_id(store)})
+    _assert_lower_id_wins(store, SqlExperimentRegexPermission, lambda: store.list_experiment_regex_permissions(USER))
 
 
 def test_group_regex_equal_priority_ordered_by_id(store):
-    store.create_user("bob@example.com", "Bob")
-    store.group_repo.create_group("team")
-    store.add_user_to_group("bob@example.com", "team")
-    group_ids = store.get_groups_ids_for_user("bob@example.com")
-    _insert(
-        store,
-        [
-            SqlExperimentGroupRegexPermission(id=HIGH_ID, regex="^team-.*", priority=1, group_id=group_ids[0], permission="MANAGE", workspace="*"),
-            SqlExperimentGroupRegexPermission(id=LOW_ID, regex="^team-exp$", priority=1, group_id=group_ids[0], permission="READ", workspace="*"),
-        ],
-    )
+    group_ids = _group_ids(store)
+    _insert_tied(store, SqlExperimentGroupRegexPermission, {"group_id": group_ids[0]})
+    _assert_lower_id_wins(store, SqlExperimentGroupRegexPermission, lambda: store.list_group_experiment_regex_permissions_for_groups_ids(group_ids))
 
-    regexes, statements = _select_statements(store, lambda: store.list_group_experiment_regex_permissions_for_groups_ids(group_ids))
 
-    assert [r.id for r in regexes] == [LOW_ID, HIGH_ID]
-    assert _match_regex_permission(regexes, "team-exp", "experiment") == "READ"
-    _assert_ordered_by_priority_then_id(statements, SqlExperimentGroupRegexPermission.__tablename__)
+# --- registered models and prompts (repositories that override every list method) -------------
+
+
+@pytest.mark.parametrize("prompt", [False, True], ids=["registered_model", "prompt"])
+def test_model_user_regex_equal_priority_ordered_by_id(store, prompt):
+    _insert_tied(store, SqlRegisteredModelRegexPermission, {"user_id": _user_id(store)}, prompt=prompt)
+    repo = store.prompt_regex_repo if prompt else store.registered_model_regex_repo
+    _assert_lower_id_wins(store, SqlRegisteredModelRegexPermission, lambda: repo.list_regex_for_user(USER, prompt=prompt))
+
+
+@pytest.mark.parametrize("prompt", [False, True], ids=["registered_model", "prompt"])
+@pytest.mark.parametrize("method", ["list_permissions_for_group", "list_permissions_for_groups", "list_permissions_for_groups_ids"])
+def test_model_group_regex_equal_priority_ordered_by_id(store, prompt, method):
+    group_ids = _group_ids(store)
+    _insert_tied(store, SqlRegisteredModelGroupRegexPermission, {"group_id": group_ids[0]}, prompt=prompt)
+    repo = store.prompt_group_regex_repo if prompt else store.registered_model_group_regex_repo
+    argument = {"list_permissions_for_group": GROUP, "list_permissions_for_groups": [GROUP], "list_permissions_for_groups_ids": group_ids}[method]
+    _assert_lower_id_wins(store, SqlRegisteredModelGroupRegexPermission, lambda: getattr(repo, method)(argument, prompt=prompt))
 
 
 def test_regex_lower_priority_value_still_wins_over_lower_id(store):
     """The tie-break applies to ties only: priority still decides first."""
-    store.create_user("carol@example.com", "Carol")
-    user_id = store.user_repo.get("carol@example.com").id
-    _insert(
-        store,
-        [
-            SqlExperimentRegexPermission(id=HIGH_ID, regex="^team-.*", priority=0, user_id=user_id, permission="MANAGE", workspace="*"),
-            SqlExperimentRegexPermission(id=LOW_ID, regex="^team-exp$", priority=1, user_id=user_id, permission="READ", workspace="*"),
-        ],
-    )
+    user_id = _user_id(store)
+    with store.ManagedSessionMaker(read_only=False) as session:
+        session.add(SqlExperimentRegexPermission(id=HIGH_ID, regex="^team-.*", priority=0, user_id=user_id, permission="MANAGE", workspace="*"))
+        session.flush()
+        session.add(SqlExperimentRegexPermission(id=LOW_ID, regex="^team-exp$", priority=1, user_id=user_id, permission="READ", workspace="*"))
+        session.flush()
 
-    regexes = store.list_experiment_regex_permissions("carol@example.com")
+    regexes = store.list_experiment_regex_permissions(USER)
 
     assert [r.id for r in regexes] == [HIGH_ID, LOW_ID]
-    assert _match_regex_permission(regexes, "team-exp", "experiment") == "MANAGE"
+    assert _match_regex_permission(regexes, "team-exp", "name") == "MANAGE"
+
+
+# --- matchers: unsorted input still yields the (priority, id) winner ---------------------------
+
+
+def _rule(id_, priority, permission, regex=".*"):
+    return SimpleNamespace(id=id_, priority=priority, permission=permission, regex=regex, workspace="*")
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        [_rule(HIGH_ID, 1, "MANAGE"), _rule(LOW_ID, 1, "READ")],
+        [_rule(HIGH_ID, 1, "MANAGE"), _rule(5, 2, "EDIT"), _rule(LOW_ID, 1, "READ")],
+    ],
+    ids=["reverse_id", "mixed"],
+)
+def test_matcher_regex_equal_priority_ordered_by_id_for_unsorted_input(rules):
+    assert _match_regex_permission(rules, "team-exp", "name") == "READ"
+    assert _match_regex_permission_or_none(rules, "team-exp", "name") == "READ"
+
+
+def test_matcher_priority_beats_id_for_unsorted_input():
+    rules = [_rule(LOW_ID, 2, "READ"), _rule(HIGH_ID, 1, "MANAGE")]
+
+    assert _match_regex_permission(rules, "team-exp", "name") == "MANAGE"
+    assert _match_regex_permission_or_none(rules, "team-exp", "name") == "MANAGE"

@@ -166,44 +166,78 @@ _RESOURCE_TYPE_LOG_NAMES = (
 # ---------------------------------------------------------------------------
 
 
-def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
-    """Generic regex matcher for any resource type. Replaces 8 near-identical functions.
+def _regex_try_order(regex) -> tuple:
+    """Sort key for regex grants: priority, then id (lower id — the older grant — wins a tie).
 
-    Only patterns that apply in the resource's workspace count — ``workspace``, or the request's
-    grant workspace when omitted (see ``utils/grant_workspace.pattern_in_scope``).
+    Same order as the repositories' ``_regex_order`` and ``orphans._sort_rules``; applied
+    here too so a caller passing unsorted grants cannot make the winner nondeterministic.
     """
-    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
-
-    for regex in regexes:
-        if not pattern_in_scope(regex, workspace):
-            continue
-        if re.match(regex.regex, name):
-            logger.debug(f"Regex permission found for {label} {name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
-            return regex.permission
-    raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
+    return (regex.priority, regex.id)
 
 
-def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: str | None = None) -> str | None:
-    """Non-raising form of :func:`_match_regex_permission`, for callers where no match is not an error.
+def _first_matching_regex(regexes, name: str, label: str, workspace: str | None = None):
+    """Generic regex matcher for any resource type: the first in-scope pattern matching ``name``.
+
+    The core both public forms share; it never raises on no match. Patterns are tried in
+    ``(priority, id)`` order regardless of the order given. Only patterns that apply in the
+    resource's workspace count — ``workspace``, or the request's grant workspace when omitted
+    (see ``utils/grant_workspace.pattern_in_scope``).
 
     Parameters:
-        regexes: Regex permission entities, in the order they are tried (priority, then id).
+        regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
         name: The resource name to match.
-        label: The resource type, for the debug log.
+        label: What ``name`` is (e.g. ``"model name"``), for the debug log.
         workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The permission of the first in-scope pattern that matches ``name``, or ``None``.
+        The first matching pattern entity, or ``None`` when none matches.
+    """
+    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
+
+    for regex in sorted(regexes, key=_regex_try_order):
+        if not pattern_in_scope(regex, workspace):
+            continue
+        if re.match(regex.regex, name):
+            logger.debug("Regex permission found for %s %s: %s with regex %s and priority %s", label, name, regex.permission, regex.regex, regex.priority)
+            return regex
+    return None
+
+
+def _match_regex_permission_or_none(regexes, name: str, label: str, workspace: str | None = None) -> str | None:
+    """Non-raising matcher, for callers where no match is not an error (the batch path).
+
+    Parameters:
+        regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
+        name: The resource name to match.
+        label: What ``name`` is (e.g. ``"model name"``), for the debug log.
+        workspace: The resource's workspace; the request's grant workspace when omitted.
+
+    Returns:
+        The permission of the first matching pattern (see :func:`_first_matching_regex`), or ``None``.
+    """
+    regex = _first_matching_regex(regexes, name, label, workspace)
+    return regex.permission if regex is not None else None
+
+
+def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
+    """Raising matcher, for the permission source chain (see :func:`_first_matching_regex`).
+
+    Parameters:
+        regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
+        name: The resource name to match.
+        label: What ``name`` is (e.g. ``"model name"``), for the debug log and error message.
+        workspace: The resource's workspace; the request's grant workspace when omitted.
+
+    Returns:
+        The permission of the first matching pattern.
 
     Raises:
-        MlflowException: Any error other than ``RESOURCE_DOES_NOT_EXIST``.
+        MlflowException: ``RESOURCE_DOES_NOT_EXIST`` when no pattern matches.
     """
-    try:
-        return _match_regex_permission(regexes, name, label, workspace)
-    except MlflowException as e:
-        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-            return None
-        raise
+    regex = _first_matching_regex(regexes, name, label, workspace)
+    if regex is None:
+        raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
+    return regex.permission
 
 
 # ---------------------------------------------------------------------------

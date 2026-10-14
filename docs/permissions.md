@@ -97,6 +97,20 @@ Regex permissions use Python regular expression syntax to match resource names b
 4. With workspaces enabled, a pattern applies in the workspace it was made in, or in every
    workspace when made with none selected (see [Workspaces](workspaces#pattern-regex-grants))
 
+### Ties at Equal Priority
+
+Two matching patterns can share a priority. Resource patterns and workspace patterns break that tie
+differently, on purpose:
+
+| Pattern kind | Equal-priority tie-break |
+|---|---|
+| Resource patterns (experiments, registered models, prompts, scorers, AI Gateway resources) | **Lowest id wins.** Patterns are tried in `(priority, id)` order, and the first match wins. The id is assigned at creation, so the older pattern wins. |
+| Workspace patterns (user and group) | **Most permissive wins.** All matches at the best priority are compared, and the highest permission level is used. |
+
+Before issue #459, resource-pattern ties resolved in whatever order the database returned the rows, so
+the result was not guaranteed. To make one pattern win, give it a lower priority number rather than
+relying on the tie-break.
+
 ### Pattern Examples
 
 | Pattern | Matches |

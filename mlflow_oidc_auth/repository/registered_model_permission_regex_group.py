@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupRegexPermission
 from mlflow_oidc_auth.entities import RegisteredModelGroupRegexPermission
 from mlflow_oidc_auth.permissions import _validate_permission
-from mlflow_oidc_auth.repository._base import BaseGroupRegexPermissionRepository
+from mlflow_oidc_auth.repository._base import BaseGroupRegexPermissionRepository, _regex_order
 from mlflow_oidc_auth.repository import GroupRepository
 from mlflow_oidc_auth.repository.utils import get_group
 from mlflow_oidc_auth.utils.grant_workspace import new_pattern_workspace
@@ -96,7 +96,7 @@ class RegisteredModelGroupRegexPermissionRepository(
                     SqlRegisteredModelGroupRegexPermission.group_id == group.id,
                     SqlRegisteredModelGroupRegexPermission.prompt == prompt,
                 )
-                .order_by(SqlRegisteredModelGroupRegexPermission.priority)
+                .order_by(*_regex_order(SqlRegisteredModelGroupRegexPermission))
                 .all()
             )
             return [p.to_mlflow_entity() for p in permissions]
@@ -110,7 +110,7 @@ class RegisteredModelGroupRegexPermissionRepository(
                     SqlRegisteredModelGroupRegexPermission.group_id.in_([g.id for g in groups]),
                     SqlRegisteredModelGroupRegexPermission.prompt == prompt,
                 )
-                .order_by(SqlRegisteredModelGroupRegexPermission.priority)
+                .order_by(*_regex_order(SqlRegisteredModelGroupRegexPermission))
                 .all()
             )
             return [p.to_mlflow_entity() for p in permissions]
@@ -125,7 +125,7 @@ class RegisteredModelGroupRegexPermissionRepository(
                     SqlRegisteredModelGroupRegexPermission.group_id.in_(group_ids),
                     SqlRegisteredModelGroupRegexPermission.prompt == prompt,
                 )
-                .order_by(SqlRegisteredModelGroupRegexPermission.priority)
+                .order_by(*_regex_order(SqlRegisteredModelGroupRegexPermission))
                 .all()
             )
             return [p.to_mlflow_entity() for p in permissions]
