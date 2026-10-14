@@ -777,7 +777,7 @@ Sources checked:
   3. regex: no matching patterns
   4. group-regex: no matching patterns
   5. Fallback: DEFAULT_MLFLOW_PERMISSION
-Result: MANAGE (from default)
+Result: NO_PERMISSIONS (the default; MANAGE if DEFAULT_MLFLOW_PERMISSION=MANAGE)
 ```
 
 ### Workspace Fallback (Workspaces Enabled)
@@ -807,7 +807,7 @@ Set `RESTRICT_RESOURCE_CREATION=true` to require **EDIT** (`can_update`) or high
    - **Workspaces disabled** → the global `DEFAULT_MLFLOW_PERMISSION`
    - **Workspaces enabled** → the user's permission on the request workspace (deny if they have none)
 
-> ⚠️ **The default `DEFAULT_MLFLOW_PERMISSION` is `MANAGE`, which grants `can_update`.** In a non-workspace deployment, enabling `RESTRICT_RESOURCE_CREATION` alone does **nothing** — a name that matches no regex falls back to `MANAGE` and creation is still allowed. To actually restrict creation you must either lower `DEFAULT_MLFLOW_PERMISSION` below `EDIT` (e.g. `NO_PERMISSIONS`) so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
+> ⚠️ **`DEFAULT_MLFLOW_PERMISSION` must stay below `EDIT` for this to restrict anything.** The default, `NO_PERMISSIONS`, does. If it is set to `EDIT` or `MANAGE` (as it shipped before v7.6.0), then in a non-workspace deployment enabling `RESTRICT_RESOURCE_CREATION` does **nothing**: a name that matches no regex falls back to that level and creation is still allowed. Either keep the default below `EDIT`, so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
 
 This closes a real gap in non-workspace deployments: with a project-prefix scheme like `<project>/<name>`, a user granted `^team-a/.*` could still create `team-b/whatever` (e.g. via a typo) and end up owning a resource they cannot subsequently access.
 
