@@ -231,7 +231,7 @@ describe("ServiceAccountsPage", () => {
 
   it("deletes service account", async () => {
     const mockDeleteUser = vi.spyOn(userService, "deleteUser");
-    mockDeleteUser.mockResolvedValue(undefined);
+    mockDeleteUser.mockResolvedValue({ message: "removed" });
     renderPage();
 
     const deleteButton = screen.getByTitle("Remove service account");
@@ -248,7 +248,7 @@ describe("ServiceAccountsPage", () => {
   });
 
   it("does not navigate when the remove action is clicked", async () => {
-    vi.spyOn(userService, "deleteUser").mockResolvedValue(undefined);
+    vi.spyOn(userService, "deleteUser").mockResolvedValue({ message: "removed" });
     renderPage();
 
     fireEvent.click(

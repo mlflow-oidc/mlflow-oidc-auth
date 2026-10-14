@@ -60,6 +60,7 @@ from mlflow_oidc_auth.saml import (
 from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.repository.user import normalize_username
+from mlflow_oidc_auth.routers._openapi import REDIRECT_RESPONSES, SamlMetadataResponse
 
 logger = get_logger()
 
@@ -262,7 +263,7 @@ def _refuse(event: str, provider: ProviderConfig, reason: str, status_code: int 
     return HTTPException(status_code=status_code, detail=detail)
 
 
-@saml_router.post(f"{ACS_PATH}/{{provider_id}}")
+@saml_router.post(f"{ACS_PATH}/{{provider_id}}", response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def saml_acs(request: Request, provider_id: str):
     """Assertion Consumer Service (HTTP-POST binding).
 
@@ -455,7 +456,7 @@ def _revoke_for_logout_request(provider: ProviderConfig, logout: SamlLogoutReque
     return username, revoked, failed
 
 
-@saml_router.get(f"{SLS_PATH}/{{provider_id}}")
+@saml_router.get(f"{SLS_PATH}/{{provider_id}}", response_class=RedirectResponse, status_code=302, responses=REDIRECT_RESPONSES)
 async def saml_sls(request: Request, provider_id: str):
     """Single Logout Service (#329). HTTP-Redirect binding only.
 
@@ -535,7 +536,7 @@ async def saml_sls(request: Request, provider_id: str):
     raise HTTPException(status_code=400, detail=LOGOUT_REFUSED)
 
 
-@saml_router.get(f"{METADATA_PATH}/{{provider_id}}")
+@saml_router.get(f"{METADATA_PATH}/{{provider_id}}", response_class=SamlMetadataResponse, responses={200: {"description": "SAML 2.0 metadata document"}})
 async def saml_metadata(request: Request, provider_id: str):
     """This SP's metadata for ``provider_id``, for the IdP administrator to import.
 

@@ -1,0 +1,7 @@
+# The versions openapi.json is generated with (#458). FastAPI and Pydantic decide the exact shape
+# of the document, so CI's drift check installs these and fails on any difference from the
+# committed file. Bump them together, then rerun scripts/export_openapi.py and yarn gen:api.
+fastapi==0.132.0
+pydantic==2.12.5
+pydantic-core==2.41.5
+starlette==0.50.0

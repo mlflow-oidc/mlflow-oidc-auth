@@ -85,3 +85,32 @@ def _config_module_guard():
         "module — restoring sys.modules is not enough; also restore the attribute the import "
         "system sets on the parent package"
     )
+
+
+@pytest.fixture(autouse=True)
+def _enforce_response_contract(monkeypatch):
+    """Check every response a test receives through ``TestClient`` against its route's model (#458).
+
+    Handlers that return their own ``JSONResponse`` are never validated by FastAPI, so without
+    this a body could drift from the OpenAPI contract — or grow an undocumented field — and every
+    test would still pass.
+
+    Coverage is exactly this: responses obtained through ``TestClient``. A handler a test awaits
+    directly is checked only when the test wraps it with ``contract.checked()``; one awaited bare
+    is not. A JSON response on a plugin path that resolves to no route fails. See
+    ``mlflow_oidc_auth/tests/contract.py``.
+    """
+    from starlette.testclient import TestClient
+
+    from mlflow_oidc_auth.tests.contract import check_response
+
+    original = TestClient.request
+
+    def request(self, *args, **kwargs):
+        response = original(self, *args, **kwargs)
+        root_path = getattr(getattr(self, "_transport", None), "root_path", "") or ""
+        check_response(self.app, response, root_path=root_path)
+        return response
+
+    monkeypatch.setattr(TestClient, "request", request)
+    yield

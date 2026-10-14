@@ -6,11 +6,16 @@ import { PermissionLevelSelect } from "../../../shared/components/permission-lev
 import { Button } from "../../../shared/components/button";
 import PageStatus from "../../../shared/components/page/page-status";
 import { useToast } from "../../../shared/components/toast/use-toast";
-import type { PermissionLevel } from "../../../shared/types/entity";
+import type {
+  GrantedPermission,
+  PermissionLevel,
+} from "../../../shared/types/entity";
+import { isPermissionLevel } from "../../../shared/utils/permission-level";
 
 interface WorkspaceMembersSectionProps {
   title: string;
-  members: Array<{ name: string; permission: PermissionLevel }>;
+  /** An unrecognized permission is shown as is; editing it starts from READ. */
+  members: Array<{ name: string; permission: GrantedPermission }>;
   isLoading: boolean;
   error: Error | null;
   onUpdate: (name: string, permission: PermissionLevel) => Promise<void>;
@@ -32,13 +37,13 @@ export default function WorkspaceMembersSection({
   canManage,
 }: WorkspaceMembersSectionProps) {
   const { showToast } = useToast();
-  const [editingMember, setEditingMember] = useState<{ name: string; permission: PermissionLevel } | null>(null);
+  const [editingMember, setEditingMember] = useState<{ name: string; permission: GrantedPermission } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [editPermission, setEditPermission] = useState<PermissionLevel>("READ");
 
-  const handleEditClick = (member: { name: string; permission: PermissionLevel }) => {
+  const handleEditClick = (member: { name: string; permission: GrantedPermission }) => {
     setEditingMember(member);
-    setEditPermission(member.permission);
+    setEditPermission(isPermissionLevel(member.permission) ? member.permission : "READ");
   };
 
   const handleEditSave = async () => {

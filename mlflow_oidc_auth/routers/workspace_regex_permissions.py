@@ -9,7 +9,7 @@ All endpoints require admin permission.
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, Response
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
@@ -139,6 +139,7 @@ async def update_user_regex_permission(
 @workspace_regex_permissions_router.delete(
     USER_REGEX_BY_ID,
     status_code=204,
+    response_class=Response,
     summary="Delete user regex workspace permission",
 )
 async def delete_user_regex_permission(
@@ -253,6 +254,7 @@ async def update_group_regex_permission(
 @workspace_regex_permissions_router.delete(
     GROUP_REGEX_BY_ID,
     status_code=204,
+    response_class=Response,
     summary="Delete group regex workspace permission",
 )
 async def delete_group_regex_permission(

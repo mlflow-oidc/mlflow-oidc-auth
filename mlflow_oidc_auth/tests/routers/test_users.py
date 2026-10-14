@@ -11,17 +11,22 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 
+from mlflow_oidc_auth.routers import users as _users
 from mlflow_oidc_auth.routers.users import (
     users_router,
-    list_users,
-    create_new_user,
-    create_access_token,
-    delete_user,
-    get_current_user_information,
-    get_user_information,
     CREATE_ACCESS_TOKEN,
     CURRENT_USER,
 )
+from mlflow_oidc_auth.tests.contract import checked
+
+# The handlers these tests await directly are wrapped so each JSONResponse they return is checked
+# against the model its route declares (#458), as TestClient responses are by tests/conftest.py.
+list_users = checked(_users.list_users)
+create_new_user = checked(_users.create_new_user)
+create_access_token = checked(_users.create_access_token)
+delete_user = checked(_users.delete_user)
+get_current_user_information = checked(_users.get_current_user_information)
+get_user_information = checked(_users.get_user_information)
 from mlflow_oidc_auth.models import CreateUserRequest, CreateAccessTokenRequest
 
 

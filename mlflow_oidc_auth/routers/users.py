@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -15,9 +15,23 @@ from mlflow_oidc_auth.models import (
     CreateUserTokenRequest,
     CurrentUserProfile,
     GroupRecord,
+    MessageResponse,
 )
 from mlflow_oidc_auth.models.scim import UserActiveRequest
-from mlflow_oidc_auth.models.user import ServiceAccountSourceRequest
+from mlflow_oidc_auth.models.user import (
+    AccessTokenRotateResponse,
+    DeletedCountResponse,
+    RevokedCountResponse,
+    ServiceAccountSourceOption,
+    ServiceAccountSourceRequest,
+    ServiceAccountSourceResponse,
+    UserDetail,
+    UserIdentity,
+    UserOwnershipResponse,
+    UserSessionListResponse,
+    UserTokenCreatedResponse,
+    UserTokenListResponse,
+)
 from mlflow_oidc_auth.orphans import delete_user_reporting_orphans, report_orphans
 from mlflow_oidc_auth.ownership import MANUAL, OWNER_PATTERN
 from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, INVALID_STATE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -123,6 +137,7 @@ def _require_user(username: str) -> str:
 
 @users_router.get(
     SERVICE_ACCOUNT_SOURCES,
+    response_model=List[ServiceAccountSourceOption],
     summary="List the sources a service account can sign in through",
     description="Internal (issued access tokens only) and each OIDC provider. Admin only.",
 )
@@ -135,6 +150,7 @@ async def list_service_account_sources(admin_username: str = Depends(check_admin
 
 @users_router.patch(
     CREATE_ACCESS_TOKEN,
+    response_model=AccessTokenRotateResponse,
     summary="Create user access token",
     description="Issues a new 'default' access token for the authenticated user, replacing the previous one. "
     "Admins may issue one for another user. The token expires at most one year from now. Requires a signed-in "
@@ -293,6 +309,7 @@ def _delete_token(target_username: str, token_id: int, actor: str) -> JSONRespon
 
 @users_router.get(
     USER_TOKENS,
+    response_model=UserTokenListResponse,
     summary="List my access tokens",
     description="Lists the authenticated user's access tokens, expired ones included. Never returns a token's secret.",
 )
@@ -303,6 +320,8 @@ async def list_my_tokens(current_username: str = Depends(get_username), page: Pa
 
 @users_router.post(
     USER_TOKENS,
+    response_model=UserTokenCreatedResponse,
+    status_code=201,
     summary="Create an access token",
     description="Issues a named access token for the authenticated user. Requires a signed-in session: "
     "a request authenticated with an access token is refused. The token is returned once.",
@@ -323,6 +342,7 @@ async def create_my_token(
 
 @users_router.delete(
     USER_TOKEN,
+    response_model=DeletedCountResponse,
     summary="Delete one of my access tokens",
     description="Deletes one of the authenticated user's access tokens. It stops working immediately.",
 )
@@ -338,6 +358,7 @@ async def delete_my_token(token_id: int, current_username: str = Depends(get_use
 
 @users_router.get(
     USERS_ROOT,
+    response_model=List[str],
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
@@ -386,6 +407,8 @@ async def list_users(service: bool = False, username: str = Depends(get_username
 
 @users_router.post(
     USERS_ROOT,
+    response_model=MessageResponse,
+    responses={201: {"model": MessageResponse, "description": "The user was created"}},
     summary="Create a new user or service account",
     description="Creates a new user or service account in the system. Only admins can create users.",
 )
@@ -476,6 +499,7 @@ async def create_new_user(
 
 @users_router.patch(
     USER_OWNERSHIP,
+    response_model=UserOwnershipResponse,
     summary="Change which source owns a user",
     description="Sets a user's managed_by. Admins only. This is the break-glass path when a directory is decommissioned.",
 )
@@ -554,6 +578,7 @@ async def set_user_ownership(
 
 @users_router.delete(
     USERS_ROOT,
+    response_model=MessageResponse,
     summary="Delete a user",
     description="Deletes a user from the system. Only admins can delete users.",
 )
@@ -639,6 +664,7 @@ async def delete_user(
 
 @users_router.get(
     USERS_DETAILS,
+    response_model=List[UserDetail],
     summary="List users with lifecycle state",
     description="Lists users with their admin, service-account, active and managed_by state. Admins only.",
 )
@@ -673,6 +699,7 @@ async def list_user_details(service: Optional[bool] = None, admin_username: str 
 
 @users_router.patch(
     USER_ACTIVE,
+    response_model=UserDetail,
     summary="Activate or deactivate a user",
     description="Sets a user's active flag. Deactivating revokes their sessions and tokens and keeps their grants. Admins only.",
 )
@@ -728,6 +755,7 @@ def _require_user_detail(username: str) -> dict:
 
 @users_router.get(
     USER_SESSIONS,
+    response_model=UserSessionListResponse,
     summary="List a user's live sessions",
     description="Lists a user's live server-side sessions. Returns a short id prefix and an opaque `pk`, never the session id. Admins only.",
 )
@@ -749,6 +777,7 @@ async def list_user_sessions(username: str, admin_username: str = Depends(check_
 
 @users_router.delete(
     USER_SESSION,
+    response_model=RevokedCountResponse,
     summary="Revoke one of a user's sessions",
     description="Revokes one live session of this user, addressed by the `pk` from the session list. Admins only.",
 )
@@ -774,6 +803,7 @@ async def revoke_user_session(username: str, session_pk: int, admin_username: st
 
 @users_router.delete(
     USER_SESSIONS,
+    response_model=RevokedCountResponse,
     summary="Revoke all of a user's sessions",
     description="Revokes every live session of this user. Their access tokens are not affected. Admins only.",
 )
@@ -887,6 +917,7 @@ async def get_user_information(username: str, admin_username: str = Depends(chec
 
 @users_router.get(
     USER_TOKENS_OF,
+    response_model=UserTokenListResponse,
     summary="List a user's access tokens",
     description="Lists a user's access tokens, expired ones included. Never returns a token's secret. Admins only.",
 )
@@ -901,6 +932,8 @@ async def list_user_tokens(username: str, admin_username: str = Depends(check_ad
 
 @users_router.post(
     USER_TOKENS_OF,
+    response_model=UserTokenCreatedResponse,
+    status_code=201,
     summary="Create an access token for a user",
     description="Issues a named access token for a user or service account. Admins only, from a signed-in session. " "The token is returned once.",
     dependencies=[Depends(require_interactive_login)],
@@ -921,6 +954,7 @@ async def create_user_token(
 
 @users_router.delete(
     USER_TOKEN_OF,
+    response_model=DeletedCountResponse,
     summary="Delete one of a user's access tokens",
     description="Deletes one access token of a user. It stops working immediately. Admins only.",
 )
@@ -935,6 +969,7 @@ async def delete_user_token(username: str, token_id: int, admin_username: str = 
 
 @users_router.delete(
     USER_TOKENS_OF,
+    response_model=RevokedCountResponse,
     summary="Revoke all of a user's access tokens",
     description="Deletes every access token of a user — the response to a leaked token. Their sessions are not affected. Admins only.",
 )
@@ -961,6 +996,7 @@ async def revoke_user_tokens(username: str, admin_username: str = Depends(check_
 
 @users_router.get(
     USER_IDENTITIES,
+    response_model=List[UserIdentity],
     summary="List a user's identity bindings",
     description="Lists the (provider, subject) identities bound to a user. Admin only.",
 )
@@ -978,6 +1014,7 @@ async def list_user_identities(username: str, admin_username: str = Depends(chec
 
 @users_router.delete(
     USER_IDENTITIES,
+    response_model=DeletedCountResponse,
     summary="Remove an identity binding from a user",
     description="Unbinds one (provider, subject) identity from a user, so a changed subject can be bound "
     "again on the next login (or first bearer use, for a provider with bearer_adopts_unbound_accounts). Admin only.",
@@ -1007,6 +1044,7 @@ async def delete_user_identity(
 
 @users_router.put(
     USER_SERVICE_ACCOUNT_SOURCE,
+    response_model=ServiceAccountSourceResponse,
     summary="Set how a service account signs in",
     description="'internal' (issued access tokens only) or an OIDC provider id, with an optional subject to bind now. "
     "Becoming external revokes the account's access tokens; changing the source unbinds identities that no longer apply. Admin only.",

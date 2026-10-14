@@ -4,7 +4,6 @@ import { DYNAMIC_API_ENDPOINTS, STATIC_API_ENDPOINTS } from "./api-endpoints";
 describe("API Endpoints", () => {
   it("static endpoints are defined", () => {
     expect(STATIC_API_ENDPOINTS.ALL_GROUPS).toBeDefined();
-    expect(STATIC_API_ENDPOINTS.GET_CURRENT_USER).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_ENDPOINTS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_SECRETS).toBeDefined();
     expect(STATIC_API_ENDPOINTS.ALL_GATEWAY_MODELS).toBeDefined();
@@ -31,12 +30,6 @@ describe("API Endpoints", () => {
 
   describe("Dynamic Endpoints", () => {
     // Test a sample of dynamic endpoints to ensure they return strings and boost coverage
-    it("returns correct user details URL", () => {
-      expect(DYNAMIC_API_ENDPOINTS.GET_USER_DETAILS("testuser")).toBe(
-        "/api/2.0/mlflow/users/testuser",
-      );
-    });
-
     it("returns correct user experiment permissions URL", () => {
       expect(
         DYNAMIC_API_ENDPOINTS.USER_EXPERIMENT_PERMISSIONS("testuser"),

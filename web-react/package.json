@@ -10,6 +10,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "tsc -b && eslint .",
     "format": "prettier --write .",
+    "gen:api": "node scripts/gen-api.mjs",
     "preview": "vite preview",
     "release": "tsc -b && vite build",
     "watch": "tsc -b && vite build --watch"
@@ -44,6 +45,7 @@
     "eslint-plugin-react-x": "^2.0.4",
     "globals": "^17.0.0",
     "jsdom": "^27.0.0",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.44.0",
