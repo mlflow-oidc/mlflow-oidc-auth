@@ -144,6 +144,12 @@ def _can_manage_model(a) -> None:
         raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage registered model {a.name}")
 
 
+def _can_manage_prompt(a) -> None:
+    """Inline gate of the group prompt grant routes: admin, or MANAGE on the prompt."""
+    if not a.is_admin and not effective_prompt_permission(a.prompt_name, a.current_username).permission.can_manage:
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {a.prompt_name}")
+
+
 def _group_pattern(model, prompt: bool = False):
     """Turn a stored group pattern into ``model``, the list and get response of a group's pattern routes.
 
@@ -573,172 +579,24 @@ async def get_group_prompts(
         raise HTTPException(status_code=500, detail=f"Failed to get group prompt permissions")
 
 
-@group_permissions_router.post(
+exact_routes(
+    group_permissions_router,
+    GROUP,
+    "prompt",
+    "group prompt permissions",
     GROUP_PROMPT_PERMISSION_DETAIL,
-    status_code=201,
-    summary="Create prompt permission for a group",
-    description="Creates a new permission for a group to access a specific prompt.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt permissions"],
+    ops=("create", "update", "delete"),
+    keys=(("prompt_name", "The prompt name to {purpose} permissions for"),),
+    auth=CALLER,
+    guard=_can_manage_prompt,
+    body=PromptPermission,
+    call={
+        "create": lambda a: store.create_group_prompt_permission(group_name=a.group_name, name=a.prompt_name, permission=a.permission_data.permission),
+        "update": lambda a: store.update_group_prompt_permission(group_name=a.group_name, name=a.prompt_name, permission=a.permission_data.permission),
+        "delete": lambda a: store.delete_group_prompt_permission(a.group_name, a.prompt_name),
+    },
+    on="prompt {prompt_name}",
 )
-async def create_group_prompt_permission(
-    group_name: str = Path(..., description="The group name to grant prompt permission to"),
-    prompt_name: str = Path(..., description="The prompt name to set permissions for"),
-    permission_data: PromptPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Create a permission for a group to access a prompt.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to grant permissions to.
-    prompt_name : str
-        The name of the prompt to grant permissions for.
-    permission_data : PromptPermission
-        The permission data containing the permission level.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the created permission.
-    """
-    # Check if user can manage this prompt
-    if not is_admin and not effective_prompt_permission(prompt_name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {prompt_name}")
-
-    try:
-        store.create_group_prompt_permission(
-            group_name=group_name,
-            name=prompt_name,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="group_prompt_permission",
-            resource_id=prompt_name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt permission created for group {group_name} on prompt {prompt_name}")
-    except Exception as e:
-        logger.error(f"Error creating group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group prompt permission")
-
-
-@group_permissions_router.patch(
-    GROUP_PROMPT_PERMISSION_DETAIL,
-    summary="Update prompt permission for a group",
-    description="Updates the permission for a group on a specific prompt.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt permissions"],
-)
-async def update_group_prompt_permission(
-    group_name: str = Path(..., description="The group name to update prompt permission for"),
-    prompt_name: str = Path(..., description="The prompt name to update permissions for"),
-    permission_data: PromptPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Update the permission for a group on a prompt.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to update permissions for.
-    prompt_name : str
-        The name of the prompt to update permissions for.
-    permission_data : PromptPermission
-        The updated permission data.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the updated permission.
-    """
-    # Check if user can manage this prompt
-    if not is_admin and not effective_prompt_permission(prompt_name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {prompt_name}")
-
-    try:
-        store.update_group_prompt_permission(
-            group_name=group_name,
-            name=prompt_name,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="group_prompt_permission",
-            resource_id=prompt_name,
-            detail={"group_name": group_name, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt permission updated for group {group_name} on prompt {prompt_name}")
-    except Exception as e:
-        logger.error(f"Error updating group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group prompt permission")
-
-
-@group_permissions_router.delete(
-    GROUP_PROMPT_PERMISSION_DETAIL,
-    summary="Delete prompt permission for a group",
-    description="Deletes the permission for a group on a specific prompt.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt permissions"],
-)
-async def delete_group_prompt_permission(
-    group_name: str = Path(..., description="The group name to delete prompt permission for"),
-    prompt_name: str = Path(..., description="The prompt name to delete permissions for"),
-    current_username: str = Depends(get_username),
-    is_admin: bool = Depends(get_is_admin),
-) -> StatusMessageResponse:
-    """
-    Delete the permission for a group on a prompt.
-
-    Parameters:
-    -----------
-    group_name : str
-        The group name to delete permissions for.
-    prompt_name : str
-        The name of the prompt to delete permissions for.
-    current_username : str
-        The username of the authenticated user (from dependency).
-    is_admin : bool
-        Whether the current user is an admin (from dependency).
-
-    Returns:
-    --------
-    StatusMessageResponse
-        Confirmation of the deleted permission.
-    """
-    # Check if user can manage this prompt
-    if not is_admin and not effective_prompt_permission(prompt_name, current_username).permission.can_manage:
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage prompt {prompt_name}")
-
-    try:
-        store.delete_group_prompt_permission(group_name, prompt_name)
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="group_prompt_permission",
-            resource_id=prompt_name,
-            detail={"group_name": group_name},
-        )
-        return StatusMessageResponse(message=f"Prompt permission deleted for group {group_name} on prompt {prompt_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt permission")
 
 
 regex_routes(
@@ -787,195 +645,27 @@ regex_routes(
 )
 
 
-@group_permissions_router.get(
+regex_routes(
+    group_permissions_router,
+    GROUP,
+    "prompt",
+    "group prompt pattern permissions",
     GROUP_PROMPT_PATTERN_PERMISSIONS,
-    summary="Get group prompt pattern permissions",
-    description="Retrieves all prompt regex pattern permissions for a specific group.",
-    response_model=List[GroupPromptRegexPermissionItem],
-    tags=["group prompt pattern permissions"],
-)
-async def get_group_prompt_pattern_permissions(
-    group_name: str = Path(..., description="The group name to get prompt pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[GroupPromptRegexPermissionItem]:
-    """
-    Get all prompt regex pattern permissions for a group.
-    """
-    try:
-        patterns = store.list_group_prompt_regex_permissions(group_name)
-        items: List[GroupPromptRegexPermissionItem] = []
-        for pattern in patterns:
-            payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-            if isinstance(payload, dict):
-                items.append(
-                    GroupPromptRegexPermissionItem(
-                        id=payload["id"],
-                        regex=payload["regex"],
-                        priority=payload["priority"],
-                        group_id=payload.get("group_id"),
-                        permission=payload["permission"],
-                        workspace=payload.get("workspace"),
-                        prompt=bool(payload.get("prompt", False)),
-                    )
-                )
-            else:
-                items.append(
-                    GroupPromptRegexPermissionItem(
-                        id=pattern.id,
-                        regex=pattern.regex,
-                        priority=pattern.priority,
-                        group_id=getattr(pattern, "group_id", None),
-                        permission=pattern.permission,
-                        workspace=pattern_workspace_of(pattern),
-                        prompt=bool(getattr(pattern, "prompt", False)),
-                    )
-                )
-
-        return items
-    except Exception as e:
-        logger.error(f"Error getting group prompt pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permissions")
-
-
-@group_permissions_router.post(
-    GROUP_PROMPT_PATTERN_PERMISSIONS,
-    status_code=201,
-    summary="Create prompt pattern permission for a group",
-    description="Creates a new regex pattern permission for a group to access prompts.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt pattern permissions"],
-)
-async def create_group_prompt_pattern_permission(
-    group_name: str = Path(..., description="The group name to create prompt pattern permission for"),
-    pattern_data: PromptRegexCreate = Body(..., description="The pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a regex pattern permission for a group to access prompts.
-    """
-    try:
-        store.create_group_prompt_regex_permission(
-            regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission, group_name=group_name
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="group_prompt_regex_permission",
-            resource_id=group_name,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt pattern permission created for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error creating group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create group prompt pattern permission")
-
-
-@group_permissions_router.get(
     GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
-    summary="Get specific prompt pattern permission for a group",
-    description="Retrieves a specific prompt regex pattern permission for a group.",
-    response_model=GroupPromptRegexPermissionItem,
-    tags=["group prompt pattern permissions"],
+    specific=ALL_OPS,
+    plural="prompts",
+    group_failures=True,
+    body=PromptRegexCreate,
+    item=_group_pattern(GroupPromptRegexPermissionItem, prompt=True),
+    item_model=GroupPromptRegexPermissionItem,
+    call={
+        "list": lambda a: store.list_group_prompt_regex_permissions(a.group_name),
+        "create": lambda a: store.create_group_prompt_regex_permission(**pattern_fields(a), group_name=a.group_name),
+        "get": lambda a: store.get_group_prompt_regex_permission(a.id, a.group_name),
+        "update": lambda a: store.update_group_prompt_regex_permission(id=a.id, group_name=a.group_name, **pattern_fields(a)),
+        "delete": lambda a: store.delete_group_prompt_regex_permission(a.id, a.group_name),
+    },
 )
-async def get_group_prompt_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> GroupPromptRegexPermissionItem:
-    """
-    Get a specific prompt regex pattern permission for a group.
-    """
-    try:
-        pattern = store.get_group_prompt_regex_permission(id, group_name)
-        payload = pattern.to_json() if hasattr(pattern, "to_json") else None
-        if isinstance(payload, dict):
-            item = GroupPromptRegexPermissionItem(
-                id=payload["id"],
-                regex=payload["regex"],
-                priority=payload["priority"],
-                group_id=payload.get("group_id"),
-                permission=payload["permission"],
-                workspace=payload.get("workspace"),
-                prompt=bool(payload.get("prompt", False)),
-            )
-        else:
-            item = GroupPromptRegexPermissionItem(
-                id=pattern.id,
-                regex=pattern.regex,
-                priority=pattern.priority,
-                group_id=getattr(pattern, "group_id", None),
-                permission=pattern.permission,
-                workspace=pattern_workspace_of(pattern),
-                prompt=bool(getattr(pattern, "prompt", False)),
-            )
-
-        return item
-    except Exception as e:
-        logger.error(f"Error getting group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get group prompt pattern permission")
-
-
-@group_permissions_router.patch(
-    GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
-    summary="Update prompt pattern permission for a group",
-    description="Updates a specific prompt regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt pattern permissions"],
-)
-async def update_group_prompt_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    pattern_data: PromptRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Update a specific prompt regex pattern permission for a group.
-    """
-    try:
-        store.update_group_prompt_regex_permission(
-            id=id, group_name=group_name, regex=pattern_data.regex, priority=pattern_data.priority, permission=pattern_data.permission
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="group_prompt_regex_permission",
-            resource_id=group_name,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt pattern permission updated for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error updating group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update group prompt pattern permission")
-
-
-@group_permissions_router.delete(
-    GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
-    summary="Delete prompt pattern permission for a group",
-    description="Deletes a specific prompt regex pattern permission for a group.",
-    response_model=StatusMessageResponse,
-    tags=["group prompt pattern permissions"],
-)
-async def delete_group_prompt_pattern_permission(
-    group_name: str = Path(..., description="The group name"),
-    id: int = Path(..., description="The pattern ID"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Delete a specific prompt regex pattern permission for a group.
-    """
-    try:
-        store.delete_group_prompt_regex_permission(id, group_name)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="group_prompt_regex_permission",
-            resource_id=group_name,
-            detail={"id": id},
-        )
-        return StatusMessageResponse(message=f"Prompt pattern permission deleted for group {group_name}")
-    except Exception as e:
-        logger.error(f"Error deleting group prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete group prompt pattern permission")
 
 
 @group_permissions_router.get(

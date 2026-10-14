@@ -321,436 +321,51 @@ async def get_user_prompts(
     ]
 
 
-@user_permissions_router.post(
+exact_routes(
+    user_permissions_router,
+    USER,
+    "prompt",
+    "user prompt permissions",
     USER_PROMPT_PERMISSION_DETAIL,
-    status_code=201,
-    response_model=StatusMessageResponse,
-    summary="Create prompt permission for a user",
-    description="Creates a new permission for a user to access a specific prompt.",
-    tags=["user prompt permissions"],
+    keys=(("name", "The prompt name to {purpose} permissions for"),),
+    auth=(("current_username", check_registered_model_manage_permission),),
+    body=PromptPermission,
+    call={
+        "create": lambda a: store.create_registered_model_permission(name=a.name, username=a.username, permission=a.permission_data.permission),
+        "get": lambda a: store.get_registered_model_permission(a.name, a.username),
+        "update": lambda a: store.update_registered_model_permission(name=a.name, username=a.username, permission=a.permission_data.permission),
+        "delete": lambda a: store.delete_registered_model_permission(a.name, a.username),
+    },
+    models={"get": PromptPermissionResponse},
+    respond={"get": lambda a, rmp: PromptPermissionResponse(prompt_permission=RegisteredModelPermissionRecord(**rmp.to_json()))},
+    conflicts=True,
 )
-async def create_user_prompt_permission(
-    username: str = Path(..., description="The username to grant prompt permission to"),
-    name: str = Path(..., description="The prompt name to set permissions for"),
-    permission_data: PromptPermission = Body(..., description="The permission details"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Create a permission for a user to access a prompt.
 
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to grant permissions to.
-    name : str
-        The name of the prompt to grant permissions for.
-    permission_data : PromptPermission
-        The permission data containing the permission level.
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.create_registered_model_permission(
-            name=name,
-            username=username,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=current_username,
-            resource_type="prompt_permission",
-            resource_id=name,
-            detail={"username": username, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt permission created for {username} on {name}")
-    except MlflowException as e:
-        logger.error(f"Error creating prompt permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_ALREADY_EXISTS:
-            raise HTTPException(status_code=409, detail="Prompt permission already exists")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error creating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create prompt permission")
-
-
-@user_permissions_router.get(
-    USER_PROMPT_PERMISSION_DETAIL,
-    response_model=PromptPermissionResponse,
-    summary="Get prompt permission for a user",
-    description="Retrieves the permission for a user on a specific prompt.",
-    tags=["user prompt permissions"],
-)
-async def get_user_prompt_permission(
-    username: str = Path(..., description="The username to get prompt permission for"),
-    name: str = Path(..., description="The prompt name to get permissions for"),
-    _: str = Depends(check_registered_model_manage_permission),
-) -> PromptPermissionResponse:
-    """
-    Get the permission for a user on a prompt.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to get permissions for.
-    name : str
-        The name of the prompt to get permissions for.
-
-    Returns:
-    --------
-    JSONResponse
-        A response containing the prompt permission details.
-    """
-    try:
-        rmp = store.get_registered_model_permission(name, username)
-        return PromptPermissionResponse(prompt_permission=RegisteredModelPermissionRecord(**rmp.to_json()))
-    except Exception as e:
-        logger.error(f"Error getting prompt permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Prompt permission not found")
-
-
-@user_permissions_router.patch(
-    USER_PROMPT_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Update prompt permission for a user",
-    description="Updates the permission for a user on a specific prompt.",
-    tags=["user prompt permissions"],
-)
-async def update_user_prompt_permission(
-    username: str = Path(..., description="The username to update prompt permission for"),
-    name: str = Path(..., description="The prompt name to update permissions for"),
-    permission_data: PromptPermission = Body(..., description="Updated permission details"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Update the permission for a user on a prompt.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to update permissions for.
-    name : str
-        The name of the prompt to update permissions for.
-    permission_data : PromptPermission
-        The updated permission data.
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.update_registered_model_permission(
-            name=name,
-            username=username,
-            permission=permission_data.permission,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=current_username,
-            resource_type="prompt_permission",
-            resource_id=name,
-            detail={"username": username, "permission": permission_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt permission updated for {username} on {name}")
-    except MlflowException as e:
-        logger.error(f"Error updating prompt permission: {str(e)}")
-        if getattr(e, "error_code", None) == RESOURCE_DOES_NOT_EXIST:
-            raise HTTPException(status_code=404, detail="Prompt permission does not exist")
-        if getattr(e, "error_code", None) == INVALID_PARAMETER_VALUE:
-            raise HTTPException(status_code=400, detail=str(e))
-        raise
-    except Exception as e:
-        logger.error(f"Error updating prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to update prompt permission")
-
-
-@user_permissions_router.delete(
-    USER_PROMPT_PERMISSION_DETAIL,
-    response_model=StatusMessageResponse,
-    summary="Delete prompt permission for a user",
-    description="Deletes the permission for a user on a specific prompt.",
-    tags=["user prompt permissions"],
-)
-async def delete_user_prompt_permission(
-    username: str = Path(..., description="The username to delete prompt permission for"),
-    name: str = Path(..., description="The prompt name to delete permissions for"),
-    current_username: str = Depends(check_registered_model_manage_permission),
-) -> StatusMessageResponse:
-    """
-    Delete the permission for a user on a prompt.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to delete permissions for.
-    name : str
-        The name of the prompt to delete permissions for.
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.delete_registered_model_permission(name, username)
-        emit_audit_event(
-            "permission.delete",
-            actor=current_username,
-            resource_type="prompt_permission",
-            resource_id=name,
-            detail={"username": username},
-        )
-        return StatusMessageResponse(message=f"Prompt permission deleted for {username} on {name}")
-    except Exception as e:
-        logger.error(f"Error deleting prompt permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete prompt permission")
-
-
-@user_permissions_router.get(
+regex_routes(
+    user_permissions_router,
+    USER,
+    "prompt",
+    "user prompt pattern permissions",
     USER_PROMPT_PATTERN_PERMISSIONS,
-    response_model=List[RegisteredModelRegexPermissionRecord],
-    summary="List prompt pattern permissions for a user",
-    description="Retrieves a list of regex-based prompt permission patterns for the specified user.",
-    tags=["user prompt pattern permissions"],
-)
-async def get_user_prompt_pattern_permissions(
-    username: str = Path(..., description="The username to list prompt pattern permissions for"),
-    admin_username: str = Depends(check_admin_permission),
-) -> List[RegisteredModelRegexPermissionRecord]:
-    """
-    List all regex-based prompt permission patterns for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to list regex permissions for.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A list of prompt regex permissions for the user.
-    """
-    try:
-        rm = store.list_prompt_regex_permissions(username=username)
-        return [RegisteredModelRegexPermissionRecord(**r.to_json()) for r in rm]
-    except Exception as e:
-        logger.error(f"Error listing prompt pattern permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve prompt pattern permissions")
-
-
-@user_permissions_router.post(
-    USER_PROMPT_PATTERN_PERMISSIONS,
-    status_code=201,
-    response_model=StatusMessageResponse,
-    summary="Create prompt pattern permission for a user",
-    description="Creates a new regex-based permission pattern for prompt access.",
-    tags=["user prompt pattern permissions"],
-)
-async def create_user_prompt_regex_permission(
-    username: str = Path(..., description="The username to create prompt pattern permission for"),
-    pattern_data: PromptRegexCreate = Body(..., description="The regex pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusMessageResponse:
-    """
-    Create a new regex-based permission pattern for prompt access.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to create the pattern permission for.
-    pattern_data : PromptRegexCreate
-        The regex pattern details including the pattern, priority, and permission level.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.create_prompt_regex_permission(
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.create",
-            actor=admin_username,
-            resource_type="prompt_regex_permission",
-            resource_id=username,
-            detail={"regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return StatusMessageResponse(message=f"Prompt pattern permission created for {username}")
-    except Exception as e:
-        logger.error(f"Error creating prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create prompt pattern permission")
-
-
-@user_permissions_router.get(
     USER_PROMPT_PATTERN_PERMISSION_DETAIL,
-    response_model=PromptRegexPermissionResponse,
-    summary="Get prompt pattern permission for a user",
-    description="Retrieves a specific regex-based prompt permission pattern for the specified user.",
-    tags=["user prompt pattern permissions"],
+    names={**regex_names("user_prompt"), "list": "get_user_prompt_pattern_permissions"},
+    id_type=str,
+    quiet_delete=True,
+    body=PromptRegexCreate,
+    item=lambda r: RegisteredModelRegexPermissionRecord(**r.to_json()),
+    item_model=RegisteredModelRegexPermissionRecord,
+    models={"get": PromptRegexPermissionResponse, "update": PromptRegexPermissionResponse},
+    respond={
+        op: lambda a, rm: PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json())) for op in ("get", "update")
+    },
+    call={
+        "list": lambda a: store.list_prompt_regex_permissions(username=a.username),
+        "create": lambda a: store.create_prompt_regex_permission(**pattern_fields(a), username=a.username),
+        "get": lambda a: store.get_prompt_regex_permission(id=int(a.id), username=a.username),
+        "update": lambda a: store.update_prompt_regex_permission(id=int(a.id), **pattern_fields(a), username=a.username),
+        "delete": lambda a: store.delete_prompt_regex_permission(id=int(a.id), username=a.username),
+    },
 )
-async def get_user_prompt_regex_permission(
-    username: str = Path(..., description="The username to get prompt pattern permission for"),
-    id: str = Path(..., description="The pattern ID to retrieve"),
-    admin_username: str = Depends(check_admin_permission),
-) -> PromptRegexPermissionResponse:
-    """
-    Get a specific regex-based prompt permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to get the regex permission for.
-    id : str
-        The unique identifier of the pattern to retrieve.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        The prompt regex permission details.
-    """
-    try:
-        rm = store.get_prompt_regex_permission(id=int(id), username=username)
-        return PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error getting prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=404, detail=f"Prompt pattern permission not found")
-
-
-@user_permissions_router.patch(
-    USER_PROMPT_PATTERN_PERMISSION_DETAIL,
-    response_model=PromptRegexPermissionResponse,
-    summary="Update prompt pattern permission for a user",
-    description="Updates a specific regex-based prompt permission pattern for the specified user.",
-    tags=["user prompt pattern permissions"],
-)
-async def update_user_prompt_regex_permission(
-    username: str = Path(..., description="The username to update prompt pattern permission for"),
-    id: str = Path(..., description="The pattern ID to update"),
-    pattern_data: PromptRegexCreate = Body(..., description="Updated pattern permission details"),
-    admin_username: str = Depends(check_admin_permission),
-) -> PromptRegexPermissionResponse:
-    """
-    Update a specific regex-based prompt permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to update the regex permission for.
-    id : str
-        The unique identifier of the pattern to update.
-    pattern_data : PromptRegexCreate
-        The updated regex pattern details.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        The updated prompt regex permission details.
-    """
-    try:
-        rm = store.update_prompt_regex_permission(
-            id=int(id),
-            regex=pattern_data.regex,
-            priority=pattern_data.priority,
-            permission=pattern_data.permission,
-            username=username,
-        )
-        emit_audit_event(
-            "permission.update",
-            actor=admin_username,
-            resource_type="prompt_regex_permission",
-            resource_id=username,
-            detail={"id": id, "regex": pattern_data.regex, "priority": pattern_data.priority, "permission": pattern_data.permission},
-        )
-        return PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error updating prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update prompt pattern permission")
-
-
-@user_permissions_router.delete(
-    USER_PROMPT_PATTERN_PERMISSION_DETAIL,
-    response_model=StatusOnlyResponse,
-    response_model_exclude_none=True,
-    summary="Delete prompt pattern permission for a user",
-    description="Deletes a specific regex-based prompt permission pattern for the specified user.",
-    tags=["user prompt pattern permissions"],
-)
-async def delete_user_prompt_regex_permission(
-    username: str = Path(..., description="The username to delete prompt pattern permission for"),
-    id: str = Path(..., description="The pattern ID to delete"),
-    admin_username: str = Depends(check_admin_permission),
-) -> StatusOnlyResponse:
-    """
-    Delete a specific regex-based prompt permission pattern for a user.
-
-    Parameters:
-    -----------
-    request : Request
-        The FastAPI request object.
-    username : str
-        The username to delete the regex permission for.
-    id : str
-        The unique identifier of the pattern to delete.
-    admin_username : str
-        The username of the admin performing the action (from dependency).
-
-    Returns:
-    --------
-    JSONResponse
-        A response indicating success.
-    """
-    try:
-        store.delete_prompt_regex_permission(id=int(id), username=username)
-        emit_audit_event(
-            "permission.delete",
-            actor=admin_username,
-            resource_type="prompt_regex_permission",
-            resource_id=username,
-            detail={"id": id},
-        )
-        return StatusOnlyResponse()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid pattern ID format. Expected an integer.")
-    except Exception as e:
-        logger.error(f"Error deleting prompt pattern permission: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete prompt pattern permission")
 
 
 @user_permissions_router.get(
