@@ -4,6 +4,7 @@ on:
     types:
       - opened
       - edited
+      - reopened
       - synchronize
 
 permissions:
@@ -19,17 +20,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Keep in sync with allowed-commit-types in commit-message-check.yml, which already
-          # accepts these. "perf" is a release type: the angular preset that
-          # @semantic-release/commit-analyzer defaults to maps it to a patch release and
-          # gives it its own "Performance Improvements" changelog section. "refactor" is not a
-          # release type: a squash-merged refactor publishes nothing on its own.
+          # Must equal allowed-commit-types in commit-message-check.yml
+          # (mlflow_oidc_auth/tests/test_workflow_commit_types.py enforces it).
+          # Releases come from @semantic-release/commit-analyzer's default angular rules:
+          # feat -> minor, fix and perf -> patch (perf gets its own "Performance
+          # Improvements" changelog section), the rest -> no release on their own. A
+          # "BREAKING CHANGE:" footer in the squash body forces a major release whatever
+          # the type. The angular release notes list only feat, fix, perf, revert and
+          # breaking changes, so a refactor that changes behaviour operators should know
+          # about belongs in a fix/feat/perf PR or in the release notes by hand.
           types: |
-            fix
             feat
+            fix
             perf
             refactor
+            revert
             docs
+            style
             ci
             chore
             build
