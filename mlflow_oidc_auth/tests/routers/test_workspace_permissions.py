@@ -59,7 +59,7 @@ class TestRouterConfiguration:
         assert WORKSPACE_USERS == "/{workspace}/users"
         assert WORKSPACE_GROUPS == "/{workspace}/groups"
         assert WORKSPACE_USER == "/{workspace}/users/{username}"
-        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name}"
+        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name:path}"
 
 
 class TestGroupRoutePathMatching:
@@ -75,11 +75,7 @@ class TestGroupRoutePathMatching:
             "method": method,
             "path": f"{workspace_permissions_router.prefix}/default/groups/{group_name}",
         }
-        matches = [
-            route.matches(scope)[1].get("path_params")
-            for route in workspace_permissions_router.routes
-            if route.matches(scope)[0] == Match.FULL
-        ]
+        matches = [route.matches(scope)[1].get("path_params") for route in workspace_permissions_router.routes if route.matches(scope)[0] == Match.FULL]
         assert matches == [{"workspace": "default", "group_name": group_name}]
 
 
