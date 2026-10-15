@@ -79,7 +79,7 @@ from mlflow_oidc_auth.validators.experiment import get_active_artifact_experimen
 from mlflow_oidc_auth.validators.review import is_review_queue_member
 from mlflow_oidc_auth.validators.scorers import scorer_has_versions
 from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
-from mlflow_oidc_auth.utils.prompt_kind import is_prompt, is_prompt_tags, remember_kind
+from mlflow_oidc_auth.utils.prompt_kind import is_prompt, is_prompt_row, is_prompt_tags, remember_kind
 
 # ---------------------------------------------------------------------------
 # Request-scoped grant context and permission memo
@@ -160,8 +160,8 @@ def _can_read_registered_model(ctx: GrantContext, model_name: str, prompt: bool 
 
 
 def _can_read_registered_model_row(ctx: GrantContext, rm: Any) -> bool:
-    """A search row of a registered model, whose tags say whether it is a prompt."""
-    prompt = is_prompt_tags(rm.tags)
+    """A search row of a registered model (a proto on the first page, an entity on top-up pages)."""
+    prompt = is_prompt_row(rm)
     remember_kind(rm.name, prompt)
     return _can_read_registered_model(ctx, rm.name, prompt)
 

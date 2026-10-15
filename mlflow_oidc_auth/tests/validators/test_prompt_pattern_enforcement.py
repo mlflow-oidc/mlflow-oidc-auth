@@ -6,7 +6,6 @@ patterns are kept apart (exact-name grants are shared), and the resolver follows
 These tests use a real permission store; only MLflow's registry lookup is stubbed.
 """
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -23,8 +22,16 @@ PROMPTS = {"greeting"}  # registered model names that are prompts
 MODELS = {"churn"}
 
 
+def _entity(name, prompt):
+    """A real MLflow registry entity: its public ``tags`` hides the prompt tag, as MLflow returns it."""
+    from mlflow.entities.model_registry import RegisteredModel, RegisteredModelTag
+
+    tags = [RegisteredModelTag("mlflow.prompt.is_prompt", "true")] if prompt else []
+    return RegisteredModel(name, tags=tags + [RegisteredModelTag("team", "a")])
+
+
 class _Registry:
-    """MLflow's model registry, reduced to what the kind lookup reads."""
+    """MLflow's model registry, reduced to what the kind lookup reads; it returns real entities."""
 
     def __init__(self, failing=False):
         self.failing = failing
@@ -34,10 +41,8 @@ class _Registry:
         self.calls.append(name)
         if self.failing:
             raise MlflowException("registry down", INTERNAL_ERROR)
-        if name in PROMPTS:
-            return SimpleNamespace(tags={"mlflow.prompt.is_prompt": "true"})
-        if name in MODELS:
-            return SimpleNamespace(tags={})
+        if name in PROMPTS or name in MODELS:
+            return _entity(name, name in PROMPTS)
         raise MlflowException(f"no model {name}", RESOURCE_DOES_NOT_EXIST)
 
 
@@ -175,14 +180,20 @@ def _search_ctx():
     return load_grant_context(ALICE, bulk=True)
 
 
-def test_search_rows_of_registered_models_are_judged_by_their_tags(store):
-    """A registered-model row's own tags decide; no registry lookup is made."""
+@pytest.mark.parametrize("shape", ["proto", "entity"])
+def test_search_rows_of_registered_models_are_judged_by_their_kind(store, shape):
+    """A search row's own kind decides, with no registry lookup.
+
+    The first page is protos, which carry the prompt tag; top-up pages are MLflow entities, whose
+    public ``tags`` hides it. Both must be read as MLflow does.
+    """
     from mlflow_oidc_auth.hooks import after_request
 
     store.create_registered_model_regex_permission(".*", 1, "READ", ALICE)
     store.create_prompt_regex_permission("^greet", 1, "NO_PERMISSIONS", ALICE)
-    prompt_row = SimpleNamespace(name="greeting", tags=[SimpleNamespace(key="mlflow.prompt.is_prompt", value="true")])
-    model_row = SimpleNamespace(name="churn", tags=[])
+    prompt_row, model_row = _entity("greeting", True), _entity("churn", False)
+    if shape == "proto":
+        prompt_row, model_row = prompt_row.to_proto(), model_row.to_proto()
     registry = _Registry()
     with Flask(__name__).test_request_context("/"), patch("mlflow.server.handlers._get_model_registry_store", return_value=registry):
         ctx = _search_ctx()
@@ -219,7 +230,13 @@ def test_search_rows_fail_closed_when_the_kind_is_unknown(store):
 # ---------------------------------------------------------------------------
 
 
-GRANT_GATES = (("check_user_prompt_manage_permission", "name"), ("check_prompt_manage_permission", "prompt_name"), ("check_group_prompt_manage_permission", "prompt_name"), ("check_registered_model_manage_permission", "name"), ("check_group_registered_model_manage_permission", "name"))
+GRANT_GATES = (
+    ("check_user_prompt_manage_permission", "name"),
+    ("check_prompt_manage_permission", "prompt_name"),
+    ("check_group_prompt_manage_permission", "prompt_name"),
+    ("check_registered_model_manage_permission", "name"),
+    ("check_group_registered_model_manage_permission", "name"),
+)
 
 
 async def _gate_allows(gate_name, param, name):
@@ -289,7 +306,6 @@ def test_creating_a_prompt_is_judged_by_prompt_patterns(store, monkeypatch, tags
         assert rm_validators.validate_can_create_registered_model(ALICE) is allowed
 
 
-
 # ---------------------------------------------------------------------------
 # The kind tag cannot be changed by non-admins
 # ---------------------------------------------------------------------------
@@ -348,10 +364,7 @@ def test_a_model_listing_judges_its_prompt_rows_by_prompt_grants(store):
 
     store.create_registered_model_regex_permission(".*", 1, "MANAGE", ALICE)
     store.create_prompt_regex_permission("^greet", 1, "NO_PERMISSIONS", ALICE)
-    rows = [
-        SimpleNamespace(name="greeting", tags={"mlflow.prompt.is_prompt": "true"}),
-        SimpleNamespace(name="churn", tags={}),
-    ]
+    rows = [_entity("greeting", True), _entity("churn", False)]  # as fetch_all_registered_models returns them
     registry = _Registry()
     with Flask(__name__).test_request_context("/"), patch("mlflow.server.handlers._get_model_registry_store", return_value=registry):
         results = batch_resolve_model_permissions(ALICE, rows)
@@ -414,3 +427,56 @@ def test_a_registered_model_keeps_grants_made_before_it_existed(store):
     _create_hook("churn-v2", [], "victor@example.com")
     assert [p.permission for p in store.list_registered_model_permissions(ALICE)] == ["READ"]
     assert [p.permission for p in store.list_registered_model_permissions("victor@example.com")] == ["MANAGE"]
+
+
+def test_readable_registered_models_judge_prompts_by_prompt_grants(store):
+    """``fetch_readable_registered_models`` gets real registry entities, whose ``tags`` hide the prompt tag."""
+    from mlflow_oidc_auth.utils import data_fetching
+
+    store.create_registered_model_regex_permission(".*", 1, "READ", ALICE)
+    store.create_prompt_regex_permission("^greet", 1, "NO_PERMISSIONS", ALICE)
+    rows = [_entity("greeting", True), _entity("churn", False)]
+    with Flask(__name__).test_request_context("/"), patch.object(data_fetching, "fetch_all_registered_models", return_value=rows):
+        assert [m.name for m in data_fetching.fetch_readable_registered_models(username=ALICE)] == ["churn"]
+
+
+@pytest.mark.parametrize("key", ["MLFLOW.PROMPT.IS_PROMPT", " mlflow.prompt.is_prompt", "Mlflow.Prompt.Is_Prompt"])
+def test_creating_a_model_with_a_kind_tag_lookalike_is_refused(store, monkeypatch, key):
+    """MLflow's SQL filter would read the look-alike as the kind tag and the plugin would not; refuse it."""
+    for restrict in (False, True):
+        monkeypatch.setattr(config, "RESTRICT_RESOURCE_CREATION", restrict)
+        with (
+            Flask(__name__).test_request_context(
+                "/api/2.0/mlflow/registered-models/create", method="POST", json={"name": "m", "tags": [{"key": key, "value": "true"}]}
+            ),
+            patch.object(rm_validators, "get_model_names", return_value=["m"]),
+        ):
+            assert rm_validators.validate_can_create_registered_model(ALICE) is False
+
+
+def test_creating_a_prompt_with_the_exact_kind_tag_is_allowed(store, monkeypatch):
+    """MLflow's own client creates a prompt with the exact tag; that stays possible."""
+    monkeypatch.setattr(config, "RESTRICT_RESOURCE_CREATION", False)
+    with (
+        Flask(__name__).test_request_context(
+            "/api/2.0/mlflow/registered-models/create", method="POST", json={"name": "p", "tags": [{"key": "mlflow.prompt.is_prompt", "value": "true"}]}
+        ),
+        patch.object(rm_validators, "get_model_names", return_value=["p"]),
+    ):
+        assert rm_validators.validate_can_create_registered_model(ALICE) is True
+
+
+def test_a_group_listing_reads_prompt_kinds_once(store):
+    """The group grant listings judge every row's kind from one registry query, not one per row."""
+    from mlflow_oidc_auth.utils import prompt_kind
+
+    calls = []
+
+    def fetch_all_prompts():
+        calls.append(1)
+        return [_entity("greeting", True)]
+
+    with Flask(__name__).test_request_context("/"), patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_prompts", fetch_all_prompts):
+        for _ in range(5):
+            assert prompt_kind.prompt_names() == {"greeting"}
+    assert calls == [1]

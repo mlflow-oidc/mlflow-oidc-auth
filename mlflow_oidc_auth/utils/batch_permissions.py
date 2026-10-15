@@ -141,13 +141,11 @@ def batch_resolve_model_permissions(username: str, models: List) -> Dict[str, Pe
     Returns:
         Dict mapping model_name to PermissionResult.
     """
-    from mlflow_oidc_auth.utils.prompt_kind import is_prompt_tags
+    from mlflow_oidc_auth.utils.prompt_kind import is_prompt_row
 
     ctx = build_user_permission_context(username)
     return {
-        model.name: (resolve_prompt_permission_from_context if is_prompt_tags(getattr(model, "tags", None)) else resolve_model_permission_from_context)(
-            ctx, model.name
-        )
+        model.name: (resolve_prompt_permission_from_context if is_prompt_row(model) else resolve_model_permission_from_context)(ctx, model.name)
         for model in models
     }
 

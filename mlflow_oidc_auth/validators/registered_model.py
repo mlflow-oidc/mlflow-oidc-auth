@@ -10,7 +10,7 @@ from mlflow_oidc_auth.utils import (
 )
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils.prompt_kind import KIND_TAG_KEY, effective_registry_permission, request_creates_prompt
+from mlflow_oidc_auth.utils.prompt_kind import KIND_TAG_KEY, effective_registry_permission, request_creates_prompt, request_has_kind_tag_lookalike
 
 
 def _get_permission_from_registered_model_name(username: str) -> Permission:
@@ -124,6 +124,10 @@ def validate_can_create_registered_model(username: str) -> bool:
     new model name, resolved from name regex / group-regex with a workspace fallback. A request
     that creates a prompt (its tags say so, as MLflow decides) uses the prompt patterns (#479).
     """
+    # Whatever RESTRICT_RESOURCE_CREATION says: a look-alike of the kind tag would make MLflow and
+    # the plugin disagree on whether the new model is a prompt (#479).
+    if request_has_kind_tag_lookalike():
+        return False
     if not config.RESTRICT_RESOURCE_CREATION:
         return True
     resolve = effective_new_prompt_permission if request_creates_prompt() else effective_new_registered_model_permission

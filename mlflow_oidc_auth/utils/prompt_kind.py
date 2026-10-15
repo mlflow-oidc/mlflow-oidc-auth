@@ -45,6 +45,26 @@ def is_prompt_tags(tags: Any) -> bool:
     return str(value or "").lower() == "true"
 
 
+def is_prompt_row(row: Any) -> bool:
+    """Whether a registered model, as an MLflow entity or a proto, is a prompt.
+
+    An entity's public ``tags`` hides ``mlflow.prompt.is_prompt`` (MLflow treats it as internal), so
+    an entity is asked through MLflow's own ``_is_prompt()``. A proto, or anything else carrying a
+    tag list, still holds the tag and is read with :func:`is_prompt_tags`.
+
+    Parameters:
+        row: A ``mlflow.entities.model_registry.RegisteredModel`` or a ``RegisteredModel`` proto.
+
+    Returns:
+        True when the row is a prompt.
+    """
+    from mlflow.entities.model_registry import RegisteredModel
+
+    if isinstance(row, RegisteredModel):
+        return row._is_prompt()
+    return is_prompt_tags(getattr(row, "tags", None))
+
+
 def _memo() -> Optional[dict]:
     """The request's name-to-kind memo, or None outside a request."""
     from flask import g, has_request_context
@@ -93,7 +113,7 @@ def is_prompt(name: str) -> bool:
     from mlflow.server.handlers import _get_model_registry_store
 
     try:
-        kind = is_prompt_tags(_get_model_registry_store().get_registered_model(name=name).tags)
+        kind = is_prompt_row(_get_model_registry_store().get_registered_model(name=name))
     except MlflowException as exc:
         if exc.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             raise
@@ -101,6 +121,51 @@ def is_prompt(name: str) -> bool:
     if memo is not None:
         memo[name] = kind
     return kind
+
+
+def prompt_names() -> set:
+    """The names of every prompt MLflow serves in the request's workspace, read once per request.
+
+    One registry query instead of a lookup per name, for listings that judge many grant rows. MLflow
+    selects the prompts with its own tag filter, so the set agrees with how MLflow classifies them.
+
+    Returns:
+        The prompt names.
+
+    Raises:
+        MlflowException: A registry error; callers deny.
+    """
+    from flask import g, has_request_context
+
+    from mlflow_oidc_auth.utils.data_fetching import fetch_all_prompts
+
+    if has_request_context() and hasattr(g, "_mlflow_oidc_prompt_names"):
+        return g._mlflow_oidc_prompt_names
+    names = {prompt.name for prompt in fetch_all_prompts()}
+    if has_request_context():
+        g._mlflow_oidc_prompt_names = names
+    return names
+
+
+def request_has_kind_tag_lookalike() -> bool:
+    """Whether a create request carries the kind tag under any spelling but the exact one.
+
+    MySQL and SQL Server compare tag keys ignoring case, so MLflow's own prompt filter would read
+    ``MLFLOW.PROMPT.IS_PROMPT`` as the kind tag while :func:`is_prompt_row` and
+    :func:`request_creates_prompt` would not. The plugin and MLflow must never disagree on whether a
+    model is a prompt, so such a key is refused.
+
+    Returns:
+        True when a tag key equals the kind tag only after ignoring case or whitespace.
+    """
+    from mlflow_oidc_auth.utils import request_body_dict
+
+    wanted = IS_PROMPT_TAG_KEY.casefold()
+    for tag in (request_body_dict() or {}).get("tags") or ():
+        key = tag.get("key") if isinstance(tag, dict) else getattr(tag, "key", None)
+        if isinstance(key, str) and key != IS_PROMPT_TAG_KEY and key.strip().casefold() == wanted:
+            return True
+    return False
 
 
 def request_creates_prompt() -> bool:
@@ -141,4 +206,3 @@ def effective_registry_permission(name: str, user: str, *, prompt: Optional[bool
             logger.warning("Denying a registry request: the model's kind could not be determined (%s)", exc.error_code)
             return PermissionResult(NO_PERMISSIONS, "kind-unknown")
     return effective_prompt_permission(name, user) if prompt else effective_registered_model_permission(name, user)
-

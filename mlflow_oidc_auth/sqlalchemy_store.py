@@ -1028,6 +1028,9 @@ class SqlAlchemyStore:
         Parameters:
             prompt_name: The prompt name.
             username: The creator.
+
+        Returns:
+            The creator's permission entity.
         """
         return self._grant_creator_of_new_resource(self.registered_model_repo, self.registered_model_group_repo, prompt_name, username)
 
