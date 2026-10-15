@@ -20,7 +20,7 @@ from mlflow_oidc_auth.dependencies import (
     check_group_registered_model_manage_permission,
 )
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission, prompt_names
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 from mlflow_oidc_auth.models.responses import GroupDetail
 from mlflow_oidc_auth.models import (
     CreateGroupRequest,
@@ -487,9 +487,9 @@ async def get_group_registered_models(
 
         items: List[GroupNamedPermissionItem] = []
         for model in group_models:
-            # A grant row names a model or a prompt; judge it by the target's real kind (#479), read
-            # once for the whole listing rather than per row.
-            can_manage = is_admin or effective_registry_permission(model.name, current_username, prompt=model.name in prompt_names()).permission.can_manage
+            # A grant row names a model or a prompt; judge it by the target's real kind (#479). The
+            # kind is looked up once per name per request; a lookup error denies.
+            can_manage = is_admin or effective_registry_permission(model.name, current_username).permission.can_manage
             if not can_manage:
                 continue
 
@@ -562,9 +562,9 @@ async def get_group_prompts(
         # For admins: show all group prompts
         items: List[GroupNamedPermissionItem] = []
         for prompt in group_prompts:
-            # A grant row names a model or a prompt; judge it by the target's real kind (#479), read
-            # once for the whole listing rather than per row.
-            can_manage = is_admin or effective_registry_permission(prompt.name, current_username, prompt=prompt.name in prompt_names()).permission.can_manage
+            # A grant row names a model or a prompt; judge it by the target's real kind (#479). The
+            # kind is looked up once per name per request; a lookup error denies.
+            can_manage = is_admin or effective_registry_permission(prompt.name, current_username).permission.can_manage
             if not can_manage:
                 continue
 

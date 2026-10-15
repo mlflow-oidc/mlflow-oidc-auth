@@ -466,17 +466,104 @@ def test_creating_a_prompt_with_the_exact_kind_tag_is_allowed(store, monkeypatch
         assert rm_validators.validate_can_create_registered_model(ALICE) is True
 
 
-def test_a_group_listing_reads_prompt_kinds_once(store):
-    """The group grant listings judge every row's kind from one registry query, not one per row."""
+def test_the_kind_is_memoized_per_request_under_fastapi_too(store):
+    """FastAPI routes and dependencies have no Flask request; the memo follows the request's AuthContext.
+
+    Each name is looked up once within a request, and a new request starts a new memo.
+    """
+    from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+    from mlflow_oidc_auth.entities.auth_context import AuthContext
     from mlflow_oidc_auth.utils import prompt_kind
 
-    calls = []
+    registry = _Registry()
+    with patch("mlflow.server.handlers._get_model_registry_store", return_value=registry):
+        token = set_auth_context(AuthContext(username=ALICE, is_admin=False))
+        try:
+            for _ in range(5):
+                assert prompt_kind.is_prompt("greeting") is True
+                assert prompt_kind.is_prompt("churn") is False
+        finally:
+            clear_auth_context(token)
+        assert registry.calls == ["greeting", "churn"]
 
-    def fetch_all_prompts():
-        calls.append(1)
-        return [_entity("greeting", True)]
+        # A new request (a new AuthContext) does not reuse the previous request's answers.
+        token = set_auth_context(AuthContext(username=ALICE, is_admin=False))
+        try:
+            assert prompt_kind.is_prompt("greeting") is True
+        finally:
+            clear_auth_context(token)
+        assert registry.calls == ["greeting", "churn", "greeting"]
 
-    with Flask(__name__).test_request_context("/"), patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_prompts", fetch_all_prompts):
-        for _ in range(5):
-            assert prompt_kind.prompt_names() == {"greeting"}
-    assert calls == [1]
+
+def test_without_a_request_nothing_is_remembered(store):
+    from mlflow_oidc_auth.utils import prompt_kind
+
+    registry = _Registry()
+    with patch("mlflow.server.handlers._get_model_registry_store", return_value=registry):
+        prompt_kind.is_prompt("greeting")
+        prompt_kind.is_prompt("greeting")
+    assert registry.calls == ["greeting", "greeting"]
+
+
+# ---------------------------------------------------------------------------
+# Nothing new resolves a registered-model name without its kind
+# ---------------------------------------------------------------------------
+
+# Production calls of the kind-blind resolvers, each one deliberate (#479). A new call on a name that
+# can be either kind must go through ``prompt_kind.effective_registry_permission`` instead.
+KIND_BLIND_CALLS_ALLOWED = {
+    ("utils/prompt_kind.py", "effective_prompt_permission"),  # the dispatcher itself
+    ("utils/prompt_kind.py", "effective_registered_model_permission"),  # the dispatcher itself
+    ("utils/batch_permissions.py", "resolve_prompt_permission_from_context"),  # rows known to be prompts
+    ("utils/batch_permissions.py", "resolve_model_permission_from_context"),  # dispatched by each row's kind
+    ("validators/prompt_optimization_job.py", "effective_prompt_permission"),  # a prompts:/ URI
+    ("utils/permissions.py", "effective_registered_model_permission"),  # the can_*_registered_model helpers
+}
+KIND_BLIND = (
+    "effective_registered_model_permission",
+    "effective_prompt_permission",
+    "resolve_model_permission_from_context",
+    "resolve_prompt_permission_from_context",
+    "can_read_registered_model",
+    "can_update_registered_model",
+    "can_delete_registered_model",
+    "can_manage_registered_model",
+)
+
+
+def test_no_new_kind_blind_resolution_of_a_registered_model_name():
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    found = set()
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
+        if rel.startswith("tests/") or rel.startswith("ui/"):
+            continue
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+                if name in KIND_BLIND:
+                    found.add((rel, name))
+    unexpected = found - KIND_BLIND_CALLS_ALLOWED
+    assert not unexpected, f"resolve these registered-model names by kind (prompt_kind.effective_registry_permission): {sorted(unexpected)}"
+
+
+def test_a_grant_planted_on_a_free_name_does_not_survive_a_rename_onto_it(store):
+    """A grant written on a name nobody holds is cleared when a model or prompt is renamed onto it."""
+    from mlflow_oidc_auth.hooks import after_request
+    from mlflow_oidc_auth.utils import permissions
+
+    owner = "victor@example.com"
+    store.create_user(owner, "Victor")
+    store.create_registered_model_permission("old-name", owner, "MANAGE")
+    store.create_registered_model_permission("landing", ALICE, "MANAGE")  # planted on a free name
+    with Flask(__name__).test_request_context("/api/2.0/mlflow/registered-models/rename", method="POST", json={"name": "old-name", "new_name": "landing"}):
+        after_request._rename_registered_model_permission(None)
+    permissions.flush_permission_cache()
+
+    assert store.list_registered_model_permissions(ALICE) == []
+    assert [(p.name, p.permission) for p in store.list_registered_model_permissions(owner)] == [("landing", "MANAGE")]

@@ -6,6 +6,7 @@ model-version request. Prompt patterns are kept apart from model patterns (exact
 shared), so the resolver has to follow the target's kind, which only MLflow knows.
 """
 
+from contextvars import ContextVar
 from typing import Any, Optional
 
 from mlflow.exceptions import MlflowException
@@ -19,9 +20,24 @@ logger = get_logger()
 
 _MEMO = "_mlflow_oidc_prompt_kinds"
 
-# The tag that makes a registered model a prompt. Writing it changes which grants apply, so only an
-# admin may set or delete it on an existing model (validators/registered_model.py).
-KIND_TAG_KEY = IS_PROMPT_TAG_KEY
+# Outside a Flask request (FastAPI routes and dependencies) the memo lives here, tied to the
+# request's AuthContext object: each request gets a new one, so an entry never outlives its request
+# and nothing is shared between concurrent requests (a ContextVar is per asyncio task).
+_fastapi_memo: ContextVar[Optional[tuple]] = ContextVar("_mlflow_oidc_prompt_kind_memo", default=None)
+
+
+def is_kind_key(key: Any) -> bool:
+    """Whether a tag key names ``mlflow.prompt.is_prompt``, ignoring case and surrounding whitespace.
+
+    MySQL and SQL Server compare tag keys that way, so every spelling reaches the stored kind tag.
+
+    Parameters:
+        key: A tag key from a request.
+
+    Returns:
+        True when the key is any spelling of the kind tag.
+    """
+    return isinstance(key, str) and key.strip().casefold() == IS_PROMPT_TAG_KEY.casefold()
 
 
 def is_prompt_tags(tags: Any) -> bool:
@@ -66,16 +82,29 @@ def is_prompt_row(row: Any) -> bool:
 
 
 def _memo() -> Optional[dict]:
-    """The request's name-to-kind memo, or None outside a request."""
+    """The current request's name-to-kind memo, or None outside a request.
+
+    A Flask request keeps it on ``flask.g``. A FastAPI request keeps it on a ContextVar bound to the
+    request's AuthContext; with no AuthContext there is no request, and nothing is remembered.
+    """
     from flask import g, has_request_context
 
-    if not has_request_context():
+    if has_request_context():
+        memo = getattr(g, _MEMO, None)
+        if memo is None:
+            memo = {}
+            setattr(g, _MEMO, memo)
+        return memo
+    from mlflow_oidc_auth.bridge.user import _auth_context_var
+
+    owner = _auth_context_var.get()
+    if owner is None:
         return None
-    memo = getattr(g, _MEMO, None)
-    if memo is None:
-        memo = {}
-        setattr(g, _MEMO, memo)
-    return memo
+    held = _fastapi_memo.get()
+    if held is None or held[0] is not owner:
+        held = (owner, {})
+        _fastapi_memo.set(held)
+    return held[1]
 
 
 def remember_kind(name: str, is_prompt: bool) -> None:
@@ -123,30 +152,6 @@ def is_prompt(name: str) -> bool:
     return kind
 
 
-def prompt_names() -> set:
-    """The names of every prompt MLflow serves in the request's workspace, read once per request.
-
-    One registry query instead of a lookup per name, for listings that judge many grant rows. MLflow
-    selects the prompts with its own tag filter, so the set agrees with how MLflow classifies them.
-
-    Returns:
-        The prompt names.
-
-    Raises:
-        MlflowException: A registry error; callers deny.
-    """
-    from flask import g, has_request_context
-
-    from mlflow_oidc_auth.utils.data_fetching import fetch_all_prompts
-
-    if has_request_context() and hasattr(g, "_mlflow_oidc_prompt_names"):
-        return g._mlflow_oidc_prompt_names
-    names = {prompt.name for prompt in fetch_all_prompts()}
-    if has_request_context():
-        g._mlflow_oidc_prompt_names = names
-    return names
-
-
 def request_has_kind_tag_lookalike() -> bool:
     """Whether a create request carries the kind tag under any spelling but the exact one.
 
@@ -160,19 +165,20 @@ def request_has_kind_tag_lookalike() -> bool:
     """
     from mlflow_oidc_auth.utils import request_body_dict
 
-    wanted = IS_PROMPT_TAG_KEY.casefold()
     for tag in (request_body_dict() or {}).get("tags") or ():
         key = tag.get("key") if isinstance(tag, dict) else getattr(tag, "key", None)
-        if isinstance(key, str) and key != IS_PROMPT_TAG_KEY and key.strip().casefold() == wanted:
+        if key != IS_PROMPT_TAG_KEY and is_kind_key(key):
             return True
     return False
 
 
 def request_creates_prompt() -> bool:
-    """Whether the current create request makes a prompt (or prompt version), by its own tags.
+    """Whether the current create request makes a prompt, by its own tags.
 
-    MLflow decides the same way (``handlers._is_prompt_request``): at creation the model may not
-    exist yet, so its tags cannot be looked up.
+    At creation the model may not exist yet, so its tags cannot be looked up. The value rule is the
+    one MLflow applies to the stored model (``RegisteredModel._is_prompt``: the tag is ``"true"``,
+    any case), so the decision here matches how the new model is judged afterwards. MLflow's own
+    ``handlers._is_prompt_request`` only checks that the key is present, for webhook routing.
 
     Returns:
         True when the request body carries ``mlflow.prompt.is_prompt = "true"``.

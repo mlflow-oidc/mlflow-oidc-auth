@@ -18,12 +18,6 @@ def _deleg_can_manage_experiment(experiment_id, username):
     return _utils.can_manage_experiment(experiment_id, username)
 
 
-def _deleg_can_manage_registered_model(model_name, username):
-    from mlflow_oidc_auth import utils as _utils
-
-    return _utils.can_manage_registered_model(model_name, username)
-
-
 def _deleg_effective_registry_permission(name, username, **_kind):
     """The registered-model and prompt gates (#479) follow one test-controlled flag.
 

@@ -1017,6 +1017,19 @@ class SqlAlchemyStore:
                 get_logger().info("Cleared %d permission rows stored under the name of a newly created resource", cleared)
             return user_repo._grant_in(session, name, username, MANAGE.name)
 
+    def move_registered_model_permissions(self, old_name: str, new_name: str) -> None:
+        """Move all user and group grants of a renamed registered model or prompt, atomically.
+
+        MLflow only renames onto a free name, so grants already stored under ``new_name`` were
+        written before anything held it (or are left over from an earlier holder). They are removed
+        first, in the same transaction, so they never apply to the renamed model or prompt (#479).
+
+        Parameters:
+            old_name: The name before the rename.
+            new_name: The name after the rename.
+        """
+        self._move_name_keyed_permissions((self.registered_model_repo, self.registered_model_group_repo), old_name, new_name)
+
     def grant_creator_prompt_permission(self, prompt_name: str, username: str):
         """Make ``username`` the only permission holder of a just-created prompt (#479).
 
@@ -1839,6 +1852,7 @@ _PERMISSION_CUD_METHODS = [
     "update_registered_model_permission",
     "delete_registered_model_permission",
     "rename_registered_model_permissions",
+    "move_registered_model_permissions",
     "wipe_registered_model_permissions",
     # Registered model permissions (group-scoped)
     "create_group_model_permission",

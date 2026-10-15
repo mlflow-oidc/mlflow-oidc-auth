@@ -10,7 +10,7 @@ from mlflow_oidc_auth.utils import (
 )
 from mlflow.server.handlers import _get_tracking_store
 
-from mlflow_oidc_auth.utils.prompt_kind import KIND_TAG_KEY, effective_registry_permission, request_creates_prompt, request_has_kind_tag_lookalike
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission, is_kind_key, request_creates_prompt, request_has_kind_tag_lookalike
 
 
 def _get_permission_from_registered_model_name(username: str) -> Permission:
@@ -69,8 +69,7 @@ def _writes_kind_tag() -> bool:
     """
     from mlflow_oidc_auth.utils import all_source_values
 
-    wanted = KIND_TAG_KEY.casefold()
-    return any(str(key).strip().casefold() == wanted for key in all_source_values("key"))
+    return any(is_kind_key(str(key)) for key in all_source_values("key"))
 
 
 def validate_can_set_registered_model_tag(username: str) -> bool:

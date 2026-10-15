@@ -293,6 +293,7 @@ class TestComprehensiveCUDCoverage:
             "update_registered_model_permission": ("model1", "user1", "MANAGE"),
             "delete_registered_model_permission": ("model1", "user1"),
             "rename_registered_model_permissions": ("old", "new"),
+            "move_registered_model_permissions": ("old", "new"),
             "wipe_registered_model_permissions": ("model1",),
             "create_group_model_permission": ("group1", "model1", "READ"),
             "update_group_model_permission": ("group1", "model1", "MANAGE"),
