@@ -59,7 +59,24 @@ class TestRouterConfiguration:
         assert WORKSPACE_USERS == "/{workspace}/users"
         assert WORKSPACE_GROUPS == "/{workspace}/groups"
         assert WORKSPACE_USER == "/{workspace}/users/{username}"
-        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name}"
+        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name:path}"
+
+
+class TestGroupRoutePathMatching:
+    """Group names containing '/' (e.g. Keycloak '/data-science') must match the group routes."""
+
+    @pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+    @pytest.mark.parametrize("group_name", ["data-science", "/data-science", "/org/team"])
+    def test_group_route_matches_slash_group_names(self, method, group_name):
+        from starlette.routing import Match
+
+        scope = {
+            "type": "http",
+            "method": method,
+            "path": f"{workspace_permissions_router.prefix}/default/groups/{group_name}",
+        }
+        matches = [route.matches(scope)[1].get("path_params") for route in workspace_permissions_router.routes if route.matches(scope)[0] == Match.FULL]
+        assert matches == [{"workspace": "default", "group_name": group_name}]
 
 
 class TestListWorkspaceUsers:

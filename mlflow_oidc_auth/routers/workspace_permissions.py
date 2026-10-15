@@ -44,7 +44,7 @@ workspace_permissions_router = APIRouter(
 WORKSPACE_USERS = "/{workspace}/users"
 WORKSPACE_GROUPS = "/{workspace}/groups"
 WORKSPACE_USER = "/{workspace}/users/{username}"
-WORKSPACE_GROUP = "/{workspace}/groups/{group_name}"
+WORKSPACE_GROUP = "/{workspace}/groups/{group_name:path}"
 
 
 @workspace_permissions_router.get(
