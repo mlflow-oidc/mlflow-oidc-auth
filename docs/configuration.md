@@ -644,6 +644,15 @@ These behaviour changes ship together in this release. Each is called out here b
 changes what a running deployment does on upgrade; the first one requires a configuration change
 for deployments behind a reverse proxy.
 
+- **Prompts are judged by prompt permissions (#479).** MLflow's prompt calls (reading, editing,
+  tagging, aliasing, deleting and versioning a prompt, prompt search results, GraphQL) used model
+  patterns. They now use **prompt patterns**, like the prompt grant APIs, and model patterns no
+  longer reach prompts. Exact-name grants are unchanged and still apply to both. Users who reach
+  prompts only through a model pattern lose that access on upgrade; users with a prompt pattern
+  gain it. **Before upgrading,** add a prompt pattern for each model pattern meant to cover prompts
+  (the Admin UI's prompt patterns, or `POST /api/2.0/mlflow/permissions/users/<user>/prompts-patterns`
+  and the group equivalent). See [Permissions → Prompts](permissions#prompts).
+
 - **`TRUSTED_PROXIES` unset now trusts no proxy.** Previously an unset `TRUSTED_PROXIES` honoured
   `X-Forwarded-*` headers from every client. Now they are ignored unless the connecting client is
   inside one of the listed ranges. A deployment behind a reverse proxy that relied on the old

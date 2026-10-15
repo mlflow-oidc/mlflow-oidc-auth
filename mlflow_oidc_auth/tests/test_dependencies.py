@@ -158,17 +158,17 @@ class TestCheckRegisteredModelPermission:
     """Test the check_registered_model_manage_permission dependency function."""
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_check_model_permission_admin_success(self, mock_can_manage):
         """Test successful registered model permission check for admin user."""
         result = await check_registered_model_manage_permission("my-model", "admin@example.com", True)
 
         assert result is None
-        # Admin should not need to check can_manage_registered_model
+        # Admin should not need a permission lookup
         mock_can_manage.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_check_model_permission_non_admin_success(self, mock_can_manage):
         """Test successful registered model permission check for non-admin user with permissions."""
         mock_can_manage.return_value = True
@@ -179,7 +179,7 @@ class TestCheckRegisteredModelPermission:
         mock_can_manage.assert_called_once_with("my-model", "user@example.com")
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_check_model_permission_non_admin_denied(self, mock_can_manage):
         """Test registered model permission check when non-admin user lacks permissions."""
         mock_can_manage.return_value = False
@@ -208,7 +208,7 @@ class TestCheckRegisteredModelPermission:
             assert result is None
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_check_model_permission_special_characters(self, mock_can_manage):
         """Test registered model permission check with special characters in model name."""
         mock_can_manage.return_value = True
@@ -219,9 +219,9 @@ class TestCheckRegisteredModelPermission:
         mock_can_manage.assert_called_once_with("model-with-special_chars.123", "user@example.com")
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_check_model_permission_can_manage_exception(self, mock_can_manage):
-        """Test registered model permission check when can_manage_registered_model raises exception."""
+        """Test registered model permission check when the permission lookup raises."""
         mock_can_manage.side_effect = Exception("Model permission check failed")
 
         with pytest.raises(Exception, match="Model permission check failed"):
@@ -237,8 +237,8 @@ class TestDependencyIntegration:
         with (
             patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=True),
             patch(
-                "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-                return_value=True,
+                "mlflow_oidc_auth.dependencies.effective_registry_permission",
+                return_value=MagicMock(permission=MagicMock(can_manage=True)),
             ),
             patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=True),
             patch(
@@ -268,8 +268,8 @@ class TestDependencyIntegration:
                 return_value=False,
             ),
             patch(
-                "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-                return_value=False,
+                "mlflow_oidc_auth.dependencies.effective_registry_permission",
+                return_value=MagicMock(permission=MagicMock(can_manage=False)),
             ),
             patch("mlflow_oidc_auth.dependencies.get_is_admin", return_value=False),
         ):
@@ -313,7 +313,7 @@ class TestDependencyErrorHandling:
                 assert result == "admin@example.com"
 
     @pytest.mark.asyncio
-    @patch("mlflow_oidc_auth.dependencies.can_manage_registered_model")
+    @patch("mlflow_oidc_auth.dependencies._can_manage_registry_target")
     async def test_model_permission_with_empty_strings(self, mock_can_manage):
         """Test registered model permission handling with empty strings."""
         mock_can_manage.return_value = False

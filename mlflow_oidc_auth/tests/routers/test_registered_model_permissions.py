@@ -193,8 +193,8 @@ class TestGetRegisteredModelUsersEndpoint:
     def test_get_registered_model_users_non_admin_without_manage_permission(self, authenticated_client):
         """Non-admin lacking manage rights should be forbidden."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=MagicMock(permission=MagicMock(can_manage=False)),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 
@@ -392,8 +392,8 @@ class TestRegisteredModelPermissionsRouterIntegration:
     def test_model_user_permissions_requires_admin(self, authenticated_client):
         """Test that model user permissions endpoint requires admin privileges."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=MagicMock(permission=MagicMock(can_manage=False)),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/registered-models/test-model/users")
 

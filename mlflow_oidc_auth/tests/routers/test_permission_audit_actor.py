@@ -66,9 +66,9 @@ def test_audit_actor_is_the_caller(client, family, method, event, is_admin):
         patch.object(user_permissions, "store", MagicMock()),
         patch.object(group_permissions, "store", MagicMock()),
         patch("mlflow_oidc_auth.dependencies.can_manage_experiment", return_value=True),
-        patch("mlflow_oidc_auth.dependencies.can_manage_registered_model", return_value=True),
-        patch("mlflow_oidc_auth.dependencies.effective_registered_model_permission", _can_manage),
-        patch("mlflow_oidc_auth.dependencies.effective_prompt_permission", _can_manage),
+        patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=MagicMock(permission=MagicMock(can_manage=True))),
+        patch("mlflow_oidc_auth.dependencies.effective_registry_permission", _can_manage),
+        patch("mlflow_oidc_auth.dependencies.effective_registry_permission", _can_manage),
         patch.object(_permission_routes, "emit_audit_event", audit),
     ):
         kwargs = {} if method == "delete" else {"json": {"permission": "READ"}}

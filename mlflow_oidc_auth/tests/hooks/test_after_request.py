@@ -536,8 +536,8 @@ def test_rename_registered_model_permission(mock_response, mock_store):
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_called_once_with("old_model", "new_model")
-        mock_store.rename_group_model_permissions.assert_called_once_with("old_model", "new_model")
+        # User and group grants move in one call, which also clears grants left on the new name (#479).
+        mock_store.move_registered_model_permissions.assert_called_once_with("old_model", "new_model")
 
 
 def test_rename_registered_model_permission_missing_name(mock_response, mock_store):
@@ -549,8 +549,7 @@ def test_rename_registered_model_permission_missing_name(mock_response, mock_sto
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_missing_new_name(mock_response, mock_store):
@@ -562,8 +561,7 @@ def test_rename_registered_model_permission_missing_new_name(mock_response, mock
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_rename_registered_model_permission_no_json(mock_response, mock_store):
@@ -574,8 +572,7 @@ def test_rename_registered_model_permission_no_json(mock_response, mock_store):
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_filter_search_logged_models_admin(mock_response, mock_bridge):
@@ -875,8 +872,7 @@ def test_rename_registered_model_permission_invalid_json(mock_response, mock_sto
         headers={"Content-Type": "application/json"},
     ):
         _rename_registered_model_permission(mock_response)
-        mock_store.rename_registered_model_permissions.assert_not_called()
-        mock_store.rename_group_model_permissions.assert_not_called()
+        mock_store.move_registered_model_permissions.assert_not_called()
 
 
 def test_set_can_manage_gateway_endpoint_permission(mock_response, mock_store, mock_bridge):

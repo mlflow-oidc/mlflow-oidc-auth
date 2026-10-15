@@ -9,7 +9,8 @@ from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.bridge import get_fastapi_admin_status, get_fastapi_username
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import effective_experiment_permission, effective_registered_model_permission, get_run_experiment_id
+from mlflow_oidc_auth.utils import effective_experiment_permission, get_run_experiment_id
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 
 logger = get_logger()
 
@@ -90,9 +91,9 @@ def _can_read_run(run_id: str, username: str) -> bool:
 
 
 def _can_read_model(model_name: str, username: str) -> bool:
-    """Check READ access to a registered model for a user."""
+    """Check READ access to a registered model for a user, as a prompt when it is one (#479)."""
     logger.debug(f"GraphQL checking READ access to model {model_name} for user {username}")
-    return effective_registered_model_permission(model_name, username).permission.can_read
+    return effective_registry_permission(model_name, username).permission.can_read
 
 
 def _extract_first_filter_value(filter_str: str, key: str) -> Optional[str]:

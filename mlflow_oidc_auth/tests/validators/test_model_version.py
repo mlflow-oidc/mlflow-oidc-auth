@@ -36,7 +36,7 @@ def _create_version(
         patch.object(model_version, "referenced_run", return_value=SimpleNamespace(info=SimpleNamespace(artifact_uri=RUN_ROOT))),
         patch.object(model_version, "referenced_logged_model", return_value=SimpleNamespace(artifact_location=MODEL_ROOT)),
         patch.object(model_version, "_get_model_registry_store", return_value=registry),
-        patch.object(model_version, "effective_registered_model_permission", return_value=MagicMock(permission=source_model_perm)),
+        patch.object(model_version, "effective_registry_permission", return_value=MagicMock(permission=source_model_perm)),
     ):
         result = model_version.validate_can_create_model_version("alice")
         return result, run_check, model_check, experiment_check

@@ -14,6 +14,8 @@ from mlflow_oidc_auth.dependencies import (
     check_prompt_manage_permission,
     check_scorer_manage_permission,
 )
+from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS
 
 # ---------------------------------------------------------------------------
 # check_prompt_manage_permission
@@ -37,22 +39,24 @@ class TestCheckPromptManagePermission:
     async def test_allows_user_with_manage_permission(self) -> None:
         """Non-admin with manage permission should be allowed."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=True,
-        ):
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=PermissionResult(MANAGE, "regex"),
+        ) as effective:
             result = await check_prompt_manage_permission(
                 prompt_name="my-prompt",
                 current_username="user@example.com",
                 is_admin=False,
             )
         assert result is None
+        # Prompts are judged by prompt grants, not the registered-model resolver (#479).
+        effective.assert_called_once_with("my-prompt", "user@example.com")
 
     @pytest.mark.anyio
     async def test_denies_user_without_manage_permission(self) -> None:
         """Non-admin without manage permission should get 403."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=PermissionResult(NO_PERMISSIONS, "regex"),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await check_prompt_manage_permission(

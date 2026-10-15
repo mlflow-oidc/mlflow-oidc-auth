@@ -18,10 +18,17 @@ def _deleg_can_manage_experiment(experiment_id, username):
     return _utils.can_manage_experiment(experiment_id, username)
 
 
-def _deleg_can_manage_registered_model(model_name, username):
-    from mlflow_oidc_auth import utils as _utils
+def _deleg_effective_registry_permission(name, username, **_kind):
+    """The registered-model and prompt gates (#479) follow one test-controlled flag.
 
-    return _utils.can_manage_registered_model(model_name, username)
+    The gates judge a name by its real kind through ``effective_registry_permission``; these router
+    tests control access through ``utils.can_manage_registered_model`` for both kinds.
+    """
+    from mlflow_oidc_auth import utils as _utils
+    from mlflow_oidc_auth.models import PermissionResult
+    from mlflow_oidc_auth.permissions import MANAGE, NO_PERMISSIONS
+
+    return PermissionResult(MANAGE if _utils.can_manage_registered_model(name, username) else NO_PERMISSIONS, "test")
 
 
 def _deleg_can_manage_scorer(experiment_id, scorer_name, username):

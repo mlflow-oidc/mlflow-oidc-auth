@@ -27,6 +27,7 @@ from mlflow_oidc_auth.dependencies import (
     check_group_prompt_manage_permission,
     check_group_registered_model_manage_permission,
     check_registered_model_manage_permission,
+    check_user_prompt_manage_permission,
 )
 from mlflow_oidc_auth.routers import group_permissions, user_permissions
 from mlflow_oidc_auth.routers._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX, USER_PERMISSIONS_ROUTER_PREFIX
@@ -37,6 +38,7 @@ EXPERIMENT = "experiment"  # check_experiment_manage_permission, target experime
 MODEL = "model"  # check_registered_model_manage_permission, target name from the path
 GROUP_MODEL = "group-model"  # check_group_registered_model_manage_permission, target name from the path
 GROUP_PROMPT = "group-prompt"  # check_group_prompt_manage_permission, target prompt_name from the path
+USER_PROMPT = "user-prompt"  # check_user_prompt_manage_permission, target name from the path (#479)
 FILTERED = "filtered"  # a read-only listing any signed-in user may call; filtered by the caller's rights
 SIGNED_IN = "signed-in"  # get_username only (list_groups)
 
@@ -46,6 +48,7 @@ GATES = {
     MODEL: check_registered_model_manage_permission,
     GROUP_MODEL: check_group_registered_model_manage_permission,
     GROUP_PROMPT: check_group_prompt_manage_permission,
+    USER_PROMPT: check_user_prompt_manage_permission,
 }
 
 U = "/{username}"
@@ -65,10 +68,10 @@ USER_ROUTES = {
     ("PATCH", U + "/experiment-patterns/{id}"): ADMIN,
     ("DELETE", U + "/experiment-patterns/{id}"): ADMIN,
     ("GET", U + "/prompts"): FILTERED,
-    ("POST", U + "/prompts/{name:path}"): MODEL,
-    ("GET", U + "/prompts/{name:path}"): MODEL,
-    ("PATCH", U + "/prompts/{name:path}"): MODEL,
-    ("DELETE", U + "/prompts/{name:path}"): MODEL,
+    ("POST", U + "/prompts/{name:path}"): USER_PROMPT,
+    ("GET", U + "/prompts/{name:path}"): USER_PROMPT,
+    ("PATCH", U + "/prompts/{name:path}"): USER_PROMPT,
+    ("DELETE", U + "/prompts/{name:path}"): USER_PROMPT,
     ("GET", U + "/prompts-patterns"): ADMIN,
     ("POST", U + "/prompts-patterns"): ADMIN,
     ("GET", U + "/prompts-patterns/{id}"): ADMIN,
@@ -231,30 +234,34 @@ def test_route_has_its_gate(item):
     assert not unexpected, f"{route.name} has gates the table does not list: {unexpected}"
 
 
+# Every registered-model and prompt grant gate decides through effective_registry_permission, which
+# judges the target by its real kind (#479).
 GROUP_GATES = [
-    (check_group_registered_model_manage_permission, "name", "effective_registered_model_permission"),
-    (check_group_prompt_manage_permission, "prompt_name", "effective_prompt_permission"),
+    (check_group_registered_model_manage_permission, "name"),
+    (check_group_prompt_manage_permission, "prompt_name"),
+    (check_user_prompt_manage_permission, "name"),
 ]
+GATE_IDS = ["model", "prompt", "user-prompt"]
 
 
-@pytest.mark.parametrize("gate, target, resolver", GROUP_GATES, ids=["model", "prompt"])
-async def test_group_gate_refuses_a_non_manager(gate, target, resolver):
+@pytest.mark.parametrize("gate, target", GROUP_GATES, ids=GATE_IDS)
+async def test_group_gate_refuses_a_non_manager(gate, target):
     """A non-admin without MANAGE gets a 403, decided on the route's own resource for that caller."""
     effective = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=False)))
-    with patch.object(dependencies, resolver, effective):
+    with patch.object(dependencies, "effective_registry_permission", effective):
         with pytest.raises(HTTPException) as raised:
             await gate(**{target: "res-a"}, current_username="mallory", is_admin=False)
     assert raised.value.status_code == 403
     assert effective.call_args.args == ("res-a", "mallory")
 
 
-@pytest.mark.parametrize("gate, target, resolver", GROUP_GATES, ids=["model", "prompt"])
-async def test_group_gate_lets_a_manager_and_an_admin_through(gate, target, resolver):
+@pytest.mark.parametrize("gate, target", GROUP_GATES, ids=GATE_IDS)
+async def test_group_gate_lets_a_manager_and_an_admin_through(gate, target):
     effective = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=True)))
-    with patch.object(dependencies, resolver, effective):
+    with patch.object(dependencies, "effective_registry_permission", effective):
         assert await gate(**{target: "res-a"}, current_username="alice", is_admin=False) is None
     refusing = MagicMock(return_value=SimpleNamespace(permission=SimpleNamespace(can_manage=False)))
-    with patch.object(dependencies, resolver, refusing):
+    with patch.object(dependencies, "effective_registry_permission", refusing):
         assert await gate(**{target: "res-a"}, current_username="root", is_admin=True) is None
     refusing.assert_not_called()
 

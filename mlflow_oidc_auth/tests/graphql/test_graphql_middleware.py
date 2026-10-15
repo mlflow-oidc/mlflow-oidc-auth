@@ -228,8 +228,8 @@ def test_search_model_versions_authorized_by_model_name(
     )
     monkeypatch.setattr(
         mw_mod,
-        "effective_registered_model_permission",
-        lambda name, _user: _FakePermissionResult(permission=_FakePermission(can_read=(name == "m1"))),
+        "effective_registry_permission",
+        lambda name, _user, **_kw: _FakePermissionResult(permission=_FakePermission(can_read=(name == "m1"))),
     )
 
     called = {"count": 0}
@@ -303,7 +303,7 @@ def test_search_model_versions_denied_for_complex_filter(
     def _unexpected(*_args: Any, **_kwargs: Any) -> Any:
         raise AssertionError("Unexpected call while parsing complex filter")
 
-    monkeypatch.setattr(mw_mod, "effective_registered_model_permission", _unexpected)
+    monkeypatch.setattr(mw_mod, "effective_registry_permission", _unexpected)
     monkeypatch.setattr(mw_mod, "_get_tracking_store", _unexpected)
 
     called = {"count": 0}
@@ -347,7 +347,7 @@ def _patch_model_versions_permissions(monkeypatch: pytest.MonkeyPatch, readable_
             raise RuntimeError("lookup failed")
         return _FakePermissionResult(permission=_FakePermission(can_read=name in readable_models))
 
-    monkeypatch.setattr(mw_mod, "effective_registered_model_permission", fake_model_permission)
+    monkeypatch.setattr(mw_mod, "effective_registry_permission", fake_model_permission)
     return model_calls
 
 

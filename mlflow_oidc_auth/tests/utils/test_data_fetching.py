@@ -185,29 +185,29 @@ class TestDataFetching(unittest.TestCase):
             self.assertEqual(result[0], mock_exp1)
 
     @patch("mlflow_oidc_auth.utils.data_fetching.fetch_all_registered_models")
-    @patch("mlflow_oidc_auth.utils.data_fetching.can_read_registered_model")
-    def test_fetch_readable_registered_models(self, mock_can_read, mock_fetch_all):
-        """Test fetching registered models filtered by read permissions."""
+    @patch("mlflow_oidc_auth.utils.data_fetching.effective_registry_permission")
+    def test_fetch_readable_registered_models(self, mock_permission, mock_fetch_all):
+        """Test fetching registered models filtered by read permissions, each judged by its kind."""
         with self.app.test_request_context():
-            mock_model1 = MagicMock()
+            mock_model1 = MagicMock(tags={})
             mock_model1.name = "model1"
-            mock_model2 = MagicMock()
+            mock_model2 = MagicMock(tags={"mlflow.prompt.is_prompt": "true"})
             mock_model2.name = "model2"
             mock_fetch_all.return_value = [mock_model1, mock_model2]
 
-            # Mock can_read_registered_model to return True only for "model1"
-            def mock_can_read_side_effect(name, user):
-                return name == "model1"
+            # Readable only for "model1"
+            def side_effect(name, user, prompt):
+                return MagicMock(permission=MagicMock(can_read=name == "model1"))
 
-            mock_can_read.side_effect = mock_can_read_side_effect
+            mock_permission.side_effect = side_effect
 
             result = fetch_readable_registered_models("user")
 
-            # Verify the calls were made correctly
+            # Each model's own tags say whether it is a prompt; no lookup is made.
             mock_fetch_all.assert_called_once()
-            mock_can_read.assert_any_call("model1", "user")
-            mock_can_read.assert_any_call("model2", "user")
-            self.assertEqual(mock_can_read.call_count, 2)
+            mock_permission.assert_any_call("model1", "user", prompt=False)
+            mock_permission.assert_any_call("model2", "user", prompt=True)
+            self.assertEqual(mock_permission.call_count, 2)
 
             # Check result
             self.assertEqual(len(result), 1)
