@@ -133,7 +133,7 @@ def run_filtered_page(
         stack.enter_context(patch(f"{_AR}._get_request_message", return_value=request_message))
         stack.enter_context(patch(f"{_AR}._get_tracking_store", return_value=store))
         stack.enter_context(patch(f"{_AR}._get_model_registry_store", return_value=store))
-        stack.enter_context(patch(f"{_AR}.{can_read_name}", side_effect=lambda _ctx, rid: readable(rid)))
+        stack.enter_context(patch(f"{_AR}.{can_read_name}", side_effect=lambda _ctx, rid, *_kind: readable(rid)))
         stack.enter_context(patch.object(ar.config, "MLFLOW_ENABLE_WORKSPACES", can_access_workspace is not None))
         if can_access_workspace is not None:
             stack.enter_context(patch(f"{_AR}._can_access_workspace", side_effect=can_access_workspace))

@@ -1017,6 +1017,20 @@ class SqlAlchemyStore:
                 get_logger().info("Cleared %d permission rows stored under the name of a newly created resource", cleared)
             return user_repo._grant_in(session, name, username, MANAGE.name)
 
+    def grant_creator_prompt_permission(self, prompt_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created prompt (#479).
+
+        Exact-name grants are shared by prompts and registered models, and a name that does not
+        exist yet is judged as a registered model. A grant written on the name before the prompt
+        existed would otherwise apply to it under model rules; it is removed with the creator's
+        grant written. Registered models keep grants made before they exist.
+
+        Parameters:
+            prompt_name: The prompt name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.registered_model_repo, self.registered_model_group_repo, prompt_name, username)
+
     def grant_creator_gateway_endpoint_permission(self, gateway_name: str, username: str):
         """Make ``username`` the only permission holder of a just-created gateway endpoint.
 
@@ -1870,6 +1884,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_endpoint_permission",
     "update_gateway_endpoint_permission",
     "delete_gateway_endpoint_permission",
+    "grant_creator_prompt_permission",
     "grant_creator_gateway_endpoint_permission",
     "rename_gateway_endpoint_permissions",
     "wipe_gateway_endpoint_permissions",

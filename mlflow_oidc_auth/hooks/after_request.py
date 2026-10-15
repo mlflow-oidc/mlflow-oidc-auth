@@ -67,6 +67,7 @@ from mlflow_oidc_auth.utils.grant_context import (
     GATEWAY_ENDPOINT,
     GATEWAY_MODEL_DEFINITION,
     GATEWAY_SECRET,
+    PROMPT,
     REGISTERED_MODEL,
     GrantContext,
     load_grant_context,
@@ -78,6 +79,7 @@ from mlflow_oidc_auth.validators.experiment import get_active_artifact_experimen
 from mlflow_oidc_auth.validators.review import is_review_queue_member
 from mlflow_oidc_auth.validators.scorers import scorer_has_versions
 from mlflow_oidc_auth.utils.workspace_cache import flush_workspace_cache
+from mlflow_oidc_auth.utils.prompt_kind import is_prompt, is_prompt_tags, remember_kind
 
 # ---------------------------------------------------------------------------
 # Request-scoped grant context and permission memo
@@ -138,9 +140,30 @@ def _can_read_experiment(ctx: GrantContext, experiment_id: str) -> bool:
     return resolve(ctx, EXPERIMENT, str(experiment_id), name=name, resource_workspace=workspace).permission.can_read
 
 
-def _can_read_registered_model(ctx: GrantContext, model_name: str) -> bool:
-    """Whether the context's user can read a registered model."""
-    return resolve(ctx, REGISTERED_MODEL, model_name).permission.can_read
+def _can_read_registered_model(ctx: GrantContext, model_name: str, prompt: bool | None = None) -> bool:
+    """Whether the context's user can read a registered model, resolved as a prompt when it is one.
+
+    Parameters:
+        ctx: The request's grant context.
+        model_name: The registered model's name.
+        prompt: Its kind when the row says so; looked up (once per name per request) otherwise.
+
+    Returns:
+        True when the user can read it. False when its kind cannot be determined (#479).
+    """
+    if prompt is None:
+        try:
+            prompt = is_prompt(model_name)
+        except MlflowException:
+            return False
+    return resolve(ctx, PROMPT if prompt else REGISTERED_MODEL, model_name).permission.can_read
+
+
+def _can_read_registered_model_row(ctx: GrantContext, rm: Any) -> bool:
+    """A search row of a registered model, whose tags say whether it is a prompt."""
+    prompt = is_prompt_tags(rm.tags)
+    remember_kind(rm.name, prompt)
+    return _can_read_registered_model(ctx, rm.name, prompt)
 
 
 def _can_read_gateway_endpoint(ctx: GrantContext, gateway_name: str) -> bool:
@@ -176,6 +199,10 @@ def _set_can_manage_registered_model_permission(resp: Response):
     parse_dict(resp.json, response_message)
     name = response_message.registered_model.name
     username = get_fastapi_username()
+    if is_prompt_tags(response_message.registered_model.tags):
+        # A new prompt starts with only its creator's grant (#479).
+        store.grant_creator_prompt_permission(name, username)
+        return
     store.create_registered_model_permission(name, username, MANAGE.name)
 
 
@@ -366,7 +393,7 @@ def _filter_search_registered_models(resp: Response):
 
     # Filter out unreadable models from the current response page.
     for rm in list(response_message.registered_models):
-        if not _can_read_registered_model(ctx, rm.name):
+        if not _can_read_registered_model_row(ctx, rm):
             response_message.registered_models.remove(rm)
 
     # Re-fetch to fill max_results, preserving MLflow pagination semantics.
@@ -381,7 +408,7 @@ def _filter_search_registered_models(resp: Response):
             order_by=request_message.order_by,
             page_token=token,
         ),
-        keep=lambda rm: _can_read_registered_model(ctx, rm.name),
+        keep=lambda rm: _can_read_registered_model_row(ctx, rm),
     )
 
     resp.data = message_to_json(response_message)

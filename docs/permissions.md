@@ -26,7 +26,7 @@ The permission system covers these MLflow resource types:
 |----------|-----------------|-------|
 | Experiments | Per experiment ID | Includes runs within the experiment |
 | Registered Models | Per model name | Includes model versions |
-| Prompts | Per prompt name | Uses the model permission infrastructure |
+| Prompts | Per prompt name | Exact-name grants are shared with registered models; patterns are the prompt patterns. Every MLflow prompt call is judged this way. See [Prompts](#prompts) |
 | Scorers | Per experiment + scorer name | Compound key. A scorer with no grant of its own inherits its experiment's permission (and so, in turn, the workspace permission or `DEFAULT_MLFLOW_PERMISSION`) |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions. Creating a job needs EDIT on the experiment and on the prompt in `source_prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`; the job registers a new version of it), and READ on every experiment linked to `config.dataset_id` when one is given |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
@@ -122,6 +122,28 @@ decide which of several equally ranked patterns is reported in the debug log.
 Before issue #459, a tie between resource patterns went to whichever pattern the database returned
 first, so the result could vary. To make one pattern win regardless of rank, give it a lower priority
 number.
+
+### Prompts
+
+MLflow stores a prompt as a registered model tagged `mlflow.prompt.is_prompt = "true"`, and its
+versions as model versions, so every prompt call is a registered-model or model-version request.
+The plugin decides it with the grants of the target's kind:
+
+| | A registered model | A prompt |
+|---|---|---|
+| Exact-name grants (user, group) | shared | shared |
+| Patterns (user, group) | model patterns | prompt patterns |
+
+This applies to every registry call (get, update, rename, tags, aliases, delete, model versions,
+`models:/` copy sources), to search results, to GraphQL, and to the prompt grant APIs. A prompt-pattern
+`NO_PERMISSIONS` therefore denies a prompt even when a model pattern grants it, and a model pattern
+alone gives nothing on a prompt. The kind is read from MLflow, at most once per name per request: a
+search result row carries its own tags; on a create, the request's tags decide (as in MLflow). A
+name MLflow does not know is treated as a registered model. If the kind cannot be read for any other
+reason, the request is denied.
+
+Before #479, MLflow's prompt calls were judged with model patterns, and prompt patterns only applied
+to the group prompt grant APIs, the prompt lists and prompt optimization jobs.
 
 ### Pattern Examples
 

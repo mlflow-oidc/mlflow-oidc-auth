@@ -462,6 +462,17 @@ def _permission_new_registered_model_sources_config(model_name: str, username: s
     }
 
 
+def _permission_new_prompt_sources_config(prompt_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "regex": lambda prompt_name=prompt_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), prompt_name, "prompt name"),
+        "group-regex": lambda prompt_name=prompt_name, user=username: _match_regex_permission(
+            store.list_group_prompt_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+            prompt_name,
+            "prompt name",
+        ),
+    }
+
+
 def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
     """Resolve the permission for creating an experiment with ``experiment_name``.
 
@@ -479,6 +490,15 @@ def effective_new_registered_model_permission(model_name: str, user: str) -> Per
     permission (workspaces on) or the global default (workspaces off).
     """
     result = get_permission_from_store_or_default(_permission_new_registered_model_sources_config(model_name, user))
+    return _apply_workspace_fallback(result, user)
+
+
+def effective_new_prompt_permission(prompt_name: str, user: str) -> PermissionResult:
+    """Resolve the permission for creating a prompt named ``prompt_name``.
+
+    As :func:`effective_new_registered_model_permission`, with the prompt patterns (#479).
+    """
+    result = get_permission_from_store_or_default(_permission_new_prompt_sources_config(prompt_name, user))
     return _apply_workspace_fallback(result, user)
 
 

@@ -15,6 +15,7 @@ from mlflow.server.handlers import _get_tracking_store
 from mlflow_oidc_auth.dependencies import (
     check_experiment_manage_permission,
     check_registered_model_manage_permission,
+    check_user_prompt_manage_permission,
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -322,7 +323,7 @@ exact_routes(
     "user prompt permissions",
     USER_PROMPT_PERMISSION_DETAIL,
     keys=(("name", "The prompt name to {purpose} permissions for"),),
-    auth=(("current_username", check_registered_model_manage_permission),),
+    auth=(("current_username", check_user_prompt_manage_permission),),
     body=PromptPermission,
     call={
         "create": lambda a: store.create_registered_model_permission(name=a.name, username=a.username, permission=a.permission_data.permission),

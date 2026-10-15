@@ -1,7 +1,7 @@
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
 from mlflow_oidc_auth.utils import (
-    effective_registered_model_permission,
+    effective_new_prompt_permission,
     effective_new_registered_model_permission,
     effective_experiment_permission,
     get_model_names,
@@ -10,11 +10,13 @@ from mlflow_oidc_auth.utils import (
 )
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.utils.prompt_kind import KIND_TAG_KEY, effective_registry_permission, request_creates_prompt
+
 
 def _get_permission_from_registered_model_name(username: str) -> Permission:
     # Every model the request names, in any source (issue #285): a caller holds a
-    # capability only if it holds it on all of them.
-    return intersect_permissions(effective_registered_model_permission(name, username).permission for name in get_model_names())
+    # capability only if it holds it on all of them. A prompt is judged by prompt grants (#479).
+    return intersect_permissions(effective_registry_permission(name, username).permission for name in get_model_names())
 
 
 def _permission_for_logged_model(model_id: str, username: str) -> Permission:
@@ -59,6 +61,32 @@ def validate_can_delete_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_delete
 
 
+def _writes_kind_tag() -> bool:
+    """Whether a tag write names ``mlflow.prompt.is_prompt``, in any request source (#285).
+
+    Compared ignoring case and surrounding whitespace: MySQL and SQL Server compare tag keys that
+    way, so another spelling of the key would still reach the stored kind tag.
+    """
+    from mlflow_oidc_auth.utils import all_source_values
+
+    wanted = KIND_TAG_KEY.casefold()
+    return any(str(key).strip().casefold() == wanted for key in all_source_values("key"))
+
+
+def validate_can_set_registered_model_tag(username: str) -> bool:
+    """Set or delete a registered model's (or model version's) tag: UPDATE, and never the kind tag.
+
+    Whether a registered model is a prompt decides which patterns judge it (#479), so changing
+    ``mlflow.prompt.is_prompt`` would move it under the other kind's grants. Only an admin may.
+    """
+    return not _writes_kind_tag() and validate_can_update_registered_model(username)
+
+
+def validate_can_delete_registered_model_tag(username: str) -> bool:
+    """Delete a model version's tag (DELETE, as before), and never the kind tag (#479)."""
+    return not _writes_kind_tag() and validate_can_delete_registered_model(username)
+
+
 def validate_can_manage_registered_model(username: str) -> bool:
     return _get_permission_from_registered_model_name(username).can_manage
 
@@ -93,8 +121,10 @@ def validate_can_create_registered_model(username: str) -> bool:
     """Authorize CreateRegisteredModel when RESTRICT_RESOURCE_CREATION is enabled.
 
     No-op (allow) unless the flag is set. When set, the user needs EDIT+ for the
-    new model name, resolved from name regex / group-regex with a workspace fallback.
+    new model name, resolved from name regex / group-regex with a workspace fallback. A request
+    that creates a prompt (its tags say so, as MLflow decides) uses the prompt patterns (#479).
     """
     if not config.RESTRICT_RESOURCE_CREATION:
         return True
-    return all(effective_new_registered_model_permission(name, username).permission.can_update for name in get_model_names())
+    resolve = effective_new_prompt_permission if request_creates_prompt() else effective_new_registered_model_permission
+    return all(resolve(name, username).permission.can_update for name in get_model_names())

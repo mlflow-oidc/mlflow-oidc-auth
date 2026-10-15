@@ -20,6 +20,7 @@ from mlflow_oidc_auth.dependencies import (
     check_group_registered_model_manage_permission,
 )
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 from mlflow_oidc_auth.models.responses import GroupDetail
 from mlflow_oidc_auth.models import (
     CreateGroupRequest,
@@ -50,8 +51,6 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
 from mlflow_oidc_auth.utils import (
     effective_experiment_permission,
-    effective_prompt_permission,
-    effective_registered_model_permission,
     get_is_admin,
     get_username,
 )
@@ -488,7 +487,8 @@ async def get_group_registered_models(
 
         items: List[GroupNamedPermissionItem] = []
         for model in group_models:
-            can_manage = is_admin or effective_registered_model_permission(model.name, current_username).permission.can_manage
+            # A grant row names a model or a prompt; judge it by the target's real kind (#479).
+            can_manage = is_admin or effective_registry_permission(model.name, current_username).permission.can_manage
             if not can_manage:
                 continue
 
@@ -561,7 +561,8 @@ async def get_group_prompts(
         # For admins: show all group prompts
         items: List[GroupNamedPermissionItem] = []
         for prompt in group_prompts:
-            can_manage = is_admin or effective_prompt_permission(prompt.name, current_username).permission.can_manage
+            # A grant row names a model or a prompt; judge it by the target's real kind (#479).
+            can_manage = is_admin or effective_registry_permission(prompt.name, current_username).permission.can_manage
             if not can_manage:
                 continue
 

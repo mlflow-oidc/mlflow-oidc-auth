@@ -131,15 +131,25 @@ def batch_resolve_experiment_permissions(username: str, experiments: List) -> Di
 def batch_resolve_model_permissions(username: str, models: List) -> Dict[str, PermissionResult]:
     """Resolve permissions for multiple registered models in batch.
 
+    A registry listing returns prompts too (they are registered models). Each row is judged by its
+    own kind, read from its tags, so a prompt is never resolved with model patterns (#479).
+
     Parameters:
         username: The user to resolve permissions for.
-        models: List of model objects with .name attribute.
+        models: List of model objects with .name (and, from the registry, .tags) attributes.
 
     Returns:
         Dict mapping model_name to PermissionResult.
     """
+    from mlflow_oidc_auth.utils.prompt_kind import is_prompt_tags
+
     ctx = build_user_permission_context(username)
-    return {model.name: resolve_model_permission_from_context(ctx, model.name) for model in models}
+    return {
+        model.name: (resolve_prompt_permission_from_context if is_prompt_tags(getattr(model, "tags", None)) else resolve_model_permission_from_context)(
+            ctx, model.name
+        )
+        for model in models
+    }
 
 
 def batch_resolve_prompt_permissions(username: str, prompts: List) -> Dict[str, PermissionResult]:

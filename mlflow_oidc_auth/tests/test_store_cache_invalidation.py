@@ -344,6 +344,7 @@ class TestComprehensiveCUDCoverage:
             "create_gateway_endpoint_permission": ("gw1", "user1", "READ"),
             "update_gateway_endpoint_permission": ("gw1", "user1", "MANAGE"),
             "delete_gateway_endpoint_permission": ("gw1", "user1"),
+            "grant_creator_prompt_permission": ("prompt1", "user1"),
             "grant_creator_gateway_endpoint_permission": ("gw1", "user1"),
             "grant_creator_gateway_secret_permission": ("gw1", "user1"),
             "grant_creator_gateway_model_definition_permission": ("gw1", "user1"),
