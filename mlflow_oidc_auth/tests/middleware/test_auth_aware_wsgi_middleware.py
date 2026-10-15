@@ -351,3 +351,103 @@ class TestAuthAwareWSGIMiddleware:
         assert captured_environ["mlflow_oidc_auth"].username == "integration@example.com"
         assert captured_environ["mlflow_oidc_auth"].is_admin is True
         assert captured_environ["mlflow_oidc_auth"].workspace == "test-ws"
+
+
+class TestWSGIBridgeConcurrency:
+    """The bridge must not run all Flask requests of a process on one thread."""
+
+    @staticmethod
+    def _scope(path):
+        return {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [],
+            "server": ("testserver", 80),
+            "client": ("testclient", 1234),
+        }
+
+    @staticmethod
+    async def _call(middleware, path):
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        await middleware(TestWSGIBridgeConcurrency._scope(path), receive, send)
+        return sent
+
+    async def test_slow_request_does_not_block_another(self):
+        """A request that blocks its thread must not delay a second request on the same middleware.
+
+        asgiref's stock WsgiToAsgi runs every call on one shared thread, so the fast request
+        below would wait for the slow one to finish.
+        """
+        import asyncio
+        import threading
+
+        slow_started = threading.Event()
+        release_slow = threading.Event()
+
+        def app(environ, start_response):
+            if environ["PATH_INFO"] == "/slow":
+                slow_started.set()
+                release_slow.wait(timeout=10)
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [environ["PATH_INFO"].encode()]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+        slow = asyncio.create_task(self._call(middleware, "/slow"))
+        fast = None
+        try:
+            assert await asyncio.to_thread(slow_started.wait, 5)
+            fast = asyncio.create_task(self._call(middleware, "/fast"))
+            # Wait without cancelling: a cancelled call can stay queued on asgiref's shared thread.
+            done, _ = await asyncio.wait({fast}, timeout=5)
+            fast_finished_first = fast in done
+        finally:
+            release_slow.set()
+        slow_sent, fast_sent = await asyncio.gather(slow, fast)
+        assert fast_finished_first, "the fast request waited for the slow one: the bridge ran them one at a time"
+        assert fast_sent[0]["status"] == 200
+        assert b"".join(m.get("body", b"") for m in fast_sent if m["type"] == "http.response.body") == b"/fast"
+        assert slow_sent[0]["status"] == 200
+
+    async def test_auth_context_reaches_each_concurrent_request(self):
+        """Concurrent requests each see their own AuthContext, never another request's."""
+        import asyncio
+
+        seen = {}
+
+        def app(environ, start_response):
+            ctx = environ.get("mlflow_oidc_auth")
+            seen[environ["PATH_INFO"]] = ctx.username if ctx else None
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+
+        async def call_as(user):
+            scope = self._scope(f"/{user}")
+            scope["mlflow_oidc_auth"] = AuthContext(username=f"{user}@example.com", is_admin=False)
+
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(message):
+                pass
+
+            await middleware(scope, receive, send)
+
+        users = [f"user{i}" for i in range(20)]
+        await asyncio.gather(*(call_as(u) for u in users))
+        assert seen == {f"/{u}": f"{u}@example.com" for u in users}
