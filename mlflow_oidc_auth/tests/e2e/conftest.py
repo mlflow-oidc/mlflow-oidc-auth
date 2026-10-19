@@ -39,8 +39,9 @@ import subprocess
 import sys
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Iterator, List
+from typing import Callable, Dict, Iterator, List
 
 import httpx2 as httpx
 import pytest
@@ -50,6 +51,7 @@ from mlflow_oidc_auth.tests.e2e.harness import (
     DEFAULT_KEYCLOAK_PUBLIC_CLIENT_URL,
     DEFAULT_KEYCLOAK_URL,
     REALM,
+    WORKSPACES_OIDC_CLIENT_ID,
     AppServer,
     AuthDatabase,
     Keycloak,
@@ -57,6 +59,7 @@ from mlflow_oidc_auth.tests.e2e.harness import (
     server_env,
     truthy,
     keycloak_verify,
+    workspaces_server_env,
 )
 
 
@@ -104,8 +107,8 @@ def public_keycloak(keycloak: Keycloak) -> Keycloak:
     return keycloak
 
 
-@pytest.fixture(scope="session")
-def auth_db(tmp_path_factory) -> Iterator[AuthDatabase]:
+@contextmanager
+def _auth_database(tmp_path_factory) -> Iterator[AuthDatabase]:
     base = os.environ.get("MLFLOW_OIDC_E2E_DB_URI")
     if not base:
         path = tmp_path_factory.mktemp("authdb") / "auth.db"
@@ -134,25 +137,39 @@ def auth_db(tmp_path_factory) -> Iterator[AuthDatabase]:
         drop()
 
 
+@pytest.fixture(scope="session")
+def auth_db(tmp_path_factory) -> Iterator[AuthDatabase]:
+    with _auth_database(tmp_path_factory) as database:
+        yield database
+
+
 def _run(cmd: List[str], env: Dict[str, str], cwd: Path) -> None:
     result = subprocess.run(cmd, env=env, cwd=cwd, capture_output=True, text=True, timeout=180)
     if result.returncode != 0:
         pytest.fail(f"{' '.join(cmd[:4])} failed ({result.returncode}):\n{result.stdout[-4000:]}\n{result.stderr[-4000:]}", pytrace=False)
 
 
-@pytest.fixture(scope="session")
-def app_server(keycloak: Keycloak, auth_db: AuthDatabase, tmp_path_factory) -> Iterator[AppServer]:
-    workdir = tmp_path_factory.mktemp("app")
+@contextmanager
+def _serve(
+    name: str,
+    keycloak: Keycloak,
+    auth_db: AuthDatabase,
+    tmp_path_factory,
+    point_clients_at: Callable[[str], None],
+    build_env: Callable[..., Dict[str, str]],
+) -> Iterator[AppServer]:
+    """Run the app as ``mlflow server`` until the context exits; its log is ``<name>.log``."""
+    workdir = tmp_path_factory.mktemp(name)
     log_dir = Path(os.environ.get("MLFLOW_OIDC_E2E_LOG_DIR") or workdir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / "app-server.log"
+    log_path = log_dir / f"{name}.log"
 
     port = free_port()
     app_url = f"http://127.0.0.1:{port}"
-    keycloak.point_clients_at(app_url)
+    point_clients_at(app_url)
 
     secret_key = secrets.token_hex(32)
-    env = server_env(app_url=app_url, secret_key=secret_key, db_uri=auth_db.uri, keycloak=keycloak)
+    env = build_env(app_url=app_url, secret_key=secret_key, db_uri=auth_db.uri, keycloak=keycloak)
     default_workers = "1" if auth_db.dialect == "sqlite" else "4"
     workers = int(os.environ.get("MLFLOW_OIDC_E2E_WORKERS") or default_workers)
 
@@ -218,12 +235,42 @@ def app_server(keycloak: Keycloak, auth_db: AuthDatabase, tmp_path_factory) -> I
         log_file.close()
 
 
+@pytest.fixture(scope="session")
+def app_server(keycloak: Keycloak, auth_db: AuthDatabase, tmp_path_factory) -> Iterator[AppServer]:
+    with _serve("app-server", keycloak, auth_db, tmp_path_factory, keycloak.point_clients_at, server_env) as server:
+        yield server
+
+
+@pytest.fixture(scope="session")
+def workspaces_app_server(keycloak: Keycloak, tmp_path_factory) -> Iterator[AppServer]:
+    """A second app with ``MLFLOW_ENABLE_WORKSPACES=true`` and full-path groups (#466), on its own database.
+
+    Separate from ``app_server`` so that one keeps the default deployment: workspaces off.
+    """
+    if not keycloak.has_client(WORKSPACES_OIDC_CLIENT_ID):
+        _unavailable(
+            f"Keycloak realm '{REALM}' has no '{WORKSPACES_OIDC_CLIENT_ID}' client; re-import "
+            'scripts/e2e/keycloak/realm-mlflow-e2e.json — see docs/development.md, "End-to-end identity tests".'
+        )
+
+    def point_clients_at(app_url: str) -> None:
+        keycloak.point_oidc_client_at(WORKSPACES_OIDC_CLIENT_ID, app_url)
+
+    with _auth_database(tmp_path_factory) as database:
+        with _serve("workspaces-app-server", keycloak, database, tmp_path_factory, point_clients_at, workspaces_server_env) as server:
+            yield server
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Attach the app server's log tail to every failing e2e test."""
     outcome = yield
     report = outcome.get_result()
-    if report.failed and "app_server" in getattr(item, "fixturenames", ()):
-        server = item.funcargs.get("app_server") if hasattr(item, "funcargs") else None
+    if not report.failed:
+        return
+    for name in ("app_server", "workspaces_app_server"):
+        if name not in getattr(item, "fixturenames", ()):
+            continue
+        server = item.funcargs.get(name) if hasattr(item, "funcargs") else None
         if isinstance(server, AppServer):
-            report.sections.append(("app server log (tail)", server.tail()))
+            report.sections.append((f"{name.replace('_', ' ')} log (tail)", server.tail()))
