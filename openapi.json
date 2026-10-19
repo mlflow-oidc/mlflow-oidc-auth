@@ -17933,17 +17933,6 @@
         "operationId": "delete_workspace_group_permission_api_3_0_mlflow_permissions_workspaces__workspace__groups__group_name__delete",
         "parameters": [
           {
-            "description": "The workspace name",
-            "in": "path",
-            "name": "workspace",
-            "required": true,
-            "schema": {
-              "description": "The workspace name",
-              "title": "Workspace",
-              "type": "string"
-            }
-          },
-          {
             "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
             "in": "path",
             "name": "group_name",
@@ -17952,6 +17941,17 @@
               "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
               "minLength": 1,
               "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace name",
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "description": "The workspace name",
+              "title": "Workspace",
               "type": "string"
             }
           }
@@ -17987,17 +17987,6 @@
         "operationId": "update_workspace_group_permission_api_3_0_mlflow_permissions_workspaces__workspace__groups__group_name__patch",
         "parameters": [
           {
-            "description": "The workspace name",
-            "in": "path",
-            "name": "workspace",
-            "required": true,
-            "schema": {
-              "description": "The workspace name",
-              "title": "Workspace",
-              "type": "string"
-            }
-          },
-          {
             "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
             "in": "path",
             "name": "group_name",
@@ -18006,6 +17995,17 @@
               "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
               "minLength": 1,
               "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The workspace name",
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "description": "The workspace name",
+              "title": "Workspace",
               "type": "string"
             }
           }

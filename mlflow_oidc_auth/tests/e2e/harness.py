@@ -479,7 +479,7 @@ def workspaces_server_env(*, app_url: str, secret_key: str, db_uri: str, keycloa
     names with a "/" reach the workspace permission routes the way they do in production (#466).
     """
     env = server_env(app_url=app_url, secret_key=secret_key, db_uri=db_uri, keycloak=keycloak)
-    del env["OIDC_CLIENT_SECRET_KEYCLOAK_NAMED"]
+    env.pop("OIDC_CLIENT_SECRET_KEYCLOAK_NAMED", None)
     env.update(
         {
             "AUTH_PROVIDERS": json.dumps(

@@ -120,6 +120,7 @@ class TestGroupRouteSlashNames:
         response = getattr(client, method)(self._url(""), **kwargs)
 
         assert response.status_code == 422
+        assert [error["loc"] for error in response.json()["detail"]] == [["path", "group_name"]]
         mock_store.update_workspace_group_permission.assert_not_called()
         mock_store.delete_workspace_group_permission.assert_not_called()
 

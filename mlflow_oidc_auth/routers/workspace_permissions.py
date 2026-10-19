@@ -7,7 +7,7 @@ Per D-04: MANAGE users can grant up to and including MANAGE.
 Per D-13/D-14: User permission CUD invalidates workspace cache in router layer.
 """
 
-from typing import List
+from typing import Annotated, List
 
 from fastapi import APIRouter, Depends, Path, Response
 
@@ -44,11 +44,13 @@ workspace_permissions_router = APIRouter(
 WORKSPACE_USERS = "/{workspace}/users"
 WORKSPACE_GROUPS = "/{workspace}/groups"
 WORKSPACE_USER = "/{workspace}/users/{username}"
+# ``:path`` because IdP group names may contain "/" (Keycloak sends full paths such as "/data-science", #466).
+# It takes the rest of the URL, so no route can be added beneath a workspace group: ".../groups/x/members"
+# would arrive here as group "x/members".
 WORKSPACE_GROUP = "/{workspace}/groups/{group_name:path}"
 
-# ``:path`` because IdP group names may contain "/" (Keycloak sends full paths such as "/data-science", #466).
-# ``min_length=1`` keeps a trailing-slash ``/groups/`` from reaching the handlers with an empty name.
-GROUP_NAME_PATH_DESCRIPTION = "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F"
+# ``min_length=1``: ``:path`` also matches an empty tail, which a trailing-slash ``/groups/`` would send here.
+GroupNamePath = Annotated[str, Path(min_length=1, description="The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F")]
 
 
 @workspace_permissions_router.get(
@@ -187,8 +189,8 @@ async def update_workspace_user_permission(
 )
 async def update_workspace_group_permission(
     body: WorkspaceGroupPermissionRequest,
+    group_name: GroupNamePath,
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., min_length=1, description=GROUP_NAME_PATH_DESCRIPTION),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceGroupPermissionResponse:
     """Update a group's permission on a workspace."""
@@ -238,8 +240,8 @@ async def delete_workspace_user_permission(
     summary="Delete group permission for a workspace",
 )
 async def delete_workspace_group_permission(
+    group_name: GroupNamePath,
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., min_length=1, description=GROUP_NAME_PATH_DESCRIPTION),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Remove a group's permission from a workspace."""

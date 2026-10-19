@@ -51,9 +51,14 @@ def test_a_keycloak_group_path_grant_can_be_updated_and_removed(workspaces_app_s
     assert created.status_code == 201, created.text
     assert _group_grants(app, root)[GROUP] == "READ"
 
-    # A member of the group holds READ through it, not MANAGE: the route is reached, and refuses her.
-    assert _call(app, "PATCH", WORKSPACE_GROUP, alice, json={"group_name": GROUP, "permission": "MANAGE"}).status_code == 403
-    assert _call(app, "DELETE", WORKSPACE_GROUP, alice).status_code == 403
+    # A member of the group holds READ through it, not MANAGE: the route is reached, and its MANAGE
+    # check refuses her. Asserted on the detail, since an unmatched path is refused by default too.
+    for refused in (
+        _call(app, "PATCH", WORKSPACE_GROUP, alice, json={"group_name": GROUP, "permission": "MANAGE"}),
+        _call(app, "DELETE", WORKSPACE_GROUP, alice),
+    ):
+        assert refused.status_code == 403, refused.text
+        assert refused.json()["detail"] == f"MANAGE permission required on workspace '{WORKSPACE}'"
     assert _group_grants(app, root)[GROUP] == "READ"
 
     updated = _call(app, "PATCH", WORKSPACE_GROUP, root, json={"group_name": GROUP, "permission": "EDIT"})
