@@ -122,6 +122,7 @@ const adminUser: UserDetails = {
   is_service_account: false,
   active: true,
   managed_by: "manual",
+  service_account_source: null,
 };
 
 const scimUser: UserDetails = {
@@ -131,6 +132,7 @@ const scimUser: UserDetails = {
   is_service_account: false,
   active: true,
   managed_by: "scim",
+  service_account_source: null,
 };
 
 const inactiveUser: UserDetails = {
@@ -140,6 +142,7 @@ const inactiveUser: UserDetails = {
   is_service_account: false,
   active: false,
   managed_by: "oidc:okta-prod",
+  service_account_source: null,
 };
 
 const inactiveScimUser: UserDetails = {
@@ -149,6 +152,7 @@ const inactiveScimUser: UserDetails = {
   is_service_account: false,
   active: false,
   managed_by: "scim",
+  service_account_source: null,
 };
 
 function LocationDisplay() {

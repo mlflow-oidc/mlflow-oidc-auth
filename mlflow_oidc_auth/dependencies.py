@@ -9,11 +9,11 @@ from fastapi import Depends, Request, HTTPException, Path
 
 from mlflow_oidc_auth.utils import (
     can_manage_experiment,
-    can_manage_registered_model,
     can_manage_scorer,
     get_is_admin,
     get_username,
 )
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 from mlflow_oidc_auth.entities.auth_context import AUTH_METHOD_BEARER, AUTH_METHOD_SESSION
 from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
@@ -119,32 +119,59 @@ async def check_experiment_manage_permission(
     return None
 
 
+def _can_manage_registry_target(name: str, username: str) -> bool:
+    """MANAGE on a registered model or prompt, judged by the target's real kind (#479).
+
+    The registered-model and prompt grant routes write the same exact-name grant table, so a gate
+    that judged by the route's kind could be used to grant on a target of the other kind.
+
+    Parameters:
+        name: The registered model or prompt.
+        username: The caller.
+
+    Returns:
+        True when the caller holds MANAGE on it.
+    """
+    return effective_registry_permission(name, username).permission.can_manage
+
+
+def _require_registry_manage(name: str, username: str, is_admin: bool, detail: str) -> None:
+    """The decision every registered-model and prompt grant gate makes: an admin, or MANAGE.
+
+    The gates below differ only in their path parameter and 403 text; this keeps the decision
+    itself in one place.
+
+    Parameters:
+        name: The registered model or prompt, from the route path.
+        username: The caller.
+        is_admin: Whether the caller is an admin.
+        detail: The 403 message.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage ``name``.
+    """
+    if not is_admin and not _can_manage_registry_target(name, username):
+        raise HTTPException(status_code=403, detail=detail)
+
+
 async def check_registered_model_manage_permission(
     name: str = Path(..., description="Registered model or prompt name"),
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
 ) -> None:
-    """
-    Check if the current user can manage the specified registered model.
+    """Gate of the user registered-model grant routes: an admin, or MANAGE on the target.
 
-    This dependency checks if the authenticated user is an admin or has
-    manage permissions for the specified registered model.
+    Judged by the target's real kind, like every registered-model and prompt grant gate (#479).
 
     Parameters:
-    -----------
-    model_name : str
-        The name of the registered model to check permissions for.
-    request : Request
-        The FastAPI request object.
+        name: The registered model or prompt, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
 
-    Returns:
-    --------
-    None
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the target.
     """
-    if not is_admin and not can_manage_registered_model(name, current_username):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {name}")
-
-    return None
+    _require_registry_manage(name, current_username, is_admin, f"Insufficient permissions to manage {name}")
 
 
 async def check_prompt_manage_permission(
@@ -152,16 +179,81 @@ async def check_prompt_manage_permission(
     current_username: str = Depends(get_username),
     is_admin: bool = Depends(get_is_admin),
 ) -> None:
-    """Check if the current user can manage the specified prompt.
+    """Gate of the prompt permission routes: an admin, or MANAGE on the prompt.
 
-    This mirrors registered model checks because prompts are stored as registered models
-    in the system. Users with admin rights or explicit manage permission can proceed.
+    Judged by the target's real kind, like every registered-model and prompt grant gate (#479).
+
+    Parameters:
+        prompt_name: The prompt, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the prompt.
     """
+    _require_registry_manage(prompt_name, current_username, is_admin, f"Insufficient permissions to manage {prompt_name}")
 
-    if not is_admin and not can_manage_registered_model(prompt_name, current_username):
-        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage {prompt_name}")
 
-    return None
+async def check_user_prompt_manage_permission(
+    # Same text as check_registered_model_manage_permission, which gated these routes before: the
+    # last declaration of a path parameter is the one FastAPI documents.
+    name: str = Path(..., description="Registered model or prompt name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Gate of the user prompt grant routes: an admin, or MANAGE on the prompt.
+
+    Judged by the target's real kind, like every registered-model and prompt grant gate (#479).
+
+    Parameters:
+        name: The prompt, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the prompt.
+    """
+    _require_registry_manage(name, current_username, is_admin, f"Insufficient permissions to manage {name}")
+
+
+async def check_group_registered_model_manage_permission(
+    name: str = Path(..., description="Registered model name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Gate of the group registered-model grant routes: an admin, or MANAGE on the model.
+
+    Judged by the target's real kind, like every registered-model and prompt grant gate (#479).
+
+    Parameters:
+        name: The registered model, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the model.
+    """
+    _require_registry_manage(name, current_username, is_admin, f"Insufficient permissions to manage registered model {name}")
+
+
+async def check_group_prompt_manage_permission(
+    prompt_name: str = Path(..., description="Prompt name"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> None:
+    """Gate of the group prompt grant routes: an admin, or MANAGE on the prompt.
+
+    Judged by the target's real kind, like every registered-model and prompt grant gate (#479).
+
+    Parameters:
+        prompt_name: The prompt, from the route path.
+        current_username: The caller.
+        is_admin: Whether the caller is an admin.
+
+    Raises:
+        HTTPException: 403 if the caller is not an admin and cannot manage the prompt.
+    """
+    _require_registry_manage(prompt_name, current_username, is_admin, f"Insufficient permissions to manage prompt {prompt_name}")
 
 
 async def check_gateway_endpoint_manage_permission(

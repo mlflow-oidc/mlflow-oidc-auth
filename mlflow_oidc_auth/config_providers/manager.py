@@ -267,6 +267,33 @@ class ConfigManager:
         except (ValueError, TypeError):
             return default
 
+    def get_positive_int(self, key: str, default: int) -> int:
+        """Get a configuration value that must be a positive integer.
+
+        Unlike :meth:`get_int`, an invalid value is not silently replaced: a value that is not
+        an integer, or is zero or negative, logs a warning naming the setting and returns
+        ``default``.
+
+        Parameters:
+            key: The configuration key.
+            default: Value to return if not set or invalid.
+
+        Returns:
+            The positive integer value.
+        """
+        raw = self.get(key)
+        if raw is None or raw == "":
+            return default
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = None
+        if value is None or value <= 0:
+            # The value is never echoed: the same lookup also serves secrets from the configured providers.
+            logger.warning("%s must be a positive integer; ignoring the configured value and using %d.", key, default)
+            return default
+        return value
+
     def get_list(self, key: str, default: list | None = None, separator: str = ",") -> list[str]:
         """Get a list configuration value.
 

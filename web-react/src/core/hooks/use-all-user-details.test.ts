@@ -19,6 +19,7 @@ const mockUsers: UserDetails[] = [
     is_service_account: false,
     active: true,
     managed_by: "manual",
+    service_account_source: null,
   },
   {
     username: "bob@example.com",
@@ -27,6 +28,7 @@ const mockUsers: UserDetails[] = [
     is_service_account: false,
     active: false,
     managed_by: "scim",
+    service_account_source: null,
   },
 ];
 

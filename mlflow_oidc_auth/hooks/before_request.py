@@ -197,6 +197,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_create_registered_model,
     validate_can_create_model_version,
     validate_can_delete_registered_model,
+    validate_can_delete_registered_model_tag,
     validate_can_delete_run,
     validate_can_manage_experiment,
     validate_can_read_experiment,
@@ -209,6 +210,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_update_experiment_artifact_proxy,
     validate_can_update_logged_model,
     validate_can_update_registered_model,
+    validate_can_set_registered_model_tag,
     validate_can_update_run,
     validate_can_log_metrics,
     validate_can_update_run_or_logged_model,
@@ -431,10 +433,10 @@ BEFORE_REQUEST_HANDLERS = {
     UpdateModelVersion: validate_can_update_registered_model,
     TransitionModelVersionStage: validate_can_update_registered_model,
     GetModelVersionDownloadUri: validate_can_read_registered_model,
-    SetRegisteredModelTag: validate_can_update_registered_model,
-    DeleteRegisteredModelTag: validate_can_update_registered_model,
-    SetModelVersionTag: validate_can_update_registered_model,
-    DeleteModelVersionTag: validate_can_delete_registered_model,
+    SetRegisteredModelTag: validate_can_set_registered_model_tag,
+    DeleteRegisteredModelTag: validate_can_set_registered_model_tag,
+    SetModelVersionTag: validate_can_set_registered_model_tag,
+    DeleteModelVersionTag: validate_can_delete_registered_model_tag,
     SetRegisteredModelAlias: validate_can_update_registered_model,
     DeleteRegisteredModelAlias: validate_can_delete_registered_model,
     GetModelVersionByAlias: validate_can_read_registered_model,
@@ -1178,6 +1180,7 @@ def _stash_gateway_context(validator) -> None:
         _resolve_endpoint_name_from_id,
         _resolve_secret_name_from_id,
         _resolve_model_definition_name_from_id,
+        _safe_param,
     )
 
     # --- Gateway endpoint: update (rename) or delete ---
@@ -1186,37 +1189,46 @@ def _stash_gateway_context(validator) -> None:
         validate_can_update_gateway_endpoint_config,
         validate_can_delete_gateway_endpoint,
     ):
-        data = request.get_json(force=True, silent=True) or {}
-        endpoint_id = data.get("endpoint_id")
+        # The id MLflow itself reads, so the stashed name is the endpoint MLflow updates.
+        endpoint_id = _safe_param("endpoint_id")
         if endpoint_id:
             name = _resolve_endpoint_name_from_id(endpoint_id)
             if name:
                 if validator is not validate_can_delete_gateway_endpoint:
                     g._updating_gateway_endpoint_old_name = name
+                    # The rows to move are fixed now: once MLflow releases the name, a new
+                    # endpoint may take it, and its creator's grant must not move.
+                    g._updating_gateway_endpoint_permission_ids = store.gateway_endpoint_permission_ids(name)
                 else:
                     g._deleting_gateway_endpoint_name = name
         return
 
     # --- Gateway secret: delete ---
     if validator is validate_can_delete_gateway_secret:
-        data = request.get_json(force=True, silent=True) or {}
-        secret_name = data.get("secret_name")
-        if not secret_name:
-            secret_id = data.get("secret_id")
-            if secret_id:
-                secret_name = _resolve_secret_name_from_id(secret_id)
+        # DeleteGatewaySecret carries only secret_id: resolve the name of the secret MLflow deletes.
+        secret_id = _safe_param("secret_id")
+        secret_name = _resolve_secret_name_from_id(secret_id) if secret_id else None
         if secret_name:
             g._deleting_gateway_secret_name = secret_name
         return
 
+    # --- Gateway model definition: update (rename) ---
+    if validator is validate_can_update_gateway_model_definition:
+        # The id MLflow itself reads, so the stashed name is the model definition MLflow updates.
+        model_definition_id = _safe_param("model_definition_id")
+        if model_definition_id:
+            name = _resolve_model_definition_name_from_id(model_definition_id)
+            if name:
+                g._updating_gateway_model_definition_old_name = name
+                g._updating_gateway_model_definition_permission_ids = store.gateway_model_definition_permission_ids(name)
+        return
+
     # --- Gateway model definition: delete ---
     if validator is validate_can_delete_gateway_model_definition:
-        data = request.get_json(force=True, silent=True) or {}
-        name = data.get("name")
-        if not name:
-            model_definition_id = data.get("model_definition_id")
-            if model_definition_id:
-                name = _resolve_model_definition_name_from_id(model_definition_id)
+        # DeleteGatewayModelDefinition carries only model_definition_id: resolve the name of the
+        # model definition MLflow deletes.
+        model_definition_id = _safe_param("model_definition_id")
+        name = _resolve_model_definition_name_from_id(model_definition_id) if model_definition_id else None
         if name:
             g._deleting_gateway_model_definition_name = name
         return

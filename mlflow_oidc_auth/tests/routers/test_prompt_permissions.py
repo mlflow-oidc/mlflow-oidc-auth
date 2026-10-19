@@ -9,6 +9,9 @@ authorization, and error handling.
 import pytest
 from unittest.mock import MagicMock, patch
 
+from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+
 from mlflow_oidc_auth.routers.prompt_permissions import (
     LIST_PROMPTS,
     PROMPT_GROUP_PERMISSIONS,
@@ -46,7 +49,7 @@ class TestGetPromptGroupsEndpoint:
 
     @pytest.mark.asyncio
     async def test_get_prompt_groups_success(self, mock_store):
-        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = [
+        mock_store.prompt_group_repo.list_groups_for_resource.return_value = [
             ("team-a", "READ"),
             ("team-b", "MANAGE"),
         ]
@@ -63,7 +66,7 @@ class TestGetPromptGroupsEndpoint:
         assert result[1].kind == "group"
 
     def test_get_prompt_groups_integration(self, admin_client, mock_store):
-        mock_store.prompt_group_repo.list_groups_for_prompt.return_value = []
+        mock_store.prompt_group_repo.list_groups_for_resource.return_value = []
         response = admin_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/groups")
         assert response.status_code == 200
 
@@ -198,8 +201,8 @@ class TestGetPromptUsersEndpoint:
     def test_get_prompt_users_non_admin_without_manage_permission(self, authenticated_client):
         """Non-admin without manage rights should be forbidden."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=PermissionResult(NO_PERMISSIONS, "test"),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 
@@ -396,8 +399,8 @@ class TestPromptPermissionsRouterIntegration:
     def test_prompt_user_permissions_requires_admin(self, authenticated_client):
         """Test that prompt user permissions endpoint requires admin privileges."""
         with patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            return_value=False,
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
+            return_value=PermissionResult(NO_PERMISSIONS, "test"),
         ):
             response = authenticated_client.get("/api/2.0/mlflow/permissions/prompts/test-prompt/users")
 

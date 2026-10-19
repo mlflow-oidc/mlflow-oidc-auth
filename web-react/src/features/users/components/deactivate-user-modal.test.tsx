@@ -10,24 +10,28 @@ const manualUser: UserDetails = {
   is_service_account: false,
   active: true,
   managed_by: "manual",
+  service_account_source: null,
 };
 
 const scimUser: UserDetails = {
   ...manualUser,
   username: "bob@example.com",
   managed_by: "scim",
+  service_account_source: null,
 };
 
 const oidcUser: UserDetails = {
   ...manualUser,
   username: "carol@example.com",
   managed_by: "oidc:okta-prod",
+  service_account_source: null,
 };
 
 const samlUser: UserDetails = {
   ...manualUser,
   username: "dave@example.com",
   managed_by: "saml:corp-idp",
+  service_account_source: null,
 };
 
 describe("DeactivateUserModal", () => {

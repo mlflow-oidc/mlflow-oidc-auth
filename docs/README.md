@@ -18,7 +18,7 @@ MLflow and related marks are trademarks of their respective owners.
 - **User-level permissions** — Assign READ, USE, EDIT, or MANAGE permissions to individual users per resource
 - **Group-based access control** — Organize users into groups with shared permissions, synchronized from the identity provider or SCIM
 - **Regex pattern permissions** — Define permissions using regular expressions that match resource names (e.g., `^prod-.*` → READ for all production experiments)
-- **Workspace support** — Multi-tenant resource isolation with workspace-scoped experiments, models, webhooks, and trash (requires MLflow >=3.10)
+- **Workspace support** — Multi-tenant resource isolation with workspace-scoped experiments, models, webhooks, and trash
 - **AI Gateway permissions** — Control access to MLflow AI Gateway endpoints, secrets, and model definitions
 - **Prompt and scorer permissions** — Fine-grained access control for MLflow prompts and scorers
 - **Webhook management** — Create, test, and manage workspace-scoped webhooks through the admin UI

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from mlflow_oidc_auth.dependencies import check_prompt_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
+from mlflow_oidc_auth.models.responses import RegisteredModelListItem
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_prompts, get_is_admin, get_username
@@ -102,14 +103,19 @@ async def get_prompt_groups(
     """List groups with explicit permissions for a prompt."""
 
     try:
-        groups = store.prompt_group_repo.list_groups_for_prompt(str(prompt_name))
+        groups = store.prompt_group_repo.list_groups_for_resource(str(prompt_name))
         return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving prompt group permissions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve prompt group permissions")
 
 
-@prompt_permissions_router.get(LIST_PROMPTS, summary="List accessible prompts", description="Retrieves a list of prompts that the user has access to.")
+@prompt_permissions_router.get(
+    LIST_PROMPTS,
+    response_model=List[RegisteredModelListItem],
+    summary="List accessible prompts",
+    description="Retrieves a list of prompts that the user has access to.",
+)
 async def list_prompts(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List prompts accessible to the authenticated user.

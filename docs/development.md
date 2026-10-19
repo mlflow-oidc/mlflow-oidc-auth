@@ -7,11 +7,11 @@ This guide covers setting up a local development environment, running tests, and
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Python | 3.14 (via `.python-version`) | Backend server, tests |
-| Node.js | 24+ | Frontend build and tests |
+| Node.js | 24+ | Frontend build and tests; the Python suite also runs `node` to test `mlflow_oidc_auth/hack/redirect.html` |
 | Yarn | Latest | Frontend package manager |
 | Git | Latest | Version control |
 
-The project uses Python 3.14 for development and CI. The minimum supported Python version for end users is 3.10.
+The project uses Python 3.14 for development and CI. The minimum supported Python version for end users is 3.11.
 
 ## Getting Started
 

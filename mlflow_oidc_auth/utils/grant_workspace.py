@@ -105,35 +105,22 @@ def in_grant_workspace(grant) -> bool:
 def workspace_scoped_grant_tables():
     """Every grant table whose grants belong to one workspace.
 
+    Derived from :mod:`mlflow_oidc_auth.permission_kinds`: the user and group tables of every
+    ``workspace_scoped`` kind that owns its tables.
+
     Returns:
         ``(model, resource column, principal column, resource kind)`` per table; ``kind`` names the
         MLflow resource type (prompts are registered models).
     """
-    from mlflow_oidc_auth.db.models import (
-        SqlGatewayEndpointGroupPermission,
-        SqlGatewayEndpointPermission,
-        SqlGatewayModelDefinitionGroupPermission,
-        SqlGatewayModelDefinitionPermission,
-        SqlGatewaySecretGroupPermission,
-        SqlGatewaySecretPermission,
-        SqlMCPServerGroupPermission,
-        SqlMCPServerPermission,
-        SqlRegisteredModelGroupPermission,
-        SqlRegisteredModelPermission,
-    )
+    from mlflow_oidc_auth.permission_kinds import workspace_table_kinds
 
-    return (
-        (SqlRegisteredModelPermission, "name", "user_id", "registered_model"),
-        (SqlRegisteredModelGroupPermission, "name", "group_id", "registered_model"),
-        (SqlGatewayEndpointPermission, "endpoint_id", "user_id", "gateway_endpoint"),
-        (SqlGatewayEndpointGroupPermission, "endpoint_id", "group_id", "gateway_endpoint"),
-        (SqlGatewaySecretPermission, "secret_id", "user_id", "gateway_secret"),
-        (SqlGatewaySecretGroupPermission, "secret_id", "group_id", "gateway_secret"),
-        (SqlGatewayModelDefinitionPermission, "model_definition_id", "user_id", "gateway_model_definition"),
-        (SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
-        (SqlMCPServerPermission, "name", "user_id", "mcp_server"),
-        (SqlMCPServerGroupPermission, "name", "group_id", "mcp_server"),
-    )
+    tables = []
+    for kind in workspace_table_kinds():
+        if kind.workspace_scoped:
+            (resource_column,) = kind.key_columns
+            tables.append((kind.user_model, resource_column, "user_id", kind.name))
+            tables.append((kind.group_model, resource_column, "group_id", kind.name))
+    return tuple(tables)
 
 
 def new_pattern_workspace() -> str:
@@ -177,39 +164,16 @@ def pattern_in_scope(rule, workspace: str | None = None) -> bool:
 def workspace_scoped_pattern_tables():
     """Every resource pattern table, whose rows carry the workspace they apply in.
 
+    Derived from :mod:`mlflow_oidc_auth.permission_kinds`: the pattern tables of every kind that owns
+    its tables, except workspace patterns.
+
     Returns:
         The SQLAlchemy models of the user and group pattern tables of experiments, registered models
         and prompts, scorers and AI Gateway resources. Workspace patterns are not among them.
     """
-    from mlflow_oidc_auth.db.models import (
-        SqlExperimentGroupRegexPermission,
-        SqlExperimentRegexPermission,
-        SqlGatewayEndpointGroupRegexPermission,
-        SqlGatewayEndpointRegexPermission,
-        SqlGatewayModelDefinitionGroupRegexPermission,
-        SqlGatewayModelDefinitionRegexPermission,
-        SqlGatewaySecretGroupRegexPermission,
-        SqlGatewaySecretRegexPermission,
-        SqlRegisteredModelGroupRegexPermission,
-        SqlRegisteredModelRegexPermission,
-        SqlScorerGroupRegexPermission,
-        SqlScorerRegexPermission,
-    )
+    from mlflow_oidc_auth.permission_kinds import workspace_table_kinds
 
-    return (
-        SqlExperimentRegexPermission,
-        SqlExperimentGroupRegexPermission,
-        SqlRegisteredModelRegexPermission,
-        SqlRegisteredModelGroupRegexPermission,
-        SqlScorerRegexPermission,
-        SqlScorerGroupRegexPermission,
-        SqlGatewayEndpointRegexPermission,
-        SqlGatewayEndpointGroupRegexPermission,
-        SqlGatewaySecretRegexPermission,
-        SqlGatewaySecretGroupRegexPermission,
-        SqlGatewayModelDefinitionRegexPermission,
-        SqlGatewayModelDefinitionGroupRegexPermission,
-    )
+    return tuple(model for kind in workspace_table_kinds() for model in kind.regex_models)
 
 
 def pattern_workspace_of(rule) -> str | None:

@@ -16,7 +16,7 @@
 ## Runtime
 
 **Python Environment:**
-- Python >=3.10 (declared in `pyproject.toml`), 3.14 used in development/CI
+- Python >=3.11 (declared in `pyproject.toml`), 3.14 used in development/CI
 - Tox test matrix targets `py314` (`tox.ini` envlist)
 
 **Node Environment:**
@@ -155,7 +155,7 @@
 - Optional: Docker Compose for Redis testing
 
 **Production:**
-- Python >=3.10 (>=3.14 recommended)
+- Python >=3.11 (>=3.14 recommended)
 - No Node.js required (frontend is pre-built into `mlflow_oidc_auth/ui/`)
 - ASGI server: uvicorn (bundled dependency)
 - Database: SQLite (default) or PostgreSQL/MySQL

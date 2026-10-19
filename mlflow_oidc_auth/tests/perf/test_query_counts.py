@@ -199,48 +199,56 @@ class TestFoldedQueriesDoNotOverGrant:
             store.scorer_group_repo.get_group_permission_for_user_scorer("exp-1", "scorer-y", "s2@example.com")
 
 
+def _read_all(ctx, resource_types):
+    """Read every grant a bulk context resolves ``resource_types`` against: direct grants and patterns."""
+    for resource_type in resource_types:
+        ctx.direct(resource_type)
+        ctx.patterns(resource_type)
+    return ctx
+
+
 class TestPermissionContextBuild:
-    """build_user_permission_context backs the admin/listing batch paths."""
+    """The batch context backs the admin/listing batch paths (the grant context since issue #460)."""
 
-    def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter):
-        """Each pre-fetch used to re-resolve the same user (7x) and memberships (3x).
+    TYPES = ("experiment", "registered_model", "prompt")
 
-        Folding those into JOINs took the build from 20 statements to 15. The assertion
-        is exact so a regression, or a further improvement, has to be acknowledged.
+    def test_context_build_has_no_redundant_identity_lookups(self, seeded_store, counter, monkeypatch):
+        """Reading the experiment, model and prompt grants the old build fetched, without identity lookups.
+
+        Each read used to re-resolve the same user (7x) and memberships (3x); folding those into
+        JOINs took the old build from 20 statements to 15, and the model and prompt pattern lists
+        JOINing too (#459) to 13. The grant context reads the group ids once, each type's two
+        pattern lists, and the direct grants once per grant table — prompts share the
+        registered-model read: 11. The assertion is exact so a regression, or a further
+        improvement, has to be acknowledged.
         """
-        store, username, _ = seeded_store
+        import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        original = bp.store
-        bp.store = store
-        try:
-            counter.reset()
-            ctx = bp.build_user_permission_context(username)
-        finally:
-            bp.store = original
+        store, username, _ = seeded_store
+        monkeypatch.setattr(store_mod, "store", store)
+        counter.reset()
+        ctx = _read_all(bp.build_user_permission_context(username), self.TYPES)
 
         assert ctx.username == username
-        assert counter.count == 15, counter.report()
+        assert counter.count == 11, counter.report()
 
-    def test_context_build_is_constant_in_group_count(self, store, counter):
-        counts = {}
+    def test_context_build_is_constant_in_group_count(self, store, counter, monkeypatch):
+        import mlflow_oidc_auth.store as store_mod
         import mlflow_oidc_auth.utils.batch_permissions as bp
 
-        original = bp.store
-        bp.store = store
-        try:
-            for n_groups in (1, 4, 8):
-                username = f"ctx{n_groups}@example.com"
-                groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
-                store.create_user(username, username)
-                store.populate_groups(groups)
-                store.set_user_groups(username, groups)
+        monkeypatch.setattr(store_mod, "store", store)
+        counts = {}
+        for n_groups in (1, 4, 8):
+            username = f"ctx{n_groups}@example.com"
+            groups = [f"cg{n_groups}-{i}" for i in range(n_groups)]
+            store.create_user(username, username)
+            store.populate_groups(groups)
+            store.set_user_groups(username, groups)
 
-                counter.reset()
-                bp.build_user_permission_context(username)
-                counts[n_groups] = counter.count
-        finally:
-            bp.store = original
+            counter.reset()
+            _read_all(bp.build_user_permission_context(username), self.TYPES)
+            counts[n_groups] = counter.count
 
         assert len(set(counts.values())) == 1, f"context build scales with group count: {counts}"
 
@@ -249,11 +257,13 @@ class TestWorkspaceFallbackMemo:
     """The workspace fallback must be resolved once per batch, not once per resource."""
 
     def test_workspace_deny_does_not_scale_with_resource_count(self, seeded_store, counter, monkeypatch):
-        """get_workspace_permission_cached never caches DENIALS.
+        """The batch memo bounds a denied user's workspace check to one per batch.
 
-        Without a memo, a user with no workspace grant re-ran the full source walk for
-        every resource, making a listing 21+9N queries. The memo lives on the context, so
-        its lifetime is one batch call and it cannot serve a stale decision.
+        Before issue #456 get_workspace_permission_cached never cached DENIALS, so without
+        a memo a user with no workspace grant re-ran the full source walk for every
+        resource, making a listing 21+9N queries. Denials are cached now; the workspace
+        cache is flushed before each batch below so this still measures the memo alone.
+        The memo lives on the context, so its lifetime is one batch call.
         """
         store, username, _ = seeded_store
         import mlflow_oidc_auth.utils.batch_permissions as bp
@@ -264,23 +274,20 @@ class TestWorkspaceFallbackMemo:
 
         monkeypatch.setattr(cfg, "MLFLOW_ENABLE_WORKSPACES", True)
         monkeypatch.setattr("mlflow.utils.workspace_context.get_request_workspace", lambda: "ws-none")
-        # workspace_cache resolves through the store singleton, not bp.store.
+        # The grant context and workspace_cache both resolve through the store singleton.
         monkeypatch.setattr(store_mod, "store", store)
         wsc.flush_workspace_cache()
 
-        original = bp.store
-        bp.store = store
-        try:
-            counts = {}
-            for n in (1, 5, 20):
-                experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}") for i in range(n)]
-                ctx = bp.build_user_permission_context(username)
-                counter.reset()
-                for exp in experiments:
-                    bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name)
-                counts[n] = counter.count
-        finally:
-            bp.store = original
+        counts = {}
+        for n in (1, 5, 20):
+            # Experiments of the request's workspace, as MLflow's search returns them.
+            experiments = [SimpleNamespace(experiment_id=f"e{i}", name=f"exp-{i}", workspace="ws-none") for i in range(n)]
+            ctx = _read_all(bp.build_user_permission_context(username), ("experiment",))
+            wsc.flush_workspace_cache()
+            counter.reset()
+            for exp in experiments:
+                bp.resolve_experiment_permission_from_context(ctx, exp.experiment_id, exp.name, exp.workspace)
+            counts[n] = counter.count
 
         finally_counts = counts
         assert len(set(finally_counts.values())) == 1, f"workspace deny cost scales with resource count: {finally_counts}"
@@ -361,12 +368,14 @@ class TestGroupPermissionCollapse:
 
         per_resource = store.experiment_group_repo.get_group_permission_for_user_resource("e0", "dora@example.com").permission
 
-        original = bp.store
-        bp.store = store
+        import mlflow_oidc_auth.store as store_mod
+
+        original = store_mod.store
+        store_mod.store = store
         try:
-            batch = bp.build_user_permission_context("dora@example.com").group_experiment_permissions["e0"]
+            batch = bp.build_user_permission_context("dora@example.com").direct("experiment").group["e0"]
         finally:
-            bp.store = original
+            store_mod.store = original
 
         assert batch == per_resource, "batch and per-resource paths disagree on multi-group resolution"
 
@@ -378,14 +387,249 @@ class TestGroupPermissionCollapse:
         store.create_group_experiment_permission("ga", "e0", "MANAGE")
         store.create_group_experiment_permission("gz", "e0", "READ")
 
-        original = bp.store
-        bp.store = store
+        import mlflow_oidc_auth.store as store_mod
+
+        original = store_mod.store
+        store_mod.store = store
         try:
             results = []
             for order in (["ga", "gz"], ["gz", "ga"]):
                 store.set_user_groups("eve@example.com", order)
-                results.append(bp.build_user_permission_context("eve@example.com").group_experiment_permissions["e0"])
+                results.append(bp.build_user_permission_context("eve@example.com").direct("experiment").group["e0"])
         finally:
-            bp.store = original
+            store_mod.store = original
 
         assert results[0] == results[1], f"resolution depends on membership insertion order: {results}"
+
+
+class TestSearchRepaging:
+    """The re-paging loop must consume every fetched row (issue #456).
+
+    It used to slice the UNFILTERED batch to the page's free space before filtering, then
+    advance the token by the slice, so the discarded tail was fetched again: 8 MLflow
+    search calls where 6 suffice at 10% visibility. The count includes MLflow's own
+    first-page call.
+    """
+
+    def _page_once(self, kind, rows):
+        from mlflow_oidc_auth.tests.search_paging_helpers import FakeSearchStore, row_id, run_filtered_page
+
+        store = FakeSearchStore(rows)
+        visible = {row_id(kind, r) for i, r in enumerate(rows) if i % 10 == 0}  # 10% visibility, spread evenly
+        ids, token = run_filtered_page(kind, store, lambda rid: rid in visible, max_results=100, page_token=None)
+        return store, visible, ids, token
+
+    def test_search_experiments_repaging_calls_minimum(self):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_experiments
+
+        store, visible, ids, token = self._page_once("experiments", make_experiments(500))
+
+        assert sorted(ids) == sorted(visible), "page must hold every readable row (50 < max_results)"
+        assert token == "", "result set exhausted"
+        assert store.calls <= 6, f"search_experiments called {store.calls} times"
+
+    def test_search_registered_models_repaging_calls_minimum(self):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_registered_models
+
+        store, visible, ids, token = self._page_once("registered_models", make_registered_models(500))
+
+        assert sorted(ids) == sorted(visible)
+        assert token == ""
+        assert store.calls <= 6, f"search_registered_models called {store.calls} times"
+
+
+class TestWorkspaceDenialCache:
+    """A denied user's workspace check must be answered from cache once warm (issue #456)."""
+
+    def test_workspace_denial_warm_zero_statements(self, seeded_store, counter, monkeypatch):
+        store, username, _ = seeded_store
+        import mlflow_oidc_auth.store as store_mod
+        import mlflow_oidc_auth.utils.workspace_cache as wsc
+        from mlflow_oidc_auth.config import config as cfg
+
+        monkeypatch.setattr(cfg, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.setattr(store_mod, "store", store)
+        wsc.flush_workspace_cache()
+        try:
+            counter.reset()
+            assert wsc.get_workspace_permission_cached(username, "ws-none") is None
+            assert counter.count > 0, "cold denial issued no statements; test would be vacuous"
+
+            counter.reset()
+            assert wsc.get_workspace_permission_cached(username, "ws-none") is None
+            assert counter.count == 0, counter.report()
+        finally:
+            wsc.flush_workspace_cache()
+
+
+class TestSearchFilterStatements:
+    """A search filter's auth-DB cost must not grow with the rows it scans (issue #460).
+
+    Each listed row used to be resolved through the per-resource path: about five statements per
+    scanned row on a cold cache (2,355 for 500 experiments at 10% visibility). The filters now
+    resolve every row in memory against the caller's grant context, read once per resource type.
+    """
+
+    USERNAME = "reader@example.com"
+
+    @pytest.fixture
+    def grants(self, store, monkeypatch):
+        """A non-admin in 5 groups, with grants on 10% of the rows and patterns that match none."""
+        import mlflow_oidc_auth.store as store_module
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(store_module, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        groups = [f"team-{i}" for i in range(5)]
+        store.create_user(self.USERNAME, "Reader")
+        store.populate_groups(groups)
+        store.set_user_groups(self.USERNAME, groups)
+        for i in range(0, 500, 20):
+            store.create_experiment_permission(str(i), self.USERNAME, "READ")
+            store.create_registered_model_permission(f"model-{i}", self.USERNAME, "READ")
+        for i in range(10, 500, 20):
+            store.create_group_experiment_permission(groups[i % 5], str(i), "READ")
+            store.create_group_model_permission(groups[i % 5], f"model-{i}", "READ")
+        store.create_experiment_regex_permission("^no-such-experiment", 1, "MANAGE", self.USERNAME)
+        store.create_group_experiment_regex_permission(groups[0], "^no-such-experiment", 1, "MANAGE")
+        store.create_registered_model_regex_permission("^no-such-model", 1, "MANAGE", self.USERNAME)
+        store.create_group_registered_model_regex_permission(groups[0], "^no-such-model", 1, "MANAGE")
+        return store
+
+    def _filter(self, kind, rows):
+        """Serve one request: MLflow's unfiltered first page, then the plugin's filter, for real."""
+        import json
+        from contextlib import ExitStack
+        from unittest.mock import patch
+
+        from flask import Flask, Response
+        from mlflow.utils.proto_json_utils import message_to_json
+
+        import mlflow_oidc_auth.hooks.after_request as ar
+        from mlflow_oidc_auth.tests.search_paging_helpers import _KINDS, FakeSearchStore
+
+        request_cls, field, method, _ident, filter_name, _seam = _KINDS[kind]
+        fake = FakeSearchStore(rows)
+        first = getattr(fake, method)(max_results=100, page_token=None)
+        response = request_cls.Response()
+        getattr(response, field).extend([row.to_proto() for row in first])
+        if first.token:
+            response.next_page_token = first.token
+        resp = Response(message_to_json(response), mimetype="application/json")
+        target = "mlflow_oidc_auth.hooks.after_request"
+        with ExitStack() as stack:
+            stack.enter_context(Flask(__name__).test_request_context())
+            stack.enter_context(patch(f"{target}.get_fastapi_admin_status", return_value=False))
+            stack.enter_context(patch(f"{target}.get_fastapi_username", return_value=self.USERNAME))
+            stack.enter_context(patch(f"{target}._get_request_message", return_value=request_cls(max_results=100)))
+            stack.enter_context(patch(f"{target}._get_tracking_store", return_value=fake))
+            stack.enter_context(patch(f"{target}._get_model_registry_store", return_value=fake))
+            getattr(ar, filter_name)(resp)
+        return json.loads(resp.get_data(as_text=True)).get(field, [])
+
+    def _cold_count(self, counter, kind, rows):
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
+        counter.reset()
+        listed = self._filter(kind, rows)
+        return counter.count, listed
+
+    @pytest.mark.parametrize("kind", ["experiments", "registered_models"])
+    def test_search_filter_statements_constant_in_rows(self, grants, counter, kind):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_experiments, make_registered_models
+
+        make = make_experiments if kind == "experiments" else make_registered_models
+        key = "experiment_id" if kind == "experiments" else "name"
+        ident = str if kind == "experiments" else "model-{}".format
+
+        count_100, listed_100 = self._cold_count(counter, kind, make(100))
+        report_100 = counter.report()
+        count_500, listed_500 = self._cold_count(counter, kind, make(500))
+
+        # The filter really filtered: exactly the rows granted directly or through a group.
+        assert [row[key] for row in listed_100] == [ident(i) for i in range(0, 100, 10)]
+        assert [row[key] for row in listed_500] == [ident(i) for i in range(0, 500, 10)]
+        assert count_100 == count_500, f"{count_100} statements for 100 rows, {count_500} for 500\n{report_100}\n{counter.report()}"
+        assert 0 < count_500 <= 20, counter.report()
+
+
+class TestSingleCheckCost:
+    """A single-resource check must not read the user's whole grant set (issue #460 review).
+
+    Accounts that create resources accumulate a direct grant per resource; a check of one of them
+    looks its grants up by index, as before the grant context, so its cost does not grow with them.
+    """
+
+    def _count_one_check(self, counter, monkeypatch, username, experiment_id):
+        from types import SimpleNamespace
+
+        from mlflow_oidc_auth.utils import permissions
+
+        tracking = SimpleNamespace(get_experiment=lambda experiment_id: SimpleNamespace(name=f"exp-{experiment_id}"))
+        monkeypatch.setattr(permissions, "_get_tracking_store", lambda: tracking)
+        permissions.flush_permission_cache()
+        counter.reset()
+        result = permissions.resolve_permission("experiment", experiment_id, username)
+        return counter.count, result
+
+    @pytest.mark.parametrize("experiment_id, granted", [("5", True), ("no-grant", False)])
+    def test_single_check_statements_do_not_grow_with_direct_grants(self, store, counter, monkeypatch, experiment_id, granted):
+        import mlflow_oidc_auth.store as store_mod
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(store_mod, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        counts = {}
+        for n_grants in (10, 1000):
+            username = f"creator{n_grants}@example.com"
+            store.create_user(username, username)
+            for i in range(n_grants):
+                store.create_experiment_permission(str(i), username, "MANAGE")
+            counts[n_grants], result = self._count_one_check(counter, monkeypatch, username, experiment_id)
+            assert result.permission.can_manage is granted
+        assert counts[10] == counts[1000], f"a single check scales with the user's grants: {counts}"
+        # Found directly: one indexed lookup. Not found: the two direct lookups, the group ids and
+        # the user's pattern list (no groups, so no group pattern list).
+        assert counts[1000] == (1 if granted else 4), counter.report()
+
+
+def _gateway_item(key):
+    return lambda i: {key: f"gw-{i}"}
+
+
+class TestGatewayManageableFilterStatements:
+    """The gateway 'manageable' filters resolve every row against one bulk context (issue #460 review)."""
+
+    @pytest.mark.parametrize(
+        "filter_name, grant, item",
+        [
+            ("filter_manageable_gateway_endpoints", "create_gateway_endpoint_permission", _gateway_item("name")),
+            ("filter_manageable_gateway_secrets", "create_gateway_secret_permission", _gateway_item("secret_name")),
+            ("filter_manageable_gateway_model_definitions", "create_gateway_model_definition_permission", _gateway_item("name")),
+        ],
+    )
+    def test_gateway_filter_statements_constant_in_rows(self, store, counter, monkeypatch, filter_name, grant, item):
+        import mlflow_oidc_auth.store as store_mod
+        import mlflow_oidc_auth.utils.batch_permissions as bp
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        monkeypatch.setattr(store_mod, "store", store)
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        monkeypatch.setattr(config, "DEFAULT_MLFLOW_PERMISSION", "NO_PERMISSIONS")
+        store.create_user("gw@example.com", "Gateway user")
+        for i in range(0, 200, 10):
+            getattr(store, grant)(f"gw-{i}", "gw@example.com", "MANAGE")
+
+        counts = {}
+        for n in (50, 200):
+            flush_permission_cache()
+            counter.reset()
+            manageable = getattr(bp, filter_name)("gw@example.com", [item(i) for i in range(n)])
+            counts[n] = counter.count
+            assert len(manageable) == n // 10
+        assert counts[50] == counts[200], f"statements scale with rows: {counts}"
+        assert counts[200] <= 6, counter.report()

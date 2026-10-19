@@ -184,6 +184,9 @@ class AppConfig:
         self.MANAGED_BY_ENFORCEMENT = parse_enforcement(config_manager.get("MANAGED_BY_ENFORCEMENT", "report"))
 
         self.PERMISSION_CACHE_TTL_SECONDS = config_manager.get_int("PERMISSION_CACHE_TTL_SECONDS", default=30)
+        # Entries in the permission resolution cache (issue #456). Each entry is one small
+        # (user, resource, decision) tuple; a single list page can fill hundreds of slots.
+        self.PERMISSION_CACHE_MAX_SIZE = config_manager.get_positive_int("PERMISSION_CACHE_MAX_SIZE", default=10000)
 
         # username source
         self.OIDC_USERNAME_FIELD = config_manager.get_list("OIDC_USERNAME_FIELD", default=["email", "preferred_username"])
@@ -219,6 +222,10 @@ class AppConfig:
         # any 401 response, so expired sessions trigger the IdP redirect flow instead
         # of leaving the user staring at empty SPA pages.
         self.EXTEND_MLFLOW_REAUTH = config_manager.get_bool("EXTEND_MLFLOW_REAUTH", default=True)
+        # Inject a small script into MLflow's index.html that sends MLflow's built-in admin
+        # pages (#/admin, #/admin/users/<u>, #/admin/ws, #/account) to the plugin's UI. Those
+        # pages target MLflow's basic-auth RBAC APIs, which this plugin does not implement.
+        self.EXTEND_MLFLOW_REDIRECT_ADMIN = config_manager.get_bool("EXTEND_MLFLOW_REDIRECT_ADMIN", default=True)
         self.DEFAULT_LANDING_PAGE_IS_PERMISSIONS = config_manager.get_bool("DEFAULT_LANDING_PAGE_IS_PERMISSIONS", default=True)
         self.AUTOMATIC_LOGIN_REDIRECT = config_manager.get_bool("AUTOMATIC_LOGIN_REDIRECT", default=False)
 
@@ -229,7 +236,7 @@ class AppConfig:
         self.MLFLOW_ENABLE_WORKSPACES = config_manager.get_bool("MLFLOW_ENABLE_WORKSPACES", default=False)
 
         # Workspace cache settings
-        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
+        self.WORKSPACE_CACHE_MAX_SIZE = config_manager.get_positive_int("WORKSPACE_CACHE_MAX_SIZE", default=1024)
         self.WORKSPACE_CACHE_TTL_SECONDS = config_manager.get_int("WORKSPACE_CACHE_TTL_SECONDS", default=300)
         # The highest permission a workspace group rule may grant (issue #418). MANAGE is reachable
         # only by raising this, and is warned about at startup. Normalised by
@@ -575,10 +582,10 @@ class AppConfig:
 
         The creation validators require EDIT+ on the resource NAME, resolved from name
         regex and group-regex rules with a workspace fallback. When workspaces are off and
-        no regex matches, that resolution lands on DEFAULT_MLFLOW_PERMISSION — which ships
-        as MANAGE, and MANAGE grants can_update. So enabling the flag on a default install
-        denies nothing at all: every user can still create every experiment and registered
-        model, exactly as before.
+        no regex matches, that resolution lands on DEFAULT_MLFLOW_PERMISSION. It ships as
+        NO_PERMISSIONS (since v7.6.0), but when it is set to EDIT or MANAGE, both of which
+        grant can_update, enabling the flag denies nothing at all: every user can still create
+        every experiment and registered model, exactly as before.
 
         A flag that silently does nothing is worse than no flag, because operators
         reasonably read "RESTRICT_RESOURCE_CREATION=true" as "creation is restricted" and

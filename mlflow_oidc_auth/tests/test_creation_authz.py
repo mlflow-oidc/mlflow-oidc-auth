@@ -1,5 +1,6 @@
 """Tests for RESTRICT_RESOURCE_CREATION authorization on experiment/model creation (#247, #202)."""
 
+from itertools import count
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -9,10 +10,12 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ
 
+_regex_ids = count(1)
+
 
 def _regex(pattern, permission, priority=1):
-    """A stand-in for a stored regex-permission row (has .regex/.permission/.priority)."""
-    return SimpleNamespace(regex=pattern, permission=permission, priority=priority)
+    """A stand-in for a stored regex-permission row (has .regex/.permission/.priority/.id)."""
+    return SimpleNamespace(regex=pattern, permission=permission, priority=priority, id=next(_regex_ids))
 
 
 class TestCreateValidatorsAreNoOpWhenDisabled:

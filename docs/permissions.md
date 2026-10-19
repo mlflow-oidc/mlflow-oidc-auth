@@ -26,7 +26,7 @@ The permission system covers these MLflow resource types:
 |----------|-----------------|-------|
 | Experiments | Per experiment ID | Includes runs within the experiment |
 | Registered Models | Per model name | Includes model versions |
-| Prompts | Per prompt name | Uses the model permission infrastructure |
+| Prompts | Per prompt name | Exact-name grants are shared with registered models; patterns are the prompt patterns. Every MLflow prompt call is judged this way. See [Prompts](#prompts) |
 | Scorers | Per experiment + scorer name | Compound key. A scorer with no grant of its own inherits its experiment's permission (and so, in turn, the workspace permission or `DEFAULT_MLFLOW_PERMISSION`) |
 | Prompt Optimization Jobs | Per job → experiment ID | Job-level operations resolve to the parent experiment's permissions. Creating a job needs EDIT on the experiment and on the prompt in `source_prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`; the job registers a new version of it), and READ on every experiment linked to `config.dataset_id` when one is given |
 | Evaluation datasets, issues, label schemas, review queues, UI jobs | Per linked experiment | See [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes) |
@@ -92,10 +92,58 @@ Regex permissions use Python regular expression syntax to match resource names b
 ### How They Work
 
 1. Patterns are ordered by **priority** (lower number = checked first)
-2. The **first matching pattern** determines the permission
+2. The matching pattern with the **best priority** determines the permission; if several match at
+   that priority, see [Ties at Equal Priority](#ties-at-equal-priority)
 3. Both user-level and group-level regex permissions are supported
 4. With workspaces enabled, a pattern applies in the workspace it was made in, or in every
    workspace when made with none selected (see [Workspaces](workspaces#pattern-regex-grants))
+
+### Ties at Equal Priority
+
+Several patterns can match at the same priority, for example a broad `.*` pattern from one group and
+a narrower `^team-.*` pattern from another. They are resolved by **permission rank**, the same rule
+used when a user's groups hold different direct grants on one resource:
+
+1. **Priority decides first.** Only matches at the best (lowest-number) priority count; a better
+   priority wins even over a more capable permission.
+2. **`NO_PERMISSIONS` wins the tie.** If any match at that priority is `NO_PERMISSIONS`, the result is
+   `NO_PERMISSIONS`.
+3. **Otherwise the most capable permission wins:** `MANAGE` > `EDIT` > `USE` > `READ`.
+
+| Grants | Tie-break at equal priority |
+|---|---|
+| Resource patterns (experiments, registered models, prompts, scorers, AI Gateway resources), user and group | Permission rank, `NO_PERMISSIONS` first |
+| Direct group grants on one resource | Permission rank, `NO_PERMISSIONS` first |
+| Workspace patterns (user and group) | Most permissive of the best-priority matches. This ranks `NO_PERMISSIONS` highest too, so the outcome is the same |
+
+Patterns are always read in `(priority, id)` order. The id never changes the outcome, but it does
+decide which of several equally ranked patterns is reported in the debug log.
+
+Before issue #459, a tie between resource patterns went to whichever pattern the database returned
+first, so the result could vary. To make one pattern win regardless of rank, give it a lower priority
+number.
+
+### Prompts
+
+MLflow stores a prompt as a registered model tagged `mlflow.prompt.is_prompt = "true"`, and its
+versions as model versions, so every prompt call is a registered-model or model-version request.
+The plugin decides it with the grants of the target's kind:
+
+| | A registered model | A prompt |
+|---|---|---|
+| Exact-name grants (user, group) | shared | shared |
+| Patterns (user, group) | model patterns | prompt patterns |
+
+This applies to every registry call (get, update, rename, tags, aliases, delete, model versions,
+`models:/` copy sources), to search results, to GraphQL, and to the prompt grant APIs. A prompt-pattern
+`NO_PERMISSIONS` therefore denies a prompt even when a model pattern grants it, and a model pattern
+alone gives nothing on a prompt. The kind is read from MLflow, at most once per name per request: a
+search result row carries its own tags; on a create, the request's tags decide (as in MLflow). A
+name MLflow does not know is treated as a registered model. If the kind cannot be read for any other
+reason, the request is denied.
+
+Before #479, MLflow's prompt calls were judged with model patterns, and prompt patterns only applied
+to the group prompt grant APIs, the prompt lists and prompt optimization jobs.
 
 ### Pattern Examples
 
@@ -584,8 +632,8 @@ Some consequences under the default order (`user,group,regex,group-regex`):
 - A group in which the departing user was the **last active member** holds nothing. Resources the
   departing user managed only through that group are reported as `via: "group:<name>"`.
 
-Patterns resolve as they do at request time. They are tried in priority order and the first match
-wins; for workspaces, the most permissive of the best-priority matches wins. Each pattern is matched
+Patterns resolve as they do at request time: the best priority decides, and a tie at that priority
+goes by permission rank (see [Ties at Equal Priority](#ties-at-equal-priority)). Each pattern is matched
 against the same value the resolver uses:
 
 - experiments: the experiment **name**
@@ -751,7 +799,7 @@ Sources checked:
   3. regex: no matching patterns
   4. group-regex: no matching patterns
   5. Fallback: DEFAULT_MLFLOW_PERMISSION
-Result: MANAGE (from default)
+Result: NO_PERMISSIONS (the default; MANAGE if DEFAULT_MLFLOW_PERMISSION=MANAGE)
 ```
 
 ### Workspace Fallback (Workspaces Enabled)
@@ -781,7 +829,7 @@ Set `RESTRICT_RESOURCE_CREATION=true` to require **EDIT** (`can_update`) or high
    - **Workspaces disabled** → the global `DEFAULT_MLFLOW_PERMISSION`
    - **Workspaces enabled** → the user's permission on the request workspace (deny if they have none)
 
-> ⚠️ **The default `DEFAULT_MLFLOW_PERMISSION` is `MANAGE`, which grants `can_update`.** In a non-workspace deployment, enabling `RESTRICT_RESOURCE_CREATION` alone does **nothing** — a name that matches no regex falls back to `MANAGE` and creation is still allowed. To actually restrict creation you must either lower `DEFAULT_MLFLOW_PERMISSION` below `EDIT` (e.g. `NO_PERMISSIONS`) so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
+> ⚠️ **`DEFAULT_MLFLOW_PERMISSION` must stay below `EDIT` for this to restrict anything.** The default, `NO_PERMISSIONS`, does. If it is set to `EDIT` or `MANAGE` (as it shipped before v7.6.0), then in a non-workspace deployment enabling `RESTRICT_RESOURCE_CREATION` does **nothing**: a name that matches no regex falls back to that level and creation is still allowed. Either keep the default below `EDIT`, so only regex/group-regex matches can create, or rely on the workspace gate. Setting the flag without doing one of these gives a false sense of lockdown.
 
 This closes a real gap in non-workspace deployments: with a project-prefix scheme like `<project>/<name>`, a user granted `^team-a/.*` could still create `team-b/whatever` (e.g. via a typo) and end up owning a resource they cannot subsequently access.
 

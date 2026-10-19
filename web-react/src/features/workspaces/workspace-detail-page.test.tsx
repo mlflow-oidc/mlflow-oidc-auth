@@ -95,15 +95,6 @@ vi.mock("../../core/services/api-utils", () => ({
   request: (...args: unknown[]) => mockRequest(...args),
 }));
 
-vi.mock("../../core/configs/api-endpoints", () => ({
-  DYNAMIC_API_ENDPOINTS: {
-    WORKSPACE_USERS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users`,
-    WORKSPACE_GROUPS: (workspace: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups`,
-    WORKSPACE_USER: (workspace: string, username: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/users/${username}`,
-    WORKSPACE_GROUP: (workspace: string, groupName: string) => `/api/3.0/mlflow/permissions/workspaces/${workspace}/groups/${groupName}`,
-  },
-}));
-
 vi.mock("../../shared/components/page/page-container", () => ({
   default: ({ children, title }: { children: React.ReactNode; title: string }) => (
     <div data-testid="page-container" title={title}>

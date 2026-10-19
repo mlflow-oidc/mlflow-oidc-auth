@@ -1,12 +1,13 @@
 """Experiment permission repository."""
 
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.db.models import SqlExperimentPermission
 from mlflow_oidc_auth.entities import ExperimentPermission
 from mlflow_oidc_auth.repository._base import BaseUserPermissionRepository
 
 
 class ExperimentPermissionRepository(BaseUserPermissionRepository[SqlExperimentPermission, ExperimentPermission]):
-    model_class = SqlExperimentPermission
+    grant_kind = permission_kinds.EXPERIMENT
     resource_id_attr = "experiment_id"
 
     # -- Backward-compatible alias for the private helper ---------------------

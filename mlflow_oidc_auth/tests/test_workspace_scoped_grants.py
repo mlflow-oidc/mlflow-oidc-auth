@@ -376,9 +376,9 @@ class TestWhoHasAccessLists:
         with in_workspace("team-a"):
             store.create_group_model_permission("team", "churn", "EDIT")
         with in_workspace("team-b"):
-            assert store.registered_model_group_repo.list_groups_for_model("churn") == []
+            assert store.registered_model_group_repo.list_groups_for_resource("churn") == []
         with in_workspace("team-a"):
-            assert store.registered_model_group_repo.list_groups_for_model("churn") == [("team", "EDIT")]
+            assert store.registered_model_group_repo.list_groups_for_resource("churn") == [("team", "EDIT")]
 
 
 # ---------------------------------------------------------------------------
@@ -602,6 +602,145 @@ class TestRenamingAModelThroughTheHook:
         with in_workspace("team-a"):
             assert model_permission("churn-v2") == "EDIT"
             assert model_permission("churn") == "NO_PERMISSIONS"
+
+
+class TestRenamingAModelDefinitionThroughTheHook:
+    """Model definitions are renamable (``UpdateGatewayModelDefinition`` carries ``name``) and
+    their grants are keyed by name, so the grants have to move with the rename."""
+
+    @staticmethod
+    def _rename(old_name, new_name):
+        import json
+
+        from flask import Flask, g
+
+        from mlflow_oidc_auth.hooks.after_request import _rename_gateway_model_definition_permission
+
+        flask_app = Flask(__name__)
+        response = flask_app.response_class(response=json.dumps({"model_definition": {"name": new_name}}), mimetype="application/json")
+        with flask_app.test_request_context():
+            g._updating_gateway_model_definition_old_name = old_name
+            _rename_gateway_model_definition_permission(response)
+
+    @staticmethod
+    def _permission(name, username=ALICE):
+        from mlflow_oidc_auth.utils.permissions import effective_gateway_model_definition_permission
+
+        _clear_cache()
+        return effective_gateway_model_definition_permission(name, username).permission.name
+
+    def test_user_and_group_grants_follow_a_rename(self, store):
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", VICTOR, "MANAGE")
+            store.create_group_gateway_model_definition_permission("team", "prod-llm", "USE")
+            self._rename("prod-llm", "prod-llm-v2")
+        with in_workspace("team-a", VICTOR):
+            assert self._permission("prod-llm-v2", VICTOR) == "MANAGE"
+            assert self._permission("prod-llm", VICTOR) == "NO_PERMISSIONS"
+        with in_workspace("team-a"):
+            assert self._permission("prod-llm-v2") == "USE"
+            assert self._permission("prod-llm") == "NO_PERMISSIONS"
+
+    def test_recreated_model_definition_does_not_inherit_grants(self, store):
+        """A model definition created later under the released name starts without the old grants."""
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", VICTOR, "MANAGE")
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "READ")
+            self._rename("prod-llm", "prod-llm-v2")
+            # Nothing is left on the released name for a new model definition to pick up.
+            assert self._permission("prod-llm") == "NO_PERMISSIONS"
+            assert self._permission("prod-llm-v2") == "READ"
+
+    def test_a_rename_onto_a_name_with_leftover_grants_replaces_them(self, store):
+        """Rows left on the target name (same principal on both names) must not block the move."""
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("llm-a", ALICE, "MANAGE")
+            store.create_group_gateway_model_definition_permission("team", "llm-a", "MANAGE")
+            store.create_gateway_model_definition_permission("llm-b", ALICE, "READ")
+            store.create_group_gateway_model_definition_permission("team", "llm-b", "USE")
+            self._rename("llm-b", "llm-a")
+            assert self._permission("llm-a") == "READ"
+            assert self._permission("llm-b") == "NO_PERMISSIONS"
+            assert [p.permission for p in store.list_group_gateway_model_definition_permissions("team")] == ["USE"]
+
+    def test_a_new_model_definition_starts_with_only_its_creators_grant(self, store, monkeypatch):
+        import json
+
+        from flask import Flask
+
+        from mlflow_oidc_auth.hooks import after_request
+
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "READ")
+            store.create_group_gateway_model_definition_permission("team", "prod-llm", "USE")
+            monkeypatch.setattr(after_request, "get_fastapi_username", lambda: VICTOR)
+            flask_app = Flask(__name__)
+            response = flask_app.response_class(response=json.dumps({"model_definition": {"name": "prod-llm"}}), mimetype="application/json")
+            with flask_app.test_request_context():
+                after_request._set_can_manage_gateway_model_definition_permission(response)
+            assert self._permission("prod-llm") == "NO_PERMISSIONS"
+            assert store.list_group_gateway_model_definition_permissions("team") == []
+        with in_workspace("team-a", VICTOR):
+            assert self._permission("prod-llm", VICTOR) == "MANAGE"
+
+    def test_a_grant_written_on_the_released_name_stays_with_its_resource(self, store):
+        """Rows are fixed before MLflow renames; a new model definition taking the released name in
+        between keeps its creator's grant, and that grant does not follow the rename."""
+        import json
+
+        from flask import Flask, g
+
+        from mlflow_oidc_auth.hooks.after_request import _rename_gateway_model_definition_permission
+
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "MANAGE")
+            ids = store.gateway_model_definition_permission_ids("prod-llm")
+            # MLflow commits the rename, then a new model definition is created under the free name.
+            store.grant_creator_gateway_model_definition_permission("prod-llm", VICTOR)
+            flask_app = Flask(__name__)
+            response = flask_app.response_class(response=json.dumps({"model_definition": {"name": "prod-llm-v2"}}), mimetype="application/json")
+            with flask_app.test_request_context():
+                g._updating_gateway_model_definition_old_name = "prod-llm"
+                g._updating_gateway_model_definition_permission_ids = ids
+                _rename_gateway_model_definition_permission(response)
+        with in_workspace("team-a", VICTOR):
+            assert self._permission("prod-llm", VICTOR) == "MANAGE"
+            assert self._permission("prod-llm-v2", VICTOR) == "NO_PERMISSIONS"
+
+    def test_a_recreated_row_with_a_reused_id_does_not_move(self, store):
+        """SQLite may give a new row the id of a deleted one; only a row identical to the recorded
+        one may move, so a grant written in between never travels with the rename."""
+        import json
+
+        from flask import Flask, g
+
+        from mlflow_oidc_auth.hooks.after_request import _rename_gateway_model_definition_permission
+
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", VICTOR, "READ")
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "MANAGE")
+            ids = store.gateway_model_definition_permission_ids("prod-llm")
+            # A new model definition takes the released name; its creator row may reuse a freed id.
+            store.grant_creator_gateway_model_definition_permission("prod-llm", VICTOR)
+            flask_app = Flask(__name__)
+            response = flask_app.response_class(response=json.dumps({"model_definition": {"name": "prod-llm-v2"}}), mimetype="application/json")
+            with flask_app.test_request_context():
+                g._updating_gateway_model_definition_old_name = "prod-llm"
+                g._updating_gateway_model_definition_permission_ids = ids
+                _rename_gateway_model_definition_permission(response)
+        with in_workspace("team-a", VICTOR):
+            assert self._permission("prod-llm-v2", VICTOR) == "NO_PERMISSIONS"
+            assert self._permission("prod-llm", VICTOR) == "MANAGE"
+
+    def test_renaming_in_one_workspace_leaves_the_others(self, store):
+        with in_workspace("team-b"):
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "USE")
+        with in_workspace("team-a"):
+            store.create_gateway_model_definition_permission("prod-llm", ALICE, "MANAGE")
+            self._rename("prod-llm", "prod-llm-v2")
+        with in_workspace("team-b"):
+            assert self._permission("prod-llm") == "USE"
+            assert self._permission("prod-llm-v2") == "NO_PERMISSIONS"
 
 
 class TestWorkspaceDeletion:

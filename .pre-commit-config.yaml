@@ -6,6 +6,8 @@ repos:
       - id: check-added-large-files
         args:
           - --maxkb=800
+        # Generated API contract (#458): it grows with the API, and CI checks it for drift.
+        exclude: ^(openapi\.json|web-react/src/core/types/generated/openapi\.ts)$
       - id: detect-private-key
       - id: end-of-file-fixer
       - id: trailing-whitespace

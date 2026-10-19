@@ -1,3 +1,5 @@
+import type { components } from "../../core/types/generated/openapi";
+
 export type ExperimentListItem = {
   id: string;
   name: string;
@@ -212,17 +214,36 @@ export type WorkspaceListResponse = {
   workspaces: WorkspaceListItem[];
 };
 
-export type WorkspaceUserPermission = {
-  workspace: string;
-  username: string;
-  permission: PermissionLevel;
+/**
+ * A permission value the server returned that is not a {@link PermissionLevel}. It should never
+ * happen; when it does the UI shows the raw value as is rather than failing the page.
+ */
+export type UnrecognizedPermission = string & {
+  readonly __unrecognizedPermission: true;
 };
 
-export type WorkspaceGroupPermission = {
-  workspace: string;
-  group_name: string;
-  permission: PermissionLevel;
-};
+/** A grant's permission as the UI receives it: a level, or a value it shows as is. */
+export type GrantedPermission = PermissionLevel | UnrecognizedPermission;
+
+/**
+ * The contract types `permission` as a plain string; the server only ever stores a permission
+ * level there, so the UI narrows it — checked at runtime by `withPermissionLevels`, which keeps
+ * an unrecognized value rather than dropping the row. Every other field comes from the contract.
+ */
+type WithPermissionLevel<T extends { permission: string }> = Omit<
+  T,
+  "permission"
+> & { permission: GrantedPermission };
+
+/** A user's grant on a workspace. Generated from the API contract. */
+export type WorkspaceUserPermission = WithPermissionLevel<
+  components["schemas"]["WorkspaceUserPermissionResponse"]
+>;
+
+/** A group's grant on a workspace; `rule_id` names the workspace rule that made it, if one did. */
+export type WorkspaceGroupPermission = WithPermissionLevel<
+  components["schemas"]["WorkspaceGroupPermissionResponse"]
+>;
 
 /** How a workspace group rule behaves: `report` writes nothing, `enforce` grants. */
 export type WorkspaceRuleMode = "report" | "enforce";

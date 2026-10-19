@@ -19,15 +19,15 @@ from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_ALREADY_EXISTS, RESOURCE_DOES_NOT_EXIST, ErrorCode
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_mcp_server_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import GatewayPermission, NamedPermissionSummary, StatusMessageResponse, UserPermission
+from mlflow_oidc_auth.models.responses import McpServerListItem
 from mlflow_oidc_auth.models.group import GroupNamedPermissionItem, GroupPermissionEntry
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
+from mlflow_oidc_auth.routers._errors import mlflow_error_status
 from mlflow_oidc_auth.routers._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX, MCP_SERVER_PERMISSIONS_ROUTER_PREFIX, USER_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -55,15 +55,14 @@ GROUP_MCP_SERVER_PERMISSIONS = "/{group_name:path}/mcp-servers"
 GROUP_MCP_SERVER_PERMISSION_DETAIL = "/{group_name:path}/mcp-servers/{name:path}"
 
 
+_ERROR_DETAIL = {409: "Permission already exists", 404: "Not found", 400: "Invalid permission"}
+
+
 def _http_error(e: Exception, action: str) -> HTTPException:
     """Map a store error to an HTTP error without echoing internals."""
-    if isinstance(e, MlflowException):
-        if e.error_code == ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
-            return HTTPException(status_code=409, detail="Permission already exists")
-        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-            return HTTPException(status_code=404, detail="Not found")
-        if e.error_code == ErrorCode.Name(INVALID_PARAMETER_VALUE):
-            return HTTPException(status_code=400, detail="Invalid permission")
+    status = mlflow_error_status(e)
+    if status is not None:
+        return HTTPException(status_code=status, detail=_ERROR_DETAIL[status])
     logger.error("MCP server permission API: failed to %s: %s", action, type(e).__name__)
     return HTTPException(status_code=500, detail=f"Failed to {action}")
 
@@ -75,6 +74,7 @@ def _http_error(e: Exception, action: str) -> HTTPException:
 
 @mcp_server_permissions_router.get(
     LIST_MCP_SERVERS,
+    response_model=List[McpServerListItem],
     summary="List MCP servers the caller may manage",
     description="MCP servers of the request's workspace: all of them for an admin, otherwise those the caller can MANAGE.",
 )

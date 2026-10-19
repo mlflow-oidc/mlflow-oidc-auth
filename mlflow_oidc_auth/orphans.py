@@ -23,8 +23,9 @@ with an answer decides, as at request time. So a colleague with a direct ``READ`
 holder under the default order even if a group of theirs holds ``MANAGE``, and a group in which the
 departing user was the last active member keeps nothing managed.
 
-Patterns are matched exactly as the request-time resolvers match them (priority order, first match;
-for workspaces the most permissive of the best-priority matches), against the same subject: the
+Patterns are matched exactly as the request-time resolvers match them (best priority; a tie there by
+permission rank, ``NO_PERMISSIONS`` first; for workspaces the most permissive of the best-priority
+matches), against the same subject: the
 experiment's *name*, the model or prompt name, the scorer name, the gateway key, the workspace name.
 Where the subject lives in MLflow (an experiment's name, whether a registered model is a prompt) it
 is looked up in every workspace when workspaces are enabled, with at most
@@ -35,24 +36,20 @@ Admins are not counted as holders — an admin can always recover a resource, wh
 an orphan is a report and never a refusal.
 """
 
+import dataclasses
 import re
 from collections import defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Set, Tuple
 
+from mlflow_oidc_auth import permission_kinds
+
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.permission_kinds import GrantKind
+from mlflow_oidc_auth.permissions import regex_grant_order
 
 logger = get_logger()
 
 MANAGE = "MANAGE"
-
-#: ``resource_type`` values used in ``resource.orphaned`` events.
-EXPERIMENT = "experiment"
-REGISTERED_MODEL = "registered_model"  # prompts are registered models and share these grants
-SCORER = "scorer"
-GATEWAY_ENDPOINT = "gateway_endpoint"
-GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
-MCP_SERVER = "mcp_server"
-WORKSPACE = "workspace"
 
 #: Upper bound on MLflow store lookups (experiment names, prompt flags) per resource type and run.
 _EXTERNAL_LOOKUP_LIMIT = 1000
@@ -63,133 +60,20 @@ VIA_GROUP_PREFIX = "group:"
 VIA_UNRESOLVED = "unresolved"
 
 
-class _Spec(NamedTuple):
-    resource_type: str
-    user_model: Any
-    group_model: Any
-    key_columns: Tuple[str, ...]
-    #: ``None`` for a kind with no pattern grants (MCP servers).
-    user_regex_model: Any
-    group_regex_model: Any
-    #: Index into the key tuple of the value a regex is matched against. ``None`` for experiments,
-    #: whose patterns match the experiment *name*, which only the tracking store knows.
-    regex_key_index: Optional[int]
-    #: Grants on a resource MLflow keeps unique per ``(workspace, name)``. With workspaces enabled
-    #: the grant's ``workspace`` leads the key (see :func:`_effective`); with them disabled the key
-    #: is the name alone, exactly as before the column existed.
-    workspace_scoped: bool = False
-
-
-def _specs() -> List[_Spec]:
-    """One entry per resource kind: its grant tables, key columns and regex subject."""
-    from mlflow_oidc_auth.db.models import (
-        SqlExperimentGroupPermission,
-        SqlExperimentGroupRegexPermission,
-        SqlExperimentPermission,
-        SqlExperimentRegexPermission,
-        SqlGatewayEndpointGroupPermission,
-        SqlGatewayEndpointGroupRegexPermission,
-        SqlGatewayEndpointPermission,
-        SqlGatewayEndpointRegexPermission,
-        SqlGatewayModelDefinitionGroupPermission,
-        SqlGatewayModelDefinitionGroupRegexPermission,
-        SqlGatewayModelDefinitionPermission,
-        SqlGatewayModelDefinitionRegexPermission,
-        SqlGatewaySecretGroupPermission,
-        SqlGatewaySecretGroupRegexPermission,
-        SqlGatewaySecretPermission,
-        SqlGatewaySecretRegexPermission,
-        SqlMCPServerGroupPermission,
-        SqlMCPServerPermission,
-        SqlRegisteredModelGroupPermission,
-        SqlRegisteredModelGroupRegexPermission,
-        SqlRegisteredModelPermission,
-        SqlRegisteredModelRegexPermission,
-        SqlScorerGroupPermission,
-        SqlScorerGroupRegexPermission,
-        SqlScorerPermission,
-        SqlScorerRegexPermission,
-        SqlWorkspaceGroupPermission,
-        SqlWorkspaceGroupRegexPermission,
-        SqlWorkspacePermission,
-        SqlWorkspaceRegexPermission,
-    )
-
-    return [
-        _Spec(
-            EXPERIMENT,
-            SqlExperimentPermission,
-            SqlExperimentGroupPermission,
-            ("experiment_id",),
-            SqlExperimentRegexPermission,
-            SqlExperimentGroupRegexPermission,
-            None,
-        ),
-        _Spec(
-            REGISTERED_MODEL,
-            SqlRegisteredModelPermission,
-            SqlRegisteredModelGroupPermission,
-            ("name",),
-            SqlRegisteredModelRegexPermission,
-            SqlRegisteredModelGroupRegexPermission,
-            0,
-            True,
-        ),
-        # A scorer's patterns match the scorer name, as in ``_build_scorer_sources``.
-        _Spec(
-            SCORER, SqlScorerPermission, SqlScorerGroupPermission, ("experiment_id", "scorer_name"), SqlScorerRegexPermission, SqlScorerGroupRegexPermission, 1
-        ),
-        # Name-keyed resources are unique per (workspace, name) in MLflow (``workspace_scoped``).
-        # Gateway resolvers pass the name to both the grant lookup and the pattern match: the key.
-        _Spec(
-            GATEWAY_ENDPOINT,
-            SqlGatewayEndpointPermission,
-            SqlGatewayEndpointGroupPermission,
-            ("endpoint_id",),
-            SqlGatewayEndpointRegexPermission,
-            SqlGatewayEndpointGroupRegexPermission,
-            0,
-            True,
-        ),
-        _Spec(
-            GATEWAY_MODEL_DEFINITION,
-            SqlGatewayModelDefinitionPermission,
-            SqlGatewayModelDefinitionGroupPermission,
-            ("model_definition_id",),
-            SqlGatewayModelDefinitionRegexPermission,
-            SqlGatewayModelDefinitionGroupRegexPermission,
-            0,
-            True,
-        ),
-        # The resource-type label is written inline: a module constant carrying "secret" in its
-        # name makes static analysis treat the label (not a secret) as sensitive wherever it is logged.
-        _Spec(
-            "gateway_secret",
-            SqlGatewaySecretPermission,
-            SqlGatewaySecretGroupPermission,
-            ("secret_id",),
-            SqlGatewaySecretRegexPermission,
-            SqlGatewaySecretGroupRegexPermission,
-            0,
-            True,
-        ),
-        # MCP servers have user and group grants only — no pattern tables.
-        _Spec(MCP_SERVER, SqlMCPServerPermission, SqlMCPServerGroupPermission, ("name",), None, None, 0, True),
-        _Spec(WORKSPACE, SqlWorkspacePermission, SqlWorkspaceGroupPermission, ("workspace",), SqlWorkspaceRegexPermission, SqlWorkspaceGroupRegexPermission, 0),
-    ]
-
-
-def _effective(spec: _Spec) -> _Spec:
+def _effective(spec: GrantKind) -> GrantKind:
     """``spec`` as this run sees it: a workspace-scoped kind is keyed by ``(workspace, name)`` when
-    workspaces are enabled, so two workspaces' resources of one name are judged separately."""
+    workspaces are enabled, so two workspaces' resources of one name are judged separately.
+
+    The report walks ``permission_kinds.table_owning_kinds()``; prompts share the registered model
+    tables and are judged with them, under ``registered_model``."""
     from mlflow_oidc_auth.config import config
 
     if not spec.workspace_scoped or not getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
         return spec
-    return spec._replace(key_columns=("workspace",) + spec.key_columns, regex_key_index=spec.regex_key_index + 1)
+    return dataclasses.replace(spec, key_columns=("workspace",) + spec.key_columns, regex_key_index=spec.regex_key_index + 1)
 
 
-def _counts(spec: _Spec, model):
+def _counts(spec: GrantKind, model):
     """A condition limiting ``model``'s grant rows to the ones that count in this run.
 
     Only workspace-scoped kinds are limited. With workspaces enabled, a grant with no workspace or
@@ -241,9 +125,9 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, re
 
     try:
         if workspace:
-            from mlflow_oidc_auth.utils.workspace_cache import _match_workspace_regex_permission
+            from mlflow_oidc_auth.utils.grant_context import match_workspace_pattern
 
-            permission = _match_workspace_regex_permission(rules, subject)
+            permission = match_workspace_pattern(rules, subject)
             return permission.name if permission is not None else None
         from mlflow_oidc_auth.utils.permissions import _match_regex_permission
 
@@ -253,7 +137,7 @@ def _regex_permission(rules: RuleList, subject: str, workspace: bool = False, re
 
 
 def _manages_by_rules(rules: RuleList, subject: str) -> bool:
-    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, first match by priority."""
+    """Whether ``rules`` resolve to ``MANAGE`` for ``subject``, as the request-time matcher resolves them."""
     return _regex_permission(rules, subject) == MANAGE
 
 
@@ -293,7 +177,7 @@ class _Context:
 
 
 def _sort_rules(rules: Iterable[Any]) -> RuleList:
-    return sorted(rules, key=lambda r: (r.priority, r.id))
+    return sorted(rules, key=regex_grant_order)
 
 
 def _rule_columns(model):
@@ -459,7 +343,7 @@ def _more_permissive(a: Optional[str], b: str) -> str:
     return b if get_permission(b).priority > get_permission(a).priority else a
 
 
-def _holders(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> List[_Holder]:
+def _holders(ctx: _Context, spec: GrantKind, mine: Set[Tuple[str, ...]]) -> List[_Holder]:
     """Other active users who might resolve to ``MANAGE`` on something in ``mine``, with every grant
     that could decide their permission. Six statements plus the shared membership read.
 
@@ -592,7 +476,7 @@ def _judge(holders: List[_Holder], keys, subject: Optional[str], prompt: bool, w
     return UNKNOWN if UNKNOWN in outcomes else NOT_HELD
 
 
-def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[Tuple[str, ...], str]:
+def _judge_all(ctx: _Context, spec: GrantKind, mine: Set[Tuple[str, ...]]) -> Dict[Tuple[str, ...], str]:
     """``{keys: HELD | NOT_HELD | UNKNOWN}`` for each resource in ``mine``.
 
     ``UNKNOWN`` means the answer depends on a regex subject MLflow could not supply; such a
@@ -601,7 +485,7 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
     holders = _holders(ctx, spec, mine)
     if not holders:
         return {keys: NOT_HELD for keys in mine}
-    workspace = spec.resource_type == WORKSPACE
+    workspace = spec.name == permission_kinds.WORKSPACE.name
     # Where the resource's workspace is part of its key, only the patterns that apply there count.
     in_workspace = spec.key_columns[:1] == ("workspace",)
 
@@ -617,11 +501,11 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
             return "default"
         if in_workspace:
             return keys[0]
-        if spec.resource_type in (EXPERIMENT, SCORER):
+        if spec.name in (permission_kinds.EXPERIMENT.name, permission_kinds.SCORER.name):
             return experiment_workspaces.get(keys[0])
         return None
 
-    if spec.resource_type == SCORER and any(h.regex[False] or h.group_regex[False] for h in holders):
+    if spec.name == permission_kinds.SCORER.name and any(h.regex[False] or h.group_regex[False] for h in holders):
         experiment_workspaces.update({eid: ws for eid, (_, ws) in _experiment_locations(sorted({keys[0] for keys in mine})).items()})
 
     if spec.regex_key_index is None:  # experiments: patterns match the name, which MLflow holds
@@ -635,7 +519,7 @@ def _judge_all(ctx: _Context, spec: _Spec, mine: Set[Tuple[str, ...]]) -> Dict[T
                     verdicts[keys] = _judge(holders, keys, located[keys[0]][0], False, workspace, resource_workspace(keys))
         return verdicts
 
-    if spec.resource_type != REGISTERED_MODEL:
+    if spec.name != permission_kinds.REGISTERED_MODEL.name:
         return {keys: _judge(holders, keys, keys[spec.regex_key_index], False, workspace, resource_workspace(keys)) for keys in mine}
 
     # Registered models and prompts share grant rows but not patterns. Ask the registry only when
@@ -680,12 +564,12 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
     ctx = _Context(session, user_id)
     orphans: List[Tuple[str, str, str]] = []
 
-    for spec in map(_effective, _specs()):
+    for spec in map(_effective, permission_kinds.table_owning_kinds()):
         key_names = spec.key_columns
         user_keys = _key_columns(spec.user_model, key_names)
         group_keys = _key_columns(spec.group_model, key_names)
         if len(user_keys) != len(key_names) or len(group_keys) != len(key_names):
-            logger.warning("Skipping orphan check for %s: unexpected permission schema", spec.resource_type)
+            logger.warning("Skipping orphan check for %s: unexpected permission schema", spec.name)
             continue
 
         direct = {
@@ -720,12 +604,12 @@ def _detect(session, user_id: int) -> List[Tuple[str, str, str]]:
                 via = VIA_UNRESOLVED
             else:
                 via = VIA_DIRECT if keys in direct else VIA_GROUP_PREFIX + sorted(through_group[keys])[0]
-            orphans.append((spec.resource_type, _resource_id(keys), via))
+            orphans.append((spec.name, _resource_id(keys), via))
         if unresolved:
             logger.warning(
                 "Orphan check: %d %s resource(s) could not be resolved against regex grants in MLflow; reported as unresolved and not handed over",
                 unresolved,
-                spec.resource_type,
+                spec.name,
             )
     return orphans
 
@@ -794,7 +678,7 @@ def _valid_fallback(session, fallback: Optional[str], departing_id: int):
 
 def _transfer_in_session(session, target_id: int, orphans: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
     """Grant ``MANAGE`` on each orphan to ``target_id``, raising an existing lower grant."""
-    specs: Dict[str, _Spec] = {spec.resource_type: _effective(spec) for spec in _specs()}
+    specs: Dict[str, GrantKind] = {spec.name: _effective(spec) for spec in permission_kinds.table_owning_kinds()}
     transferred: List[Tuple[str, str]] = []
     for resource_type, resource_id in orphans:
         user_model, key_names = specs[resource_type].user_model, specs[resource_type].key_columns

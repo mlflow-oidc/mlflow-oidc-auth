@@ -78,7 +78,7 @@ def test_get(repo, session):
 def test_list(repo, session):
     perm = MagicMock()
     perm.to_mlflow_entity.return_value = "entity"
-    session.query().all.return_value = [perm]
+    session.query().filter().order_by().all.return_value = [perm]
     assert repo.list() == ["entity"]
 
 

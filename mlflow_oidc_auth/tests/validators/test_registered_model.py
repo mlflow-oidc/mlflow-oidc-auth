@@ -23,7 +23,7 @@ class DummyPermission:
 
 def _patch_permission(**kwargs):
     return patch(
-        "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
+        "mlflow_oidc_auth.validators.registered_model.effective_registry_permission",
         return_value=MagicMock(permission=DummyPermission(**kwargs)),
     )
 
@@ -35,7 +35,7 @@ def test__get_permission_from_registered_model_name():
             return_value=["modelA"],
         ),
         patch(
-            "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
+            "mlflow_oidc_auth.validators.registered_model.effective_registry_permission",
             return_value=MagicMock(permission=DummyPermission(can_read=True)),
         ),
     ):
@@ -188,7 +188,7 @@ def test__get_permission_from_registered_model_name_no_permission():
             return_value=["modelA"],
         ),
         patch(
-            "mlflow_oidc_auth.validators.registered_model.effective_registered_model_permission",
+            "mlflow_oidc_auth.validators.registered_model.effective_registry_permission",
             return_value=MagicMock(permission=DummyPermission()),
         ),
     ):

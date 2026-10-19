@@ -1,35 +1,37 @@
 """
 Permission resolution utilities for MLflow OIDC Auth.
 
-This module provides registry-driven permission resolution for all 8 resource types.
-The PERMISSION_REGISTRY maps resource types to builder functions that create
-source configurations, and resolve_permission() is the single entry point.
+``resolve_permission()`` is the single entry point for one resource's permission, for all 8
+resource types in ``grant_context.PERMISSION_REGISTRY``. The decision is made by ``utils/grant_context.py``
+(issue #460), the one resolver shared with the list filters and the FastAPI batch path: the
+user's grants are read once per resource type and resolved in memory.
 
-A pluggable cache backend is used to avoid repeated DB lookups on every request.
-Cache entries are keyed by ``resource_type:resource_id:username`` (plus every extra
-resource-identifying kwarg, e.g. the scorer name, for composite ids) and expire
-after PERMISSION_CACHE_TTL_SECONDS (default 30). The backend is selected via
-``CACHE_BACKEND`` config (``"local"`` or ``"redis"``).
+Decisions are also cached with a pluggable cache backend. Entries are keyed by
+``resource_type:resource_id:username`` (plus every extra resource-identifying kwarg, e.g. the
+scorer name, for composite ids) and expire after PERMISSION_CACHE_TTL_SECONDS (default 30). The
+backend is selected via ``CACHE_BACKEND`` config (``"local"`` or ``"redis"``).
 
 Explicit invalidation is available via invalidate_permission_cache() and
-flush_permission_cache().
+flush_permission_cache(); both also drop the cached grant contexts.
 
 Existing public functions (effective_*, can_*) are thin wrappers around
 resolve_permission() and remain backward-compatible.
 """
 
-import re
-from typing import Callable, Dict
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Sequence
 from urllib.parse import quote
 
 from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
+from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
 from mlflow_oidc_auth.store import store
 
@@ -39,19 +41,37 @@ logger = get_logger()
 # Permission cache (lazy init to avoid import-time config reads)
 # ---------------------------------------------------------------------------
 
-_PERMISSION_CACHE_MAX_SIZE = 2048
 _PERMISSION_CACHE_DEFAULT_TTL = 30
 
 _permission_cache: CacheBackend | None = None
 
 
 def _get_permission_cache() -> CacheBackend:
-    """Get or create the permission resolution cache (lazy init)."""
+    """Get or create the permission resolution cache (lazy init).
+
+    "_v2": entries are :class:`_CachedDecision` since issue #460, so a replica still on the old
+    format never reads one, nor this one an old entry.
+    """
     global _permission_cache
     if _permission_cache is None:
         ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        _permission_cache = get_cache_backend("permissions", maxsize=_PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        # Validated once in config.py (positive int, default 10000).
+        _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
     return _permission_cache
+
+
+@dataclass(frozen=True)
+class _CachedDecision:
+    """A cached decision and the time it stops being valid.
+
+    A decision is built from grant reads that may themselves be cached, possibly by another
+    replica. Its expiry is capped at theirs, so a revoke is never served longer than one
+    ``PERMISSION_CACHE_TTL_SECONDS`` after the grants were read — not one TTL after the decision
+    was made from grants already nearly that old.
+    """
+
+    result: PermissionResult
+    expires_at: float
 
 
 # Distinguishes "no workspace context on this request" from a workspace literally named
@@ -118,6 +138,9 @@ def invalidate_permission_cache(resource_type: str, resource_id: str, username: 
     resource pass the same qualifiers ``resolve_permission`` was given (e.g.
     ``scorer_name=...``), or the entry is not found.
     """
+    # The decision is derived from the user's cached grants; drop those first, so the decision
+    # cannot be rebuilt from grants that are about to go (the order flush_permission_cache uses).
+    invalidate_user_grant_contexts(username)
     cache = _get_permission_cache()
     if workspace is None:
         workspace = _get_cache_workspace()
@@ -128,247 +151,77 @@ def flush_permission_cache() -> None:
     """Flush entire permission cache.
 
     Call after bulk operations (e.g., regex permission changes) that
-    may affect many user+resource combos.
+    may affect many user+resource combos. Flushes the cached grant contexts
+    (``grant_context``) with it, so every store wrapper that calls this
+    invalidates both.
     """
+    # The grant sections first: a decision recomputed between the two clears must not be
+    # rebuilt from grants that are about to go.
+    flush_grant_contexts()
     cache = _get_permission_cache()
     cache.clear()
     logger.debug("Permission cache fully flushed")
 
 
-# Resource type constants
-EXPERIMENT = "experiment"
-REGISTERED_MODEL = "registered_model"
-PROMPT = "prompt"
-SCORER = "scorer"
-GATEWAY_ENDPOINT = "gateway_endpoint"
-GATEWAY_SECRET = "gateway_secret"
-GATEWAY_MODEL_DEFINITION = "gateway_model_definition"
-MCP_SERVER = "mcp_server"
-
-# The same names as literals, for log messages. CodeQL treats anything derived from a
-# constant named ``*_SECRET`` as a secret, so a message names the resource type by picking
-# the matching literal here rather than by echoing the value it was given. Kept in step
-# with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
-_RESOURCE_TYPE_LOG_NAMES = (
-    "experiment",
-    "registered_model",
-    "prompt",
-    "scorer",
-    "gateway_endpoint",
-    "gateway_secret",
-    "gateway_model_definition",
-    "mcp_server",
+# Resource type constants. Defined with the resolver (utils/grant_context.py) and re-exported here.
+from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
+    EXPERIMENT,
+    GATEWAY_ENDPOINT,
+    GATEWAY_MODEL_DEFINITION,
+    GATEWAY_SECRET,
+    GUARD,
+    MCP_SERVER,
+    PROMPT,
+    REGISTERED_MODEL,
+    PERMISSION_REGISTRY,
+    best_matching_regex,
+    flush_grant_contexts,
+    invalidate_user_grant_contexts,
+    load_grant_context,
+    permission_cache_ttl,
+    resolve,
+    resolve_scorer,
+    walk_sources,
+    workspace_fallback,
 )
 
-
-# ---------------------------------------------------------------------------
-# Generic regex matcher (replaces 10+ near-identical functions)
-# ---------------------------------------------------------------------------
-
-
-def _match_regex_permission(regexes, name: str, label: str, workspace: str | None = None) -> str:
-    """Generic regex matcher for any resource type. Replaces 8 near-identical functions.
-
-    Only patterns that apply in the resource's workspace count — ``workspace``, or the request's
-    grant workspace when omitted (see ``utils/grant_workspace.pattern_in_scope``).
-    """
-    from mlflow_oidc_auth.utils.grant_workspace import pattern_in_scope
-
-    for regex in regexes:
-        if not pattern_in_scope(regex, workspace):
-            continue
-        if re.match(regex.regex, name):
-            logger.debug(f"Regex permission found for {label} {name}: {regex.permission} with regex {regex.regex} and priority {regex.priority}")
-            return regex.permission
-    raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
+# The same names for log messages. CodeQL treats anything derived from a constant named
+# ``*_SECRET`` as a secret, so a message names the resource type by picking the matching
+# registry name here (no constant of that name on the way) rather than by echoing the value
+# it was given. Kept in step with PERMISSION_REGISTRY by test_permission_fallback_observability.py.
+_RESOURCE_TYPE_LOG_NAMES = tuple(kind.name for kind in permission_kinds.resource_kinds())
 
 
 # ---------------------------------------------------------------------------
-# Experiment-specific regex wrappers (experiment_id → experiment_name lookup)
+# Pattern matcher. The one implementation is grant_context.best_matching_regex.
 # ---------------------------------------------------------------------------
 
 
-def _get_experiment_permission_from_regex(regexes, experiment_id: str) -> str:
-    experiment_name = _get_tracking_store().get_experiment(experiment_id).name
-    return _match_regex_permission(regexes, experiment_name, "experiment")
-
-
-def _get_experiment_group_permission_from_regex(regexes, experiment_id: str) -> str:
-    experiment_name = _get_tracking_store().get_experiment(experiment_id).name
-    return _match_regex_permission(regexes, experiment_name, "experiment")
-
-
-# ---------------------------------------------------------------------------
-# Builder functions — one per resource type
-# ---------------------------------------------------------------------------
-
-
-def _build_experiment_sources(experiment_id: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    return {
-        "user": lambda experiment_id=experiment_id, user=username: store.get_experiment_permission(experiment_id, user).permission,
-        "group": lambda experiment_id=experiment_id, user=username: store.get_user_groups_experiment_permission(experiment_id, user).permission,
-        "regex": lambda experiment_id=experiment_id, user=username: _get_experiment_permission_from_regex(
-            store.list_experiment_regex_permissions(user), experiment_id
-        ),
-        "group-regex": lambda experiment_id=experiment_id, user=username: _get_experiment_group_permission_from_regex(
-            store.list_group_experiment_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            experiment_id,
-        ),
-    }
-
-
-def _build_registered_model_sources(model_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    return {
-        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
-        "regex": lambda model_name=model_name, user=username: _match_regex_permission(
-            store.list_registered_model_regex_permissions(user),
-            model_name,
-            "model name",
-        ),
-        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
-            store.list_group_registered_model_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            model_name,
-            "model name",
-        ),
-    }
-
-
-def _build_prompt_sources(model_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    """Build prompt permission sources.
-
-    CRITICAL: user/group sources map to store.get_registered_model_permission and
-    store.get_user_groups_registered_model_permission (NOT prompt-specific methods).
-    Regex sources use prompt-specific store methods. This is intentional — preserved
-    from the original implementation.
-    """
-    return {
-        "user": lambda model_name=model_name, user=username: store.get_registered_model_permission(model_name, user).permission,
-        "group": lambda model_name=model_name, user=username: store.get_user_groups_registered_model_permission(model_name, user).permission,
-        "regex": lambda model_name=model_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), model_name, "model name"),
-        "group-regex": lambda model_name=model_name, user=username: _match_regex_permission(
-            store.list_group_prompt_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            model_name,
-            "model name",
-        ),
-    }
-
-
-def _build_scorer_sources(experiment_id: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    scorer_name = kwargs["scorer_name"]
-    return {
-        "user": lambda experiment_id=experiment_id, scorer_name=scorer_name, user=username: store.get_scorer_permission(
-            experiment_id, scorer_name, user
-        ).permission,
-        "group": lambda experiment_id=experiment_id, scorer_name=scorer_name, user=username: store.get_user_groups_scorer_permission(
-            experiment_id, scorer_name, user
-        ).permission,
-        "regex": lambda scorer_name=scorer_name, user=username: _match_regex_permission(store.list_scorer_regex_permissions(user), scorer_name, "scorer name"),
-        "group-regex": lambda scorer_name=scorer_name, user=username: _match_regex_permission(
-            store.list_group_scorer_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            scorer_name,
-            "scorer name",
-        ),
-    }
-
-
-def _build_gateway_endpoint_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_endpoint_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_endpoint_group_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_gateway_endpoint_regex_permissions(user),
-            gateway_name,
-            "gateway name",
-        ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_endpoint_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            gateway_name,
-            "gateway name",
-        ),
-    }
-
-
-def _build_gateway_secret_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_secret_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_secret_group_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_gateway_secret_regex_permissions(user),
-            gateway_name,
-            "gateway name",
-        ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_secret_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            gateway_name,
-            "gateway name",
-        ),
-    }
-
-
-def _build_gateway_model_definition_sources(gateway_name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    return {
-        "user": lambda gateway_name=gateway_name, user=username: store.get_gateway_model_definition_permission(gateway_name, user).permission,
-        "group": lambda gateway_name=gateway_name, user=username: store.get_user_gateway_model_definition_group_permission(gateway_name, user).permission,
-        "regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_gateway_model_definition_regex_permissions(user),
-            gateway_name,
-            "gateway name",
-        ),
-        "group-regex": lambda gateway_name=gateway_name, user=username: _match_regex_permission(
-            store.list_group_gateway_model_definition_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
-            gateway_name,
-            "gateway name",
-        ),
-    }
-
-
-def _build_mcp_server_sources(name: str, username: str, **kwargs) -> Dict[str, Callable[[], str]]:
-    """User and group grants on an MCP server, in the request's grant workspace.
-
-    MCP servers have no pattern grants, so there are no ``regex`` / ``group-regex`` sources; a
-    server with no grant of its own falls back to the caller's workspace permission.
-    """
-    return {
-        "user": lambda name=name, user=username: store.get_mcp_server_permission(name, user).permission,
-        "group": lambda name=name, user=username: store.get_user_mcp_server_group_permission(name, user).permission,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Permission Registry and resolve_permission()
-# ---------------------------------------------------------------------------
-
-
-PERMISSION_REGISTRY: Dict[str, Callable[..., Dict[str, Callable[[], str]]]] = {
-    EXPERIMENT: _build_experiment_sources,
-    REGISTERED_MODEL: _build_registered_model_sources,
-    PROMPT: _build_prompt_sources,
-    SCORER: _build_scorer_sources,
-    GATEWAY_ENDPOINT: _build_gateway_endpoint_sources,
-    GATEWAY_SECRET: _build_gateway_secret_sources,
-    GATEWAY_MODEL_DEFINITION: _build_gateway_model_definition_sources,
-    MCP_SERVER: _build_mcp_server_sources,
-}
-
-#: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
-#: (MCP servers have no pattern sources) skips it silently; only an unknown name is a misconfiguration.
-_KNOWN_PERMISSION_SOURCES = frozenset(("user", "group", "regex", "group-regex"))
-
-
-def _source_label(source_name: str) -> str:
-    """The plugin's own name for a configured permission source, safe to log.
-
-    ``PERMISSION_SOURCE_ORDER`` can be read from a secret store, so a configured value is
-    never written to the log as such; the matching constant is.
+def _match_regex_permission(regexes: Sequence[Any], name: str, label: str, workspace: str | None = None) -> str:
+    """Raising matcher, for the creation-time source chain (see ``grant_context.best_matching_regex``).
 
     Parameters:
-        source_name: A configured permission source.
+        regexes: Regex permission entities with ``regex``, ``permission``, ``priority`` and ``id``.
+        name: The resource name to match.
+        label: What ``name`` is (e.g. ``"model name"``), for the debug log and error message.
+        workspace: The resource's workspace; the request's grant workspace when omitted.
 
     Returns:
-        The known source it names, or ``"unrecognized"``.
+        The permission of the deciding pattern.
+
+    Raises:
+        MlflowException: ``RESOURCE_DOES_NOT_EXIST`` when no pattern matches.
     """
-    return next((known for known in _KNOWN_PERMISSION_SOURCES if known == source_name), "unrecognized")
+    regex = best_matching_regex(regexes, name, label, workspace)
+    if regex is None:
+        raise MlflowException(f"{label} {name}", error_code=RESOURCE_DOES_NOT_EXIST)
+    return regex.permission
+
+
+# ---------------------------------------------------------------------------
+# resolve_permission() and its workspace fallback. Resolution itself is grant_context.resolve
+# (issue #460): one implementation for single checks, list filters and the FastAPI batch path.
+# ---------------------------------------------------------------------------
 
 
 def _apply_workspace_fallback(result: PermissionResult, username: str, resource_type: str | None = None, resource_id: str | None = None) -> PermissionResult:
@@ -380,7 +233,9 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, resource_
     deny with ``NO_PERMISSIONS`` (kind ``workspace-deny``). A header-less request
     (no workspace) is left unchanged so the global default still applies.
 
-    Shared by resolve_permission and the creation resolvers so both paths agree.
+    The decision is ``grant_context.workspace_fallback``, shared with ``resolve_permission``,
+    the list filters and the batch path; this is its form for the creation resolvers, which have
+    no grant context.
     """
     if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
         return result
@@ -388,19 +243,14 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, resource_
     from mlflow_oidc_auth.bridge.user import get_request_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
-    workspace = get_request_workspace()
-    if not workspace:
-        return result
-    if resource_type in (EXPERIMENT, SCORER) and not _experiment_in_request_workspace(resource_id):
-        # Experiment (and scorer) grants are keyed by an id MLflow keeps unique across workspaces,
-        # so the workspace a request names says nothing about the experiment: a permission on
-        # workspace B must not reach an experiment of workspace A. MLflow's store resolves the id
-        # only within the request's workspace; an experiment it does not find there gets nothing.
-        return PermissionResult(NO_PERMISSIONS, "workspace-deny")
-    ws_perm = get_workspace_permission_cached(username, workspace)
-    if ws_perm is not None:
-        return PermissionResult(ws_perm, "workspace")
-    return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+    return workspace_fallback(
+        result,
+        enabled=True,
+        request_workspace=get_request_workspace(),
+        resource_type=resource_type,
+        in_request_workspace=lambda: _experiment_in_request_workspace(resource_id),
+        workspace_permission=lambda workspace: get_workspace_permission_cached(username, workspace),
+    )
 
 
 def _experiment_in_request_workspace(experiment_id: str | None) -> bool:
@@ -505,36 +355,49 @@ def record_permission_fallback(resource_type: str, resource_id: str, username: s
         )
 
 
-def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs) -> PermissionResult:
-    """Single entry point for all permission resolution. Per D-01 (REFAC-01).
+def resolve_permission(resource_type: str, resource_id: str, username: str, **kwargs: str) -> PermissionResult:
+    """Single entry point for one resource's permission. Per D-01 (REFAC-01).
 
-    Results are cached with a short TTL to avoid repeated DB lookups on
-    every request. The cache key is ``resource_type:resource_id:username`` plus
-    every kwarg, which the builders use to identify composite resources.
+    Resolves with a single-resource grant context (``grant_context.resolve``): direct grants by
+    their indexed per-resource queries, patterns from the user's cached pattern read. The decision
+    is cached too, keyed ``resource_type:resource_id:username`` plus every kwarg, which identify
+    composite resources (``scorer_name`` for a scorer), until the earlier of one TTL from now and
+    one TTL from the oldest grant read it was built from.
+
+    Raises:
+        KeyError: For an unknown resource type.
+    """
+    if resource_type not in PERMISSION_REGISTRY:
+        # An unknown type is an error, never a cache miss or a fallback decision.
+        raise KeyError(resource_type)
+    # kwargs identify the resource beyond its id (scorer_name for a scorer), so they are part of the key.
+    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(), **kwargs)
+    return _cached_decision(cache_key, username, lambda ctx: resolve(ctx, resource_type, resource_id, name=kwargs.get("scorer_name")))
+
+
+def _cached_decision(cache_key: str, username: str, decide: Callable[[Any], PermissionResult]) -> PermissionResult:
+    """A decision from the permission cache, made with a single-resource grant context on a miss.
+
+    The context reads the invalidation generation once, before it reads any grant; the decision
+    is cached only if no invalidation overlapped (one generation read after the write), and only
+    until the earlier of one TTL from now and one TTL from the oldest grant read it was built from.
     """
     cache = _get_permission_cache()
-    # kwargs are what the registry builder needs to identify the resource beyond its id
-    # (scorer_name for a scorer), so they are part of the key.
-    cache_key = _make_cache_key(resource_type, resource_id, username, _get_cache_workspace(), **kwargs)
-
     cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
+    if isinstance(cached, _CachedDecision):
+        if time.time() < cached.expires_at:
+            return cached.result
+        cache.delete(cache_key)
 
-    builder = PERMISSION_REGISTRY[resource_type]
-    sources_config = builder(resource_id, username, **kwargs)
-    result = get_permission_from_store_or_default(sources_config)
-    result = _apply_workspace_fallback(result, username, resource_type, resource_id)
-
-    # Recorded here rather than where the fallback is constructed, because this is the
-    # only layer that knows WHICH resource and user it was for. Checked after the
-    # workspace fallback, which may already have replaced it with a real decision.
-    # A scorer's fallback is not final: effective_scorer_permission hands it to the experiment,
-    # whose own resolution records a fallback if the default does decide.
-    if result.kind == "fallback" and resource_type != SCORER:
-        record_permission_fallback(resource_type, resource_id, username, result.permission)
-
-    cache.set(cache_key, result)
+    ctx = load_grant_context(username)
+    generation = ctx.generation()
+    result = decide(ctx)
+    ttl = permission_cache_ttl()
+    expires_at = time.time() + ttl
+    if ctx.oldest_read is not None:
+        expires_at = min(expires_at, ctx.oldest_read + ttl)
+    if expires_at > time.time():
+        GUARD.store_unless_raced(cache, cache_key, _CachedDecision(result, expires_at), generation, check_before_write=False)
     return result
 
 
@@ -599,6 +462,17 @@ def _permission_new_registered_model_sources_config(model_name: str, username: s
     }
 
 
+def _permission_new_prompt_sources_config(prompt_name: str, username: str) -> Dict[str, Callable[[], str]]:
+    return {
+        "regex": lambda prompt_name=prompt_name, user=username: _match_regex_permission(store.list_prompt_regex_permissions(user), prompt_name, "prompt name"),
+        "group-regex": lambda prompt_name=prompt_name, user=username: _match_regex_permission(
+            store.list_group_prompt_regex_permissions_for_groups_ids(store.get_groups_ids_for_user(user)),
+            prompt_name,
+            "prompt name",
+        ),
+    }
+
+
 def effective_new_experiment_permission(experiment_name: str, user: str) -> PermissionResult:
     """Resolve the permission for creating an experiment with ``experiment_name``.
 
@@ -619,6 +493,24 @@ def effective_new_registered_model_permission(model_name: str, user: str) -> Per
     return _apply_workspace_fallback(result, user)
 
 
+def effective_new_prompt_permission(prompt_name: str, user: str) -> PermissionResult:
+    """Resolve the permission for creating a prompt named ``prompt_name``.
+
+    As :func:`effective_new_registered_model_permission`, with the prompt patterns (#479): only
+    name-based regex and group-regex grants apply, and a miss falls back to the workspace permission
+    (workspaces on) or the global default (workspaces off).
+
+    Parameters:
+        prompt_name: The name of the prompt to be created.
+        user: The username.
+
+    Returns:
+        The permission the user would hold on the new prompt.
+    """
+    result = get_permission_from_store_or_default(_permission_new_prompt_sources_config(prompt_name, user))
+    return _apply_workspace_fallback(result, user)
+
+
 def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult:
     """
     Attempts to get permission from store based on configured sources,
@@ -626,10 +518,6 @@ def effective_prompt_permission(prompt_name: str, user: str) -> PermissionResult
     Permissions are checked in the order defined in PERMISSION_SOURCE_ORDER.
     """
     return resolve_permission(PROMPT, prompt_name, user)
-
-
-# Kinds of a resolved permission that are not a grant on the resource itself.
-_NON_EXPLICIT_PERMISSION_KINDS = frozenset({"fallback", "workspace", "workspace-deny"})
 
 
 def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str) -> PermissionResult:
@@ -647,10 +535,9 @@ def effective_scorer_permission(experiment_id: str, scorer_name: str, user: str)
     Returns:
         The scorer's grant, or the experiment's effective permission when there is none.
     """
-    result = resolve_permission(SCORER, experiment_id, user, scorer_name=scorer_name)
-    if result.kind in _NON_EXPLICIT_PERMISSION_KINDS:
-        return effective_experiment_permission(experiment_id, user)
-    return result
+    # One implementation of the scorer -> experiment inheritance: grant_context.resolve_scorer.
+    cache_key = _make_cache_key("effective_scorer", experiment_id, user, _get_cache_workspace(), scorer_name=scorer_name)
+    return _cached_decision(cache_key, user, lambda ctx: resolve_scorer(ctx, experiment_id, scorer_name))
 
 
 def effective_gateway_endpoint_permission(gateway_name: str, user: str) -> PermissionResult:
@@ -887,25 +774,4 @@ def get_permission_from_store_or_default(
         The function follows the configured permission source priority order
         defined in config.PERMISSION_SOURCE_ORDER and stops at the first successful match.
     """
-    for source_name in config.PERMISSION_SOURCE_ORDER:
-        if source_name in PERMISSION_SOURCES_CONFIG:
-            try:
-                # Get the permission retrieval function from the configuration
-                permission_func = PERMISSION_SOURCES_CONFIG[source_name]
-                # Call the function to get the permission
-                perm = permission_func()
-                logger.debug(f"Permission found using source: {_source_label(source_name)}")
-                return PermissionResult(get_permission(perm), source_name)
-            except MlflowException as e:
-                if e.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
-                    raise  # Re-raise exceptions other than RESOURCE_DOES_NOT_EXIST
-                # Not the exception text: it names the resource, and a gateway secret's name is
-                # not for the log.
-                logger.debug(f"Permission not found using source: {_source_label(source_name)}")
-        elif source_name not in _KNOWN_PERMISSION_SOURCES:
-            logger.warning("Invalid permission source configured in PERMISSION_SOURCE_ORDER; it is ignored")
-
-    # If no permission is found, use the default
-    perm = config.DEFAULT_MLFLOW_PERMISSION
-    logger.debug("Default permission used")
-    return PermissionResult(get_permission(perm), "fallback")
+    return walk_sources(PERMISSION_SOURCES_CONFIG, config.PERMISSION_SOURCE_ORDER, config.DEFAULT_MLFLOW_PERMISSION, get_permission)

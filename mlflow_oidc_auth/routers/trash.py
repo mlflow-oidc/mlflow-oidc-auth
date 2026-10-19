@@ -19,6 +19,14 @@ from mlflow.utils.time import get_current_time_millis
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.trash import (
+    TRASH_ERROR_RESPONSES,
+    DeletedExperimentListResponse,
+    DeletedRunListResponse,
+    RestoredExperimentResponse,
+    RestoredRunResponse,
+    TrashCleanupResponse,
+)
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
@@ -45,6 +53,7 @@ RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
 
 @trash_router.get(
     EXPERIMENTS,
+    response_model=DeletedExperimentListResponse,
     summary="List deleted experiments",
     description="Retrieves a list of deleted experiments in the MLflow tracking server.",
 )
@@ -105,6 +114,8 @@ async def list_deleted_experiments(
 
 @trash_router.get(
     RUNS,
+    response_model=DeletedRunListResponse,
+    responses=TRASH_ERROR_RESPONSES,
     summary="List deleted runs",
     description="Retrieves a list of deleted runs in the MLflow tracking server.",
 )
@@ -215,6 +226,8 @@ async def list_deleted_runs(
 
 @trash_router.post(
     CLEANUP,
+    response_model=TrashCleanupResponse,
+    responses=TRASH_ERROR_RESPONSES,
     summary="Permanently delete trashed entities",
     description="Permanently deletes entities (experiments, runs) that are in the trash based on specified criteria.",
 )
@@ -513,6 +526,8 @@ async def permanently_delete_all_trashed_entities(
 
 @trash_router.post(
     RESTORE_EXPERIMENT,
+    response_model=RestoredExperimentResponse,
+    responses=TRASH_ERROR_RESPONSES,
     summary="Restore a deleted experiment",
     description="Restores a soft-deleted experiment and all of its runs.",
 )
@@ -568,6 +583,8 @@ async def restore_experiment(
 
 @trash_router.post(
     RESTORE_RUN,
+    response_model=RestoredRunResponse,
+    responses=TRASH_ERROR_RESPONSES,
     summary="Restore a deleted run",
     description="Restores a soft-deleted run.",
 )

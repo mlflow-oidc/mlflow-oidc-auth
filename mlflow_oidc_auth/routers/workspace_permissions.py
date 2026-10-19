@@ -9,7 +9,7 @@ Per D-13/D-14: User permission CUD invalidates workspace cache in router layer.
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Response
 
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import (
@@ -207,6 +207,7 @@ async def update_workspace_group_permission(
 @workspace_permissions_router.delete(
     WORKSPACE_USER,
     status_code=204,
+    response_class=Response,
     summary="Delete user permission for a workspace",
 )
 async def delete_workspace_user_permission(
@@ -229,6 +230,7 @@ async def delete_workspace_user_permission(
 @workspace_permissions_router.delete(
     WORKSPACE_GROUP,
     status_code=204,
+    response_class=Response,
     summary="Delete group permission for a workspace",
 )
 async def delete_workspace_group_permission(

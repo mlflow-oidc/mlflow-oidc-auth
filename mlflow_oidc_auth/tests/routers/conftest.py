@@ -24,8 +24,8 @@ from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.tests.routers.shared_fixtures import (
     TestClientWrapper,
     _deleg_can_manage_experiment,
-    _deleg_can_manage_registered_model,
     _deleg_can_manage_scorer,
+    _deleg_effective_registry_permission,
     _patch_router_stores,
     mock_oauth,
     mock_permissions,
@@ -399,7 +399,6 @@ def _patch_router_stores(mock_store):
         # the lazy singleton last pointed at — which passes in isolation and fails when the
         # whole suite shares a process.
         patch("mlflow_oidc_auth.routers.auth.store", mock_store),
-        patch("mlflow_oidc_auth.utils.batch_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.registered_model_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.user_permissions.store", mock_store),
         patch("mlflow_oidc_auth.routers.group_permissions.store", mock_store),
@@ -531,10 +530,7 @@ def test_app(mock_store, mock_oauth, mock_config, mock_tracking_store, mock_perm
             _deleg_can_manage_experiment,
         ),
         patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
-        patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            _deleg_can_manage_registered_model,
-        ),
+        patch("mlflow_oidc_auth.dependencies.effective_registry_permission", _deleg_effective_registry_permission),
         # Patch names imported directly into router modules (they were imported at module-import time)
         patch(
             "mlflow_oidc_auth.routers.experiment_permissions.get_is_admin",
@@ -682,10 +678,7 @@ def test_app_admin(mock_store, mock_oauth, mock_config, mock_tracking_store, adm
             "mlflow_oidc_auth.dependencies.can_manage_experiment",
             _deleg_can_manage_experiment,
         ),
-        patch(
-            "mlflow_oidc_auth.dependencies.can_manage_registered_model",
-            _deleg_can_manage_registered_model,
-        ),
+        patch("mlflow_oidc_auth.dependencies.effective_registry_permission", _deleg_effective_registry_permission),
         patch("mlflow_oidc_auth.dependencies.can_manage_scorer", _deleg_can_manage_scorer),
         # Patch request helper module-level store
         patch("mlflow_oidc_auth.utils.request_helpers_fastapi.store", mock_store),

@@ -26,10 +26,13 @@
 
         // ── Menu items to inject (order preserved) ──────────────────────
         // {label, href, icon} — icon key into ICONS / VIEWBOXES
+        // The plugin's routes live under the deployment prefix (filled in by the
+        // server), not under MLflow's --static-prefix, so they are not page-relative.
+        var BASE_PATH = "__MLFLOW_OIDC_BASE_PATH__";
         var MENU_ITEMS = [
             { label: null, href: "#", icon: "user" },
-            { label: "Permissions", href: "oidc/ui/user", icon: "lock" },
-            { label: "Logout", href: "logout", icon: "logout" }
+            { label: "Permissions", href: BASE_PATH + "/oidc/ui/user", icon: "lock" },
+            { label: "Logout", href: BASE_PATH + "/logout", icon: "logout" }
         ];
 
         // ── Helpers ─────────────────────────────────────────────────────
@@ -166,7 +169,7 @@
         // ── Bootstrap ───────────────────────────────────────────────────
 
         document.addEventListener("DOMContentLoaded", function () {
-            getJSON("api/2.0/mlflow/users/current", function (err, res) {
+            getJSON(BASE_PATH + "/api/2.0/mlflow/users/current", function (err, res) {
                 if (err) { console.error("Error fetching username:", err); return; }
                 // Prefer Settings as insertion anchor when present; otherwise
                 // use Docs so menu works before a workspace is selected.

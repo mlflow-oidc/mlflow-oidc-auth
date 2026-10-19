@@ -350,7 +350,7 @@ class TestGroupRegisteredModelList:
         mock_store.get_group_models.return_value = [model_perm]
 
         with patch(
-            f"{_GP}.effective_registered_model_permission",
+            f"{_GP}.effective_registry_permission",
             return_value=_mock_eff_perm(),
         ):
             resp = authenticated_client.get(f"{GROUP_BASE}/devs/registered-models")
@@ -376,7 +376,7 @@ class TestGroupRegisteredModelCRUD:
     def test_create_non_admin_with_manage(self, authenticated_client, mock_store):
         """Non-admin with manage permission can create."""
         with patch(
-            f"{_GP}.effective_registered_model_permission",
+            "mlflow_oidc_auth.dependencies.effective_registry_permission",
             return_value=_mock_eff_perm(),
         ):
             resp = authenticated_client.post(
@@ -389,7 +389,7 @@ class TestGroupRegisteredModelCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.post(
                 f"{GROUP_BASE}/devs/registered-models/my-model",
                 json={"permission": "READ"},
@@ -422,7 +422,7 @@ class TestGroupRegisteredModelCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_registered_model_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.delete(f"{GROUP_BASE}/devs/registered-models/my-model")
         assert resp.status_code == 403
 
@@ -462,7 +462,7 @@ class TestGroupPromptList:
         prompt_perm.permission = "READ"
         mock_store.get_group_prompts.return_value = [prompt_perm]
 
-        with patch(f"{_GP}.effective_prompt_permission", return_value=_mock_eff_perm()):
+        with patch(f"{_GP}.effective_registry_permission", return_value=_mock_eff_perm()):
             resp = authenticated_client.get(f"{GROUP_BASE}/devs/prompts")
         assert resp.status_code == 200
 
@@ -485,7 +485,7 @@ class TestGroupPromptCRUD:
 
     def test_create_non_admin_with_manage(self, authenticated_client, mock_store):
         """Non-admin with manage permission can create."""
-        with patch(f"{_GP}.effective_prompt_permission", return_value=_mock_eff_perm()):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=_mock_eff_perm()):
             resp = authenticated_client.post(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "READ"})
         assert resp.status_code == 201
 
@@ -493,7 +493,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.post(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "READ"})
         assert resp.status_code == 403
 
@@ -512,7 +512,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.patch(f"{GROUP_BASE}/devs/prompts/my-prompt", json={"permission": "EDIT"})
         assert resp.status_code == 403
 
@@ -531,7 +531,7 @@ class TestGroupPromptCRUD:
         """Non-admin without manage permission gets 403."""
         no_perm = MagicMock()
         no_perm.permission.can_manage = False
-        with patch(f"{_GP}.effective_prompt_permission", return_value=no_perm):
+        with patch("mlflow_oidc_auth.dependencies.effective_registry_permission", return_value=no_perm):
             resp = authenticated_client.delete(f"{GROUP_BASE}/devs/prompts/my-prompt")
         assert resp.status_code == 403
 

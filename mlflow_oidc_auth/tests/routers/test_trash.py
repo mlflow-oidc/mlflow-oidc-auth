@@ -12,14 +12,17 @@ from mlflow.entities import ViewType
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 
-from mlflow_oidc_auth.routers.trash import (
-    _parse_time_delta,
-    list_deleted_experiments,
-    list_deleted_runs,
-    permanently_delete_all_trashed_entities,
-    restore_experiment,
-    restore_run,
-)
+from mlflow_oidc_auth.routers import trash as _trash
+from mlflow_oidc_auth.routers.trash import _parse_time_delta
+from mlflow_oidc_auth.tests.contract import checked
+
+# Every handler these tests await directly is wrapped so its JSONResponse - success and the
+# {"error": ...} 400/404 bodies alike - is checked against the model its route declares (#458).
+list_deleted_experiments = checked(_trash.list_deleted_experiments)
+list_deleted_runs = checked(_trash.list_deleted_runs)
+permanently_delete_all_trashed_entities = checked(_trash.permanently_delete_all_trashed_entities)
+restore_experiment = checked(_trash.restore_experiment)
+restore_run = checked(_trash.restore_run)
 
 
 class TestParseTimeDelta:

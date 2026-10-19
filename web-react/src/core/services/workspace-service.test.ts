@@ -7,6 +7,9 @@ import {
   updateWorkspace,
   deleteWorkspace,
   fetchWorkspaceMemberCounts,
+  grantWorkspaceUser,
+  updateWorkspaceGroup,
+  removeWorkspaceGroup,
 } from "./workspace-service";
 
 vi.mock("./api-utils", () => ({
@@ -202,6 +205,53 @@ describe("workspace-service", () => {
     });
   });
 
+  describe("fetchWorkspaceUsers / fetchWorkspaceGroups", () => {
+    it("keeps a grant whose permission is not a level, raw value intact", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      mockRequest.mockResolvedValue([
+        { workspace: "ws1", username: "a", permission: "READ" },
+        { workspace: "ws1", username: "b", permission: "OWNER" },
+      ]);
+
+      const users = await fetchWorkspaceUsers("ws1");
+
+      expect(users.map((u) => [u.username, u.permission])).toEqual([
+        ["a", "READ"],
+        ["b", "OWNER"],
+      ]);
+      warn.mockRestore();
+    });
+
+    it("calls the typed workspace grant endpoints", async () => {
+      mockRequest.mockResolvedValue({});
+      await grantWorkspaceUser("ws 1", "a@b", "EDIT");
+      await updateWorkspaceGroup("ws 1", "g/1", "READ");
+      await removeWorkspaceGroup("ws 1", "g/1");
+
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        1,
+        "/api/3.0/mlflow/permissions/workspaces/ws%201/users",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ username: "a@b", permission: "EDIT" }),
+        }),
+      );
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        2,
+        "/api/3.0/mlflow/permissions/workspaces/ws%201/groups/g%2F1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ group_name: "g/1", permission: "READ" }),
+        }),
+      );
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        3,
+        "/api/3.0/mlflow/permissions/workspaces/ws%201/groups/g%2F1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
   describe("fetchWorkspaceMemberCounts", () => {
     it("returns combined user and group counts", async () => {
       // fetchWorkspaceUsers and fetchWorkspaceGroups use createDynamicApiFetcher
@@ -239,6 +289,24 @@ describe("workspace-service", () => {
       const result = await fetchWorkspaceMemberCounts("ws1");
 
       expect(result).toEqual({ users: 2, groups: 1 });
+    });
+
+    it("counts rows without checking their permissions", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      mockRequest.mockImplementation((endpoint: string) =>
+        Promise.resolve(
+          endpoint.includes("/users")
+            ? [{ workspace: "ws1", username: "u", permission: "OWNER" }]
+            : [{ workspace: "ws1", group_name: "g", permission: "SUPER" }],
+        ),
+      );
+
+      await expect(fetchWorkspaceMemberCounts("ws1")).resolves.toEqual({
+        users: 1,
+        groups: 1,
+      });
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it("returns zero counts for workspace with no members", async () => {

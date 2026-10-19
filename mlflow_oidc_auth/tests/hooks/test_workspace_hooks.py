@@ -840,7 +840,7 @@ class TestAfterRequestListWorkspacesFiltering:
                     return_value=mock_auth_ctx,
                 ):
                     with patch(
-                        "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                         side_effect=mock_perm_cached,
                     ):
                         _filter_list_workspaces(mock_response)
@@ -887,7 +887,7 @@ class TestAfterRequestListWorkspacesFiltering:
                     return_value=mock_auth_ctx,
                 ):
                     with patch(
-                        "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                        "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                         side_effect=mock_perm_cached,
                     ):
                         _filter_list_workspaces(mock_response)

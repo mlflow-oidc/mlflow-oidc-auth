@@ -7,6 +7,8 @@ Tests _can_access_workspace helper and workspace filtering in:
 """
 
 from types import SimpleNamespace
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -68,7 +70,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "team-alpha") is True
@@ -80,7 +82,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=None,
             ):
                 assert _can_access_workspace("user1", "restricted-ws") is False
@@ -93,7 +95,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=NO_PERMISSIONS,
             ):
                 assert _can_access_workspace("user1", "some-ws") is False
@@ -105,7 +107,7 @@ class TestCanAccessWorkspace:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=None,
             ):
                 assert _can_access_workspace("user1", "default") is False
@@ -120,7 +122,11 @@ class TestFilterSearchExperimentsWorkspace:
     """Tests for workspace filtering in _filter_search_experiments (WSSEC-01)."""
 
     def test_removes_experiments_from_inaccessible_workspaces(self):
-        """Experiments from inaccessible workspaces are removed on initial page."""
+        """An experiment search in an inaccessible workspace returns nothing (issue #456).
+
+        MLflow scopes the search to the request's workspace, so one check on that workspace
+        covers every row; no per-row ``get_experiment`` and no per-row workspace field.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_experiments
 
         mock_response = MagicMock()
@@ -147,10 +153,15 @@ class TestFilterSearchExperimentsWorkspace:
 
         with app.test_request_context():
             # Proto experiments (from initial page)
+            # Initial-page protos carry their own workspace (issue #456: no per-row get_experiment).
             proto_exp1 = MagicMock()
             proto_exp1.experiment_id = "exp_1"
+            proto_exp1.HasField.return_value = True
+            proto_exp1.workspace = "allowed-ws"
             proto_exp2 = MagicMock()
             proto_exp2.experiment_id = "exp_2"
+            proto_exp2.HasField.return_value = True
+            proto_exp2.workspace = "denied-ws"
 
             mock_response_message = MagicMock()
             mock_response_message.experiments = [proto_exp1, proto_exp2]
@@ -169,7 +180,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -193,14 +204,20 @@ class TestFilterSearchExperimentsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="denied-ws",
                 ),
             ):
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_experiments(mock_response)
 
-                # Only exp_1 should remain
-                assert len(mock_response_message.experiments) == 1
-                assert mock_response_message.experiments[0].experiment_id == "exp_1"
+                assert len(mock_response_message.experiments) == 0
+                assert mock_response_message.next_page_token == ""
+                mock_access.assert_called_once_with("user1", "denied-ws")
+                tracking_store.get_experiment.assert_not_called()
+                tracking_store.search_experiments.assert_not_called()
 
     def test_keeps_experiments_from_accessible_workspaces(self):
         """Experiments from accessible workspaces are kept on initial page."""
@@ -246,7 +263,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -279,7 +296,11 @@ class TestFilterSearchExperimentsWorkspace:
                 assert len(mock_response_message.experiments) == 2
 
     def test_refetch_path_applies_workspace_filtering(self):
-        """Refetch path filters out entities from inaccessible workspaces."""
+        """The top-up path is covered by the one search-scope check (issue #456).
+
+        Every refetched row lives in the workspace the search was scoped to; no row's own
+        ``workspace`` attribute is consulted.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_experiments
 
         mock_response = MagicMock()
@@ -296,7 +317,7 @@ class TestFilterSearchExperimentsWorkspace:
         for i in range(10):
             e = MagicMock()
             e.experiment_id = f"exp_{i}"
-            e.workspace = "allowed-ws" if i % 2 == 0 else "denied-ws"
+            e.workspace = "allowed-ws"
             e.to_proto.return_value = MagicMock(experiment_id=f"exp_{i}")
             refetched_entities.append(e)
 
@@ -327,7 +348,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -351,6 +372,10 @@ class TestFilterSearchExperimentsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="allowed-ws",
                 ),
                 patch(
                     "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token",
@@ -364,8 +389,8 @@ class TestFilterSearchExperimentsWorkspace:
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_experiments(mock_response)
 
-                # Only 5 of 10 should pass (even-indexed with allowed-ws)
-                assert len(experiments_list) == 5
+                assert len(experiments_list) == 10
+                assert {c.args for c in mock_access.call_args_list} == {("user1", "allowed-ws")}
 
     def test_admin_bypasses_workspace_filtering(self):
         """Admin users see all experiments regardless of workspace (WSSEC-06)."""
@@ -414,7 +439,7 @@ class TestFilterSearchExperimentsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -452,7 +477,12 @@ class TestFilterSearchRegisteredModelsWorkspace:
     """Tests for workspace filtering in _filter_search_registered_models (WSSEC-02)."""
 
     def test_removes_models_from_inaccessible_workspaces(self):
-        """Models from inaccessible workspaces are removed on initial page."""
+        """Models from an inaccessible workspace are removed on the initial page.
+
+        MLflow scopes a registry search to the request's workspace and the registered-model
+        proto has no ``workspace`` field, so the page's workspace is the search scope
+        (issue #456) rather than a per-row ``get_registered_model`` lookup.
+        """
         from mlflow_oidc_auth.hooks.after_request import (
             _filter_search_registered_models,
         )
@@ -466,12 +496,6 @@ class TestFilterSearchRegisteredModelsWorkspace:
         mock_request_message.max_results = 1000
 
         model_registry_store = MagicMock()
-        model_allowed = MagicMock()
-        model_allowed.workspace = "allowed-ws"
-        model_denied = MagicMock()
-        model_denied.workspace = "denied-ws"
-
-        model_registry_store.get_registered_model.side_effect = lambda name: (model_allowed if name == "model-ok" else model_denied)
 
         with app.test_request_context():
             rm1 = MagicMock()
@@ -496,7 +520,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -520,13 +544,18 @@ class TestFilterSearchRegisteredModelsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="denied-ws",
                 ),
             ):
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_registered_models(mock_response)
 
-                assert len(mock_response_message.registered_models) == 1
-                assert mock_response_message.registered_models[0].name == "model-ok"
+                assert len(mock_response_message.registered_models) == 0
+                mock_access.assert_called_with("user1", "denied-ws")
+                model_registry_store.get_registered_model.assert_not_called()
 
     def test_keeps_models_from_accessible_workspaces(self):
         """Models from accessible workspaces are kept."""
@@ -567,7 +596,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -599,7 +628,11 @@ class TestFilterSearchRegisteredModelsWorkspace:
                 assert len(mock_response_message.registered_models) == 2
 
     def test_refetch_path_applies_workspace_filtering(self):
-        """Refetch path filters out models from inaccessible workspaces."""
+        """The top-up path is covered by the one search-scope check (issue #456).
+
+        MLflow scopes the registry search to the request's workspace, so every refetched row
+        lives there; no row's own ``workspace`` attribute is consulted.
+        """
         from mlflow_oidc_auth.hooks.after_request import (
             _filter_search_registered_models,
         )
@@ -616,7 +649,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
         for i in range(10):
             rm = MagicMock()
             rm.name = f"model_{i}"
-            rm.workspace = "allowed-ws" if i % 2 == 0 else "denied-ws"
+            rm.workspace = "allowed-ws"
             rm.to_proto.return_value = MagicMock(name=f"model_{i}")
             refetched_entities.append(rm)
 
@@ -644,7 +677,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -668,6 +701,10 @@ class TestFilterSearchRegisteredModelsWorkspace:
                 patch(
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
+                ) as mock_access,
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="allowed-ws",
                 ),
                 patch(
                     "mlflow_oidc_auth.hooks.after_request.SearchUtils.parse_start_offset_from_page_token",
@@ -681,8 +718,8 @@ class TestFilterSearchRegisteredModelsWorkspace:
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_registered_models(mock_response)
 
-                # Only 5 of 10 should pass
-                assert len(mock_response_message.registered_models) == 5
+                assert len(mock_response_message.registered_models) == 10
+                assert {c.args for c in mock_access.call_args_list} == {("user1", "allowed-ws")}
 
     def test_admin_bypasses_workspace_filtering(self):
         """Admin users see all models regardless of workspace (WSSEC-06)."""
@@ -734,7 +771,7 @@ class TestFilterSearchRegisteredModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_registered_model",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_registered_model",
                     return_value=True,
                 ),
                 patch(
@@ -767,7 +804,11 @@ class TestFilterSearchLoggedModelsWorkspace:
     """Tests for workspace filtering in _filter_search_logged_models (WSSEC-03)."""
 
     def test_removes_logged_models_from_inaccessible_workspaces(self):
-        """Logged models whose experiment is in inaccessible workspace are removed."""
+        """A logged-model search in an inaccessible workspace returns nothing (issue #456).
+
+        MLflow scopes the search to the experiments of the request's workspace, so one check
+        on that workspace covers every row; no per-experiment ``get_experiment`` lookup.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_logged_models
 
         mock_response = MagicMock()
@@ -811,7 +852,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -836,12 +877,18 @@ class TestFilterSearchLoggedModelsWorkspace:
                     "mlflow_oidc_auth.hooks.after_request._can_access_workspace",
                     side_effect=can_access_ws,
                 ),
+                patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="denied-ws",
+                ),
             ):
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_logged_models(mock_response)
 
-                assert len(mock_response_message.models) == 1
-                assert mock_response_message.models[0].info.experiment_id == "exp_1"
+                assert len(mock_response_message.models) == 0
+                assert mock_response_message.next_page_token == ""
+                tracking_store.get_experiment.assert_not_called()
+                tracking_store.search_logged_models.assert_not_called()
 
     def test_keeps_logged_models_from_accessible_workspaces(self):
         """Logged models whose experiment is in accessible workspace are kept."""
@@ -880,7 +927,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -912,7 +959,11 @@ class TestFilterSearchLoggedModelsWorkspace:
                 assert len(mock_response_message.models) == 1
 
     def test_refetch_path_applies_workspace_filtering(self):
-        """Refetch path filters logged models by experiment workspace."""
+        """The top-up path needs no per-experiment workspace lookup (issue #456).
+
+        With the search's workspace readable, every refetched row is kept on its read
+        permission alone; ``get_experiment`` is never called.
+        """
         from mlflow_oidc_auth.hooks.after_request import _filter_search_logged_models
 
         mock_response = MagicMock()
@@ -963,7 +1014,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -989,6 +1040,10 @@ class TestFilterSearchLoggedModelsWorkspace:
                     side_effect=can_access_ws,
                 ),
                 patch(
+                    "mlflow_oidc_auth.hooks.after_request.resolve_entity_workspace_name",
+                    return_value="allowed-ws",
+                ),
+                patch(
                     "mlflow.utils.search_utils.SearchLoggedModelsPaginationToken",
                     mock_token_class,
                 ),
@@ -996,8 +1051,8 @@ class TestFilterSearchLoggedModelsWorkspace:
                 mock_config.MLFLOW_ENABLE_WORKSPACES = True
                 _filter_search_logged_models(mock_response)
 
-                # Only 5 of 10 should pass (even-indexed with exp_1/allowed-ws)
-                assert len(mock_response_message.models) == 5
+                assert len(mock_response_message.models) == 10
+                tracking_store.get_experiment.assert_not_called()
 
     def test_admin_bypasses_workspace_filtering(self):
         """Admin users see all logged models regardless of workspace (WSSEC-06)."""
@@ -1049,7 +1104,7 @@ class TestFilterSearchLoggedModelsWorkspace:
                     return_value="user1",
                 ),
                 patch(
-                    "mlflow_oidc_auth.hooks.after_request.can_read_experiment",
+                    "mlflow_oidc_auth.hooks.after_request._can_read_experiment",
                     return_value=True,
                 ),
                 patch(
@@ -1102,7 +1157,7 @@ class TestWorkspaceFilteringCrossCutting:
         with patch("mlflow_oidc_auth.hooks.after_request.config") as mock_config:
             mock_config.MLFLOW_ENABLE_WORKSPACES = True
             with patch(
-                "mlflow_oidc_auth.hooks.after_request.get_workspace_permission_cached",
+                "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
                 return_value=READ,
             ):
                 assert _can_access_workspace("user1", "default") is True
@@ -1130,7 +1185,7 @@ class TestWorkspaceMemoLifetime:
 
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         calls = []
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
 
         with self._app().test_request_context("/"):
             assert ar._can_access_workspace("bob", "ws1") is False
@@ -1145,7 +1200,7 @@ class TestWorkspaceMemoLifetime:
 
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
         calls = []
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", lambda u, w: calls.append((u, w)))
 
         app = self._app()
         for _ in range(2):
@@ -1165,10 +1220,98 @@ class TestWorkspaceMemoLifetime:
             seen.append(username)
             return SimpleNamespace(can_read=(username == "allowed"))
 
-        monkeypatch.setattr(ar, "get_workspace_permission_cached", _perm)
+        monkeypatch.setattr("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", _perm)
 
         with self._app().test_request_context("/"):
             assert ar._can_access_workspace("allowed", "ws1") is True
             assert ar._can_access_workspace("denied", "ws1") is False
 
         assert seen == ["allowed", "denied"], "memo key must include the username"
+
+
+# ---------------------------------------------------------------------------
+# First-page workspace source (issue #456): the row's own workspace, no per-row lookup
+# ---------------------------------------------------------------------------
+
+
+class TestFirstPageWorkspaceWithoutLookups:
+    """Real protos, real MLflow workspace context, a store with no get_experiment/get_registered_model.
+
+    Any per-row lookup would raise AttributeError on this store; the filter must not need one.
+    The request's workspace is the one the search was scoped to, so a denial on it must empty
+    the page — including model versions, whose proto carries no workspace field.
+    """
+
+    @staticmethod
+    def _rows(kind):
+        from mlflow_oidc_auth.tests.search_paging_helpers import make_experiments, make_model_versions, make_registered_models
+
+        return {"experiments": make_experiments, "registered_models": make_registered_models, "model_versions": make_model_versions}[kind](30)
+
+    @pytest.mark.parametrize("kind", ["experiments", "registered_models", "model_versions"])
+    def test_denied_workspace_empties_the_page(self, kind):
+        from mlflow.utils.workspace_context import WorkspaceContext
+
+        from mlflow_oidc_auth.tests.search_paging_helpers import FakeSearchStore, run_filtered_page
+
+        checked = []
+
+        def can_access(username, workspace):
+            checked.append(workspace)
+            return workspace != "ws-a"
+
+        with WorkspaceContext("ws-a"):
+            store = FakeSearchStore(self._rows(kind))
+            ids, token = run_filtered_page(kind, store, lambda rid: True, max_results=10, page_token=None, can_access_workspace=can_access)
+
+        assert ids == [], "rows from a denied workspace were returned"
+        assert token == ""
+        assert checked and set(checked) == {"ws-a"}
+        # One scope check covers the top-up half too: nothing more is fetched (issue #456).
+        assert store.calls == 1, "top-up pages were fetched for a denied workspace"
+
+    def test_model_version_rows_without_workspace_are_not_waved_through(self):
+        """A top-up row missing ``workspace`` is judged by the search scope, never treated as pre-workspace."""
+        from mlflow.utils.workspace_context import WorkspaceContext
+
+        from mlflow_oidc_auth.tests.search_paging_helpers import FakeSearchStore, run_filtered_page
+
+        class _NoWorkspaceVersion:
+            def __init__(self, i):
+                self.name = f"model-{i}"
+
+            def to_proto(self):
+                from mlflow.protos.model_registry_pb2 import ModelVersion as ModelVersionProto
+
+                return ModelVersionProto(name=self.name, version="1")
+
+        rows = [_NoWorkspaceVersion(i) for i in range(30)]
+        # The first page is all unreadable, so every visible row would have to come from top-up.
+        readable = {f"model-{i}" for i in range(10, 30)}
+
+        with WorkspaceContext("ws-a"):
+            denied_store = FakeSearchStore(rows)
+            ids, token = run_filtered_page(
+                "model_versions", denied_store, lambda rid: rid in readable, max_results=10, page_token=None, can_access_workspace=lambda u, w: False
+            )
+            assert ids == [] and token == ""
+
+            allowed_store = FakeSearchStore(rows)
+            ids, _ = run_filtered_page(
+                "model_versions", allowed_store, lambda rid: rid in readable, max_results=10, page_token=None, can_access_workspace=lambda u, w: w == "ws-a"
+            )
+            assert ids == [f"model-{i}" for i in range(10, 20)]
+
+    @pytest.mark.parametrize("kind", ["experiments", "registered_models", "model_versions"])
+    def test_allowed_workspace_keeps_the_page(self, kind):
+        from mlflow.utils.workspace_context import WorkspaceContext
+
+        from mlflow_oidc_auth.tests.search_paging_helpers import FakeSearchStore, row_id, run_filtered_page
+
+        with WorkspaceContext("ws-a"):
+            rows = self._rows(kind)
+            store = FakeSearchStore(rows)
+            ids, token = run_filtered_page(kind, store, lambda rid: True, max_results=10, page_token=None, can_access_workspace=lambda u, w: w == "ws-a")
+
+        assert ids == [row_id(kind, r) for r in rows[:10]]
+        assert token != ""

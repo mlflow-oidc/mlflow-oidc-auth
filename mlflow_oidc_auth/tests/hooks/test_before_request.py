@@ -566,6 +566,27 @@ class TestStashGatewayContext:
                 assert g._updating_gateway_endpoint_old_name == "old-endpoint-name"
                 assert not hasattr(g, "_deleting_gateway_endpoint_name")
 
+    def test_stash_update_model_definition_old_name(self):
+        """UpdateGatewayModelDefinition stashes the current name for the rename cascade."""
+        from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_HANDLERS
+        from mlflow.protos.service_pb2 import UpdateGatewayModelDefinition
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/model-definitions/update",
+            method="POST",
+            json={"model_definition_id": "md-uuid-123", "name": "new-name"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch(
+                "mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id",
+                return_value="old-model-def",
+            ):
+                _stash_gateway_context(BEFORE_REQUEST_HANDLERS[UpdateGatewayModelDefinition])
+                assert g._updating_gateway_model_definition_old_name == "old-model-def"
+                assert not hasattr(g, "_deleting_gateway_model_definition_name")
+
     def test_stash_delete_endpoint_name(self):
         """Stashes endpoint name on delete via endpoint_id resolution."""
         from mlflow_oidc_auth.validators.gateway import (
@@ -587,8 +608,25 @@ class TestStashGatewayContext:
                 _stash_gateway_context(validate_can_delete_gateway_endpoint)
                 assert g._deleting_gateway_endpoint_name == "doomed-endpoint"
 
-    def test_stash_delete_secret_name_from_field(self):
-        """Stashes secret name on delete when secret_name is provided directly."""
+    def test_stash_delete_secret_uses_the_id_mlflow_deletes(self):
+        """DeleteGatewaySecret carries only secret_id; a body secret_name must not pick another secret."""
+        from mlflow_oidc_auth.validators.gateway import (
+            validate_can_delete_gateway_secret,
+        )
+
+        with app.test_request_context(
+            path="/api/3.0/mlflow/gateway/secrets/delete",
+            method="POST",
+            json={"secret_id": "s-uuid", "secret_name": "other-secret"},
+            content_type="application/json",
+        ):
+            from flask import g
+
+            with patch("mlflow_oidc_auth.validators.gateway._resolve_secret_name_from_id", return_value="deleted-secret"):
+                _stash_gateway_context(validate_can_delete_gateway_secret)
+            assert g._deleting_gateway_secret_name == "deleted-secret"
+
+    def test_stash_delete_secret_ignores_a_name_without_an_id(self):
         from mlflow_oidc_auth.validators.gateway import (
             validate_can_delete_gateway_secret,
         )
@@ -602,7 +640,7 @@ class TestStashGatewayContext:
             from flask import g
 
             _stash_gateway_context(validate_can_delete_gateway_secret)
-            assert g._deleting_gateway_secret_name == "my-secret"
+            assert not hasattr(g, "_deleting_gateway_secret_name")
 
     def test_stash_delete_secret_name_from_id(self):
         """Stashes secret name on delete via secret_id resolution."""
@@ -625,8 +663,8 @@ class TestStashGatewayContext:
                 _stash_gateway_context(validate_can_delete_gateway_secret)
                 assert g._deleting_gateway_secret_name == "resolved-secret"
 
-    def test_stash_delete_model_definition_name_from_field(self):
-        """Stashes model definition name on delete when name is provided directly."""
+    def test_stash_delete_model_definition_uses_the_id_mlflow_deletes(self):
+        """DeleteGatewayModelDefinition carries only model_definition_id; a body name must not pick another."""
         from mlflow_oidc_auth.validators.gateway import (
             validate_can_delete_gateway_model_definition,
         )
@@ -634,13 +672,14 @@ class TestStashGatewayContext:
         with app.test_request_context(
             path="/api/3.0/mlflow/gateway/model-definitions/delete",
             method="POST",
-            json={"name": "my-model-def"},
+            json={"model_definition_id": "md-uuid", "name": "other-model-def"},
             content_type="application/json",
         ):
             from flask import g
 
-            _stash_gateway_context(validate_can_delete_gateway_model_definition)
-            assert g._deleting_gateway_model_definition_name == "my-model-def"
+            with patch("mlflow_oidc_auth.validators.gateway._resolve_model_definition_name_from_id", return_value="deleted-model-def"):
+                _stash_gateway_context(validate_can_delete_gateway_model_definition)
+            assert g._deleting_gateway_model_definition_name == "deleted-model-def"
 
     def test_stash_delete_model_definition_name_from_id(self):
         """Stashes model definition name on delete via model_definition_id resolution."""

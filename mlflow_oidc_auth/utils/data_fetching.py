@@ -23,7 +23,8 @@ from mlflow.store.entities.paged_list import PagedList
 from mlflow.store.tracking.abstract_store import AbstractStore
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 
-from mlflow_oidc_auth.utils.permissions import can_read_experiment, can_read_registered_model, effective_experiment_permission
+from mlflow_oidc_auth.utils.permissions import can_read_experiment, effective_experiment_permission
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission, is_prompt_row
 
 
 def fetch_all_registered_models(
@@ -220,7 +221,8 @@ def fetch_readable_registered_models(
     all_models = fetch_all_registered_models(filter_string=filter_string, order_by=order_by, max_results_per_page=max_results_per_page)
 
     # Filter by permissions
-    readable_models = [model for model in all_models if can_read_registered_model(model.name, username)]
+    # A prompt is judged by prompt grants (#479); the model's tags say which it is.
+    readable_models = [model for model in all_models if effective_registry_permission(model.name, username, prompt=is_prompt_row(model)).permission.can_read]
 
     return readable_models
 

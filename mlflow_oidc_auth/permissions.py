@@ -140,3 +140,44 @@ def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
     contained = [level for level in ALL_PERMISSIONS.values() if all(held[flag] or not getattr(level, flag) for flag in _CAPABILITIES)]
     # NO_PERMISSIONS has no flags, so it is always contained and the list is never empty.
     return max(contained, key=lambda level: sum(getattr(level, flag) for flag in _CAPABILITIES))
+
+
+def regex_grant_order(rule) -> tuple:
+    """The order regex (pattern) grants are tried in: priority, then id.
+
+    The single definition of that order. Lower priority numbers first, then lower id. Which of
+    several equal-priority matches decides is a separate rule (permission rank, in the matchers);
+    the id only makes the order, and so which equally ranked match is reported, deterministic.
+    It works on a grant entity or row, where it is a sort key, and
+    on a regex permission model class, where it gives the columns to order by:
+    ``query.order_by(*regex_grant_order(SqlExperimentRegexPermission))``.
+
+    Parameters:
+        rule: A regex grant (entity or ORM row), or a regex permission model class.
+
+    Returns:
+        ``(priority, id)``.
+    """
+    return (rule.priority, rule.id)
+
+
+def in_regex_grant_order(rules: list) -> list:
+    """``rules`` in :func:`regex_grant_order`, sorting only when they are not already in it.
+
+    Repositories return grants already ordered, so the usual cost is one linear check rather
+    than a sort. Anything that is not in order (a query missing the tie-break, a hand-built
+    list) is sorted, so a matcher's result never depends on the order a caller passed.
+
+    Parameters:
+        rules: Regex grants with ``priority`` and ``id``.
+
+    Returns:
+        ``rules`` itself when already ordered, otherwise a sorted copy.
+    """
+    previous = None
+    for rule in rules:
+        key = regex_grant_order(rule)
+        if previous is not None and key < previous:
+            return sorted(rules, key=regex_grant_order)
+        previous = key
+    return rules

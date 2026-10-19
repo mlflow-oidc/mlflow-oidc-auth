@@ -115,9 +115,9 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `DEFAULT_MLFLOW_PERMISSION` | String | `MANAGE` | Default permission level when no explicit permission is found. Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
+| `DEFAULT_MLFLOW_PERMISSION` | String | `NO_PERMISSIONS` | Default permission level when no explicit permission is found (deny by default since v7.6.0; it was `MANAGE` before). Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
-| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is left at the default `MANAGE` — lower it below `EDIT` (or use workspaces) to actually restrict creation. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
+| `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is `EDIT` or `MANAGE`. It works with the default `NO_PERMISSIONS` and with `READ` or `USE`, since none of those can create; or use workspaces. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
 
 ### Database
 
@@ -140,6 +140,7 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 |----------|------|---------|-------------|
 | `EXTEND_MLFLOW_MENU` | Boolean | `true` | Inject sign-in/sign-out links and permission management navigation into MLflow's built-in UI |
 | `EXTEND_MLFLOW_REAUTH` | Boolean | `true` | Inject a small script into MLflow's UI that triggers a full page reload on any 401 response. Without this, an expired session leaves the SPA rendering empty pages until a manual force-reload, because React Router intercepts URL-bar navigations as soft routing |
+| `EXTEND_MLFLOW_REDIRECT_ADMIN` | Boolean | `true` | Inject a small script into MLflow's UI that sends MLflow's built-in admin pages (`#/admin`, `#/admin/users/<name>`, `#/admin/roles/...`, `#/admin/ws?workspace=<name>`, `#/account`) to the matching page of this plugin's UI under `oidc/ui/`. Those pages are built for MLflow's own basic-auth RBAC and fail against this plugin. The redirect grants nothing: the target page applies its own authorization. It is injected only while `EXTEND_MLFLOW_MENU` or `EXTEND_MLFLOW_REAUTH` is on, so turning both off leaves MLflow's `index.html` untouched |
 | `DEFAULT_LANDING_PAGE_IS_PERMISSIONS` | Boolean | `true` | Use the permissions management page as the default landing page in the admin UI |
 
 ### Feature Flags
@@ -147,8 +148,8 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `OIDC_GEN_AI_GATEWAY_ENABLED` | Boolean | `true` | Enable AI Gateway permission management in the admin UI and API. Disable if you don't use MLflow AI Gateway |
-| `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. Requires MLflow >=3.10. See [Workspaces](workspaces) |
-| `ENABLE_API_DOCS` | Boolean | `true` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
+| `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. See [Workspaces](workspaces) |
+| `ENABLE_API_DOCS` | Boolean | `false` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
 
 ### Caching
 
@@ -162,11 +163,30 @@ The plugin uses TTL caches to avoid repeated database lookups on every request. 
 | `OIDC_CODE_CHALLENGE` | String | `S256` | PKCE code-challenge method for the authorization-code flow. `S256` (or `true`/`yes`/`on`/`1`), or `none`/`off`/`false`/`no`/`0` to disable. An unrecognised value warns and falls back to `S256`. See [PKCE](#pkce) |
 | `MANAGED_BY_ENFORCEMENT` | String | `report` | What happens when one source writes a row another owns: `off`, `report` (audit only) or `enforce`. See [Row ownership](#row-ownership) |
 | `PERMISSION_CACHE_TTL_SECONDS` | Integer | `30` | Time-to-live (seconds) for the permission resolution cache. Cached permission decisions expire after this duration. Lower values mean faster propagation of permission changes; higher values reduce database load |
+| `PERMISSION_CACHE_MAX_SIZE` | Integer | `10000` | Maximum number of entries in the permission resolution cache (per replica for `local`; ignored by `redis`, whose size is bounded by the Redis server). Single checks cache one entry per resource; list pages resolve every row against the user's cached grants (one entry per user and resource type, same size bound), so a value too small for the number of concurrent users makes them evict each other and re-query the database |
 | `CACHE_BACKEND` | String | `local` | Cache backend for permission and workspace caches. Options: `local` (in-process TTL cache) or `redis` (shared Redis instance). Use `redis` for multi-replica deployments where permission changes must propagate immediately across all replicas |
 | `CACHE_REDIS_URL` | String | None | Redis connection URL. Required when `CACHE_BACKEND=redis`. Example: `redis://localhost:6379/0` or `redis://:password@redis-host:6379/1` |
 | `CACHE_KEY_PREFIX` | String | `mlflow_oidc_auth:` | Key prefix for Redis cache entries. Useful when sharing a Redis instance with other applications |
 
 > **Note:** Permission caches are automatically invalidated when permissions are created, updated, or deleted through the plugin's API. The TTL acts as a safety net, not the primary invalidation mechanism.
+
+> **Multiple replicas:** invalidation reaches every replica only with `CACHE_BACKEND=redis`. With `local`, each replica has its own cache, and a write invalidates only the replica that served it. Elsewhere, a revoked or changed permission can be served until its entry expires: up to `PERMISSION_CACHE_TTL_SECONDS` for resource decisions and `WORKSPACE_CACHE_TTL_SECONDS` for workspace grants. A *new* workspace grant can likewise be refused on another replica while that replica still holds a cached denial for the user and workspace. Denials are therefore kept no longer than `PERMISSION_CACHE_TTL_SECONDS` (default 30 s). A workspace lookup that fails (for example on a database error) is refused and not cached.
+
+> **Upgrading with a shared Redis cache:** this release changes the workspace cache's key format: usernames and workspace names are now percent-encoded, so `alice@x.com` is stored as `alice%40x.com`. The workspace grant cache also moves to a new namespace, `workspace_v2`. New replicas never read old-format keys. However, while old and new replicas run side by side against one Redis, neither can invalidate the other's workspace entries, so a revoked workspace grant can be served for up to `WORKSPACE_CACHE_TTL_SECONDS`. With `CACHE_BACKEND=redis`, either restart all replicas together, or, once the last old replica is gone, delete these keys (shown with the default `CACHE_KEY_PREFIX=mlflow_oidc_auth:`):
+>
+> - `mlflow_oidc_auth:workspace:*` (old format; unused after the upgrade, and otherwise left to expire)
+> - `mlflow_oidc_auth:workspace_v2:*`
+> - `mlflow_oidc_auth:workspace_denials:*`
+> - `mlflow_oidc_auth:workspace_generation:*`
+>
+> The permission decision cache moves to a new namespace too, `permissions_v2` (its entries now carry their own expiry, capped by the grants they were built from), and the grants each user is resolved against are cached in `grant_context_v2`, guarded by `grant_context_generation`. Old replicas never read these, nor new replicas the old `permissions` entries; while both run side by side, neither invalidates the other's entries, so a revoked grant can be served for up to `PERMISSION_CACHE_TTL_SECONDS`. Once the last old replica is gone, delete:
+>
+> - `mlflow_oidc_auth:permissions:*` (old format; otherwise left to expire)
+> - `mlflow_oidc_auth:permissions_v2:*`
+> - `mlflow_oidc_auth:grant_context_v2:*`
+> - `mlflow_oidc_auth:grant_context_generation:*`
+>
+> With `CACHE_BACKEND=local` there is nothing to do.
 
 > **Compatibility:** Any Redis-protocol-compatible server works — including [Valkey](https://valkey.io/), [Dragonfly](https://www.dragonflydb.io/), and [KeyDB](https://docs.keydb.dev/). The plugin uses standard Redis commands (`GET`, `SET`, `DELETE`, `SCAN`) via the `redis-py` client library.
 
@@ -181,8 +201,8 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `OIDC_WORKSPACE_DETECTION_PLUGIN` | String | None | Python module path for a custom workspace detection plugin. Used to extract workspace assignments from the OIDC token |
 | `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` | Boolean | `false` | Reject workspace-gated create requests when no workspace context is present |
 | `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` | Boolean | `false` | Reject non-admin workspace-gated create requests that resolve to the `default` workspace, including requests that send no workspace context |
-| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache |
-| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for workspace permission cache entries |
+| `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache. Grants and denials are kept in two separate caches of this size, so denials can never evict a grant |
+| `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for cached workspace grants. Cached denials expire after the smaller of this and `PERMISSION_CACHE_TTL_SECONDS` |
 | `WORKSPACE_RULES_MAX_PERMISSION` | String | `EDIT` | Highest permission a [workspace group rule](workspaces#group-rules) may grant: `READ`, `USE`, `EDIT` or `MANAGE`. `MANAGE` logs a startup warning; an unrecognised value is treated as `READ`. Grants held by a rule above it are removed at startup |
 
 ### SCIM
@@ -624,6 +644,15 @@ These behaviour changes ship together in this release. Each is called out here b
 changes what a running deployment does on upgrade; the first one requires a configuration change
 for deployments behind a reverse proxy.
 
+- **Prompts are judged by prompt permissions (#479).** MLflow's prompt calls (reading, editing,
+  tagging, aliasing, deleting and versioning a prompt, prompt search results, GraphQL) used model
+  patterns. They now use **prompt patterns**, like the prompt grant APIs, and model patterns no
+  longer reach prompts. Exact-name grants are unchanged and still apply to both. Users who reach
+  prompts only through a model pattern lose that access on upgrade; users with a prompt pattern
+  gain it. **Before upgrading,** add a prompt pattern for each model pattern meant to cover prompts
+  (the Admin UI's prompt patterns, or `POST /api/2.0/mlflow/permissions/users/<user>/prompts-patterns`
+  and the group equivalent). See [Permissions → Prompts](permissions#prompts).
+
 - **`TRUSTED_PROXIES` unset now trusts no proxy.** Previously an unset `TRUSTED_PROXIES` honoured
   `X-Forwarded-*` headers from every client. Now they are ignored unless the connecting client is
   inside one of the listed ranges. A deployment behind a reverse proxy that relied on the old
@@ -690,8 +719,8 @@ for deployments behind a reverse proxy.
   `jku` that is not an http(s) URL, a non-boolean `b64`), and one whose signature segment
   carries base64 padding. Standards-conforming identity providers issue none of these.
 - **Artifact paths that name no experiment are denied.** The artifact proxy used to authorize a
-  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. That setting ships as
-  `MANAGE`, so on a default deployment any authenticated user could download, upload to or
+  path it could not map to an experiment with `DEFAULT_MLFLOW_PERMISSION`. On a deployment that sets
+  it to `MANAGE` (the shipped default before v7.6.0), any authenticated user could download, upload to or
   delete the artifact root (`DELETE /api/2.0/mlflow-artifacts/artifacts/.` emptied every
   experiment's artifacts) and list every experiment id. Such paths now get `403` for every
   method. Listing the root still works, but it returns only the experiments the caller can read.
@@ -724,8 +753,9 @@ for deployments behind a reverse proxy.
   model's experiment; creating or updating a gateway model definition needs USE on its secret;
   creating or updating a gateway endpoint, or attaching a model to one, needs USE on every model
   definition it routes to, and EDIT on the experiment named in `experiment_id`. Admins are
-  unaffected. With the default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these
-  grants; on a deny-by-default deployment, grant them before upgrading. See
+  unaffected. With `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold these grants. With
+  the default `NO_PERMISSIONS` (which also applies to a deployment upgraded from before v7.6.0
+  that never set the variable), grant them before upgrading. See
   [Resources a request references](permissions#resources-a-request-references).
 - **Model version sources are checked.** A model version whose `source` is a storage location
   (`s3://`, `gs://`, a local path, a URL other than the artifact proxy) must lie under the
@@ -742,8 +772,9 @@ for deployments behind a reverse proxy.
   review queues, UI jobs, scorer online-scoring configuration, `issues/invoke` and
   `genai/evaluate/invoke` now check the permission of the
   experiment they belong to. A non-admin needs the grant listed in
-  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with the
-  default `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it. Requests that name no
+  [Experiment-scoped GenAI routes](permissions#experiment-scoped-genai-routes); with
+  `DEFAULT_MLFLOW_PERMISSION=MANAGE` most users already hold it, and with the default
+  `NO_PERMISSIONS` it has to be granted. Requests that name no
   experiment (an unscoped dataset or issue search, a dataset linked to no experiment, a job with
   no recorded experiment) are admin-only. Gateway budget reads (`gateway/budgets/get`, `list`,
   `windows`) and demo-data generation are admin-only.
@@ -856,7 +887,7 @@ SECRET_KEY=dev-not-for-production
 ### Security-First Production Setup
 
 ```bash
-# Deny all access by default — require explicit permission grants
+# Deny by default (the shipped default since v7.6.0); shown here so it is explicit
 DEFAULT_MLFLOW_PERMISSION=NO_PERMISSIONS
 
 # Strict group requirements
@@ -875,7 +906,7 @@ SESSION_COOKIE_MAX_AGE_SECONDS=0
 SESSION_COOKIE_SAMESITE=strict
 SESSION_COOKIE_SECURE=true
 
-# Disable API docs
+# API docs stay off (the default); shown here so it is explicit
 ENABLE_API_DOCS=false
 
 # Auto-redirect to OIDC login

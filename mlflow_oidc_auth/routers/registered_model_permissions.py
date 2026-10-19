@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from mlflow_oidc_auth.dependencies import check_registered_model_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import UserPermission, GroupPermissionEntry
+from mlflow_oidc_auth.models.responses import RegisteredModelListItem
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -102,7 +103,7 @@ async def get_registered_model_groups(
     """List groups with explicit permissions for a registered model."""
 
     try:
-        groups = store.registered_model_group_repo.list_groups_for_model(str(name))
+        groups = store.registered_model_group_repo.list_groups_for_resource(str(name))
         return [GroupPermissionEntry(name=name, permission=permission) for name, permission in groups]
     except Exception as e:
         logger.error(f"Error retrieving registered model group permissions: {str(e)}")
@@ -110,7 +111,10 @@ async def get_registered_model_groups(
 
 
 @registered_model_permissions_router.get(
-    LIST_MODELS, summary="List accessible registered models", description="Retrieves a list of registered models that the user has access to."
+    LIST_MODELS,
+    response_model=List[RegisteredModelListItem],
+    summary="List accessible registered models",
+    description="Retrieves a list of registered models that the user has access to.",
 )
 async def list_models(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
     """

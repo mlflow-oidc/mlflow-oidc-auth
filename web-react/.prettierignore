@@ -1,0 +1,3 @@
+# Generated from ../openapi.json by `yarn gen:api`. CI regenerates it and fails on any difference,
+# so formatting it would break the drift check.
+src/core/types/generated/

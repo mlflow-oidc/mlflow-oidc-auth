@@ -23,7 +23,8 @@ from mlflow.utils.file_utils import local_file_uri_to_path
 from mlflow.utils.uri import is_models_uri
 
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.utils import all_source_values, effective_registered_model_permission, request_body_dict
+from mlflow_oidc_auth.utils import all_source_values, request_body_dict
+from mlflow_oidc_auth.utils.prompt_kind import effective_registry_permission
 from mlflow_oidc_auth.validators._referenced import (
     body_has_field,
     referenced_experiment_permission,
@@ -233,7 +234,7 @@ def validate_can_create_model_version(username: str) -> bool:
         return False
 
     for registry_uri in refs.registry_uris:
-        if not effective_registered_model_permission(_parse_model_uri(registry_uri).name, username).permission.can_read:
+        if not effective_registry_permission(_parse_model_uri(registry_uri).name, username).permission.can_read:
             return False
 
     model_ids = [str(m) for m in all_source_values("model_id")]

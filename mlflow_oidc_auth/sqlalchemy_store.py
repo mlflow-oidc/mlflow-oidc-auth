@@ -41,7 +41,9 @@ from mlflow_oidc_auth.repository import (
     ExperimentPermissionRegexRepository,
     ExperimentPermissionRepository,
     GroupRepository,
+    PromptGroupRegexPermissionRepository,
     PromptPermissionGroupRepository,
+    PromptPermissionRegexRepository,
     RegisteredModelGroupRegexPermissionRepository,
     RegisteredModelPermissionGroupRepository,
     RegisteredModelPermissionRegexRepository,
@@ -106,8 +108,8 @@ class SqlAlchemyStore:
         self.experiment_group_regex_repo = ExperimentPermissionGroupRegexRepository(self.ManagedSessionMaker)
         self.registered_model_regex_repo = RegisteredModelPermissionRegexRepository(self.ManagedSessionMaker)
         self.registered_model_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
-        self.prompt_group_regex_repo = RegisteredModelGroupRegexPermissionRepository(self.ManagedSessionMaker)
-        self.prompt_regex_repo = RegisteredModelPermissionRegexRepository(self.ManagedSessionMaker)
+        self.prompt_group_regex_repo = PromptGroupRegexPermissionRepository(self.ManagedSessionMaker)
+        self.prompt_regex_repo = PromptPermissionRegexRepository(self.ManagedSessionMaker)
 
         # Scorer permissions
         self.scorer_repo = ScorerPermissionRepository(self.ManagedSessionMaker)
@@ -544,6 +546,64 @@ class SqlAlchemyStore:
     def list_user_groups_registered_model_permissions(self, username: str) -> List[RegisteredModelPermission]:
         return self.registered_model_group_repo.list_for_user(username)
 
+    def list_user_grants(self, resource_type: str, username: str) -> list:
+        """Every direct grant of ``username`` on ``resource_type``, in precedence order, in one JOIN.
+
+        For the grant context (``utils/grant_context.py``). Of several grants on one resource the
+        first is the one the per-resource lookup returns (``_GrantWorkspaceScope._precedence``).
+        Prompts are registered models: pass ``"registered_model"``.
+
+        Parameters:
+            resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+            username: The user.
+
+        Returns:
+            The grant entities.
+
+        Raises:
+            KeyError: For an unknown resource type.
+        """
+        repos = {
+            "experiment": self.experiment_repo,
+            "registered_model": self.registered_model_repo,
+            "scorer": self.scorer_repo,
+            "gateway_endpoint": self.gateway_endpoint_repo,
+            "gateway_secret": self.gateway_secret_repo,
+            "gateway_model_definition": self.gateway_model_definition_repo,
+            "mcp_server": self.mcp_server_repo,
+        }
+        return repos[resource_type].list_permissions_for_user_by_precedence(username)
+
+    def list_user_groups_grants(self, resource_type: str, username: str) -> list:
+        """Every grant on ``resource_type`` held by a group ``username`` belongs to, in one JOIN.
+
+        For the grant context (``utils/grant_context.py``), which folds them per resource. Grants
+        on name-keyed resources are those of the request's grant workspace, as for the
+        per-resource lookups. Prompts are registered models: pass ``"registered_model"``.
+
+        Parameters:
+            resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+            username: The user.
+
+        Returns:
+            The grant entities, ordered by group id.
+
+        Raises:
+            KeyError: For a resource type without group grants.
+        """
+        repos = {
+            "experiment": self.experiment_group_repo,
+            "registered_model": self.registered_model_group_repo,
+            "scorer": self.scorer_group_repo,
+            "gateway_endpoint": self.gateway_endpoint_group_repo,
+            "gateway_secret": self.gateway_secret_group_repo,
+            "gateway_model_definition": self.gateway_model_definition_group_repo,
+            "mcp_server": self.mcp_server_group_repo,
+        }
+        return repos[resource_type].list_permissions_for_user_groups(username)
+
     def update_registered_model_permission(self, name: str, username: str, permission: str) -> RegisteredModelPermission:
         return self.registered_model_repo.update(name, username, permission)
 
@@ -635,16 +695,16 @@ class SqlAlchemyStore:
 
     # Prompt CRUD
     def create_group_prompt_permission(self, group_name: str, name: str, permission: str):
-        return self.prompt_group_repo.grant_prompt_permission_to_group(group_name, name, permission)
+        return self.prompt_group_repo.grant_group_permission(group_name, name, permission)
 
     def get_group_prompts(self, group_name: str) -> List[RegisteredModelPermission]:
-        return self.prompt_group_repo.list_prompt_permissions_for_group(group_name)
+        return self.prompt_group_repo.list_permissions_for_group(group_name)
 
     def update_group_prompt_permission(self, group_name: str, name: str, permission: str):
-        return self.prompt_group_repo.update_prompt_permission_for_group(group_name, name, permission)
+        return self.prompt_group_repo.update_group_permission(group_name, name, permission)
 
     def delete_group_prompt_permission(self, group_name: str, name: str):
-        return self.prompt_group_repo.revoke_prompt_permission_from_group(group_name, name)
+        return self.prompt_group_repo.revoke_group_permission(group_name, name)
 
     # Experiment regex CRUD
     def create_experiment_regex_permission(self, regex: str, priority: int, permission: str, username: str):
@@ -695,16 +755,16 @@ class SqlAlchemyStore:
         return self.registered_model_regex_repo.grant(regex, priority, permission, username)
 
     def get_registered_model_regex_permission(self, id: int, username: str) -> RegisteredModelRegexPermission:
-        return self.registered_model_regex_repo.get(id, username)
+        return self.registered_model_regex_repo.get(username=username, id=id)
 
     def list_registered_model_regex_permissions(self, username: str) -> List[RegisteredModelRegexPermission]:
         return self.registered_model_regex_repo.list_regex_for_user(username)
 
     def update_registered_model_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str) -> RegisteredModelRegexPermission:
-        return self.registered_model_regex_repo.update(id, regex, priority, permission, username)
+        return self.registered_model_regex_repo.update(regex=regex, priority=priority, permission=permission, username=username, id=id)
 
     def delete_registered_model_regex_permission(self, id: int, username: str) -> None:
-        return self.registered_model_regex_repo.revoke(id, username)
+        return self.registered_model_regex_repo.revoke(username=username, id=id)
 
     # Registered model regex group CRUD
     def create_group_registered_model_regex_permission(
@@ -738,99 +798,43 @@ class SqlAlchemyStore:
     def delete_group_registered_model_regex_permission(self, group_name: str, id: int) -> None:
         return self.registered_model_group_regex_repo.revoke(group_name=group_name, id=id)
 
-    # Prompt regex CRUD
-    def create_prompt_regex_permission(
-        self,
-        regex: str,
-        priority: int,
-        permission: str,
-        username: str,
-        prompt: bool = True,
-    ):
-        return self.prompt_regex_repo.grant(
-            regex=regex,
-            priority=priority,
-            permission=permission,
-            username=username,
-            prompt=prompt,
-        )
+    # Prompt regex CRUD. The prompt repositories only see prompt rows (``permission_kinds.PROMPT.extra_filter``).
+    def create_prompt_regex_permission(self, regex: str, priority: int, permission: str, username: str):
+        return self.prompt_regex_repo.grant(regex=regex, priority=priority, permission=permission, username=username)
 
-    def get_prompt_regex_permission(self, id: int, username: str, prompt: bool = True) -> RegisteredModelRegexPermission:
-        return self.prompt_regex_repo.get(id=id, username=username, prompt=prompt)
+    def get_prompt_regex_permission(self, id: int, username: str) -> RegisteredModelRegexPermission:
+        return self.prompt_regex_repo.get(username=username, id=id)
 
-    def list_prompt_regex_permissions(self, username: str, prompt: bool = True) -> List[RegisteredModelRegexPermission]:
-        return self.prompt_regex_repo.list_regex_for_user(username=username, prompt=prompt)
+    def list_prompt_regex_permissions(self, username: str) -> List[RegisteredModelRegexPermission]:
+        return self.prompt_regex_repo.list_regex_for_user(username=username)
 
-    def update_prompt_regex_permission(
-        self,
-        id: int,
-        regex: str,
-        priority: int,
-        permission: str,
-        username: str,
-        prompt: bool = True,
-    ) -> RegisteredModelRegexPermission:
-        return self.prompt_regex_repo.update(
-            id=id,
-            regex=regex,
-            priority=priority,
-            permission=permission,
-            username=username,
-            prompt=prompt,
-        )
+    def update_prompt_regex_permission(self, id: int, regex: str, priority: int, permission: str, username: str) -> RegisteredModelRegexPermission:
+        return self.prompt_regex_repo.update(regex=regex, priority=priority, permission=permission, username=username, id=id)
 
     def delete_prompt_regex_permission(self, id: int, username: str) -> None:
-        return self.prompt_regex_repo.revoke(id=id, username=username, prompt=True)
+        return self.prompt_regex_repo.revoke(username=username, id=id)
 
     # Prompt regex group CRUD
-    def create_group_prompt_regex_permission(
-        self,
-        regex: str,
-        priority: int,
-        permission: str,
-        group_name: str,
-        prompt: bool = True,
-    ):
-        return self.prompt_group_regex_repo.grant(
-            regex=regex,
-            priority=priority,
-            permission=permission,
-            group_name=group_name,
-            prompt=prompt,
-        )
+    def create_group_prompt_regex_permission(self, regex: str, priority: int, permission: str, group_name: str):
+        return self.prompt_group_regex_repo.grant(group_name=group_name, regex=regex, priority=priority, permission=permission)
 
-    def get_group_prompt_regex_permission(self, id: int, group_name: str, prompt: bool = True) -> RegisteredModelGroupRegexPermission:
-        return self.prompt_group_regex_repo.get(id=id, group_name=group_name, prompt=prompt)
+    def get_group_prompt_regex_permission(self, id: int, group_name: str) -> RegisteredModelGroupRegexPermission:
+        return self.prompt_group_regex_repo.get(group_name=group_name, id=id)
 
-    def list_group_prompt_regex_permissions(self, group_name: str, prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_group(group_name=group_name, prompt=prompt)
+    def list_group_prompt_regex_permissions(self, group_name: str) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_group(group_name)
 
-    def list_group_prompt_regex_permissions_for_groups(self, group_names: List[str], prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_groups(group_names=group_names, prompt=prompt)
+    def list_group_prompt_regex_permissions_for_groups(self, group_names: List[str]) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_groups(group_names)
 
-    def list_group_prompt_regex_permissions_for_groups_ids(self, group_ids: List[int], prompt: bool = True) -> List[RegisteredModelGroupRegexPermission]:
-        return self.prompt_group_regex_repo.list_permissions_for_groups_ids(group_ids=group_ids, prompt=prompt)
+    def list_group_prompt_regex_permissions_for_groups_ids(self, group_ids: List[int]) -> List[RegisteredModelGroupRegexPermission]:
+        return self.prompt_group_regex_repo.list_permissions_for_groups_ids(group_ids)
 
-    def update_group_prompt_regex_permission(
-        self,
-        id: int,
-        regex: str,
-        priority: int,
-        permission: str,
-        group_name: str,
-        prompt: bool = True,
-    ) -> RegisteredModelGroupRegexPermission:
-        return self.prompt_group_regex_repo.update(
-            id=id,
-            regex=regex,
-            priority=priority,
-            permission=permission,
-            group_name=group_name,
-            prompt=prompt,
-        )
+    def update_group_prompt_regex_permission(self, id: int, regex: str, priority: int, permission: str, group_name: str) -> RegisteredModelGroupRegexPermission:
+        return self.prompt_group_regex_repo.update(id=id, group_name=group_name, regex=regex, priority=priority, permission=permission)
 
     def delete_group_prompt_regex_permission(self, id: int, group_name: str) -> None:
-        return self.prompt_group_regex_repo.revoke(id=id, group_name=group_name, prompt=True)
+        return self.prompt_group_regex_repo.revoke(group_name=group_name, id=id)
 
     # gateway_secret_repo
     def create_gateway_secret_permission(self, gateway_name: str, username: str, permission: str):
@@ -848,10 +852,18 @@ class SqlAlchemyStore:
     def delete_gateway_secret_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_secret_repo.revoke_permission(gateway_name, username)
 
+    def grant_creator_gateway_secret_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway secret.
+
+        Parameters:
+            gateway_name: The secret name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_secret_repo, self.gateway_secret_group_repo, gateway_name, username)
+
     def wipe_gateway_secret_permissions(self, gateway_name: str) -> None:
-        """Delete all user and group permissions for a gateway secret."""
-        self.gateway_secret_repo.wipe(gateway_name)
-        self.gateway_secret_group_repo.wipe(gateway_name)
+        """Delete all user and group permissions for a gateway secret, in one transaction."""
+        self._wipe_name_keyed_permissions((self.gateway_secret_repo, self.gateway_secret_group_repo), gateway_name)
 
     # gateway_secret_group_repo
     def create_group_gateway_secret_permission(self, group_name: str, gateway_name: str, permission: str):
@@ -928,15 +940,143 @@ class SqlAlchemyStore:
     def delete_gateway_endpoint_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_endpoint_repo.revoke_permission(gateway_name, username)
 
-    def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str) -> None:
-        """Rename all user and group permissions for a gateway endpoint."""
-        self.gateway_endpoint_repo.rename(old_name, new_name)
-        self.gateway_endpoint_group_repo.rename(old_name, new_name)
+    def _name_keyed_permission_ids(self, repos, name: str) -> list[list[int]]:
+        """Ids of the user and group permission rows stored under ``name``, one list per repository.
+
+        Parameters:
+            repos: The resource type's user and group permission repositories.
+            name: The resource name.
+
+        Returns:
+            One list of row ids per repository, in the order of ``repos``.
+        """
+        with self.ManagedSessionMaker() as session:
+            return [repo._ids_in(session, name) for repo in repos]
+
+    def _move_name_keyed_permissions(self, repos, old_name: str, new_name: str, permission_ids=None) -> None:
+        """Move the user and group permissions of a renamed resource to its new name, atomically.
+
+        MLflow only renames onto a free name, so rows already on ``new_name`` are left over from an
+        earlier resource of that name. They are removed first, in the same transaction: the move
+        would otherwise collide with them on the unique key, or hand them to the renamed resource.
+
+        With ``permission_ids`` (recorded before MLflow ran the rename), only those rows move: once
+        MLflow has released ``old_name`` a new resource may take it, and its creator's grant must
+        stay with it.
+
+        Parameters:
+            repos: The resource type's user and group permission repositories.
+            old_name: The name before the rename.
+            new_name: The name after the rename.
+            permission_ids: Optional row ids per repository, as returned by ``_name_keyed_permission_ids``.
+        """
+        if old_name == new_name:
+            return
+        with self.ManagedSessionMaker(read_only=False) as session:
+            for repo in repos:
+                repo._wipe_in(session, new_name)
+            for index, repo in enumerate(repos):
+                if permission_ids is None:
+                    repo._rename_in(session, old_name, new_name)
+                else:
+                    repo._rename_ids_in(session, permission_ids[index], old_name, new_name)
+
+    def _wipe_name_keyed_permissions(self, repos, name: str) -> None:
+        """Delete the user and group permissions stored under ``name`` in one transaction.
+
+        Parameters:
+            repos: The resource type's user and group permission repositories.
+            name: The resource name.
+        """
+        with self.ManagedSessionMaker(read_only=False) as session:
+            for repo in repos:
+                repo._wipe_in(session, name)
+
+    def _grant_creator_of_new_resource(self, user_repo, group_repo, name: str, username: str):
+        """Give the creator of a just-created resource MANAGE as its only permission, atomically.
+
+        The resource is new, so any row already stored under its name belongs to an earlier
+        resource of that name (or was granted on the name before the resource existed) and is
+        removed in the same transaction as the creator's grant is written.
+
+        Parameters:
+            user_repo: The resource type's user permission repository.
+            group_repo: The resource type's group permission repository.
+            name: The new resource's name.
+            username: The creator.
+
+        Returns:
+            The creator's permission entity.
+        """
+        from mlflow_oidc_auth.logger import get_logger
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        with self.ManagedSessionMaker(read_only=False) as session:
+            cleared = user_repo._wipe_in(session, name) + group_repo._wipe_in(session, name)
+            if cleared:
+                get_logger().info("Cleared %d permission rows stored under the name of a newly created resource", cleared)
+            return user_repo._grant_in(session, name, username, MANAGE.name)
+
+    def move_registered_model_permissions(self, old_name: str, new_name: str) -> None:
+        """Move all user and group grants of a renamed registered model or prompt, atomically.
+
+        MLflow only renames onto a free name, so grants already stored under ``new_name`` were
+        written before anything held it (or are left over from an earlier holder). They are removed
+        first, in the same transaction, so they never apply to the renamed model or prompt (#479).
+
+        Parameters:
+            old_name: The name before the rename.
+            new_name: The name after the rename.
+        """
+        self._move_name_keyed_permissions((self.registered_model_repo, self.registered_model_group_repo), old_name, new_name)
+
+    def grant_creator_prompt_permission(self, prompt_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created prompt (#479).
+
+        Exact-name grants are shared by prompts and registered models, and a name that does not
+        exist yet is judged as a registered model. A grant written on the name before the prompt
+        existed would otherwise apply to it under model rules; it is removed with the creator's
+        grant written. Registered models keep grants made before they exist.
+
+        Parameters:
+            prompt_name: The prompt name.
+            username: The creator.
+
+        Returns:
+            The creator's permission entity.
+        """
+        return self._grant_creator_of_new_resource(self.registered_model_repo, self.registered_model_group_repo, prompt_name, username)
+
+    def grant_creator_gateway_endpoint_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway endpoint.
+
+        Parameters:
+            gateway_name: The endpoint name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_endpoint_repo, self.gateway_endpoint_group_repo, gateway_name, username)
+
+    def gateway_endpoint_permission_ids(self, gateway_name: str) -> list[list[int]]:
+        """Ids of the user and group permission rows of a gateway endpoint, for a later rename.
+
+        Parameters:
+            gateway_name: The endpoint name.
+        """
+        return self._name_keyed_permission_ids((self.gateway_endpoint_repo, self.gateway_endpoint_group_repo), gateway_name)
+
+    def rename_gateway_endpoint_permissions(self, old_name: str, new_name: str, permission_ids=None) -> None:
+        """Move all user and group permissions of a renamed gateway endpoint to its new name.
+
+        Parameters:
+            old_name: The endpoint name before the rename.
+            new_name: The endpoint name after the rename.
+            permission_ids: Optional row ids from ``gateway_endpoint_permission_ids``; only those rows move.
+        """
+        self._move_name_keyed_permissions((self.gateway_endpoint_repo, self.gateway_endpoint_group_repo), old_name, new_name, permission_ids)
 
     def wipe_gateway_endpoint_permissions(self, gateway_name: str) -> None:
-        """Delete all user and group permissions for a gateway endpoint."""
-        self.gateway_endpoint_repo.wipe(gateway_name)
-        self.gateway_endpoint_group_repo.wipe(gateway_name)
+        """Delete all user and group permissions for a gateway endpoint, in one transaction."""
+        self._wipe_name_keyed_permissions((self.gateway_endpoint_repo, self.gateway_endpoint_group_repo), gateway_name)
 
     # gateway_endpoint_group_repo
     def create_group_gateway_endpoint_permission(self, group_name: str, gateway_name: str, permission: str):
@@ -1075,10 +1215,36 @@ class SqlAlchemyStore:
     def delete_gateway_model_definition_permission(self, gateway_name: str, username: str) -> None:
         return self.gateway_model_definition_repo.revoke_permission(gateway_name, username)
 
+    def grant_creator_gateway_model_definition_permission(self, gateway_name: str, username: str):
+        """Make ``username`` the only permission holder of a just-created gateway model definition.
+
+        Parameters:
+            gateway_name: The model definition name.
+            username: The creator.
+        """
+        return self._grant_creator_of_new_resource(self.gateway_model_definition_repo, self.gateway_model_definition_group_repo, gateway_name, username)
+
+    def gateway_model_definition_permission_ids(self, gateway_name: str) -> list[list[int]]:
+        """Ids of the user and group permission rows of a gateway model definition, for a later rename.
+
+        Parameters:
+            gateway_name: The model definition name.
+        """
+        return self._name_keyed_permission_ids((self.gateway_model_definition_repo, self.gateway_model_definition_group_repo), gateway_name)
+
+    def rename_gateway_model_definition_permissions(self, old_name: str, new_name: str, permission_ids=None) -> None:
+        """Move all user and group permissions of a renamed gateway model definition to its new name.
+
+        Parameters:
+            old_name: The model definition name before the rename.
+            new_name: The model definition name after the rename.
+            permission_ids: Optional row ids from ``gateway_model_definition_permission_ids``; only those rows move.
+        """
+        self._move_name_keyed_permissions((self.gateway_model_definition_repo, self.gateway_model_definition_group_repo), old_name, new_name, permission_ids)
+
     def wipe_gateway_model_definition_permissions(self, gateway_name: str) -> None:
-        """Delete all user and group permissions for a gateway model definition."""
-        self.gateway_model_definition_repo.wipe(gateway_name)
-        self.gateway_model_definition_group_repo.wipe(gateway_name)
+        """Delete all user and group permissions for a gateway model definition, in one transaction."""
+        self._wipe_name_keyed_permissions((self.gateway_model_definition_repo, self.gateway_model_definition_group_repo), gateway_name)
 
     # gateway_model_definition_group_repo
     def create_group_gateway_model_definition_permission(self, group_name: str, gateway_name: str, permission: str):
@@ -1238,10 +1404,12 @@ class SqlAlchemyStore:
         """
         # One transaction: a failure part way must not leave grants behind that a workspace later
         # created under the same name would bring back to life.
-        from mlflow_oidc_auth.db.models import SqlWorkspaceGroupPermission, SqlWorkspacePermission
+        from mlflow_oidc_auth.permission_kinds import table_owning_kinds
         from mlflow_oidc_auth.utils.grant_workspace import workspace_scoped_grant_tables, workspace_scoped_pattern_tables
 
-        models = [SqlWorkspacePermission, SqlWorkspaceGroupPermission]
+        # The grants *on* the workspace (its patterns match workspace names and stay), then every
+        # grant and pattern recorded in it — all three lists from the grant-kind registry.
+        models = [model for kind in table_owning_kinds() if kind.workspace_level for model in (kind.user_model, kind.group_model)]
         models += [model for model, *_ in workspace_scoped_grant_tables()] + list(workspace_scoped_pattern_tables())
         with self.ManagedSessionMaker(read_only=False) as session:
             return sum(session.query(model).filter(model.workspace == workspace).delete(synchronize_session=False) for model in models)
@@ -1344,7 +1512,9 @@ class SqlAlchemyStore:
                 SqlWorkspaceGroupRegexPermission,
             )
 
-            rows = session.query(SqlWorkspaceGroupRegexPermission).all()
+            from mlflow_oidc_auth.permissions import regex_grant_order
+
+            rows = session.query(SqlWorkspaceGroupRegexPermission).order_by(*regex_grant_order(SqlWorkspaceGroupRegexPermission)).all()
             return [r.to_mlflow_entity() for r in rows]
 
     def update_workspace_group_regex_permission(self, id: int, group_name: str, regex: str, priority: int, permission: str) -> WorkspaceGroupRegexPermission:
@@ -1682,6 +1852,7 @@ _PERMISSION_CUD_METHODS = [
     "update_registered_model_permission",
     "delete_registered_model_permission",
     "rename_registered_model_permissions",
+    "move_registered_model_permissions",
     "wipe_registered_model_permissions",
     # Registered model permissions (group-scoped)
     "create_group_model_permission",
@@ -1730,6 +1901,8 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_endpoint_permission",
     "update_gateway_endpoint_permission",
     "delete_gateway_endpoint_permission",
+    "grant_creator_prompt_permission",
+    "grant_creator_gateway_endpoint_permission",
     "rename_gateway_endpoint_permissions",
     "wipe_gateway_endpoint_permissions",
     # Gateway endpoint permissions (group-scoped)
@@ -1748,6 +1921,7 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_secret_permission",
     "update_gateway_secret_permission",
     "delete_gateway_secret_permission",
+    "grant_creator_gateway_secret_permission",
     "wipe_gateway_secret_permissions",
     # Gateway secret permissions (group-scoped)
     "create_group_gateway_secret_permission",
@@ -1765,6 +1939,8 @@ _PERMISSION_CUD_METHODS = [
     "create_gateway_model_definition_permission",
     "update_gateway_model_definition_permission",
     "delete_gateway_model_definition_permission",
+    "grant_creator_gateway_model_definition_permission",
+    "rename_gateway_model_definition_permissions",
     "wipe_gateway_model_definition_permissions",
     # Gateway model definition permissions (group-scoped)
     "create_group_gateway_model_definition_permission",
@@ -1916,17 +2092,44 @@ def _wrap_with_cache_flush(method):
     return wrapper
 
 
-def _wrap_with_membership_invalidation(method):
-    """Wrap a membership method to drop the mutated user's workspace-cache entries.
+# Membership syncs that report what they did. Interactive login calls ``set_user_groups`` on
+# every sign-in; unconditional invalidation wiped the whole permission cache (fleet-wide with
+# Redis) and prefix-deleted the user's workspace entries (two Redis SCANs) even when nothing
+# changed (issue #456). These invalidate only when the outcome says the membership actually
+# changed. Anything other than a MembershipOutcome invalidates, so an unexpected return can
+# never leave a stale grant behind.
+_MEMBERSHIP_SYNC_METHODS = frozenset({"set_user_groups"})
 
-    The username is the first positional argument (or the ``username`` keyword).
-    Invalidation failures are logged, never raised — the mutation already succeeded,
-    and masking it would be worse than a short staleness window.
+
+def _wrap_with_membership_invalidation(method, *, only_if_changed: bool = False):
+    """Wrap a membership method to invalidate what a membership change can make stale.
+
+    Membership drives group-scoped resolution, so a change flushes the permission cache and
+    drops the mutated user's workspace-cache entries. The username is the first positional
+    argument (or the ``username`` keyword).
+
+    Parameters:
+        method: The store method.
+        only_if_changed: Skip both invalidations when the method returns a
+            ``MembershipOutcome`` reporting no change.
+
+    A failed permission-cache flush raises, as for every other permission write; a failed
+    workspace invalidation is logged, never raised — the mutation already succeeded, and the
+    entries expire via TTL.
     """
 
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
         result = method(self, *args, **kwargs)
+        if only_if_changed:
+            from mlflow_oidc_auth.repository.group import MembershipOutcome
+
+            if isinstance(result, MembershipOutcome) and not result.changed:
+                return result
+
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
         username = kwargs.get("username") if "username" in kwargs else (args[0] if args else None)
         if username:
             try:
@@ -1948,6 +2151,8 @@ def _wrap_with_membership_invalidation(method):
 
 
 for _method_name in _PERMISSION_CUD_METHODS:
+    if _method_name in _MEMBERSHIP_CUD_METHODS:
+        continue  # wrapped once, below, by the membership wrapper (it flushes too)
     _original = getattr(SqlAlchemyStore, _method_name)
     setattr(SqlAlchemyStore, _method_name, _wrap_with_cache_flush(_original))
 
@@ -1983,9 +2188,53 @@ def _wrap_with_workspace_group_invalidation(method):
     return wrapper
 
 
+# Deleting a user drops every grant and membership of theirs. Their cached grant reads and
+# decisions must go with them, or an account re-created under the same name within the TTL would
+# be served the deleted account's grants (issue #460 review).
+_USER_DELETE_METHODS = [
+    "delete_user",
+    "delete_user_with_hook",
+]
+
+
+def _wrap_with_user_delete_invalidation(method):
+    """Wrap a user delete to drop everything cached for the user.
+
+    The permission cache and the grant-context cache are flushed (a failure raises, as for every
+    other permission write), and the user's workspace grant and denial entries are invalidated
+    through the workspace cache's generation guard — the delete also removes the user's workspace
+    grants. A workspace invalidation failure is logged, never raised: the delete already
+    committed. The username is the first positional argument (or the ``username`` keyword).
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        result = method(self, *args, **kwargs)
+        from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+        flush_permission_cache()
+        username = kwargs.get("username") if "username" in kwargs else (args[0] if args else None)
+        if username:
+            try:
+                from mlflow_oidc_auth.utils.workspace_cache import invalidate_user_workspace_entries
+
+                invalidate_user_workspace_entries(username)
+            except Exception:
+                from mlflow_oidc_auth.logger import get_logger
+
+                get_logger().warning("Workspace cache invalidation failed after %s; entries expire via TTL", method.__name__)
+        return result
+
+    return wrapper
+
+
+for _method_name in _USER_DELETE_METHODS:
+    _original = getattr(SqlAlchemyStore, _method_name)
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_user_delete_invalidation(_original))
+
 for _method_name in _MEMBERSHIP_CUD_METHODS:
     _original = getattr(SqlAlchemyStore, _method_name)
-    setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original))
+    setattr(SqlAlchemyStore, _method_name, _wrap_with_membership_invalidation(_original, only_if_changed=_method_name in _MEMBERSHIP_SYNC_METHODS))
 
 
 def _wrap_with_workspace_user_invalidation(method):

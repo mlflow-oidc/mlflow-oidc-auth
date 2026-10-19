@@ -50,11 +50,11 @@ class TestGatewayEndpointRegexPermission:
             _match_regex_permission([regex], "ep-chat", "gateway name")
 
     def test_returns_first_match_priority(self) -> None:
-        """Should return first matching regex (by list order)."""
-        r1 = MagicMock(regex=".*", permission="READ", priority=10)
-        r2 = MagicMock(regex="^ep-.*", permission="MANAGE", priority=1)
+        """Should return the first matching regex by (priority, id), whatever the list order."""
+        r1 = MagicMock(regex=".*", permission="READ", priority=10, id=1)
+        r2 = MagicMock(regex="^ep-.*", permission="MANAGE", priority=1, id=2)
         result = _match_regex_permission([r1, r2], "ep-chat", "gateway name")
-        assert result == "READ"
+        assert result == "MANAGE"
 
     def test_empty_list_raises(self) -> None:
         """Should raise when regex list is empty."""
@@ -150,9 +150,9 @@ class TestGatewayModelDefinitionGroupRegexPermission:
 class TestEffectiveGatewayEndpointPermission:
     """Tests for effective_gateway_endpoint_permission and can_* wrappers."""
 
-    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    @patch("mlflow_oidc_auth.utils.permissions.resolve")
     def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
-        """Should delegate to get_permission_from_store_or_default."""
+        """Should delegate to the grant-context resolver (issue #460)."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
 
@@ -160,6 +160,7 @@ class TestEffectiveGatewayEndpointPermission:
 
         assert result is mock_result
         mock_resolver.assert_called_once()
+        assert mock_resolver.call_args.args[1:] == ("gateway_endpoint", "ep-1")
 
     @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_endpoint_permission")
     def test_can_read(self, mock_eff: MagicMock) -> None:
@@ -195,9 +196,9 @@ class TestEffectiveGatewayEndpointPermission:
 class TestEffectiveGatewaySecretPermission:
     """Tests for effective_gateway_secret_permission and can_* wrappers."""
 
-    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    @patch("mlflow_oidc_auth.utils.permissions.resolve")
     def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
-        """Should delegate to get_permission_from_store_or_default."""
+        """Should delegate to the grant-context resolver (issue #460)."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
 
@@ -205,6 +206,7 @@ class TestEffectiveGatewaySecretPermission:
 
         assert result is mock_result
         mock_resolver.assert_called_once()
+        assert mock_resolver.call_args.args[1:] == ("gateway_secret", "s-1")
 
     @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_secret_permission")
     def test_can_read(self, mock_eff: MagicMock) -> None:
@@ -237,9 +239,9 @@ class TestEffectiveGatewaySecretPermission:
 class TestEffectiveGatewayModelDefinitionPermission:
     """Tests for effective_gateway_model_definition_permission and can_* wrappers."""
 
-    @patch("mlflow_oidc_auth.utils.permissions.get_permission_from_store_or_default")
+    @patch("mlflow_oidc_auth.utils.permissions.resolve")
     def test_effective_delegates_to_store_or_default(self, mock_resolver: MagicMock) -> None:
-        """Should delegate to get_permission_from_store_or_default."""
+        """Should delegate to the grant-context resolver (issue #460)."""
         mock_result = MagicMock()
         mock_resolver.return_value = mock_result
 
@@ -247,6 +249,7 @@ class TestEffectiveGatewayModelDefinitionPermission:
 
         assert result is mock_result
         mock_resolver.assert_called_once()
+        assert mock_resolver.call_args.args[1:] == ("gateway_model_definition", "m-1")
 
     @patch("mlflow_oidc_auth.utils.permissions.effective_gateway_model_definition_permission")
     def test_can_read(self, mock_eff: MagicMock) -> None:

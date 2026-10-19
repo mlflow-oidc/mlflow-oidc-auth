@@ -1,116 +1,15 @@
-"""Prompt group permission repository.
+"""Group grants on prompts.
 
-Prompt permissions are stored in the same table as registered model group
-permissions (SqlRegisteredModelGroupPermission) but flagged with ``prompt=True``.
-The method names and query filters are entirely custom, so we inherit only the
-constructor / session wiring from BaseGroupPermissionRepository.
+Prompts are registered models: their group grants live in the registered model group grant table,
+flagged ``prompt=True``.
 """
 
-from typing import List
-
-from mlflow.exceptions import MlflowException
-from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_DOES_NOT_EXIST
-from sqlalchemy.exc import MultipleResultsFound, NoResultFound
-from sqlalchemy.orm import Session
-
-from mlflow_oidc_auth.db.models import SqlGroup, SqlRegisteredModelGroupPermission
+from mlflow_oidc_auth import permission_kinds
+from mlflow_oidc_auth.db.models import SqlRegisteredModelGroupPermission
 from mlflow_oidc_auth.entities import RegisteredModelPermission
-from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.repository._base import BaseGroupPermissionRepository
-from mlflow_oidc_auth.repository.utils import get_group
 
 
 class PromptPermissionGroupRepository(BaseGroupPermissionRepository[SqlRegisteredModelGroupPermission, RegisteredModelPermission]):
-    model_class = SqlRegisteredModelGroupPermission
     resource_id_attr = "name"
-    workspace_scoped = True  # MLflow keeps these resources unique per (workspace, name)
-
-    # -- private helper: prompt=True filter -----------------------------------
-
-    def _get_prompt_group_permission(self, session: Session, name: str, group_id: int) -> SqlRegisteredModelGroupPermission:
-        """
-        Get the prompt permission for a given prompt and group ID.
-        :param session: SQLAlchemy session
-        :param name: The name of the prompt.
-        :param group_id: The ID of the group.
-        :return: The prompt permission if it exists, otherwise raises an exception.
-        """
-        try:
-            return self._one_in_scope(
-                session.query(SqlRegisteredModelGroupPermission).filter(
-                    self._resource_is(name),
-                    SqlRegisteredModelGroupPermission.group_id == group_id,
-                    SqlRegisteredModelGroupPermission.prompt == True,
-                )
-            )
-        except NoResultFound:
-            raise MlflowException(
-                f"No permission for prompt={name}, group={group_id}",
-                RESOURCE_DOES_NOT_EXIST,
-            )
-        except MultipleResultsFound:
-            raise MlflowException(
-                f"Multiple perms for prompt={name}, group={group_id}",
-                INVALID_STATE,
-            )
-
-    # -- public CRUD (custom names, prompt=True) ------------------------------
-
-    def grant_prompt_permission_to_group(self, group_name: str, name: str, permission: str) -> RegisteredModelPermission:
-        _validate_permission(permission)
-        with self._Session(read_only=False) as session:
-            group = get_group(session, group_name)
-            perm = SqlRegisteredModelGroupPermission(name=name, group_id=group.id, permission=permission, prompt=True, **self._new_row_fields())
-            session.add(perm)
-            session.flush()
-            return perm.to_mlflow_entity()
-
-    def list_prompt_permissions_for_group(self, group_name: str) -> List[RegisteredModelPermission]:
-        with self._Session() as session:
-            group = get_group(session, group_name)
-            perms = (
-                session.query(SqlRegisteredModelGroupPermission)
-                .filter(
-                    SqlRegisteredModelGroupPermission.group_id == group.id,
-                    SqlRegisteredModelGroupPermission.prompt == True,
-                    self._in_scope(),
-                )
-                .all()
-            )
-            return [p.to_mlflow_entity() for p in perms]
-
-    def list_groups_for_prompt(self, name: str) -> List[tuple[str, str]]:
-        """List groups that have explicit permissions for a prompt.
-
-        Returns pairs of (group_name, permission).
-        """
-        with self._Session() as session:
-            rows = (
-                session.query(SqlGroup.group_name, SqlRegisteredModelGroupPermission.permission)
-                .join(
-                    SqlRegisteredModelGroupPermission,
-                    SqlRegisteredModelGroupPermission.group_id == SqlGroup.id,
-                )
-                .filter(self._resource_is(name))
-                .filter(SqlRegisteredModelGroupPermission.prompt == True)
-                .all()
-            )
-            return [(str(group_name), str(permission)) for group_name, permission in rows]
-
-    def update_prompt_permission_for_group(self, group_name: str, name: str, permission: str):
-        _validate_permission(permission)
-        with self._Session(read_only=False) as session:
-            group = get_group(session, group_name)
-            perm = self._get_prompt_group_permission(session, name, group.id)
-            for row in self._same_grant(session, perm):
-                row.permission = permission
-            session.flush()
-            return perm.to_mlflow_entity()
-
-    def revoke_prompt_permission_from_group(self, group_name: str, name: str):
-        with self._Session(read_only=False) as session:
-            group = get_group(session, group_name)
-            perm = self._get_prompt_group_permission(session, name, group.id)
-            for row in self._same_grant(session, perm):
-                session.delete(row)
-            session.flush()
+    grant_kind = permission_kinds.PROMPT

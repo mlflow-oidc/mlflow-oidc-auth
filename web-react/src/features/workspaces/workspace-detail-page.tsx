@@ -7,8 +7,14 @@ import { useAllServiceAccounts } from "../../core/hooks/use-all-accounts";
 import { useAllGroups } from "../../core/hooks/use-all-groups";
 import { useUser } from "../../core/hooks/use-user";
 import { useRuntimeConfig } from "../../shared/context/use-runtime-config";
-import { request } from "../../core/services/api-utils";
-import { DYNAMIC_API_ENDPOINTS } from "../../core/configs/api-endpoints";
+import {
+  grantWorkspaceGroup,
+  grantWorkspaceUser,
+  removeWorkspaceGroup,
+  removeWorkspaceUser,
+  updateWorkspaceGroup,
+  updateWorkspaceUser,
+} from "../../core/services/workspace-service";
 import { useToast } from "../../shared/components/toast/use-toast";
 import { Button } from "../../shared/components/button";
 import PageContainer from "../../shared/components/page/page-container";
@@ -73,10 +79,7 @@ export default function WorkspaceDetailPage() {
 
   const handleGrantUser = async (name: string, permission: PermissionLevel): Promise<boolean> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USERS(workspaceName), {
-        method: "POST",
-        body: JSON.stringify({ username: name, permission }),
-      });
+      await grantWorkspaceUser(workspaceName, name, permission);
       showToast(`Permission for ${name} has been granted`, "success");
       refreshUsers();
       return true;
@@ -88,10 +91,7 @@ export default function WorkspaceDetailPage() {
 
   const handleUpdateUser = async (name: string, permission: PermissionLevel): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USER(workspaceName, name), {
-        method: "PATCH",
-        body: JSON.stringify({ username: name, permission }),
-      });
+      await updateWorkspaceUser(workspaceName, name, permission);
       showToast(`Permission for ${name} has been updated`, "success");
       refreshUsers();
     } catch {
@@ -101,9 +101,7 @@ export default function WorkspaceDetailPage() {
 
   const handleRemoveUser = async (name: string): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_USER(workspaceName, name), {
-        method: "DELETE",
-      });
+      await removeWorkspaceUser(workspaceName, name);
       showToast(`Permission for ${name} has been removed`, "success");
       refreshUsers();
     } catch {
@@ -113,10 +111,7 @@ export default function WorkspaceDetailPage() {
 
   const handleGrantGroup = async (name: string, permission: PermissionLevel): Promise<boolean> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUPS(workspaceName), {
-        method: "POST",
-        body: JSON.stringify({ group_name: name, permission }),
-      });
+      await grantWorkspaceGroup(workspaceName, name, permission);
       showToast(`Permission for ${name} has been granted`, "success");
       refreshGroups();
       return true;
@@ -128,10 +123,7 @@ export default function WorkspaceDetailPage() {
 
   const handleUpdateGroup = async (name: string, permission: PermissionLevel): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name), {
-        method: "PATCH",
-        body: JSON.stringify({ group_name: name, permission }),
-      });
+      await updateWorkspaceGroup(workspaceName, name, permission);
       showToast(`Permission for ${name} has been updated`, "success");
       refreshGroups();
     } catch {
@@ -141,9 +133,7 @@ export default function WorkspaceDetailPage() {
 
   const handleRemoveGroup = async (name: string): Promise<void> => {
     try {
-      await request(DYNAMIC_API_ENDPOINTS.WORKSPACE_GROUP(workspaceName, name), {
-        method: "DELETE",
-      });
+      await removeWorkspaceGroup(workspaceName, name);
       showToast(`Permission for ${name} has been removed`, "success");
       refreshGroups();
     } catch {
