@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 from urllib.parse import quote, unquote
 
 import pytest
-from fastapi import FastAPI
 from starlette.routing import Match
 
 from mlflow_oidc_auth.routers import get_all_routers
@@ -36,21 +35,16 @@ CONFUSABLE_NAMES = [
 ]
 
 
-def _app() -> FastAPI:
-    app = FastAPI()
-    for router in get_all_routers():
-        app.include_router(router)
-    return app
-
-
-APP = _app()
-GROUP_ROUTES = [route for route in APP.router.routes if "{group_name}" in getattr(route, "path", "")]
+# In the order the app registers them. Newer FastAPI keeps an included router as one nested route,
+# so the app's own route list does not show them; the routers' routes are what it matches with.
+ROUTES = [route for router in get_all_routers() for route in router.routes]
+GROUP_ROUTES = [route for route in ROUTES if "{group_name}" in getattr(route, "path", "")]
 
 
 def _resolve(raw_path: str, method: str):
     """The first route matching in full, and its path parameters, as the router would dispatch."""
     scope = {"type": "http", "method": method, "path": unquote(raw_path), "raw_path": raw_path.encode(), "root_path": ""}
-    for route in APP.router.routes:
+    for route in ROUTES:
         match, child_scope = route.matches(scope)
         if match == Match.FULL:
             return route, child_scope["path_params"]
@@ -161,22 +155,23 @@ def test_only_the_routes_own_parameters_are_decoded():
 
 
 @pytest.mark.usefixtures("authenticated_session")
-def test_the_handler_reads_the_whole_group_name(admin_client, mock_store):
-    """Over HTTP, through the app's middleware: ``x%2Fprompts`` is group ``x/prompts``."""
+@pytest.mark.parametrize("name", ["x/prompts", "/data-science", "x/experiments", "50%"])
+def test_the_handler_reads_the_whole_group_name(admin_client, mock_store, name):
+    """Over HTTP, through the app's middleware and FastAPI's own router: ``x%2Fprompts`` is group ``x/prompts``."""
     prompt = MagicMock()
     prompt.name = "p"
     prompt.permission = "READ"
     mock_store.get_group_prompts.return_value = [prompt]
 
-    response = admin_client.get(f"{GROUP_BASE}/{quote('x/prompts', safe='')}/prompts")
+    response = admin_client.get(f"{GROUP_BASE}/{quote(name, safe='')}/prompts")
 
     assert response.status_code == 200, response.text
-    mock_store.get_group_prompts.assert_called_once_with("x/prompts")
+    mock_store.get_group_prompts.assert_called_once_with(name)
 
 
 def test_a_route_without_a_group_name_matches_on_the_decoded_path():
     """Only a ``{group_name}`` route needs ``raw_path``; the others of a group router match as usual."""
-    routes = [route for route in APP.router.routes if isinstance(route, GroupNameRoute) and "{group_name}" not in route.path]
+    routes = [route for route in ROUTES if isinstance(route, GroupNameRoute) and "{group_name}" not in route.path]
     assert routes
     for route in routes:
         path = route.path.replace("{", "").replace("}", "")
