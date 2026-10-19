@@ -16414,7 +16414,7 @@ export interface operations {
             path: {
                 /** @description The workspace name */
                 workspace: string;
-                /** @description The group name */
+                /** @description The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F */
                 group_name: string;
             };
             cookie?: never;
@@ -16460,7 +16460,7 @@ export interface operations {
             path: {
                 /** @description The workspace name */
                 workspace: string;
-                /** @description The group name */
+                /** @description The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F */
                 group_name: string;
             };
             cookie?: never;

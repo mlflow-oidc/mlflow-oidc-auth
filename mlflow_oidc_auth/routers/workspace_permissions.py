@@ -46,6 +46,10 @@ WORKSPACE_GROUPS = "/{workspace}/groups"
 WORKSPACE_USER = "/{workspace}/users/{username}"
 WORKSPACE_GROUP = "/{workspace}/groups/{group_name:path}"
 
+# ``:path`` because IdP group names may contain "/" (Keycloak sends full paths such as "/data-science", #466).
+# ``min_length=1`` keeps a trailing-slash ``/groups/`` from reaching the handlers with an empty name.
+GROUP_NAME_PATH_DESCRIPTION = "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F"
+
 
 @workspace_permissions_router.get(
     WORKSPACE_USERS,
@@ -184,7 +188,7 @@ async def update_workspace_user_permission(
 async def update_workspace_group_permission(
     body: WorkspaceGroupPermissionRequest,
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., description="The group name"),
+    group_name: str = Path(..., min_length=1, description=GROUP_NAME_PATH_DESCRIPTION),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceGroupPermissionResponse:
     """Update a group's permission on a workspace."""
@@ -235,7 +239,7 @@ async def delete_workspace_user_permission(
 )
 async def delete_workspace_group_permission(
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., description="The group name"),
+    group_name: str = Path(..., min_length=1, description=GROUP_NAME_PATH_DESCRIPTION),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Remove a group's permission from a workspace."""

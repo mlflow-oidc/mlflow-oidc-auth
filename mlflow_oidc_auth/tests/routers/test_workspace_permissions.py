@@ -111,6 +111,19 @@ class TestGroupRouteSlashNames:
         mock_store.delete_workspace_group_permission.assert_called_once_with("default", group_name)
 
     @pytest.mark.parametrize("method", ["patch", "delete"])
+    @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=True)
+    @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="admin")
+    @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
+    def test_empty_group_name_rejected(self, mock_store, _username, _is_admin, client, method):
+        """``:path`` also matches an empty tail, so a trailing-slash ``/groups/`` must not reach the store."""
+        kwargs = {"json": {"group_name": "", "permission": "EDIT"}} if method == "patch" else {}
+        response = getattr(client, method)(self._url(""), **kwargs)
+
+        assert response.status_code == 422
+        mock_store.update_workspace_group_permission.assert_not_called()
+        mock_store.delete_workspace_group_permission.assert_not_called()
+
+    @pytest.mark.parametrize("method", ["patch", "delete"])
     @patch("mlflow_oidc_auth.dependencies.get_workspace_permission_cached", return_value=None)
     @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=False)
     @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="alice")

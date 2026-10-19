@@ -17944,12 +17944,13 @@
             }
           },
           {
-            "description": "The group name",
+            "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
+              "minLength": 1,
               "title": "Group Name",
               "type": "string"
             }
@@ -17997,12 +17998,13 @@
             }
           },
           {
-            "description": "The group name",
+            "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
+              "minLength": 1,
               "title": "Group Name",
               "type": "string"
             }
