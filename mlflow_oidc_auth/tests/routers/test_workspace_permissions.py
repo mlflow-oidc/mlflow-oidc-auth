@@ -5,7 +5,10 @@ including cache invalidation behavior (user CUD invalidates, group CUD does not)
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from mlflow_oidc_auth.routers.workspace_permissions import (
     workspace_permissions_router,
@@ -62,21 +65,66 @@ class TestRouterConfiguration:
         assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name:path}"
 
 
-class TestGroupRoutePathMatching:
-    """Group names containing '/' (e.g. Keycloak '/data-science') must match the group routes."""
+class TestGroupRouteSlashNames:
+    """Group names containing '/' (Keycloak's default '/data-science') reach the group handlers over HTTP (#466).
 
-    @pytest.mark.parametrize("method", ["PATCH", "DELETE"])
-    @pytest.mark.parametrize("group_name", ["data-science", "/data-science", "/org/team"])
-    def test_group_route_matches_slash_group_names(self, method, group_name):
-        from starlette.routing import Match
+    The UI percent-encodes the name, so both the raw and the ``%2F`` forms are exercised.
+    """
 
-        scope = {
-            "type": "http",
-            "method": method,
-            "path": f"{workspace_permissions_router.prefix}/default/groups/{group_name}",
-        }
-        matches = [route.matches(scope)[1].get("path_params") for route in workspace_permissions_router.routes if route.matches(scope)[0] == Match.FULL]
-        assert matches == [{"workspace": "default", "group_name": group_name}]
+    GROUP_NAMES = [
+        ("data-science", "data-science"),
+        ("/data-science", "/data-science"),
+        ("%2Fdata-science", "/data-science"),
+        ("%2Forg%2Fteam", "/org/team"),
+    ]
+
+    @pytest.fixture
+    def client(self):
+        app = FastAPI()
+        app.include_router(workspace_permissions_router)
+        return TestClient(app)
+
+    def _url(self, encoded_name):
+        return f"{workspace_permissions_router.prefix}/default/groups/{encoded_name}"
+
+    @pytest.mark.parametrize("encoded_name,group_name", GROUP_NAMES)
+    @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=True)
+    @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="admin")
+    @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
+    def test_update_group_permission(self, mock_store, _username, _is_admin, client, encoded_name, group_name):
+        mock_store.update_workspace_group_permission.return_value = WorkspaceGroupPermission(workspace="default", group_id=1, permission="EDIT")
+
+        response = client.patch(self._url(encoded_name), json={"group_name": group_name, "permission": "EDIT"})
+
+        assert response.status_code == 200
+        assert response.json()["group_name"] == group_name
+        mock_store.update_workspace_group_permission.assert_called_once_with("default", group_name, "EDIT")
+
+    @pytest.mark.parametrize("encoded_name,group_name", GROUP_NAMES)
+    @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=True)
+    @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="admin")
+    @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
+    def test_delete_group_permission(self, mock_store, _username, _is_admin, client, encoded_name, group_name):
+        response = client.delete(self._url(encoded_name))
+
+        assert response.status_code == 204
+        mock_store.delete_workspace_group_permission.assert_called_once_with("default", group_name)
+
+    @pytest.mark.parametrize("method", ["patch", "delete"])
+    @patch("mlflow_oidc_auth.dependencies.get_workspace_permission_cached", return_value=None)
+    @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=False)
+    @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="alice")
+    @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
+    def test_slash_name_still_requires_manage(self, mock_store, _username, _is_admin, mock_perm, client, method):
+        """The wider route must not bypass the workspace MANAGE check."""
+        kwargs = {"json": {"group_name": "/data-science", "permission": "EDIT"}} if method == "patch" else {}
+        with patch("mlflow_oidc_auth.config.config.MLFLOW_ENABLE_WORKSPACES", True):
+            response = getattr(client, method)(self._url("%2Fdata-science"), **kwargs)
+
+        assert response.status_code == 403
+        mock_perm.assert_called_once_with("alice", "default")
+        mock_store.update_workspace_group_permission.assert_not_called()
+        mock_store.delete_workspace_group_permission.assert_not_called()
 
 
 class TestListWorkspaceUsers:
