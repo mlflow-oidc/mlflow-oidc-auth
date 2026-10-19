@@ -186,11 +186,21 @@ class TestCreateGroup:
         assert resp.status_code == 400
         mock_store.populate_groups.assert_not_called()
 
-    def test_create_group_reserved_character(self, authenticated_client, mock_store):
-        """Test rejecting a name that would collide with the path-segment reserved characters."""
-        resp = authenticated_client.post(GROUP_BASE, json={"group_name": "devs/prod"})
+    @pytest.mark.parametrize("group_name", ["devs?prod", "devs#prod", "devs%prod", ".", ".."])
+    def test_create_group_reserved_character(self, authenticated_client, mock_store, group_name):
+        """Test rejecting a name with a URL query, fragment or escape character, or a dot segment."""
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": group_name})
         assert resp.status_code == 400
         mock_store.populate_groups.assert_not_called()
+
+    @pytest.mark.parametrize("group_name", ["devs/prod", "/data-science", "/org/team"])
+    def test_create_group_with_slash(self, authenticated_client, mock_store, group_name):
+        """A "/" is allowed, as in Keycloak's group paths: the group routes match the name as one segment."""
+        mock_store.get_group_detail.return_value = None
+        mock_store.populate_groups.return_value = [group_name]
+        resp = authenticated_client.post(GROUP_BASE, json={"group_name": group_name})
+        assert resp.status_code == 201
+        mock_store.populate_groups.assert_called_once_with([group_name], written_by="manual")
 
     def test_create_group_does_not_reown_scim_managed_group(self, authenticated_client, mock_store):
         """Creating a group that already exists (e.g. SCIM-managed) must not touch its ownership."""

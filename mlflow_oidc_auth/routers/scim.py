@@ -77,7 +77,7 @@ from mlflow_oidc_auth.repository.group import UnknownMember
 from mlflow_oidc_auth.repository.scim_activity import MAX_PAGE_SIZE as MAX_ACTIVITY_PAGE_SIZE, OUTCOMES, outcome_for
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.workspace_rules import apply_rules_for_groups
-from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
+from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_MESSAGE, is_reserved_group_name, validate_group_name_chars
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
 from ._openapi import ScimJSONResponse
@@ -1136,8 +1136,8 @@ async def scim_create_group(request: Request) -> JSONResponse:
     except ValidationError:
         raise ScimHTTPError(400, "displayName is required", "invalidValue")
     name = _group_name(payload.display_name)
-    if any(ch in GROUP_NAME_RESERVED_CHARS for ch in name):
-        raise ScimHTTPError(400, "displayName must not contain '/', '?', '#' or '%'", "invalidValue")
+    if is_reserved_group_name(name):
+        raise ScimHTTPError(400, f"displayName {GROUP_NAME_RESERVED_MESSAGE}", "invalidValue")
     external_id = _optional_str(payload.external_id, "externalId")
     members = _member_ids(payload.members)
 

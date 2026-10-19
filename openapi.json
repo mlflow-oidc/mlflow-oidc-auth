@@ -17939,7 +17939,6 @@
             "required": true,
             "schema": {
               "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
-              "minLength": 1,
               "title": "Group Name",
               "type": "string"
             }
@@ -17993,7 +17992,6 @@
             "required": true,
             "schema": {
               "description": "The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F",
-              "minLength": 1,
               "title": "Group Name",
               "type": "string"
             }

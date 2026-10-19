@@ -52,7 +52,7 @@ GATES = {
 }
 
 U = "/{username}"
-G = "/{group_name:path}"
+G = "/{group_name}"
 SUBJECT_PARAMS = {"username", "group_name"}  # path parameters naming the grantee, not a resource
 
 # (method, path below the router prefix) -> gate. Every route of both routers must be listed.

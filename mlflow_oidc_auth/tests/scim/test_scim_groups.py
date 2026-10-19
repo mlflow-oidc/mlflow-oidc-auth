@@ -10,6 +10,8 @@ administrator or a login's claims granted: SCIM adds freely, and removes only th
 ownership guard.
 """
 
+from urllib.parse import quote
+
 import pytest
 
 from mlflow_oidc_auth.config import config
@@ -212,9 +214,21 @@ class TestCreateAndRead:
 
         assert_scim_error(client.post(GROUPS, headers=scim, json=group_body("from-claims")), 409, "uniqueness")
 
-    @pytest.mark.parametrize("name", ["a/b", "a?b", "a#b", "a%b", "", "  ", "x" * 256, "tab\tname"])
+    @pytest.mark.parametrize("name", ["a?b", "a#b", "a%b", ".", "..", "", "  ", "x" * 256, "tab\tname"])
     def test_invalid_names(self, client, scim, name):
         assert_scim_error(client.post(GROUPS, headers=scim, json=group_body(name)), 400)
+
+    @pytest.mark.parametrize("name", ["/data-science", "org/team"])
+    def test_a_slash_name_round_trips(self, client, scim, users, bound_store, name):
+        """A "/" is allowed, as in Keycloak's group paths; the id is percent-encoded wherever it is a URL."""
+        response = client.post(GROUPS, headers=scim, json=group_body(name, [ALICE]))
+
+        assert response.status_code == 201, response.text
+        location = response.headers["location"]
+        assert location.endswith(f"{GROUPS}/{quote(name, safe='')}")
+        assert client.get(location, headers=scim).json()["displayName"] == name
+        assert client.delete(location, headers=scim).status_code == 204
+        assert bound_store.get_group_detail(name) is None
 
     def test_an_unknown_member_creates_nothing(self, client, scim, users, bound_store):
         response = client.post(GROUPS, headers=scim, json=group_body("eng", [ALICE, "nobody@example.com"]))

@@ -28,6 +28,7 @@ from mlflow_oidc_auth.models.responses import McpServerListItem
 from mlflow_oidc_auth.models.group import GroupNamedPermissionItem, GroupPermissionEntry
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
 from mlflow_oidc_auth.routers._errors import mlflow_error_status
+from mlflow_oidc_auth.routers._group_route import GroupNameRoute
 from mlflow_oidc_auth.routers._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX, MCP_SERVER_PERMISSIONS_ROUTER_PREFIX, USER_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
@@ -44,15 +45,17 @@ _RESPONSES = {
 
 mcp_server_permissions_router = APIRouter(prefix=MCP_SERVER_PERMISSIONS_ROUTER_PREFIX, tags=["mcp server permissions"], responses=_RESPONSES)
 user_mcp_server_permissions_router = APIRouter(prefix=USER_PERMISSIONS_ROUTER_PREFIX, tags=["user mcp server permissions"], responses=_RESPONSES)
-group_mcp_server_permissions_router = APIRouter(prefix=GROUP_PERMISSIONS_ROUTER_PREFIX, tags=["group mcp server permissions"], responses=_RESPONSES)
+group_mcp_server_permissions_router = APIRouter(
+    prefix=GROUP_PERMISSIONS_ROUTER_PREFIX, tags=["group mcp server permissions"], responses=_RESPONSES, route_class=GroupNameRoute
+)
 
 LIST_MCP_SERVERS = ""
 MCP_SERVER_USER_PERMISSIONS = "/{name:path}/users"
 MCP_SERVER_GROUP_PERMISSIONS = "/{name:path}/groups"
 USER_MCP_SERVER_PERMISSIONS = "/{username}/mcp-servers"
 USER_MCP_SERVER_PERMISSION_DETAIL = "/{username}/mcp-servers/{name:path}"
-GROUP_MCP_SERVER_PERMISSIONS = "/{group_name:path}/mcp-servers"
-GROUP_MCP_SERVER_PERMISSION_DETAIL = "/{group_name:path}/mcp-servers/{name:path}"
+GROUP_MCP_SERVER_PERMISSIONS = "/{group_name}/mcp-servers"
+GROUP_MCP_SERVER_PERMISSION_DETAIL = "/{group_name}/mcp-servers/{name:path}"
 
 
 _ERROR_DETAIL = {409: "Permission already exists", 404: "Not found", 400: "Invalid permission"}

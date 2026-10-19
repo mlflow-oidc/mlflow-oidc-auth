@@ -62,7 +62,7 @@ class TestRouterConfiguration:
         assert WORKSPACE_USERS == "/{workspace}/users"
         assert WORKSPACE_GROUPS == "/{workspace}/groups"
         assert WORKSPACE_USER == "/{workspace}/users/{username}"
-        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name:path}"
+        assert WORKSPACE_GROUP == "/{workspace}/groups/{group_name}"
 
 
 class TestGroupRouteSlashNames:
@@ -73,7 +73,6 @@ class TestGroupRouteSlashNames:
 
     GROUP_NAMES = [
         ("data-science", "data-science"),
-        ("/data-science", "/data-science"),
         ("%2Fdata-science", "/data-science"),
         ("%2Forg%2Fteam", "/org/team"),
     ]
@@ -114,13 +113,13 @@ class TestGroupRouteSlashNames:
     @patch("mlflow_oidc_auth.dependencies.get_is_admin", new_callable=AsyncMock, return_value=True)
     @patch("mlflow_oidc_auth.dependencies.get_username", new_callable=AsyncMock, return_value="admin")
     @patch("mlflow_oidc_auth.routers.workspace_permissions.store")
-    def test_empty_group_name_rejected(self, mock_store, _username, _is_admin, client, method):
-        """``:path`` also matches an empty tail, so a trailing-slash ``/groups/`` must not reach the store."""
-        kwargs = {"json": {"group_name": "", "permission": "EDIT"}} if method == "patch" else {}
-        response = getattr(client, method)(self._url(""), **kwargs)
+    @pytest.mark.parametrize("raw_name", ["", "/data-science", "org/team"])
+    def test_an_empty_or_unencoded_name_matches_no_group_route(self, mock_store, _username, _is_admin, client, method, raw_name):
+        """The name is one segment: a trailing-slash ``/groups/``, or a "/" sent unencoded, never reaches the store."""
+        kwargs = {"json": {"group_name": raw_name, "permission": "EDIT"}} if method == "patch" else {}
+        response = getattr(client, method)(self._url(raw_name), **kwargs)
 
-        assert response.status_code == 422
-        assert [error["loc"] for error in response.json()["detail"]] == [["path", "group_name"]]
+        assert response.status_code in (404, 405)
         mock_store.update_workspace_group_permission.assert_not_called()
         mock_store.delete_workspace_group_permission.assert_not_called()
 
