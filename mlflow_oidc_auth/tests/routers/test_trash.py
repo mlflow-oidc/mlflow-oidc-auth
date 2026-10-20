@@ -11,6 +11,7 @@ from mlflow.entities import ViewType
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.store.entities.paged_list import PagedList
 
 from mlflow_oidc_auth.routers import trash as _trash
 from mlflow_oidc_auth.routers.trash import _parse_time_delta
@@ -1498,6 +1499,94 @@ class TestAdditionalTrashBehaviour:
         # to sweep "all deleted experiments") is never called.
         backend_store.search_experiments.assert_not_called()
         backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash.get_artifact_repository")
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_with_only_experiment_ids_does_not_sweep_other_runs(self, mock_get_store, mock_get_artifact_repo):
+        """When the request gives experiment_ids but no run_ids (the UI's "delete selected
+        experiments"), only those experiments' own runs are touched - a trashed run elsewhere
+        stays restorable (#484)."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = ["rb", "ra"]
+
+        exp_b = MagicMock()
+        exp_b.experiment_id = "eb"
+        exp_b.lifecycle_stage = "deleted"
+        backend_store.get_experiment.return_value = exp_b
+
+        run_b = MagicMock()
+        run_b.info.run_id = "rb"
+        run_b.info.lifecycle_stage = "deleted"
+        run_b.info.artifact_uri = "s3://bucket/eb/rb/artifacts"
+        backend_store.get_run.return_value = run_b
+        # The deleted-runs search over the named experiment finds its run; the check right before
+        # hard-deleting the experiment finds none left.
+        backend_store.search_runs.side_effect = lambda **kwargs: PagedList([] if kwargs.get("run_view_type") == ViewType.ALL else [run_b], None)
+
+        mock_get_artifact_repo.return_value = MagicMock()
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com",
+            run_ids=None,
+            experiment_ids="eb",
+            older_than=None,
+        )
+        assert result.status_code == 200
+
+        payload = json.loads(result.body)
+        assert payload["deleted_runs"] == ["rb"]
+        assert payload["deleted_experiments"] == ["eb"]
+        backend_store._hard_delete_run.assert_called_once_with("rb")
+
+
+class TestCleanupOnTheTrackingStore:
+    """``POST /oidc/trash/cleanup`` on MLflow's own SQLite tracking store, the #484 reproduction."""
+
+    @pytest.fixture
+    def tracking_store(self, tmp_path):
+        from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
+
+        tracking_store = SqlAlchemyStore(f"sqlite:///{tmp_path / 'mlflow.db'}", str(tmp_path / "artifacts"))
+        with patch("mlflow_oidc_auth.routers.trash._get_store", return_value=tracking_store):
+            yield tracking_store
+
+    @staticmethod
+    def _trashed_run(tracking_store, experiment_id):
+        run = tracking_store.create_run(experiment_id, user_id="u", start_time=0, tags=[], run_name="r")
+        tracking_store.delete_run(run.info.run_id)
+        return run.info.run_id
+
+    @pytest.mark.asyncio
+    async def test_deleting_an_experiment_keeps_a_trashed_run_of_another_experiment(self, tracking_store):
+        experiment_b = tracking_store.create_experiment("b")
+        run_b = self._trashed_run(tracking_store, experiment_b)
+        tracking_store.delete_experiment(experiment_b)
+        experiment_a = tracking_store.create_experiment("a")
+        run_a = self._trashed_run(tracking_store, experiment_a)
+
+        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids=None, experiment_ids=experiment_b, older_than=None)
+
+        assert result.status_code == 200
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == [experiment_b]
+        assert payload["deleted_runs"] == [run_b]
+        tracking_store.restore_run(run_a)
+        assert tracking_store.get_run(run_a).info.lifecycle_stage == "active"
+
+    @pytest.mark.asyncio
+    async def test_emptying_the_trash_still_deletes_every_trashed_run(self, tracking_store):
+        experiment_a = tracking_store.create_experiment("a")
+        run_a = self._trashed_run(tracking_store, experiment_a)
+
+        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", run_ids=None, experiment_ids=None, older_than=None)
+
+        assert json.loads(result.body)["deleted_runs"] == [run_a]
+        with pytest.raises(MlflowException):
+            tracking_store.get_run(run_a)
 
 
 class TestResolveRunArtifactRepository:

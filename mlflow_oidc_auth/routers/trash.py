@@ -229,7 +229,12 @@ async def list_deleted_runs(
     response_model=TrashCleanupResponse,
     responses=TRASH_ERROR_RESPONSES,
     summary="Permanently delete trashed entities",
-    description="Permanently deletes entities (experiments, runs) that are in the trash based on specified criteria.",
+    description=(
+        "Permanently deletes entities (experiments, runs) that are in the trash based on specified criteria. "
+        "With `run_ids` or `experiment_ids`, only the named runs, and the named experiments with their own runs, are deleted; "
+        "with neither, the whole trash is emptied (limited by `older_than` if given). "
+        "The response is 200 even when some named entities were kept: they are listed in `failed_runs` and `failed_experiments`."
+    ),
 )
 async def permanently_delete_all_trashed_entities(
     admin_username: str = Depends(check_admin_permission),
@@ -267,7 +272,8 @@ async def permanently_delete_all_trashed_entities(
     Returns:
     --------
     JSONResponse
-        A JSON response indicating the result of the cleanup operation.
+        A JSON response indicating the result of the cleanup operation. It is 200 even when some
+        entities were kept, which ``failed_runs`` and ``failed_experiments`` list.
 
     Raises:
     -------
@@ -311,8 +317,16 @@ async def permanently_delete_all_trashed_entities(
             logger.warning(f"Could not fetch deleted runs by time criteria: {str(e)}")
             deleted_run_ids_older_than = []
 
-        # Determine which run IDs to delete
-        target_run_ids = _split_csv(run_ids) if run_ids else list(deleted_run_ids_older_than)
+        # Determine which run IDs to delete. The age sweep over every trashed run is only for the
+        # "empty trash" case: with experiment_ids alone (the UI's "delete selected experiments"),
+        # only the named experiments' own runs are targeted, added below - a trashed run in any
+        # other experiment must stay restorable (#484).
+        if run_ids:
+            target_run_ids = _split_csv(run_ids)
+        elif experiment_ids:
+            target_run_ids = []
+        else:
+            target_run_ids = list(deleted_run_ids_older_than)
 
         # Handle experiment deletion
         target_experiment_ids: List[str] = []

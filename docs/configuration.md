@@ -834,6 +834,11 @@ for deployments behind a reverse proxy.
   as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
   name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
   are unaffected. See [Trash Management](api-reference#trash-management).
+- **Cleanup with only `experiment_ids` no longer deletes every other trashed run.** Calling
+  `POST /oidc/trash/cleanup?experiment_ids=...` without `run_ids` — what the UI's "delete selected
+  experiments" sends — used to also hard-delete every run in the deleted lifecycle stage, in any
+  experiment, with its artifacts. It now deletes only the named experiments and their own runs;
+  trashed runs elsewhere stay restorable (#484).
 - **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
   `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
   `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the

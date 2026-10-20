@@ -3098,7 +3098,7 @@ export interface paths {
         put?: never;
         /**
          * Permanently delete trashed entities
-         * @description Permanently deletes entities (experiments, runs) that are in the trash based on specified criteria.
+         * @description Permanently deletes entities (experiments, runs) that are in the trash based on specified criteria. With `run_ids` or `experiment_ids`, only the named runs, and the named experiments with their own runs, are deleted; with neither, the whole trash is emptied (limited by `older_than` if given). The response is 200 even when some named entities were kept: they are listed in `failed_runs` and `failed_experiments`.
          */
         post: operations["permanently_delete_all_trashed_entities_oidc_trash_cleanup_post"];
         delete?: never;
@@ -5305,6 +5305,9 @@ export interface components {
         /**
          * TrashCleanupResponse
          * @description ``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed.
+         *
+         *     A 200 with ``failed_*`` is a partial result: the entities listed there were kept, everything in
+         *     ``deleted_*`` is gone.
          */
         TrashCleanupResponse: {
             /** Deleted Experiments */

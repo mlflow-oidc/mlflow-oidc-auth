@@ -68,7 +68,11 @@ class FailedExperiment(ResponseModel):
 
 
 class TrashCleanupResponse(ResponseModel):
-    """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed."""
+    """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed.
+
+    A 200 with ``failed_*`` is a partial result: the entities listed there were kept, everything in
+    ``deleted_*`` is gone.
+    """
 
     __absent_fields__ = frozenset({"failed_runs", "failed_experiments"})
 
