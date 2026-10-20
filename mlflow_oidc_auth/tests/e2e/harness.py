@@ -44,6 +44,10 @@ NAMED_OIDC_PROVIDER_ID = "keycloak-named"
 PUBLIC_OIDC_PROVIDER_ID = "keycloak-public"
 PUBLIC_OIDC_CLIENT_ID = "mlflow-public"
 SAML_PROVIDER_ID = "keycloak-saml"
+# The workspaces app server's client (#466): its groups claim carries Keycloak's full group path,
+# so the gate and admin groups are "/mlflow-users" and "/mlflow-admins" there.
+WORKSPACES_OIDC_CLIENT_ID = "mlflow-workspaces"
+WORKSPACES_OIDC_CLIENT_SECRET = "mlflow-workspaces-e2e-client-secret-not-a-secret"
 SAML_CLIENT_ID = "mlflow-saml"
 ACCESS_TOKEN_LIFESPAN_SECONDS = 10
 
@@ -208,10 +212,7 @@ class Keycloak:
         redirect URI, and the app runs on whichever loopback port was free.
         """
         for client_id in (OIDC_CLIENT_ID, PUBLIC_OIDC_CLIENT_ID):
-            oidc = self._client(client_id)
-            oidc["redirectUris"] = [f"{app_url}/*"]
-            oidc.setdefault("attributes", {})["post.logout.redirect.uris"] = f"{app_url}/*"
-            self.admin("PUT", f"/clients/{oidc['id']}", json=oidc)
+            self.point_oidc_client_at(client_id, app_url)
 
         saml = self._client(SAML_CLIENT_ID)
         saml["redirectUris"] = [f"{app_url}/*"]
@@ -219,6 +220,15 @@ class Keycloak:
         attributes["saml_assertion_consumer_url_post"] = f"{app_url}/callback/{SAML_PROVIDER_ID}"
         attributes["saml_single_logout_service_url_redirect"] = f"{app_url}/slo/{SAML_PROVIDER_ID}"
         self.admin("PUT", f"/clients/{saml['id']}", json=saml)
+
+    def has_client(self, client_id: str) -> bool:
+        return bool(self.admin("GET", "/clients", params={"clientId": client_id}).json())
+
+    def point_oidc_client_at(self, client_id: str, app_url: str) -> None:
+        oidc = self._client(client_id)
+        oidc["redirectUris"] = [f"{app_url}/*"]
+        oidc.setdefault("attributes", {})["post.logout.redirect.uris"] = f"{app_url}/*"
+        self.admin("PUT", f"/clients/{oidc['id']}", json=oidc)
 
     def saml_idp(self) -> Dict[str, str]:
         """entityID, HTTP-Redirect SSO/SLO locations and the signing certificate from the descriptor."""
@@ -457,6 +467,44 @@ def server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak
             # visible to the others within the test's patience.
             "PERMISSION_CACHE_TTL_SECONDS": "1",
             "LOG_LEVEL": "INFO",
+        }
+    )
+    return env
+
+
+def workspaces_server_env(*, app_url: str, secret_key: str, db_uri: str, keycloak: Keycloak) -> Dict[str, str]:
+    """``server_env`` for a second app with workspaces on and one OIDC provider: ``mlflow-workspaces``.
+
+    That client's groups claim carries full group paths, as Keycloak sends by default, so group
+    names with a "/" reach the workspace permission routes the way they do in production (#466).
+    """
+    env = server_env(app_url=app_url, secret_key=secret_key, db_uri=db_uri, keycloak=keycloak)
+    env.pop("OIDC_CLIENT_SECRET_KEYCLOAK_NAMED", None)
+    env.update(
+        {
+            "AUTH_PROVIDERS": json.dumps(
+                [
+                    {
+                        "id": OIDC_PROVIDER_ID,
+                        "type": "oidc",
+                        "display_name": "Keycloak (OIDC, full group paths)",
+                        "discovery_url": f"{keycloak.issuer}/.well-known/openid-configuration",
+                        "client_id": WORKSPACES_OIDC_CLIENT_ID,
+                        "issuer": keycloak.issuer,
+                        "audience": WORKSPACES_OIDC_CLIENT_ID,
+                        "identity_binding": "email",
+                        "allowed_email_domains": ["example.com"],
+                        "provisioning": "jit",
+                        "group_sync": "every_login",
+                        "admin_source": "claims",
+                    }
+                ]
+            ),
+            "OIDC_CLIENT_ID": WORKSPACES_OIDC_CLIENT_ID,
+            "OIDC_CLIENT_SECRET": WORKSPACES_OIDC_CLIENT_SECRET,
+            "OIDC_GROUP_NAME": "/mlflow-users",
+            "OIDC_ADMIN_GROUP_NAME": "/mlflow-admins",
+            "MLFLOW_ENABLE_WORKSPACES": "true",
         }
     )
     return env

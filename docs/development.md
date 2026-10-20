@@ -249,8 +249,11 @@ PostgreSQL.
 The realm is code: `scripts/e2e/keycloak/realm-mlflow-e2e.json` (realm `mlflow-e2e`, users
 `alice@example.com` / `bob@example.com` / `carol@example.com` / `dave@example.com` in `mlflow-users` and
 `root@example.com` in `mlflow-admins`, a confidential OIDC client `mlflow`, a public OIDC client
-`mlflow-public` with PKCE S256 required, and a SAML client `mlflow-saml`). It contains no keys —
-Keycloak generates the realm keys on import — and its passwords and client secret are test
+`mlflow-public` with PKCE S256 required, a confidential OIDC client `mlflow-workspaces` whose groups
+claim carries Keycloak's full group path (`/mlflow-users`), and a SAML client `mlflow-saml`). The
+`mlflow-workspaces` client serves a second app server started with `MLFLOW_ENABLE_WORKSPACES=true`
+on its own database, so the first keeps the default deployment. The realm contains no keys —
+Keycloak generates the realm keys on import — and its passwords and client secrets are test
 literals. At start-up the suite rewrites every client's redirect, ACS and SLO URLs for the port
 the app actually got.
 

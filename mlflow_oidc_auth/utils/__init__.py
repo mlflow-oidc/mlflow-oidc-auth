@@ -78,7 +78,10 @@ from .group_detection import (
 )
 from .group_name import (
     MAX_GROUP_NAME_LENGTH,
+    GROUP_NAME_DOT_SEGMENTS,
     GROUP_NAME_RESERVED_CHARS,
+    GROUP_NAME_RESERVED_MESSAGE,
+    is_reserved_group_name,
     validate_group_name_chars,
 )
 
@@ -141,6 +144,9 @@ __all__ = [
     "call_group_detection_plugin",
     # Group name validation
     "MAX_GROUP_NAME_LENGTH",
+    "GROUP_NAME_DOT_SEGMENTS",
     "GROUP_NAME_RESERVED_CHARS",
+    "GROUP_NAME_RESERVED_MESSAGE",
+    "is_reserved_group_name",
     "validate_group_name_chars",
 ]

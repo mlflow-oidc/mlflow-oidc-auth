@@ -204,6 +204,66 @@
       ]
     },
     {
+      "clientId": "mlflow-workspaces",
+      "name": "mlflow-oidc-auth (OIDC, workspaces)",
+      "description": "Confidential client for the workspaces app server. Its groups claim carries Keycloak's full group path (/mlflow-users), the default outside this suite (#466). Redirect URIs are rewritten at test start.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "mlflow-workspaces-e2e-client-secret-not-a-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "http://127.0.0.1:5055/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://127.0.0.1:5055/*",
+        "use.refresh.tokens": "true",
+        "client_credentials.use_refresh_token": "false",
+        "revoke.refresh.token": "true",
+        "refresh.token.max.reuse": "0",
+        "access.token.lifespan": "10",
+        "frontchannel.logout.session.required": "true",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "mlflow-public",
       "name": "mlflow-oidc-auth (OIDC, public client)",
       "description": "Public client for the e2e suite: no secret, PKCE S256 required, own listener port so its issuer is distinct. Its groups claim comes from UserInfo only, not the ID token. Redirect URIs are rewritten at test start for the app's port.",

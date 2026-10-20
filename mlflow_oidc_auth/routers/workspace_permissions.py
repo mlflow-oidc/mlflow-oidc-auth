@@ -7,7 +7,7 @@ Per D-04: MANAGE users can grant up to and including MANAGE.
 Per D-13/D-14: User permission CUD invalidates workspace cache in router layer.
 """
 
-from typing import List
+from typing import Annotated, Any, Callable, List
 
 from fastapi import APIRouter, Depends, Path, Response
 
@@ -27,6 +27,7 @@ from mlflow_oidc_auth.permissions import _validate_permission
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.workspace_cache import invalidate_workspace_permission
 
+from ._group_route import GroupNameRoute
 from ._prefix import WORKSPACE_PERMISSIONS_ROUTER_PREFIX
 
 logger = get_logger()
@@ -45,6 +46,30 @@ WORKSPACE_USERS = "/{workspace}/users"
 WORKSPACE_GROUPS = "/{workspace}/groups"
 WORKSPACE_USER = "/{workspace}/users/{username}"
 WORKSPACE_GROUP = "/{workspace}/groups/{group_name}"
+
+GroupNamePath = Annotated[str, Path(description="The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F")]
+
+
+def _workspace_group_route(method: str, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Register an endpoint on ``WORKSPACE_GROUP`` with :class:`GroupNameRoute`.
+
+    A group name may contain "/" (Keycloak sends "/data-science", #466), so these routes match it as one
+    segment of the path as sent, like the group permission routes. The other workspace routes keep the
+    default route class.
+
+    Parameters:
+        method: The HTTP method.
+        **kwargs: Passed on to ``APIRouter.add_api_route``.
+
+    Returns:
+        A decorator that registers the endpoint and returns it unchanged.
+    """
+
+    def register(endpoint: Callable[..., Any]) -> Callable[..., Any]:
+        workspace_permissions_router.add_api_route(WORKSPACE_GROUP, endpoint, methods=[method], route_class_override=GroupNameRoute, **kwargs)
+        return endpoint
+
+    return register
 
 
 @workspace_permissions_router.get(
@@ -176,15 +201,15 @@ async def update_workspace_user_permission(
     )
 
 
-@workspace_permissions_router.patch(
-    WORKSPACE_GROUP,
+@_workspace_group_route(
+    "PATCH",
     response_model=WorkspaceGroupPermissionResponse,
     summary="Update group permission for a workspace",
 )
 async def update_workspace_group_permission(
     body: WorkspaceGroupPermissionRequest,
+    group_name: GroupNamePath,
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., description="The group name"),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> WorkspaceGroupPermissionResponse:
     """Update a group's permission on a workspace."""
@@ -227,15 +252,15 @@ async def delete_workspace_user_permission(
     )
 
 
-@workspace_permissions_router.delete(
-    WORKSPACE_GROUP,
+@_workspace_group_route(
+    "DELETE",
     status_code=204,
     response_class=Response,
     summary="Delete group permission for a workspace",
 )
 async def delete_workspace_group_permission(
+    group_name: GroupNamePath,
     workspace: str = Path(..., description="The workspace name"),
-    group_name: str = Path(..., description="The group name"),
     current_username: str = Depends(check_workspace_manage_permission),
 ) -> None:
     """Remove a group's permission from a workspace."""

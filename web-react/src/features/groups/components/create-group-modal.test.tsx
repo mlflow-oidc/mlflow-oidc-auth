@@ -98,7 +98,7 @@ describe("CreateGroupModal", () => {
   it("shows the backend's error message and does not call onCreated on a 400", async () => {
     vi.spyOn(entityService, "createGroup").mockRejectedValue(
       new Error(
-        `HTTP 400: ${JSON.stringify({ detail: "Group name must not contain '/', '?', '#' or '%'" })}`,
+        `HTTP 400: ${JSON.stringify({ detail: "Group name must not contain '?', '#' or '%', or be '.' or '..'" })}`,
       ),
     );
     const onCreated = vi.fn();
@@ -112,16 +112,16 @@ describe("CreateGroupModal", () => {
     );
 
     fireEvent.change(screen.getByLabelText(/Group name\*/i), {
-      target: { value: "bad/name" },
+      target: { value: "bad?name" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
-      expect(entityService.createGroup).toHaveBeenCalledWith("bad/name");
+      expect(entityService.createGroup).toHaveBeenCalledWith("bad?name");
     });
     expect(onCreated).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(
-      "Group name must not contain '/', '?', '#' or '%'",
+      "Group name must not contain '?', '#' or '%', or be '.' or '..'",
       "error",
     );
   });

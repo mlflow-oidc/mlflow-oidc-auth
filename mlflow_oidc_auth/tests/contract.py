@@ -210,7 +210,9 @@ def check_response(app: Any, response: Any, root_path: str = "") -> None:
         return
     request = response.request
     method, path = request.method, request.url.path
-    scope = {"type": "http", "path": path, "root_path": root_path, "method": method, "path_params": {}}
+    # ``raw_path`` as the server passes it: the group routes match on it (routers/_group_route.py).
+    raw_path = request.url.raw_path.split(b"?", 1)[0]
+    scope = {"type": "http", "path": path, "raw_path": raw_path, "root_path": root_path, "method": method, "path_params": {}}
     kind, route = _resolve(app, scope)
     label = f"{method} {path} -> {response.status_code}"
     if kind == "none":

@@ -189,8 +189,8 @@ def get_all_routers() -> List[APIRouter]:
     return [
         auth_router,
         experiment_permissions_router,
-        # Ahead of the group and user routers: their ``/{group_name:path}/users`` and similar
-        # catch-alls would otherwise claim an MCP server path whose slug is ``users`` or ``groups``.
+        # Ahead of the group and user routers, so that none of their routes, such as
+        # ``/{group_name}/users``, claims an MCP server path whose slug is ``users`` or ``groups``.
         mcp_server_permissions_router,
         user_mcp_server_permissions_router,
         group_mcp_server_permissions_router,

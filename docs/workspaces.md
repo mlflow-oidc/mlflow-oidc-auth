@@ -579,6 +579,12 @@ Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Update group permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Delete group permission |
 
+A group name may contain `/` (Keycloak sends full group paths such as `/data-science`). Send it
+percent-encoded as one path segment — `/groups/%2Fdata-science` — an unencoded `/` separates path
+segments and does not reach the group. A reverse proxy in front of the server must pass the path
+on as sent: one that decodes `%2F` (for example nginx `proxy_pass` with a URI part) turns it back
+into a separator.
+
 ### Workspace Regex Permissions (Admin Only)
 
 | Method | Path | Purpose |

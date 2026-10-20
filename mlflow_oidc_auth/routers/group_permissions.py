@@ -54,10 +54,11 @@ from mlflow_oidc_auth.utils import (
     get_is_admin,
     get_username,
 )
-from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_CHARS, validate_group_name_chars
+from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_MESSAGE, is_reserved_group_name, validate_group_name_chars
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
+from ._group_route import GroupNameRoute
 from ._permission_routes import ADMIN, ALL_OPS, GROUP, SCORER_KEYS, exact_routes, pattern_fields, regex_routes
 from ._prefix import GROUP_PERMISSIONS_ROUTER_PREFIX
 
@@ -65,6 +66,8 @@ logger = get_logger()
 
 group_permissions_router = APIRouter(
     prefix=GROUP_PERMISSIONS_ROUTER_PREFIX,
+    # A group name may contain "/": match it as one segment of the path as sent (see _group_route).
+    route_class=GroupNameRoute,
     responses={
         403: {"description": "Forbidden - Insufficient permissions"},
         404: {"description": "Resource not found"},
@@ -72,7 +75,7 @@ group_permissions_router = APIRouter(
 )
 
 GROUPS_ROOT = ""
-# Matched before the "/{group_name:path}/..." routes only because none of them is a bare name.
+# Matched before the "/{group_name}/..." routes only because none of them is a bare name.
 LIST_GROUP_DETAILS = "/details"
 
 
@@ -83,9 +86,9 @@ def _validate_group_name(value: str) -> str:
     rule SCIM's ``displayName`` validation (``routers/scim.py``) uses, so a group created through
     either path is held to the same rule: stripped, non-empty, at most
     :data:`~mlflow_oidc_auth.utils.group_name.MAX_GROUP_NAME_LENGTH` characters, no control or
-    non-printing characters, valid Unicode, and none of ``/ ? # %`` (this router's
-    ``{group_name:path}`` route parameter, like SCIM's ``/Groups/{id}``, would otherwise treat one
-    of those as a path separator or query delimiter).
+    non-printing characters, valid Unicode, none of ``? # %``, and not ``.`` or ``..``. A "/" is allowed: this router
+    matches ``{group_name}`` as one percent-encoded segment (see ``_group_route``), and SCIM's
+    ``/Groups/{id}`` takes the rest of its path.
 
     :param value: The raw, client-supplied group name.
     :return: The stripped, validated group name.
@@ -95,52 +98,52 @@ def _validate_group_name(value: str) -> str:
         name = validate_group_name_chars(value)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Group name {e}")
-    if any(ch in GROUP_NAME_RESERVED_CHARS for ch in name):
-        raise HTTPException(status_code=400, detail="Group name must not contain '/', '?', '#' or '%'")
+    if is_reserved_group_name(name):
+        raise HTTPException(status_code=400, detail=f"Group name {GROUP_NAME_RESERVED_MESSAGE}")
     return name
 
 
-GROUP_EXPERIMENT_PERMISSIONS = "/{group_name:path}/experiments"
-GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name:path}/experiments/{experiment_id}"
-GROUP_EXPERIMENT_PATTERN_PERMISSIONS = "/{group_name:path}/experiment-patterns"
-GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/experiment-patterns/{id}"
+GROUP_EXPERIMENT_PERMISSIONS = "/{group_name}/experiments"
+GROUP_EXPERIMENT_PERMISSION_DETAIL = "/{group_name}/experiments/{experiment_id}"
+GROUP_EXPERIMENT_PATTERN_PERMISSIONS = "/{group_name}/experiment-patterns"
+GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL = "/{group_name}/experiment-patterns/{id}"
 
 # GROUP, REGISTERED_MODEL, PATTERN
-GROUP_REGISTERED_MODEL_PERMISSIONS = "/{group_name:path}/registered-models"
-GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = "/{group_name:path}/registered-models/{name:path}"
-GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{group_name:path}/registered-models-patterns"
-GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/registered-models-patterns/{id}"
+GROUP_REGISTERED_MODEL_PERMISSIONS = "/{group_name}/registered-models"
+GROUP_REGISTERED_MODEL_PERMISSION_DETAIL = "/{group_name}/registered-models/{name:path}"
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS = "/{group_name}/registered-models-patterns"
+GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL = "/{group_name}/registered-models-patterns/{id}"
 
 # GROUP, PROMPT, PATTERN
-GROUP_PROMPT_PERMISSIONS = "/{group_name:path}/prompts"
-GROUP_PROMPT_PERMISSION_DETAIL = "/{group_name:path}/prompts/{prompt_name:path}"
-GROUP_PROMPT_PATTERN_PERMISSIONS = "/{group_name:path}/prompts-patterns"
-GROUP_PROMPT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/prompts-patterns/{id}"
+GROUP_PROMPT_PERMISSIONS = "/{group_name}/prompts"
+GROUP_PROMPT_PERMISSION_DETAIL = "/{group_name}/prompts/{prompt_name:path}"
+GROUP_PROMPT_PATTERN_PERMISSIONS = "/{group_name}/prompts-patterns"
+GROUP_PROMPT_PATTERN_PERMISSION_DETAIL = "/{group_name}/prompts-patterns/{id}"
 
 # GROUP, SCORER, PATTERN
-GROUP_SCORER_PERMISSIONS = "/{group_name:path}/scorers"
-GROUP_SCORER_PERMISSION_DETAIL = "/{group_name:path}/scorers/{experiment_id}/{scorer_name:path}"
-GROUP_SCORER_PATTERN_PERMISSIONS = "/{group_name:path}/scorer-patterns"
-GROUP_SCORER_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/scorer-patterns/{id}"
-GROUP_USER_PERMISSIONS = "/{group_name:path}/users"
+GROUP_SCORER_PERMISSIONS = "/{group_name}/scorers"
+GROUP_SCORER_PERMISSION_DETAIL = "/{group_name}/scorers/{experiment_id}/{scorer_name:path}"
+GROUP_SCORER_PATTERN_PERMISSIONS = "/{group_name}/scorer-patterns"
+GROUP_SCORER_PATTERN_PERMISSION_DETAIL = "/{group_name}/scorer-patterns/{id}"
+GROUP_USER_PERMISSIONS = "/{group_name}/users"
 
 # GROUP, GATEWAY ENDPOINT, PATTERN
-GROUP_GATEWAY_ENDPOINT_PERMISSIONS = "/{group_name:path}/gateways/endpoints"
-GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{group_name:path}/gateways/endpoints/{name:path}"
-GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/endpoints-patterns"
-GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/endpoints-patterns/{id}"
+GROUP_GATEWAY_ENDPOINT_PERMISSIONS = "/{group_name}/gateways/endpoints"
+GROUP_GATEWAY_ENDPOINT_PERMISSION_DETAIL = "/{group_name}/gateways/endpoints/{name:path}"
+GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSIONS = "/{group_name}/gateways/endpoints-patterns"
+GROUP_GATEWAY_ENDPOINT_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/endpoints-patterns/{id}"
 
 # GROUP, GATEWAY MODEL DEFINITION, PATTERN
-GROUP_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{group_name:path}/gateways/model-definitions"
-GROUP_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{group_name:path}/gateways/model-definitions/{name:path}"
-GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/model-definitions-patterns"
-GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/model-definitions-patterns/{id}"
+GROUP_GATEWAY_MODEL_DEFINITION_PERMISSIONS = "/{group_name}/gateways/model-definitions"
+GROUP_GATEWAY_MODEL_DEFINITION_PERMISSION_DETAIL = "/{group_name}/gateways/model-definitions/{name:path}"
+GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSIONS = "/{group_name}/gateways/model-definitions-patterns"
+GROUP_GATEWAY_MODEL_DEFINITION_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/model-definitions-patterns/{id}"
 
 # GROUP, GATEWAY SECRET, PATTERN
-GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name:path}/gateways/secrets"
-GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets/{name:path}"
-GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name:path}/gateways/secrets-patterns"
-GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name:path}/gateways/secrets-patterns/{id}"
+GROUP_GATEWAY_SECRET_PERMISSIONS = "/{group_name}/gateways/secrets"
+GROUP_GATEWAY_SECRET_PERMISSION_DETAIL = "/{group_name}/gateways/secrets/{name:path}"
+GROUP_GATEWAY_SECRET_PATTERN_PERMISSIONS = "/{group_name}/gateways/secrets-patterns"
+GROUP_GATEWAY_SECRET_PATTERN_PERMISSION_DETAIL = "/{group_name}/gateways/secrets-patterns/{id}"
 
 
 def _group_pattern(model, prompt: bool = False):

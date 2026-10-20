@@ -454,7 +454,7 @@ Base path: `/api/2.0/mlflow/permissions/groups`
 }
 ```
 
-Groups are otherwise created from the identity provider claims when a member signs in, so a group cannot be granted permissions before its first login. Creating a group up front lifts that ordering constraint for automated provisioning. The call is idempotent: it returns `201` when the group is created and `200` when it already exists — including a group a directory (SCIM) already owns, which keeps that ownership untouched. The name is validated with the same rules as a SCIM `displayName`: stripped, non-empty, at most 255 characters, no control characters, and none of `/ ? # %`.
+Groups are otherwise created from the identity provider claims when a member signs in, so a group cannot be granted permissions before its first login. Creating a group up front lifts that ordering constraint for automated provisioning. The call is idempotent: it returns `201` when the group is created and `200` when it already exists — including a group a directory (SCIM) already owns, which keeps that ownership untouched. The name is validated with the same rules as a SCIM `displayName`: stripped, non-empty, at most 255 characters, no control characters, none of `? # %`, and not `.` or `..`. A `/` is allowed (Keycloak sends group paths such as `/data-science`); in a URL, percent-encode it as `%2F` — every group route takes the name as one encoded path segment.
 
 ### Group Direct Permissions
 

@@ -16412,10 +16412,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F */
+                group_name: string;
                 /** @description The workspace name */
                 workspace: string;
-                /** @description The group name */
-                group_name: string;
             };
             cookie?: never;
         };
@@ -16458,10 +16458,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description The group name; may contain '/' (e.g. Keycloak's '/data-science'), percent-encode it as %2F */
+                group_name: string;
                 /** @description The workspace name */
                 workspace: string;
-                /** @description The group name */
-                group_name: string;
             };
             cookie?: never;
         };

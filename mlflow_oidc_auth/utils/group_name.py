@@ -13,18 +13,31 @@ from typing import Any
 #: Same bound on both paths: a group's ``displayName`` (SCIM) and the admin API's ``group_name``.
 MAX_GROUP_NAME_LENGTH = 255
 
-#: A group name becomes a path segment (this repo's ``{group_name:path}`` route parameter and
-#: SCIM's ``/Groups/{id}`` alike), so none of these may appear in it.
-GROUP_NAME_RESERVED_CHARS = frozenset("/?#%")
+#: Kept out of a group name that is created here. A "/" is allowed — identity providers send names
+#: such as Keycloak's "/data-science" anyway — because the group routes match the name as one
+#: percent-encoded segment (``routers/_group_route.py``).
+GROUP_NAME_RESERVED_CHARS = frozenset("?#%")
+
+#: Kept out too: clients send these unencoded and resolve them as dot segments, so a group route
+#: for a group named ".." would point at a different path altogether.
+GROUP_NAME_DOT_SEGMENTS = frozenset({".", ".."})
+
+#: The rejection a creating caller reports, after its field name.
+GROUP_NAME_RESERVED_MESSAGE = "must not contain '?', '#' or '%', or be '.' or '..'"
+
+
+def is_reserved_group_name(name: str) -> bool:
+    """Whether ``name`` may not be given to a new group (see :data:`GROUP_NAME_RESERVED_CHARS`)."""
+    return name in GROUP_NAME_DOT_SEGMENTS or any(ch in GROUP_NAME_RESERVED_CHARS for ch in name)
 
 
 def validate_group_name_chars(value: Any) -> str:
     """Validate and normalize a group name's characters, independent of how it will be used.
 
     Stripped, non-empty, at most :data:`MAX_GROUP_NAME_LENGTH` characters, no control or
-    non-printing characters, and valid Unicode. Does not check for the path-segment reserved
-    characters (:data:`GROUP_NAME_RESERVED_CHARS`) — callers that create a new name, rather than
-    only re-validating an existing one, check that separately (see ``routers/scim.py``'s
+    non-printing characters, and valid Unicode. Does not check for the names kept out of a new
+    group (:func:`is_reserved_group_name`) — callers that create a new name, rather than only
+    re-validating an existing one, check that separately (see ``routers/scim.py``'s
     ``scim_create_group`` and ``routers/group_permissions.py``'s ``create_group``).
 
     :param value: The raw, client-supplied group name.
