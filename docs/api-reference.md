@@ -527,7 +527,18 @@ The response is 200 even when some candidates were kept; they are listed in `fai
 If the server cannot look up its candidates (the trashed runs for an "empty trash" call or any
 call with `older_than`, the trashed experiments, or the runs of the experiments being deleted),
 it answers 500 (`Failed to retrieve deleted runs` or `Failed to retrieve deleted experiments`) and
-deletes nothing.
+deletes nothing. Every cleanup error, 500 included, has the body `{"error": "..."}`. Named
+experiments are checked first, so an unknown or active one is always a 404 or 400.
+
+On a tracking store that cannot hard-delete experiments, the experiments a call would delete
+(named, or found by emptying the trash) are listed in `failed_experiments` (`Store cannot
+permanently delete experiments`). On a store without MLflow's deleted-runs lookup, emptying the
+trash finds the trashed runs by searching every experiment, and `older_than` is a 400
+(`Backend store does not support older_than for runs`), since a run's deletion time cannot be read.
+
+With `older_than`, the age of each run is checked against every trashed run on the server, even
+when only a few runs or experiments are named: MLflow offers no per-experiment or per-run lookup of
+deletion times.
 
 ---
 

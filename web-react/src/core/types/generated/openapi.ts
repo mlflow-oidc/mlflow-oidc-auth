@@ -17462,6 +17462,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Cleanup failed; after a failed lookup of candidates nothing was deleted */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashErrorResponse"];
+                };
+            };
         };
     };
     list_deleted_experiments_oidc_trash_experiments_get: {

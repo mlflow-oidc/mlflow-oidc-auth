@@ -19060,6 +19060,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"
           }
         },
         "summary": "Permanently delete trashed entities",

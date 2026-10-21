@@ -850,6 +850,11 @@ for deployments behind a reverse proxy.
   present but names nothing used to be read as absent, so `?run_ids=` emptied the whole trash.
   It now deletes nothing; only a call with neither parameter empties the trash. Repeated ids are
   handled once.
+- **Trash cleanup's 500 body is `{"error": ...}`.** It was `{"detail": ...}`, unlike the
+  endpoint's 400 and 404. A client that reads `detail` from a cleanup 500 should read `error`.
+- **Listing deleted runs fails instead of showing part of the trash.** On a store without MLflow's
+  deleted-runs lookup, `GET /oidc/trash/runs` used to show an empty or partial list when a page of
+  the search failed. It now answers 500 `Failed to retrieve deleted runs`.
 - **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
   `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
   `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the

@@ -368,6 +368,34 @@ describe("TrashPage", () => {
     });
   });
 
+  it("names each kept experiment and the run that kept it (#484)", async () => {
+    vi.spyOn(trashService, "cleanupTrash").mockResolvedValue({
+      deleted_runs: [],
+      deleted_experiments: [],
+      total_deleted_runs: 0,
+      total_deleted_experiments: 0,
+      failed_runs: [{ run_id: "run9", error: "Failed to delete artifacts" }],
+      failed_experiments: [
+        { experiment_id: "exp1", error: "Run(s) remain in this experiment" },
+      ],
+    });
+    renderWithRouter();
+
+    fireEvent.click(screen.getAllByTitle("Delete Permanently")[0]); // exp1
+    fireEvent.click(
+      screen
+        .getByText("Delete Permanently", { selector: "button span" })
+        .closest("button")!,
+    );
+
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith(
+        "Failed to delete 1 item(s): Exp 1 (Run(s) remain in this experiment). Runs kept: run9 (Failed to delete artifacts)",
+        "error",
+      );
+    });
+  });
+
   it("never reports a negative success count even if a response carries more failures than requested (#239 review round 2)", async () => {
     // Deleting by run_ids alone no longer sweeps other trashed experiments (#239 review round
     // 2), so the backend can no longer report a failure for an id outside this request. Keep a

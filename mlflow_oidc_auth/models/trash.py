@@ -120,3 +120,10 @@ TRASH_ERROR_RESPONSES = {
     400: {"model": TrashErrorResponse, "description": "Invalid request"},
     404: {"model": TrashErrorResponse, "description": "Resource not found"},
 }
+
+# Cleanup answers its 500s in the same ``{"error": ...}`` shape: a failed lookup of candidates
+# ("Failed to retrieve deleted runs/experiments") means nothing was deleted.
+TRASH_CLEANUP_ERROR_RESPONSES = {
+    **TRASH_ERROR_RESPONSES,
+    500: {"model": TrashErrorResponse, "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"},
+}

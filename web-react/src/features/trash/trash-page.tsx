@@ -163,15 +163,30 @@ export default function TrashPage() {
       // reporting full success. The endpoint only ever reports failures for ids in this
       // request (deleting by run_ids alone no longer sweeps other trashed experiments), but
       // clamp at zero anyway so a malformed response can never show a negative success count.
+      // Each kept item is named (by its name when it was one of the selected items), with its
+      // reason. Deleting experiments also deletes their runs, so on that tab a kept run's own
+      // reason (e.g. its artifacts could not be removed) is shown too: it is why the experiment
+      // was kept.
+      const names = new Map(itemsToDelete.map((item) => [item.id, item.name]));
+      const describe = (id: string | undefined, error: string) =>
+        `${(id && names.get(id)) || id || "unknown"} (${error})`;
       const failures =
         activeTab === "experiments"
-          ? result.failed_experiments
-          : result.failed_runs;
-      const failedCount = failures?.length ?? 0;
+          ? (result.failed_experiments ?? []).map((f) =>
+              describe(f.experiment_id, f.error),
+            )
+          : (result.failed_runs ?? []).map((f) => describe(f.run_id, f.error));
+      const keptRuns =
+        activeTab === "experiments"
+          ? (result.failed_runs ?? []).map((f) => describe(f.run_id, f.error))
+          : [];
+      const failedCount = failures.length;
       const succeededCount = Math.max(ids.length - failedCount, 0);
 
       if (failedCount > 0) {
-        const reasons = failures?.map((f) => f.error).join("; ");
+        const reasons =
+          failures.join("; ") +
+          (keptRuns.length > 0 ? `. Runs kept: ${keptRuns.join("; ")}` : "");
         showToast(
           succeededCount > 0
             ? `Deleted ${succeededCount} item(s); ${failedCount} could not be deleted and were kept: ${reasons}`
@@ -198,10 +213,7 @@ export default function TrashPage() {
           <input
             type="checkbox"
             className="w-4 h-4 rounded custom-checkbox"
-            checked={
-              data.length > 0 &&
-              selectedIds.size === data.length
-            }
+            checked={data.length > 0 && selectedIds.size === data.length}
             onChange={(e) => handleSelectAll(e.target.checked)}
           />
         </div>
