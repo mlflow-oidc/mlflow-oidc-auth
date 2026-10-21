@@ -27,12 +27,18 @@ export const RemoveFromTrashModal = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Remove from trash">
       <div className="text-ui-text dark:text-ui-text-dark">
-        <p className="mb-4">
+        <p className="mb-2">
           The following{" "}
           {itemType === "experiments"
-            ? "experiment(s), with all of their runs,"
+            ? "experiment(s) and their runs"
             : "run(s)"}{" "}
           will be permanently deleted:
+        </p>
+        {/* Cleanup keeps what it cannot delete (artifacts that could not be removed, a store that
+            cannot hard-delete experiments) and reports it, so this is the request, not a promise. */}
+        <p className="mb-4 text-sm text-ui-text-secondary dark:text-ui-text-secondary-dark">
+          Anything that cannot be deleted stays in the trash, and you will be
+          told which items were kept.
         </p>
         <ul className="list-disc pl-5 max-h-60 overflow-y-auto mb-6 space-y-1">
           {items.map((item) => (
