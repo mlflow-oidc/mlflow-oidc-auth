@@ -29,8 +29,10 @@ export const RemoveFromTrashModal = ({
       <div className="text-ui-text dark:text-ui-text-dark">
         <p className="mb-4">
           The following{" "}
-          {itemType === "experiments" ? "experiment(s)" : "run(s)"} will be
-          permanently deleted:
+          {itemType === "experiments"
+            ? "experiment(s), with all of their runs,"
+            : "run(s)"}{" "}
+          will be permanently deleted:
         </p>
         <ul className="list-disc pl-5 max-h-60 overflow-y-auto mb-6 space-y-1">
           {items.map((item) => (

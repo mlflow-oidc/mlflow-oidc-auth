@@ -310,23 +310,22 @@ async def permanently_delete_all_trashed_entities(
                 logger.error(f"Invalid time format '{older_than}': {str(e)}")
                 return JSONResponse(status_code=400, content={"error": f"Invalid time format"})
 
-        # Get deleted runs that match the time criteria
-        try:
-            deleted_run_ids_older_than = backend_store._get_deleted_runs(older_than=time_delta)
-        except Exception as e:
-            logger.warning(f"Could not fetch deleted runs by time criteria: {str(e)}")
-            deleted_run_ids_older_than = []
+        # Neither run_ids nor experiment_ids ("empty trash"): sweep every trashed run and experiment.
+        # Naming either limits the call to what was named, plus the named experiments' own runs - a
+        # trashed run or experiment elsewhere must stay restorable (#484). Both sweeps below are
+        # driven by this one flag so they cannot disagree.
+        empty_trash = not run_ids and not experiment_ids
 
-        # Determine which run IDs to delete. The age sweep over every trashed run is only for the
-        # "empty trash" case: with experiment_ids alone (the UI's "delete selected experiments"),
-        # only the named experiments' own runs are targeted, added below - a trashed run in any
-        # other experiment must stay restorable (#484).
-        if run_ids:
-            target_run_ids = _split_csv(run_ids)
-        elif experiment_ids:
-            target_run_ids = []
-        else:
-            target_run_ids = list(deleted_run_ids_older_than)
+        # Get deleted runs that match the time criteria: the empty-trash candidates, and the age
+        # check below. Neither is needed otherwise, so the scan over every trashed run is skipped.
+        deleted_run_ids_older_than = []
+        if empty_trash or older_than:
+            try:
+                deleted_run_ids_older_than = backend_store._get_deleted_runs(older_than=time_delta)
+            except Exception as e:
+                logger.warning(f"Could not fetch deleted runs by time criteria: {str(e)}")
+
+        target_run_ids = list(deleted_run_ids_older_than) if empty_trash else _split_csv(run_ids)
 
         # Handle experiment deletion
         target_experiment_ids: List[str] = []
@@ -364,11 +363,10 @@ async def permanently_delete_all_trashed_entities(
                             status_code=400,
                             content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"},
                         )
-            elif not run_ids:
-                # Neither run_ids nor experiment_ids was given ("empty trash"): sweep every
-                # deleted experiment. When run_ids is given without experiment_ids (e.g. the UI's
-                # "delete selected runs"), leave target_experiment_ids empty instead - the caller
-                # asked to delete specific runs only, not every other trashed experiment.
+            elif empty_trash:
+                # Sweep every deleted experiment. When run_ids is given without experiment_ids
+                # (e.g. the UI's "delete selected runs"), leave target_experiment_ids empty
+                # instead - the caller asked to delete specific runs only.
                 filter_string = f"last_update_time < {time_threshold}" if older_than else None
 
                 def fetch_experiments(token=None):
@@ -503,6 +501,12 @@ async def permanently_delete_all_trashed_entities(
                 except Exception as e:
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
+        else:
+            # Named experiments were not touched, nor their runs: report them rather than answer as
+            # if they were deleted.
+            failed_experiments = [
+                {"experiment_id": experiment_id, "error": "Store cannot permanently delete experiments"} for experiment_id in _split_csv(experiment_ids)
+            ]
 
         # Prepare response
         response_data = {

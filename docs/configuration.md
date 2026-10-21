@@ -838,7 +838,9 @@ for deployments behind a reverse proxy.
   `POST /oidc/trash/cleanup?experiment_ids=...` without `run_ids` — what the UI's "delete selected
   experiments" sends — used to also hard-delete every run in the deleted lifecycle stage, in any
   experiment, with its artifacts. It now deletes only the named experiments and their own runs;
-  trashed runs elsewhere stay restorable (#484).
+  trashed runs elsewhere stay restorable (#484). On a tracking store that cannot hard-delete
+  experiments, such a call now lists the named experiments in `failed_experiments`
+  (`Store cannot permanently delete experiments`) instead of answering as if they were deleted.
 - **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
   `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
   `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the

@@ -515,7 +515,9 @@ Query parameters interact as follows:
 - Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
   deleted experiment older than `older_than` (default: all of them) is a candidate.
 - `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
-  any `run_ids` also given. No trashed run of any other experiment is deleted.
+  any `run_ids` also given. No trashed run of any other experiment is deleted. On a tracking
+  store that cannot hard-delete experiments, neither the named experiments nor their runs are
+  touched, and each is listed in `failed_experiments` (`Store cannot permanently delete experiments`).
 - `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
   experiment, or any run other than the ones named, is read or deleted.
 
