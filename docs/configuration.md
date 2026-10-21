@@ -831,9 +831,30 @@ for deployments behind a reverse proxy.
 - **Cleanup with only `run_ids` no longer sweeps every other trashed experiment.** Calling
   `POST /oidc/trash/cleanup?run_ids=...` without `experiment_ids` used to also hard-delete every
   experiment in the deleted lifecycle stage (and, through it, every run of those experiments too)
-  as a side effect, regardless of `older_than`. It now touches only the named runs. Calls that
-  name `experiment_ids` (with or without `run_ids`), or name neither (the "empty trash" case),
-  are unaffected. See [Trash Management](api-reference#trash-management).
+  as a side effect, regardless of `older_than`. It now touches only the named runs. The next
+  bullets cover the changes to calls that name `experiment_ids` or name neither. See
+  [Trash Management](api-reference#trash-management).
+- **Cleanup with only `experiment_ids` no longer deletes every other trashed run.** Calling
+  `POST /oidc/trash/cleanup?experiment_ids=...` without `run_ids` — what the UI's "delete selected
+  experiments" sends — used to also hard-delete every run in the deleted lifecycle stage, in any
+  experiment, with its artifacts. It now deletes only the named experiments and their own runs;
+  trashed runs elsewhere stay restorable (#484). On a tracking store that cannot hard-delete
+  experiments, such a call now lists the named experiments in `failed_experiments`
+  (`Store cannot permanently delete experiments`) instead of answering as if they were deleted.
+- **Trash cleanup fails when it cannot look up its candidates.** When a lookup of trashed runs
+  or experiments failed (including a later page of one), an "empty trash" call used to answer 200
+  having deleted only part of the trash, and a call with `older_than` reported every run as "not
+  older than". It now answers 500 (`Failed to retrieve deleted runs` or
+  `Failed to retrieve deleted experiments`) and deletes nothing.
+- **An empty `run_ids=` or `experiment_ids=` no longer empties the trash.** A parameter that is
+  present but names nothing used to be read as absent, so `?run_ids=` emptied the whole trash.
+  It now deletes nothing; only a call with neither parameter empties the trash. Repeated ids are
+  handled once.
+- **Trash cleanup's 500 body is `{"error": ...}`.** It was `{"detail": ...}`, unlike the
+  endpoint's 400 and 404. A client that reads `detail` from a cleanup 500 should read `error`.
+- **Listing deleted runs fails instead of showing part of the trash.** On a store without MLflow's
+  deleted-runs lookup, `GET /oidc/trash/runs` used to show an empty or partial list when a page of
+  the search failed. It now answers 500 `Failed to retrieve deleted runs`.
 - **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
   `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
   `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the

@@ -68,7 +68,11 @@ class FailedExperiment(ResponseModel):
 
 
 class TrashCleanupResponse(ResponseModel):
-    """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed."""
+    """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed.
+
+    A 200 with ``failed_*`` is a partial result: the entities listed there were kept, everything in
+    ``deleted_*`` is gone.
+    """
 
     __absent_fields__ = frozenset({"failed_runs", "failed_experiments"})
 
@@ -115,4 +119,11 @@ class RestoredRunResponse(ResponseModel):
 TRASH_ERROR_RESPONSES = {
     400: {"model": TrashErrorResponse, "description": "Invalid request"},
     404: {"model": TrashErrorResponse, "description": "Resource not found"},
+}
+
+# Cleanup answers its 500s in the same ``{"error": ...}`` shape: a failed lookup of candidates
+# ("Failed to retrieve deleted runs/experiments") means nothing was deleted.
+TRASH_CLEANUP_ERROR_RESPONSES = {
+    **TRASH_ERROR_RESPONSES,
+    500: {"model": TrashErrorResponse, "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"},
 }

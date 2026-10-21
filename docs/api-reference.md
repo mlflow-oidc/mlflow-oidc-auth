@@ -513,11 +513,32 @@ own hard-delete would otherwise have succeeded.
 
 Query parameters interact as follows:
 - Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
-  deleted experiment older than `older_than` (default: all of them) is a candidate.
+  deleted experiment older than `older_than` (default: all of them) is a candidate. A parameter
+  that is present but names nothing (`?run_ids=`) is not an "empty trash" call: it deletes nothing.
 - `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
-  any `run_ids` also given.
+  any `run_ids` also given. No trashed run of any other experiment is deleted. On a tracking
+  store that cannot hard-delete experiments, neither the named experiments nor their runs are
+  touched, and each is listed in `failed_experiments` (`Store cannot permanently delete experiments`).
 - `run_ids` given without `experiment_ids`: **only** those runs are touched. No other trashed
   experiment, or any run other than the ones named, is read or deleted.
+
+The response is 200 even when some candidates were kept; they are listed in `failed_runs` and
+`failed_experiments`, so a client must check those lists, not only the status code.
+If the server cannot look up its candidates (the trashed runs for an "empty trash" call or any
+call with `older_than`, the trashed experiments, or the runs of the experiments being deleted),
+it answers 500 (`Failed to retrieve deleted runs` or `Failed to retrieve deleted experiments`) and
+deletes nothing. Every cleanup error, 500 included, has the body `{"error": "..."}`. Named
+experiments are checked first, so an unknown or active one is always a 404 or 400.
+
+On a tracking store that cannot hard-delete experiments, the experiments a call would delete
+(named, or found by emptying the trash) are listed in `failed_experiments` (`Store cannot
+permanently delete experiments`). On a store without MLflow's deleted-runs lookup, emptying the
+trash finds the trashed runs by searching every experiment, and `older_than` is a 400
+(`Backend store does not support older_than for runs`), since a run's deletion time cannot be read.
+
+With `older_than`, the age of each run is checked against every trashed run on the server, even
+when only a few runs or experiments are named: MLflow offers no per-experiment or per-run lookup of
+deletion times.
 
 ---
 

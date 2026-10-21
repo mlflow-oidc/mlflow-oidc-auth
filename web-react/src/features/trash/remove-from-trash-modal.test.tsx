@@ -17,10 +17,42 @@ describe("RemoveFromTrashModal", () => {
     );
     expect(
       screen.getByText(
-        "The following experiment(s) will be permanently deleted:",
+        "The following experiment(s) and their runs will be permanently deleted:",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Exp 1")).toBeInTheDocument();
+  });
+
+  it("names only the runs when deleting runs", () => {
+    render(
+      <RemoveFromTrashModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        items={[]}
+        itemType="runs"
+        isProcessing={false}
+      />,
+    );
+    expect(
+      screen.getByText("The following run(s) will be permanently deleted:"),
+    ).toBeInTheDocument();
+  });
+
+  it("says that items which cannot be deleted are kept", () => {
+    render(
+      <RemoveFromTrashModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        items={[]}
+        itemType="experiments"
+        isProcessing={false}
+      />,
+    );
+    expect(
+      screen.getByText(/cannot be deleted stays in the trash/i),
+    ).toBeInTheDocument();
   });
 
   it("calls onConfirm when delete is clicked", () => {
