@@ -318,12 +318,16 @@ async def permanently_delete_all_trashed_entities(
 
         # Get deleted runs that match the time criteria: the empty-trash candidates, and the age
         # check below. Neither is needed otherwise, so the scan over every trashed run is skipped.
+        # Without it the call cannot tell which runs to empty or which are old enough, so it stops
+        # before deleting anything rather than report every run as "not older than" or empty only
+        # part of the trash.
         deleted_run_ids_older_than = []
         if empty_trash or older_than:
             try:
                 deleted_run_ids_older_than = backend_store._get_deleted_runs(older_than=time_delta)
-            except Exception as e:
-                logger.warning(f"Could not fetch deleted runs by time criteria: {str(e)}")
+            except Exception:
+                logger.exception("Could not fetch deleted runs by time criteria")
+                raise HTTPException(status_code=500, detail="Failed to retrieve deleted runs")
 
         target_run_ids = list(deleted_run_ids_older_than) if empty_trash else _split_csv(run_ids)
 
@@ -537,6 +541,8 @@ async def permanently_delete_all_trashed_entities(
 
         return JSONResponse(content=response_data)
 
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Error in cleanup operation for admin %s", admin_username)
         raise HTTPException(status_code=500, detail="Cleanup operation failed")

@@ -841,6 +841,10 @@ for deployments behind a reverse proxy.
   trashed runs elsewhere stay restorable (#484). On a tracking store that cannot hard-delete
   experiments, such a call now lists the named experiments in `failed_experiments`
   (`Store cannot permanently delete experiments`) instead of answering as if they were deleted.
+- **Trash cleanup fails when it cannot look up trashed runs.** When that lookup failed, an "empty
+  trash" call used to answer 200 having deleted only part of the trash, and a call with
+  `older_than` reported every run as "not older than". It now answers 500
+  `Failed to retrieve deleted runs` and deletes nothing.
 - **Trash cleanup failure reasons are fixed strings.** The `error` of each `failed_runs` /
   `failed_experiments` entry is now one of `Failed to delete artifacts`, `Failed to delete run`,
   `Run not found`, `Could not verify no runs remain`, `Failed to delete experiment`, or one of the

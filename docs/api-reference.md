@@ -523,6 +523,8 @@ Query parameters interact as follows:
 
 The response is 200 even when some candidates were kept; they are listed in `failed_runs` and
 `failed_experiments`, so a client must check those lists, not only the status code.
+If the server cannot look up the trashed runs when it needs to (an "empty trash" call, or any call
+with `older_than`), it answers 500 `Failed to retrieve deleted runs` and deletes nothing.
 
 ---
 

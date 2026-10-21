@@ -875,24 +875,38 @@ class TestAdditionalTrashBehaviour:
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
-    async def test_deleted_runs_fetch_failure_is_handled(self, mock_get_store):
+    @pytest.mark.parametrize(
+        "older_than,run_ids,experiment_ids",
+        [
+            (None, None, None),  # empty the trash: the lookup names the runs to delete
+            ("30d", None, None),
+            ("30d", None, "e1"),  # the lookup is the age check of the experiment's runs
+            ("30d", "r1", None),
+        ],
+    )
+    async def test_deleted_runs_fetch_failure_deletes_nothing(self, mock_get_store, older_than, run_ids, experiment_ids):
+        """Without the deleted-runs lookup the call cannot tell which runs to empty or which are old
+        enough: a 500, and nothing deleted, not a 200 that reports runs as too new (#484)."""
+        from fastapi import HTTPException
+
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
-        # _get_deleted_runs raises
+        backend_store._hard_delete_experiment = MagicMock()
         backend_store._get_deleted_runs.side_effect = Exception("boom-fetch")
         mock_get_store.return_value = backend_store
 
-        result = await permanently_delete_all_trashed_entities(
-            admin_username="admin@example.com",
-            older_than=None,
-            run_ids=None,
-            experiment_ids=None,
-        )
-        assert result.status_code == 200
+        with pytest.raises(HTTPException) as excinfo:
+            await permanently_delete_all_trashed_entities(
+                admin_username="admin@example.com",
+                older_than=older_than,
+                run_ids=run_ids,
+                experiment_ids=experiment_ids,
+            )
 
-        payload = json.loads(result.body)
-        assert payload["deleted_runs"] == []
-        assert payload["deleted_experiments"] == []
+        assert excinfo.value.status_code == 500
+        assert excinfo.value.detail == "Failed to retrieve deleted runs"
+        backend_store._hard_delete_run.assert_not_called()
+        backend_store._hard_delete_experiment.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
