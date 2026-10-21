@@ -513,7 +513,8 @@ own hard-delete would otherwise have succeeded.
 
 Query parameters interact as follows:
 - Neither `run_ids` nor `experiment_ids` (an "empty trash" call): every deleted run and every
-  deleted experiment older than `older_than` (default: all of them) is a candidate.
+  deleted experiment older than `older_than` (default: all of them) is a candidate. A parameter
+  that is present but names nothing (`?run_ids=`) is not an "empty trash" call: it deletes nothing.
 - `experiment_ids` given: those experiments and all of their runs are candidates, in addition to
   any `run_ids` also given. No trashed run of any other experiment is deleted. On a tracking
   store that cannot hard-delete experiments, neither the named experiments nor their runs are
@@ -523,8 +524,10 @@ Query parameters interact as follows:
 
 The response is 200 even when some candidates were kept; they are listed in `failed_runs` and
 `failed_experiments`, so a client must check those lists, not only the status code.
-If the server cannot look up the trashed runs when it needs to (an "empty trash" call, or any call
-with `older_than`), it answers 500 `Failed to retrieve deleted runs` and deletes nothing.
+If the server cannot look up its candidates (the trashed runs for an "empty trash" call or any
+call with `older_than`, the trashed experiments, or the runs of the experiments being deleted),
+it answers 500 (`Failed to retrieve deleted runs` or `Failed to retrieve deleted experiments`) and
+deletes nothing.
 
 ---
 

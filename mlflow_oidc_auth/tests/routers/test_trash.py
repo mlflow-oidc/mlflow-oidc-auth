@@ -1199,6 +1199,7 @@ class TestAdditionalTrashBehaviour:
         backend_store = MagicMock()
         backend_store._hard_delete_run = MagicMock()
         del backend_store._hard_delete_experiment
+        backend_store.get_experiment.side_effect = lambda exp_id: MagicMock(experiment_id=exp_id, lifecycle_stage="deleted")
         mock_get_store.return_value = backend_store
 
         with pytest.warns(FutureWarning):
@@ -1206,7 +1207,7 @@ class TestAdditionalTrashBehaviour:
                 admin_username="admin@example.com",
                 older_than=None,
                 run_ids=None,
-                experiment_ids="e1,e2",
+                experiment_ids="e1,e2,e1",
             )
 
         payload = json.loads(result.body)
@@ -1217,6 +1218,97 @@ class TestAdditionalTrashBehaviour:
             {"experiment_id": "e2", "error": "Store cannot permanently delete experiments"},
         ]
         backend_store._hard_delete_run.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_checks_named_experiments_on_a_store_that_cannot_delete_them(self, mock_get_store):
+        """An unknown experiment is a 404 on every store, not a capability message."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        del backend_store._hard_delete_experiment
+        backend_store.get_experiment.side_effect = MlflowException("nope", RESOURCE_DOES_NOT_EXIST)
+        mock_get_store.return_value = backend_store
+
+        with pytest.warns(FutureWarning):
+            result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids="missing")
+
+        assert result.status_code == 404
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    @pytest.mark.parametrize("run_ids,experiment_ids", [("", None), (None, ""), (",", None), (" ", " ")])
+    async def test_cleanup_with_a_present_but_empty_selection_deletes_nothing(self, mock_get_store, run_ids, experiment_ids):
+        """``run_ids=`` names no run: it is not an "empty trash" call."""
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(
+            admin_username="admin@example.com", older_than=None, run_ids=run_ids, experiment_ids=experiment_ids
+        )
+
+        payload = json.loads(result.body)
+        assert result.status_code == 200
+        assert payload["deleted_runs"] == [] and payload["deleted_experiments"] == []
+        backend_store._get_deleted_runs.assert_not_called()
+        backend_store.search_experiments.assert_not_called()
+        backend_store._hard_delete_run.assert_not_called()
+        backend_store._hard_delete_experiment.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    async def test_cleanup_deletes_a_repeated_experiment_once(self, mock_get_store):
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store.get_experiment.side_effect = lambda exp_id: MagicMock(experiment_id=exp_id, lifecycle_stage="deleted")
+        backend_store.search_runs.return_value = PagedList([], None)
+        mock_get_store.return_value = backend_store
+
+        result = await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids="e1,e1")
+
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == ["e1"]
+        assert "failed_experiments" not in payload
+        backend_store._hard_delete_experiment.assert_called_once_with("e1")
+
+    @pytest.mark.asyncio
+    @patch("mlflow_oidc_auth.routers.trash._get_store")
+    @pytest.mark.parametrize("failing", ["search_experiments", "search_runs"])
+    async def test_cleanup_deletes_nothing_when_a_later_page_fails(self, mock_get_store, failing):
+        """Emptying the trash must not go ahead on the first page of candidates only."""
+        from fastapi import HTTPException
+
+        backend_store = MagicMock()
+        backend_store._hard_delete_run = MagicMock()
+        backend_store._hard_delete_experiment = MagicMock()
+        backend_store._get_deleted_runs.return_value = []
+        first_page = {
+            "search_experiments": PagedList([MagicMock(experiment_id="e1")], "next"),
+            "search_runs": PagedList([MagicMock()], "next"),
+        }
+
+        def paged(name):
+            def search(**kwargs):
+                if kwargs.get("page_token") is None:
+                    return first_page[name]
+                if name == failing:
+                    raise Exception("page 2 failed")
+                return PagedList([], None)
+
+            return search
+
+        backend_store.search_experiments.side_effect = paged("search_experiments")
+        backend_store.search_runs.side_effect = paged("search_runs")
+        mock_get_store.return_value = backend_store
+
+        with pytest.raises(HTTPException) as excinfo:
+            await permanently_delete_all_trashed_entities(admin_username="admin@example.com", older_than=None, run_ids=None, experiment_ids=None)
+
+        assert excinfo.value.status_code == 500
+        backend_store._hard_delete_run.assert_not_called()
+        backend_store._hard_delete_experiment.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("mlflow_oidc_auth.routers.trash._get_store")
@@ -1483,7 +1575,14 @@ class TestAdditionalTrashBehaviour:
         exp.last_update_time = 0
         backend_store.get_experiment.return_value = exp
 
-        backend_store.search_runs.side_effect = Exception("db unavailable")
+        def search_runs(**kwargs):
+            # The experiment's deleted runs are found (none); the check right before the hard
+            # delete cannot be answered.
+            if kwargs.get("run_view_type") == ViewType.DELETED_ONLY:
+                return PagedList([], None)
+            raise Exception("db unavailable")
+
+        backend_store.search_runs.side_effect = search_runs
         mock_get_store.return_value = backend_store
 
         result = await permanently_delete_all_trashed_entities(

@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import warnings
 from datetime import timedelta
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -310,21 +310,23 @@ async def permanently_delete_all_trashed_entities(
                 logger.error(f"Invalid time format '{older_than}': {str(e)}")
                 return JSONResponse(status_code=400, content={"error": f"Invalid time format"})
 
-        # Neither run_ids nor experiment_ids ("empty trash"): sweep every trashed run and experiment.
-        # Naming either limits the call to what was named, plus the named experiments' own runs - a
-        # trashed run or experiment elsewhere must stay restorable (#484). Both sweeps below are
-        # driven by this one flag so they cannot disagree.
-        empty_trash = not run_ids and not experiment_ids
+        # Neither run_ids nor experiment_ids given ("empty trash"): sweep every trashed run and
+        # experiment. Naming either limits the call to what was named, plus the named experiments'
+        # own runs - a trashed run or experiment elsewhere must stay restorable (#484). A parameter
+        # that is present but names nothing (``run_ids=``) deletes nothing; it never empties the
+        # trash. Both sweeps below are driven by this one flag so they cannot disagree.
+        empty_trash = run_ids is None and experiment_ids is None
+        named_experiment_ids = _split_csv(experiment_ids)
 
         # Get deleted runs that match the time criteria: the empty-trash candidates, and the age
         # check below. Neither is needed otherwise, so the scan over every trashed run is skipped.
         # Without it the call cannot tell which runs to empty or which are old enough, so it stops
         # before deleting anything rather than report every run as "not older than" or empty only
         # part of the trash.
-        deleted_run_ids_older_than = []
+        deleted_run_ids_older_than: Set[str] = set()
         if empty_trash or older_than:
             try:
-                deleted_run_ids_older_than = backend_store._get_deleted_runs(older_than=time_delta)
+                deleted_run_ids_older_than = set(backend_store._get_deleted_runs(older_than=time_delta))
             except Exception:
                 logger.exception("Could not fetch deleted runs by time criteria")
                 raise HTTPException(status_code=500, detail="Failed to retrieve deleted runs")
@@ -333,77 +335,70 @@ async def permanently_delete_all_trashed_entities(
 
         # Handle experiment deletion
         target_experiment_ids: List[str] = []
+        failed_experiments: List[dict] = []
         time_threshold = get_current_time_millis() - time_delta
 
-        if not skip_experiments:
-            if experiment_ids:
-                target_experiment_ids = _split_csv(experiment_ids)
-                experiments = []
-
-                for exp_id in target_experiment_ids:
-                    try:
-                        exp = backend_store.get_experiment(exp_id)
-                        experiments.append(exp)
-                    except Exception as e:
-                        logger.error(f"Could not fetch experiment {exp_id}: {str(e)}")
-                        return JSONResponse(
-                            status_code=404,
-                            content={"error": f"Experiment {exp_id} not found"},
-                        )
-
-                # Ensure experiments are deleted
-                active_experiment_ids = [e.experiment_id for e in experiments if e.lifecycle_stage != LifecycleStage.DELETED]
-                if active_experiment_ids:
+        if named_experiment_ids:
+            # Checked whether or not the store can hard-delete experiments: an unknown or active
+            # experiment is the same error on every store.
+            experiments = []
+            for exp_id in named_experiment_ids:
+                try:
+                    exp = backend_store.get_experiment(exp_id)
+                    experiments.append(exp)
+                except Exception as e:
+                    logger.error(f"Could not fetch experiment {exp_id}: {str(e)}")
                     return JSONResponse(
-                        status_code=400,
-                        content={"error": f"Experiments {active_experiment_ids} are not in deleted lifecycle stage"},
+                        status_code=404,
+                        content={"error": f"Experiment {exp_id} not found"},
                     )
 
-                # Check age requirements
-                if older_than:
-                    non_old_experiment_ids = [e.experiment_id for e in experiments if e.last_update_time is None or e.last_update_time >= time_threshold]
-                    if non_old_experiment_ids:
-                        return JSONResponse(
-                            status_code=400,
-                            content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"},
-                        )
-            elif empty_trash:
-                # Sweep every deleted experiment. When run_ids is given without experiment_ids
-                # (e.g. the UI's "delete selected runs"), leave target_experiment_ids empty
-                # instead - the caller asked to delete specific runs only.
-                filter_string = f"last_update_time < {time_threshold}" if older_than else None
+            # Ensure experiments are deleted
+            active_experiment_ids = [e.experiment_id for e in experiments if e.lifecycle_stage != LifecycleStage.DELETED]
+            if active_experiment_ids:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"Experiments {active_experiment_ids} are not in deleted lifecycle stage"},
+                )
 
-                def fetch_experiments(token=None):
-                    try:
-                        page = backend_store.search_experiments(
-                            view_type=ViewType.DELETED_ONLY,
-                            filter_string=filter_string,
-                            page_token=token,
-                        )
-                        return (page + fetch_experiments(page.token)) if page.token else page
-                    except Exception:
-                        return []
+            # Check age requirements
+            if older_than:
+                non_old_experiment_ids = [e.experiment_id for e in experiments if e.last_update_time is None or e.last_update_time >= time_threshold]
+                if non_old_experiment_ids:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"Experiments {non_old_experiment_ids} are not older than {older_than}"},
+                    )
 
-                experiment_list = fetch_experiments()
-                target_experiment_ids = [exp.experiment_id for exp in experiment_list]
+            if skip_experiments:
+                # Neither the named experiments nor their runs are touched: report them rather than
+                # answer as if they were deleted.
+                failed_experiments = [{"experiment_id": exp_id, "error": "Store cannot permanently delete experiments"} for exp_id in named_experiment_ids]
+            else:
+                target_experiment_ids = named_experiment_ids
+        elif empty_trash and not skip_experiments:
+            # Sweep every deleted experiment. When run_ids is given without experiment_ids (e.g. the
+            # UI's "delete selected runs"), leave target_experiment_ids empty instead - the caller
+            # asked to delete specific runs only.
+            filter_string = f"last_update_time < {time_threshold}" if older_than else None
+            experiment_list = _fetch_all_pages(
+                lambda token: backend_store.search_experiments(view_type=ViewType.DELETED_ONLY, filter_string=filter_string, page_token=token),
+                "Failed to retrieve deleted experiments",
+            )
+            target_experiment_ids = [exp.experiment_id for exp in experiment_list]
 
-            # Get runs from target experiments
-            if target_experiment_ids:
-
-                def fetch_runs(token=None):
-                    try:
-                        page = backend_store.search_runs(
-                            experiment_ids=target_experiment_ids,
-                            filter_string="",
-                            run_view_type=ViewType.DELETED_ONLY,
-                            page_token=token,
-                        )
-                        return (page + fetch_runs(page.token)) if page.token else page
-                    except Exception:
-                        return []
-
-                runs_from_experiments = fetch_runs()
-                target_run_ids.extend([run.info.run_id for run in runs_from_experiments])
+        # Get runs from target experiments
+        if target_experiment_ids:
+            runs_from_experiments = _fetch_all_pages(
+                lambda token: backend_store.search_runs(
+                    experiment_ids=target_experiment_ids,
+                    filter_string="",
+                    run_view_type=ViewType.DELETED_ONLY,
+                    page_token=token,
+                ),
+                "Failed to retrieve deleted runs",
+            )
+            target_run_ids.extend([run.info.run_id for run in runs_from_experiments])
 
         # Delete runs
         deleted_runs = []
@@ -467,14 +462,11 @@ async def permanently_delete_all_trashed_entities(
 
         # Delete experiments
         deleted_experiments = []
-        failed_experiments = []
 
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
                 # A run can be kept above for many reasons (artifact deletion failure, age
-                # requirement not met, wrong lifecycle stage, a get_run error, or the paged
-                # fetch helpers above silently swallowing a search error and returning no
-                # runs). Rather than track every one of those paths individually, check
+                # requirement not met, wrong lifecycle stage, or a get_run error). Rather than track every one of those paths individually, check
                 # directly, right before hard-deleting the experiment, whether it still owns
                 # any run at all: MLflow's SqlRun -> SqlExperiment relationship cascades on
                 # delete, so hard-deleting an experiment that still has a run - kept for any
@@ -505,12 +497,6 @@ async def permanently_delete_all_trashed_entities(
                 except Exception as e:
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
-        else:
-            # Named experiments were not touched, nor their runs: report them rather than answer as
-            # if they were deleted.
-            failed_experiments = [
-                {"experiment_id": experiment_id, "error": "Store cannot permanently delete experiments"} for experiment_id in _split_csv(experiment_ids)
-            ]
 
         # Prepare response
         response_data = {
@@ -760,7 +746,36 @@ def _parse_time_delta(older_than: str) -> int:
 
 
 def _split_csv(raw: Optional[str]) -> List[str]:
-    """Split a comma-separated query parameter into trimmed, non-empty values."""
+    """Split a comma-separated query parameter into trimmed, non-empty, distinct values, in order."""
     if not raw:
         return []
-    return [value.strip() for value in raw.split(",") if value.strip()]
+    return list(dict.fromkeys(value.strip() for value in raw.split(",") if value.strip()))
+
+
+def _fetch_all_pages(fetch_page: Callable[[Optional[str]], Any], error: str) -> List[Any]:
+    """Collect every page of a paged store search.
+
+    Parameters:
+        fetch_page: Returns the page for a page token (None for the first page).
+        error: The 500 detail if any page cannot be fetched.
+
+    Returns:
+        The items of every page, in order.
+
+    Raises:
+        HTTPException: 500 with ``error`` - cleanup must not go ahead on part of the candidates.
+    """
+    items: List[Any] = []
+    token = None
+    while True:
+        try:
+            page = fetch_page(token)
+        except Exception:
+            logger.exception(error)
+            raise HTTPException(status_code=500, detail=error)
+        items.extend(page)
+        # Only a real page token continues; anything else (a store that pages differently) ends
+        # the search rather than loop on it.
+        token = getattr(page, "token", None)
+        if not isinstance(token, str) or not token:
+            return items
