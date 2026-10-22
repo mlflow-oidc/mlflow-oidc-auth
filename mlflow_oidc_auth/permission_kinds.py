@@ -9,7 +9,7 @@ keeping its own list, so a table can no longer be added to one list and forgotte
 kind and that ``PERMISSION_REGISTRY`` resolves exactly the kinds listed here.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping, Optional, Tuple
 
@@ -101,7 +101,7 @@ class GrantKind:
     regex_key_index: Optional[int] = 0
     workspace_scoped: bool = False
     workspace_level: bool = False
-    extra_filter: Mapping[str, Any] = _NO_FILTER
+    extra_filter: Mapping[str, Any] = field(default_factory=lambda: _NO_FILTER)
     unfiltered_roles: Tuple[str, ...] = ()
     shares_tables_of: Optional[str] = None
 
