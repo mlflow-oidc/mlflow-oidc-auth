@@ -259,6 +259,11 @@ class AppConfig:
         self.DB_POOL_MAX_OVERFLOW = config_manager.get_int("OIDC_DB_POOL_MAX_OVERFLOW", default=0)
         self.DB_POOL_RECYCLE_SECONDS = config_manager.get_int("OIDC_DB_POOL_RECYCLE_SECONDS", default=0)
 
+        # Threads per process that run MLflow's Flask requests (middleware/auth_aware_wsgi_middleware.py,
+        # issue #482). Each request in flight holds its response in memory, and Python runs one
+        # thread's code at a time: a few threads let short requests pass a long one, more mostly add memory.
+        self.WSGI_THREADS = config_manager.get_positive_int("WSGI_THREADS", default=4)
+
         # OIDC workspace detection settings
         self.OIDC_WORKSPACE_CLAIM_NAME = config_manager.get("OIDC_WORKSPACE_CLAIM_NAME", "workspace")
         self.OIDC_WORKSPACE_DETECTION_PLUGIN = config_manager.get("OIDC_WORKSPACE_DETECTION_PLUGIN")

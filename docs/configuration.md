@@ -151,6 +151,12 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. See [Workspaces](workspaces) |
 | `ENABLE_API_DOCS` | Boolean | `false` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
 
+### Request handling
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `WSGI_THREADS` | Integer | `4` | Threads per server process (uvicorn worker) that run MLflow's Flask requests. A long request, such as a large `runs/search` or a response that a slow client reads, then holds only its own thread, and other requests of the process go on. Each request in flight holds its response in memory, and Python runs one thread's code at a time, so a higher value adds memory and makes CPU-heavy requests slower each, without serving more of them. Must be a positive integer; another value logs a warning and uses `4` |
+
 ### Caching
 
 The plugin uses TTL caches to avoid repeated database lookups on every request. Two independent caches exist: one for OIDC/JWT key material and one for permission resolution results.
