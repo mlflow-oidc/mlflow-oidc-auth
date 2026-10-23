@@ -4,6 +4,7 @@ from mlflow_oidc_auth.utils import (
     effective_new_prompt_permission,
     effective_new_registered_model_permission,
     effective_experiment_permission,
+    get_logged_model_experiment_id,
     get_model_names,
     get_model_ids,
     get_request_param_values,
@@ -21,8 +22,8 @@ def _get_permission_from_registered_model_name(username: str) -> Permission:
 
 def _permission_for_logged_model(model_id: str, username: str) -> Permission:
     # logged model permissions inherit from parent resource (experiment)
-    model = _get_tracking_store().get_logged_model(model_id)
-    return effective_experiment_permission(model.experiment_id, username).permission
+    experiment_id = get_logged_model_experiment_id(_get_tracking_store(), model_id)
+    return effective_experiment_permission(experiment_id, username).permission
 
 
 def _get_permission_from_model_id(username: str) -> Permission:
