@@ -451,3 +451,72 @@ class TestWSGIBridgeConcurrency:
         users = [f"user{i}" for i in range(20)]
         await asyncio.gather(*(call_as(u) for u in users))
         assert seen == {f"/{u}": f"{u}@example.com" for u in users}
+
+    def test_pool_size_follows_wsgi_threads(self):
+        """The Flask requests run on a pool of WSGI_THREADS threads, not on the event loop's default executor."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.middleware import auth_aware_wsgi_middleware as bridge
+
+        assert bridge._WSGI_EXECUTOR._max_workers == config.WSGI_THREADS
+
+    async def test_pool_caps_concurrent_requests(self):
+        """No more Flask requests run at once than WSGI_THREADS; the next one waits for a free thread."""
+        import asyncio
+        import threading
+
+        from mlflow_oidc_auth.config import config
+
+        size = config.WSGI_THREADS
+        lock = threading.Lock()
+        running, peak = [0], [0]
+        pool_full, release = threading.Event(), threading.Event()
+
+        def app(environ, start_response):
+            with lock:
+                running[0] += 1
+                peak[0] = max(peak[0], running[0])
+                if running[0] == size:
+                    pool_full.set()
+            release.wait(timeout=10)
+            with lock:
+                running[0] -= 1
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+        calls = [asyncio.create_task(self._call(middleware, f"/r{i}")) for i in range(size + 1)]
+        try:
+            filled = await asyncio.to_thread(pool_full.wait, 5)
+            await asyncio.sleep(0.2)
+            peak_while_full = peak[0]
+        finally:
+            # Let every request finish before any assertion fails: a request left running would
+            # wait forever on the closed event loop to send its response.
+            release.set()
+            results = await asyncio.gather(*calls)
+        assert filled, "the pool never ran WSGI_THREADS requests at once"
+        assert peak_while_full == size, "one request more than WSGI_THREADS ran while every pool thread was busy"
+        assert all(sent[0]["status"] == 200 for sent in results)
+
+
+class TestWSGIThreadsSetting:
+    """WSGI_THREADS sizes the thread pool that runs the Flask requests (issue #482)."""
+
+    def test_default_is_four(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.delenv("WSGI_THREADS", raising=False)
+        assert AppConfig().WSGI_THREADS == 4
+
+    def test_env_value_is_read(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.setenv("WSGI_THREADS", "2")
+        assert AppConfig().WSGI_THREADS == 2
+
+    @pytest.mark.parametrize("bad", ["0", "-1", "many"])
+    def test_invalid_value_uses_the_default(self, monkeypatch, bad):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.setenv("WSGI_THREADS", bad)
+        assert AppConfig().WSGI_THREADS == 4

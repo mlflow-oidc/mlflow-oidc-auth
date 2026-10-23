@@ -5,20 +5,27 @@ This middleware passes FastAPI authentication information to Flask via WSGI envi
 It acts as a bridge between FastAPI's authentication middleware and Flask's WSGI application.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 from asgiref.sync import sync_to_async
 from asgiref.wsgi import WsgiToAsgi, WsgiToAsgiInstance
 
 from starlette.types import Receive, Scope, Send
 import asyncio
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
+#: Runs the Flask requests of this process: ``WSGI_THREADS`` threads (default 4). Its threads start
+#: on first use, so a server that forks its workers after importing the app still gets one pool each.
+_WSGI_EXECUTOR = ThreadPoolExecutor(max_workers=config.WSGI_THREADS, thread_name_prefix="mlflow-oidc-wsgi")
+
 
 class _ThreadPoolWsgiToAsgiInstance(WsgiToAsgiInstance):
-    """asgiref's per-request WSGI adapter, with the WSGI call on a thread pool.
+    """asgiref's per-request WSGI adapter, with the WSGI call on a bounded thread pool.
 
     asgiref decorates ``WsgiToAsgiInstance.run_wsgi_app`` with a bare ``@sync_to_async``, which is
     ``thread_sensitive=True``. Outside Django nothing sets a thread-sensitive context, so every call
@@ -26,11 +33,15 @@ class _ThreadPoolWsgiToAsgiInstance(WsgiToAsgiInstance):
     of a uvicorn worker. A long request then delays every other request of that worker, for its
     whole run and for as long as its response takes to drain to a slow client.
 
-    ``thread_sensitive=False`` runs each request on the event loop's default executor instead, as
-    Starlette's WSGI adapter (anyio's thread pool) did before asgiref replaced it.
+    ``thread_sensitive=False`` runs each request on ``_WSGI_EXECUTOR`` instead. Not on the event
+    loop's default executor, which has ``min(32, CPUs + 4)`` threads: every request in flight holds
+    its response in memory, and CPU-bound requests do not finish sooner in parallel under the GIL.
+    With 8 large searches at once, the default executor doubled a worker's memory and made the
+    slowest search 2.5 times longer, for no more searches served; 4 threads kept writes passing the
+    searches and bounded both (issue #482).
     """
 
-    run_wsgi_app = sync_to_async(WsgiToAsgiInstance.__dict__["run_wsgi_app"].func, thread_sensitive=False)
+    run_wsgi_app = sync_to_async(WsgiToAsgiInstance.__dict__["run_wsgi_app"].func, thread_sensitive=False, executor=_WSGI_EXECUTOR)
 
 
 class WSGIMiddleware(WsgiToAsgi):
