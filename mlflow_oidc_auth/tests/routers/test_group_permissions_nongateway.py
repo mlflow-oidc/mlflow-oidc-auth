@@ -109,7 +109,7 @@ class TestListGroups:
 
     def test_list_groups_error(self, authenticated_client, mock_store):
         """Test error handling when listing groups fails."""
-        mock_store.get_groups.side_effect = Exception("DB error")
+        mock_store.get_groups_for_user.side_effect = Exception("DB error")
         with patch(f"{_GP}.store", mock_store):
             resp = authenticated_client.get(GROUP_BASE)
         assert resp.status_code == 500

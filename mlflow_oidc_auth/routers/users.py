@@ -363,11 +363,13 @@ async def delete_my_token(token_id: int, current_username: str = Depends(get_use
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
-async def list_users(service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
+async def list_users(
+    service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE, is_admin: bool = Depends(get_is_admin)
+) -> JSONResponse:
     """
     List users in the system.
 
-    This endpoint returns all users in the system. Any authenticated user can access this endpoint.
+    Administrators see all matching users; other callers see only their own username.
 
     Parameters:
     -----------
@@ -397,6 +399,8 @@ async def list_users(service: bool = False, username: str = Depends(get_username
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
+        if not is_admin:
+            users = [user for user in users if user == username]
         users, headers = paginate_with_headers(users, key=lambda u: u, params=page)
 
         return JSONResponse(content=users, headers=headers)

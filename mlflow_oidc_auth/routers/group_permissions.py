@@ -188,11 +188,13 @@ def _group_pattern(model, prompt: bool = False):
     response_model=GroupListResponse,
     tags=["groups"],
 )
-async def list_groups(username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> Union[GroupListResponse, JSONResponse]:
+async def list_groups(
+    username: str = Depends(get_username), page: PageQuery = NO_PAGE, is_admin: bool = Depends(get_is_admin)
+) -> Union[GroupListResponse, JSONResponse]:
     """
     List all groups in the system.
 
-    This endpoint returns all groups in the system. Any authenticated user can access this endpoint.
+    Administrators see all groups; other callers see only groups they belong to.
 
     Parameters:
     -----------
@@ -215,7 +217,8 @@ async def list_groups(username: str = Depends(get_username), page: PageQuery = N
     try:
         from mlflow_oidc_auth.store import store
 
-        groups, headers = paginate_with_headers(store.get_groups(), key=lambda g: g, params=page)
+        visible_groups = store.get_groups() if is_admin else store.get_groups_for_user(username)
+        groups, headers = paginate_with_headers(visible_groups, key=lambda g: g, params=page)
         if headers:
             return JSONResponse(content=list(groups), headers=headers)
         return GroupListResponse(root=groups)
