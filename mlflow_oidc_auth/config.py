@@ -140,7 +140,7 @@ class AppConfig:
         # When True, the session is rejected once the IdP-issued access/ID token expires.
         # Leeway compensates for clock skew between this server and the IdP.
         self.OIDC_SESSION_EXPIRY_LEEWAY_SECONDS = config_manager.get_int("OIDC_SESSION_EXPIRY_LEEWAY_SECONDS", default=30)
-        # When True, request `offline_access` and persist the refresh token so the
+        # When True, request offline access and persist the refresh token so the
         # session can be silently refreshed against the IdP on expiry. Many enterprises
         # require additional approval for offline_access, so this is opt-in.
         self.OIDC_USE_REFRESH_TOKEN = config_manager.get_bool("OIDC_USE_REFRESH_TOKEN", default=False)

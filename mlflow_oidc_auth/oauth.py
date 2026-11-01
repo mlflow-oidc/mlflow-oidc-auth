@@ -47,6 +47,7 @@ logger = get_logger()
 # site reaches the client as ``oauth.oidc``, so the default provider keeps this name rather than
 # being renamed to "default" — a rename would be a breaking change for no benefit.
 LEGACY_CLIENT_NAME = "oidc"
+_GOOGLE_OIDC_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
 
 class PKCEUnsupportedError(Exception):
@@ -328,19 +329,39 @@ def _client_secret_for(provider_id: str) -> Optional[str]:
     return config_manager.get(_secret_env_key(provider_id))
 
 
-def _build_scope() -> str:
+def _is_google_oidc_provider(provider_id: str) -> bool:
+    provider = config.AUTH_PROVIDERS.by_id(provider_id)
+    if provider is None:
+        if provider_id != DEFAULT_PROVIDER_ID or config.AUTH_PROVIDERS.source != "legacy":
+            return False
+        discovery_url = config.OIDC_DISCOVERY_URL
+    elif provider.type == "oidc":
+        discovery_url = provider.discovery_url or (config.OIDC_DISCOVERY_URL if provider_id == DEFAULT_PROVIDER_ID else None)
+    else:
+        return False
+    return bool(discovery_url and discovery_url.rstrip("/") == _GOOGLE_OIDC_DISCOVERY_URL)
+
+
+def get_authorization_request_kwargs(provider_id: str = DEFAULT_PROVIDER_ID) -> dict[str, str]:
+    if config.OIDC_USE_REFRESH_TOKEN and _is_google_oidc_provider(provider_id):
+        return {"access_type": "offline", "prompt": "consent"}
+    return {}
+
+
+def _build_scope(provider_id: str = DEFAULT_PROVIDER_ID) -> str:
     """Build the space-delimited OIDC scope string for the authorize/token requests.
 
     OAuth 2.0 (RFC 6749 §3.3) requires the ``scope`` parameter to be space-delimited.
     We accept the configured value in comma- or space-separated form (or a mix) and
     always emit space-delimited scopes, so strict providers like Microsoft Entra ID do
     not reject the request (issue #238). ``offline_access`` is appended when the
-    refresh-token flow is enabled. Duplicate scopes are collapsed, order preserved.
+    refresh-token flow is enabled, except for Google, which uses authorization parameters.
+    Duplicate scopes are collapsed, order preserved.
     """
 
     raw = config.OIDC_SCOPE or ""
     scopes = [s for s in raw.replace(",", " ").split() if s]
-    if config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
+    if config.OIDC_USE_REFRESH_TOKEN and not _is_google_oidc_provider(provider_id) and "offline_access" not in scopes:
         scopes.append("offline_access")
 
     seen: set[str] = set()
@@ -439,7 +460,7 @@ def ensure_client_registered(provider_id: str = DEFAULT_PROVIDER_ID) -> bool:
         oauth.register(
             name=client_name(provider_id),
             client_kwargs={
-                "scope": _build_scope(),
+                "scope": _build_scope(provider_id),
                 "verify": config.OIDC_VERIFY_SSL,
                 "code_challenge_method": config.OIDC_CODE_CHALLENGE,
             },
