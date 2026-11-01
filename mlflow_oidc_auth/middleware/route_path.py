@@ -9,6 +9,7 @@ endpoint a request reaches, so every check in this package goes through :func:`r
 """
 
 import os
+import re
 from typing import Any, Mapping
 
 from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
@@ -55,6 +56,14 @@ def routed_path(scope: Mapping[str, Any]) -> str:
     getter = _starlette_get_route_path or _get_route_path
     path = getter(scope)  # type: ignore[arg-type]
     return path or "/"
+
+
+# The gateway routes that never forward the caller's headers to a provider: MLflow's typed
+# invocations and chat-completions handlers call the provider's own chat/embeddings methods, which
+# send only the provider's headers. Shared by the permission middleware, which keeps
+# ``Authorization`` on these and only these, and the auth middleware, which honours MLflow's
+# internal gateway token on these and only these.
+TYPED_GATEWAY_ROUTE = re.compile(r"^/gateway/(?:[^/]+/mlflow/invocations|mlflow/v1/chat/completions)$")
 
 
 # Paths that do not require an authenticated user. See ``AuthMiddleware`` for what each one is.

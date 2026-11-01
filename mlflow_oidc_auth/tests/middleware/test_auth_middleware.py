@@ -1270,3 +1270,125 @@ class TestLoginRedirectNextKeepsForwardedPrefix:
         location = urlparse(response.headers["location"])
         assert location.path == f"{base_path}/login"
         assert parse_qs(location.query)["next"] == [expected_next]
+
+
+class TestInternalGatewayToken:
+    """MLflow's internal gateway token authenticates server-internal calls on typed gateway routes only."""
+
+    TOKEN = "internal-gateway-test-value"
+    INVOCATIONS = "/gateway/my-endpoint/mlflow/invocations"
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, mock_store, monkeypatch):
+        monkeypatch.setattr("mlflow_oidc_auth.middleware.auth_middleware.store", mock_store)
+        monkeypatch.setenv("_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN", self.TOKEN)
+
+    @pytest.fixture
+    def auth_middleware(self, test_fastapi_app):
+        return AuthMiddleware(test_fastapi_app)
+
+    @staticmethod
+    def _basic(credentials: str) -> str:
+        import base64
+
+        return "Basic " + base64.b64encode(credentials.encode()).decode()
+
+    @staticmethod
+    async def _ok(_request):
+        return Response(status_code=200)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path", ["/gateway/my-endpoint/mlflow/invocations", "/gateway/mlflow/v1/chat/completions"])
+    async def test_token_authenticates_named_user_on_typed_routes(self, auth_middleware, create_mock_request, mock_store, path):
+        request = create_mock_request(path=path, headers={"authorization": self._basic(f"User@Example.com:{self.TOKEN}")})
+
+        response = await auth_middleware.dispatch(request, self._ok)
+
+        assert response.status_code == 200
+        assert request.state.username == "user@example.com"
+        assert request.state.is_admin is False
+        # Not an interactive sign-in: it must not be able to mint access tokens.
+        assert request.state.auth_method == middleware_module.AUTH_METHOD_BASIC
+        mock_store.authenticate_user.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/2.0/mlflow/experiments/search",
+            "/gateway/openai/v1/chat/completions",
+            "/gateway/proxy/my-endpoint/chat/completions",
+            "/gateway/my-endpoint/mlflow/invocations/extra",
+        ],
+    )
+    async def test_token_is_not_a_password_elsewhere(self, auth_middleware, create_mock_request, mock_store, path):
+        request = create_mock_request(path=path, headers={"authorization": self._basic(f"admin@example.com:{self.TOKEN}")})
+
+        success, username, _ = await auth_middleware._authenticate_user(request)
+
+        assert success is False
+        assert username is None
+        # It fell through to ordinary basic auth, which rejected it.
+        mock_store.authenticate_user.assert_called_once_with("admin@example.com", self.TOKEN)
+
+    @pytest.mark.asyncio
+    async def test_wrong_token_falls_through_to_basic_auth(self, auth_middleware, create_mock_request, mock_store):
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": self._basic("admin@example.com:not-the-token")})
+
+        success, username, _ = await auth_middleware._authenticate_user(request)
+
+        assert success is False
+        assert username is None
+        mock_store.authenticate_user.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_real_password_still_works_on_typed_route(self, auth_middleware, create_mock_request):
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": self._basic("admin@example.com:admin_pass")})
+
+        success, username, _ = await auth_middleware._authenticate_user(request)
+
+        assert success is True
+        assert username == "admin@example.com"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", [None, ""])
+    async def test_unset_token_is_never_matched(self, auth_middleware, create_mock_request, mock_store, monkeypatch, value):
+        if value is None:
+            monkeypatch.delenv("_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN", raising=False)
+        else:
+            monkeypatch.setenv("_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN", value)
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": self._basic("admin@example.com:")})
+
+        success, _, _ = await auth_middleware._authenticate_user(request)
+
+        assert success is False
+        mock_store.authenticate_user.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "header",
+        ["Basic", "Basic ", "Basic !!!not-base64!!!", "Basic " + "//79", "Basic " + "dXNlcm5hbWVub2NvbG9u", None],
+    )
+    def test_malformed_header_returns_none(self, create_mock_request, header):
+        # "//79" decodes to non-UTF-8 bytes; "dXNlcm5hbWVub2NvbG9u" is "usernamenocolon".
+        header = header if header is not None else self._basic(f":{self.TOKEN}")
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": header})
+
+        assert AuthMiddleware._internal_gateway_token_user(request, header) is None
+
+    @pytest.mark.asyncio
+    async def test_inactive_user_is_denied(self, auth_middleware, create_mock_request, mock_store):
+        mock_store.get_user_profile.side_effect = lambda username: MagicMock(is_admin=False, active=False, is_service_account=False)
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": self._basic(f"user@example.com:{self.TOKEN}")})
+
+        response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+        assert response.status_code == 401
+        assert getattr(request.state, "username", None) is None
+
+    @pytest.mark.asyncio
+    async def test_unknown_user_is_denied(self, auth_middleware, create_mock_request):
+        request = create_mock_request(path=self.INVOCATIONS, headers={"authorization": self._basic(f"nobody@example.com:{self.TOKEN}")})
+
+        response = await auth_middleware.dispatch(request, lambda r: pytest.fail("should not be called"))
+
+        assert response.status_code == 401
