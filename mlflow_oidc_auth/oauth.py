@@ -30,7 +30,9 @@ never makes a client public — see ``_credentials_usable``.
 from __future__ import annotations
 
 import re
+from types import MappingProxyType
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from authlib.integrations.starlette_client import OAuth, StarletteOAuth2App
 from joserfc.errors import JoseError
@@ -47,7 +49,9 @@ logger = get_logger()
 # site reaches the client as ``oauth.oidc``, so the default provider keeps this name rather than
 # being renamed to "default" — a rename would be a breaking change for no benefit.
 LEGACY_CLIENT_NAME = "oidc"
-_GOOGLE_OIDC_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+_GOOGLE_OIDC_HOST = "accounts.google.com"
+_OIDC_DISCOVERY_PATH = "/.well-known/openid-configuration"
+_GOOGLE_OFFLINE_PARAMS = MappingProxyType({"access_type": "offline", "prompt": "consent"})
 
 
 class PKCEUnsupportedError(Exception):
@@ -329,39 +333,75 @@ def _client_secret_for(provider_id: str) -> Optional[str]:
     return config_manager.get(_secret_env_key(provider_id))
 
 
-def _is_google_oidc_provider(provider_id: str) -> bool:
-    provider = config.AUTH_PROVIDERS.by_id(provider_id)
-    if provider is None:
-        if provider_id != DEFAULT_PROVIDER_ID or config.AUTH_PROVIDERS.source != "legacy":
-            return False
-        discovery_url = config.OIDC_DISCOVERY_URL
-    elif provider.type == "oidc":
-        discovery_url = provider.discovery_url or (config.OIDC_DISCOVERY_URL if provider_id == DEFAULT_PROVIDER_ID else None)
-    else:
+def _is_google_discovery_url(discovery_url: Optional[str]) -> bool:
+    """Whether ``discovery_url`` is Google's OIDC discovery document.
+
+    Google rejects the ``offline_access`` scope and asks for offline access through authorization
+    parameters instead. Compared as a parsed URL rather than as text, so letter case, a trailing
+    slash or a query string do not turn Google back into a provider that is sent the scope.
+
+    Parameters:
+        discovery_url: The discovery URL the client is registered with.
+
+    Returns:
+        True only for ``https://accounts.google.com/.well-known/openid-configuration``.
+    """
+
+    if not isinstance(discovery_url, str):
         return False
-    return bool(discovery_url and discovery_url.rstrip("/") == _GOOGLE_OIDC_DISCOVERY_URL)
+    parsed = urlparse(discovery_url.strip())
+    return (
+        parsed.scheme.lower() == "https"
+        and (parsed.hostname or "").lower() == _GOOGLE_OIDC_HOST
+        and parsed.port in (None, 443)
+        and parsed.path.rstrip("/") == _OIDC_DISCOVERY_PATH
+    )
 
 
-def get_authorization_request_kwargs(provider_id: str = DEFAULT_PROVIDER_ID) -> dict[str, str]:
-    if config.OIDC_USE_REFRESH_TOKEN and _is_google_oidc_provider(provider_id):
-        return {"access_type": "offline", "prompt": "consent"}
-    return {}
+def _authorize_params(google: bool) -> Optional[Dict[str, str]]:
+    """Extra authorization-request parameters for a provider, or None.
+
+    With ``OIDC_USE_REFRESH_TOKEN`` on, Google is asked for offline access with ``access_type=offline``,
+    and ``prompt=consent`` because Google issues a refresh token only when the user consents. Every
+    login opens a new session without the previous one's grant, so it needs a refresh token of its own.
+
+    Parameters:
+        google: Whether the provider is Google (see ``_is_google_discovery_url``).
+
+    Returns:
+        The parameters authlib adds to every authorization request for the client.
+    """
+
+    if google and config.OIDC_USE_REFRESH_TOKEN:
+        return dict(_GOOGLE_OFFLINE_PARAMS)
+    return None
 
 
-def _build_scope(provider_id: str = DEFAULT_PROVIDER_ID) -> str:
+def _build_scope(google: bool = False) -> str:
     """Build the space-delimited OIDC scope string for the authorize/token requests.
 
     OAuth 2.0 (RFC 6749 §3.3) requires the ``scope`` parameter to be space-delimited.
     We accept the configured value in comma- or space-separated form (or a mix) and
     always emit space-delimited scopes, so strict providers like Microsoft Entra ID do
     not reject the request (issue #238). ``offline_access`` is appended when the
-    refresh-token flow is enabled, except for Google, which uses authorization parameters.
+    refresh-token flow is enabled. Google rejects that scope as invalid, so for Google it is
+    never sent, even when configured — offline access comes from ``_authorize_params``.
     Duplicate scopes are collapsed, order preserved.
+
+    Parameters:
+        google: Whether the scope is for Google (see ``_is_google_discovery_url``).
+
+    Returns:
+        The scope string.
     """
 
     raw = config.OIDC_SCOPE or ""
     scopes = [s for s in raw.replace(",", " ").split() if s]
-    if config.OIDC_USE_REFRESH_TOKEN and not _is_google_oidc_provider(provider_id) and "offline_access" not in scopes:
+    if google:
+        if "offline_access" in scopes:
+            logger.warning("Dropping 'offline_access' from OIDC_SCOPE for Google, which rejects it; Google gets offline access through OIDC_USE_REFRESH_TOKEN")
+            scopes = [s for s in scopes if s != "offline_access"]
+    elif config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
         scopes.append("offline_access")
 
     seen: set[str] = set()
@@ -456,14 +496,22 @@ def ensure_client_registered(provider_id: str = DEFAULT_PROVIDER_ID) -> bool:
     if settings is None:
         return False
 
+    # Decided from the discovery URL actually being registered, so the scope and the
+    # authorization parameters cannot disagree about which provider this is. Authlib applies
+    # ``authorize_params`` *after* the kwargs given to ``authorize_redirect``, so for Google with
+    # refresh on a per-call ``prompt`` (say ``prompt=login`` for a step-up) would be replaced by
+    # ``prompt=consent``, which does not re-authenticate. Anything that needs its own ``prompt``
+    # must not rely on passing it per call.
+    google = _is_google_discovery_url(settings.get("server_metadata_url"))
     try:
         oauth.register(
             name=client_name(provider_id),
             client_kwargs={
-                "scope": _build_scope(provider_id),
+                "scope": _build_scope(google),
                 "verify": config.OIDC_VERIFY_SSL,
                 "code_challenge_method": config.OIDC_CODE_CHALLENGE,
             },
+            authorize_params=_authorize_params(google),
             **settings,
         )
         _registered[provider_id] = True

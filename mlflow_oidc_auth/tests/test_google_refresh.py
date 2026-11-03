@@ -1,47 +1,86 @@
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+"""Google gets offline access through authorization parameters, never the ``offline_access`` scope."""
+
+from unittest.mock import Mock
 
 import pytest
 
 import mlflow_oidc_auth.oauth as oauth_mod
-import mlflow_oidc_auth.routers.auth as auth_mod
-from mlflow_oidc_auth.tests.test_provider_login import DummyRequest
 
 GOOGLE_DISCOVERY = "https://accounts.google.com/.well-known/openid-configuration"
+OFFLINE_PARAMS = {"access_type": "offline", "prompt": "consent"}
 
 
 @pytest.fixture
-def configure_google(monkeypatch):
-    def configure(provider_id="default", discovery=GOOGLE_DISCOVERY, refresh=True, source="env", registered=True, provider_type="oidc"):
-        provider = SimpleNamespace(id=provider_id, type=provider_type, discovery_url=discovery)
-        registry = SimpleNamespace(source=source, by_id=lambda pid: provider if registered and pid == provider_id else None)
-        monkeypatch.setattr(oauth_mod.config, "AUTH_PROVIDERS", registry)
-        monkeypatch.setattr(oauth_mod.config, "OIDC_DISCOVERY_URL", GOOGLE_DISCOVERY)
-        monkeypatch.setattr(oauth_mod.config, "OIDC_SCOPE", "openid,email,profile")
+def configure(monkeypatch):
+    def configure(refresh=True, scope="openid,email,profile"):
+        monkeypatch.setattr(oauth_mod.config, "OIDC_SCOPE", scope)
         monkeypatch.setattr(oauth_mod.config, "OIDC_USE_REFRESH_TOKEN", refresh)
 
     return configure
 
 
+@pytest.fixture
+def register(monkeypatch):
+    """Register ``provider_id`` against ``discovery``; returns the kwargs authlib was given."""
+
+    def run(provider_id, discovery):
+        settings = Mock(return_value={"client_id": "test-client", "server_metadata_url": discovery})
+        register = Mock()
+        monkeypatch.setattr(oauth_mod, "_registered", {})
+        monkeypatch.setattr(oauth_mod, "_client_settings", settings)
+        monkeypatch.setattr(oauth_mod.oauth, "register", register)
+        assert oauth_mod.ensure_client_registered(provider_id)
+        settings.assert_called_once_with(provider_id)
+        register.assert_called_once()
+        return register.call_args.kwargs
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "discovery",
+    [
+        GOOGLE_DISCOVERY,
+        GOOGLE_DISCOVERY + "/",
+        " https://Accounts.Google.COM/.well-known/openid-configuration ",
+        "https://accounts.google.com:443/.well-known/openid-configuration?hl=en",
+    ],
+)
+def test_google_is_recognised_by_its_discovery_url(discovery):
+    assert oauth_mod._is_google_discovery_url(discovery)
+
+
+@pytest.mark.parametrize(
+    "discovery",
+    [
+        None,
+        "",
+        "https://issuer.example/.well-known/openid-configuration",
+        "https://accounts.google.com.example/.well-known/openid-configuration",
+        "https://evil.example/accounts.google.com/.well-known/openid-configuration",
+        "http://accounts.google.com/.well-known/openid-configuration",
+        "https://accounts.google.com:8443/.well-known/openid-configuration",
+        "https://accounts.google.com/other",
+    ],
+)
+def test_other_discovery_urls_are_not_google(discovery):
+    assert not oauth_mod._is_google_discovery_url(discovery)
+
+
 @pytest.mark.parametrize("provider_id", ["default", "google"])
-@pytest.mark.parametrize("suffix", ["", "/"])
-def test_google_offline_access_uses_authorization_parameters(configure_google, provider_id, suffix):
-    configure_google(provider_id, GOOGLE_DISCOVERY + suffix)
-    assert oauth_mod._build_scope(provider_id) == "openid email profile"
-    assert oauth_mod.get_authorization_request_kwargs(provider_id) == {"access_type": "offline", "prompt": "consent"}
-
-
-def test_legacy_google_discovery(configure_google):
-    configure_google(source="legacy", registered=False)
-    assert oauth_mod._build_scope() == "openid email profile"
-    assert oauth_mod.get_authorization_request_kwargs() == {"access_type": "offline", "prompt": "consent"}
+def test_google_registration_asks_for_offline_access_with_parameters(configure, register, provider_id):
+    configure()
+    kwargs = register(provider_id, GOOGLE_DISCOVERY)
+    assert kwargs["client_kwargs"]["scope"] == "openid email profile"
+    assert kwargs["authorize_params"] == OFFLINE_PARAMS
 
 
 @pytest.mark.parametrize("provider_id", ["default", "google"])
-def test_refresh_disabled_preserves_authorization_request(configure_google, provider_id):
-    configure_google(provider_id, refresh=False)
-    assert oauth_mod._build_scope(provider_id) == "openid email profile"
-    assert oauth_mod.get_authorization_request_kwargs(provider_id) == {}
+def test_refresh_disabled_leaves_google_request_unchanged(configure, register, provider_id):
+    configure(refresh=False)
+    kwargs = register(provider_id, GOOGLE_DISCOVERY)
+    assert kwargs["client_kwargs"]["scope"] == "openid email profile"
+    assert kwargs["authorize_params"] is None
 
 
 @pytest.mark.parametrize(
@@ -51,58 +90,54 @@ def test_refresh_disabled_preserves_authorization_request(configure_google, prov
         "https://accounts.google.com.example/.well-known/openid-configuration",
     ],
 )
-def test_other_providers_keep_offline_access_scope(configure_google, discovery):
-    configure_google(discovery=discovery)
-    assert oauth_mod._build_scope() == "openid email profile offline_access"
-    assert oauth_mod.get_authorization_request_kwargs() == {}
+def test_other_providers_keep_offline_access_scope(configure, register, discovery):
+    configure()
+    kwargs = register("default", discovery)
+    assert kwargs["client_kwargs"]["scope"] == "openid email profile offline_access"
+    assert kwargs["authorize_params"] is None
 
 
-@pytest.mark.parametrize("provider_type", ["saml", "k8s"])
-def test_non_oidc_provider_does_not_get_google_parameters(configure_google, provider_type):
-    configure_google(provider_type=provider_type)
-    assert oauth_mod.get_authorization_request_kwargs() == {}
+@pytest.mark.parametrize("refresh", [True, False])
+def test_configured_offline_access_is_dropped_for_google(configure, register, refresh):
+    """Google rejects the scope as invalid; sending it would make every login fail."""
+    configure(refresh=refresh, scope="openid offline_access,email,email")
+    kwargs = register("default", GOOGLE_DISCOVERY)
+    assert kwargs["client_kwargs"]["scope"] == "openid email"
 
 
-def test_registry_omission_does_not_fall_back_to_legacy_google(configure_google):
-    configure_google(registered=False)
-    assert oauth_mod.get_authorization_request_kwargs() == {}
-
-
-def test_explicit_scopes_are_preserved(configure_google, monkeypatch):
-    configure_google()
-    monkeypatch.setattr(oauth_mod.config, "OIDC_SCOPE", "openid offline_access,email,email")
+def test_configured_scopes_are_kept_for_other_providers(configure):
+    configure(scope="openid offline_access,email,email")
     assert oauth_mod._build_scope() == "openid offline_access email"
 
 
+def test_authorize_params_are_a_fresh_copy(configure):
+    configure()
+    params = oauth_mod._authorize_params(True)
+    params["prompt"] = "none"
+    assert oauth_mod._authorize_params(True) == OFFLINE_PARAMS
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider_id", ["default", "google"])
-async def test_google_login_keeps_provider_state_and_pkce(configure_google, monkeypatch, provider_id):
-    configure_google(provider_id)
-    redirect = AsyncMock(return_value=SimpleNamespace(status_code=302))
-    client = SimpleNamespace(authorize_redirect=redirect)
-    state = Mock(return_value="test-state")
-    pkce = AsyncMock()
-    monkeypatch.setattr(auth_mod.store, "create_auth_state", state)
-    monkeypatch.setattr(auth_mod, "is_oidc_configured", lambda pid: True)
-    monkeypatch.setattr(auth_mod, "assert_pkce_supported", pkce)
-    monkeypatch.setattr(auth_mod, "get_client", lambda pid: client)
-    monkeypatch.setattr(auth_mod, "get_configured_or_dynamic_redirect_uri", lambda *args, **kwargs: "https://tracking.example/callback")
-    request = DummyRequest()
-    response = await auth_mod._begin_login(request, provider_id)
-    assert response.status_code == 302
-    assert state.call_args.args == (provider_id,)
-    pkce.assert_awaited_once_with(client, provider_id)
-    redirect.assert_awaited_once_with(request, redirect_uri="https://tracking.example/callback", state="test-state", access_type="offline", prompt="consent")
+async def test_authlib_sends_the_parameters_on_the_authorization_request(configure, monkeypatch):
+    """End of the chain: the registered client puts them on the authorize URL itself."""
+    from urllib.parse import parse_qs, urlparse
 
+    from authlib.integrations.starlette_client import OAuth
 
-def test_named_google_registration_uses_its_own_scope(configure_google, monkeypatch):
-    configure_google("google")
-    settings = Mock(return_value={"client_id": "test-client", "server_metadata_url": GOOGLE_DISCOVERY})
-    register = Mock()
-    monkeypatch.setattr(oauth_mod, "_registered", {})
-    monkeypatch.setattr(oauth_mod, "_client_settings", settings)
-    monkeypatch.setattr(oauth_mod.oauth, "register", register)
-    assert oauth_mod.ensure_client_registered("google")
-    settings.assert_called_once_with("google")
-    register.assert_called_once()
-    assert register.call_args.kwargs["client_kwargs"]["scope"] == "openid email profile"
+    configure()
+    client = OAuth().register(
+        name="google-test",
+        client_id="test-client",
+        client_secret="test-secret",
+        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+        access_token_url="https://oauth2.googleapis.com/token",
+        client_kwargs={"scope": oauth_mod._build_scope(True), "code_challenge_method": "S256"},
+        authorize_params=oauth_mod._authorize_params(True),
+    )
+    rv = await client.create_authorization_url("https://tracking.example/callback", state="test-state")
+    query = parse_qs(urlparse(rv["url"]).query)
+    assert query["access_type"] == ["offline"]
+    assert query["prompt"] == ["consent"]
+    assert query["scope"] == ["openid email profile"]
+    assert query["state"] == ["test-state"]
+    assert "code_challenge" in query

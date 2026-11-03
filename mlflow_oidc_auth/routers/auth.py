@@ -22,7 +22,7 @@ from mlflow_oidc_auth.provisioning_policy import admin_from_claims, apply_provis
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID
-from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, get_authorization_request_kwargs, get_client, is_oidc_configured, oauth
+from mlflow_oidc_auth.oauth import PKCEUnsupportedError, assert_pkce_supported, get_client, is_oidc_configured, oauth
 from mlflow_oidc_auth.repository.auth_session import REFRESH_GUARD_TIMEOUT_SECONDS
 from mlflow_oidc_auth.session.refresh_lock import local_refresh_turn
 from mlflow_oidc_auth.session.token_vault import SessionTokens, get_token_vault
@@ -649,7 +649,6 @@ async def _begin_login(request: Request, provider_id: str):
                 request,
                 redirect_uri=redirect_url,
                 state=oauth_state,
-                **get_authorization_request_kwargs(provider_id),
             )
         except HTTPException:
             raise
