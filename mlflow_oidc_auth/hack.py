@@ -15,6 +15,10 @@ _HACK_DIR = os.path.join(os.path.dirname(__file__), "hack")
 # Snippets refer to the deployment's path prefix through this placeholder, which index() replaces
 # with the prefix as the content of a JavaScript string literal.
 BASE_PATH_PLACEHOLDER = "__MLFLOW_OIDC_BASE_PATH__"
+# The page an expired session is sent to, relative to the base path. It mirrors
+# AuthMiddleware._handle_auth_redirect: straight to the default provider's login only with
+# AUTOMATIC_LOGIN_REDIRECT, otherwise the provider picker, which also carries ``next``.
+LOGIN_PATH_PLACEHOLDER = "__MLFLOW_OIDC_LOGIN_PATH__"
 
 
 @functools.lru_cache(maxsize=None)
@@ -44,6 +48,11 @@ def _base_path() -> str:
     if not root.startswith("/") or root.startswith("//"):
         return ""
     return root.rstrip("/")
+
+
+def _login_path() -> str:
+    """Where re-auth sends an expired session, relative to the base path (see ``LOGIN_PATH_PLACEHOLDER``)."""
+    return "/login" if config.AUTOMATIC_LOGIN_REDIRECT is True else "/oidc/ui/auth"
 
 
 def _js_string_content(value: str) -> str:
@@ -95,5 +104,6 @@ def index():
     if not injected:
         return html_content
     injected = injected.replace(BASE_PATH_PLACEHOLDER, _js_string_content(_base_path()))
+    injected = injected.replace(LOGIN_PATH_PLACEHOLDER, _js_string_content(_login_path()))
 
     return html_content.replace(_BODY_CLOSE_TAG, f"{injected}\n{_BODY_CLOSE_TAG}")

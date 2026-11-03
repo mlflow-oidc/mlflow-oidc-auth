@@ -901,7 +901,7 @@ def _fresh_snippet_cache():
     hack._read_snippet.cache_clear()
 
 
-def _run_index(html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False, script_root: str = ""):
+def _run_index(html: str, snippets: dict, *, reauth: bool, menu: bool, redirect: bool = False, script_root: str = "", automatic_login: bool = False):
     """Drive ``hack.index()`` inside a request served under ``script_root``, with a controlled
     file-system / config state."""
     from flask import Flask
@@ -927,6 +927,7 @@ def _run_index(html: str, snippets: dict, *, reauth: bool, menu: bool, redirect:
         cfg.EXTEND_MLFLOW_REAUTH = reauth
         cfg.EXTEND_MLFLOW_MENU = menu
         cfg.EXTEND_MLFLOW_REDIRECT_ADMIN = redirect
+        cfg.AUTOMATIC_LOGIN_REDIRECT = automatic_login
         mock_file_open.side_effect = open_side_effect
         return index()
 
@@ -982,12 +983,33 @@ class TestReauthInjection:
         with open(snippet_path) as f:
             content = f.read()
         # Spot-check: the snippet should patch fetch and XHR, react to a 401,
-        # and forward the current location to /login as ?next=.
+        # and forward the current location to the login flow as ?next=.
         assert "window.fetch" in content
         assert "XMLHttpRequest.prototype.send" in content
         assert "401" in content
-        assert "/login?next=" in content
+        assert "?next=" in content
         assert "window.location.hash" in content
+
+    @pytest.mark.parametrize("automatic_login,login_path", [(False, "/oidc/ui/auth"), (True, "/login")])
+    def test_reauth_target_carries_the_base_path_and_follows_automatic_login(self, automatic_login, login_path):
+        """MLflow's page has no <base> element, so behind a path prefix the login target must come
+        from the request's base path, not from the document. It goes where AuthMiddleware sends an
+        unauthenticated page load: the provider picker, or /login with AUTOMATIC_LOGIN_REDIRECT."""
+        from mlflow_oidc_auth import hack
+
+        with open(os.path.join(hack._HACK_DIR, "reauth.html")) as f:
+            snippet = f.read()
+        result = _run_index(
+            "<html><body>Content</body></html>",
+            {"reauth.html": snippet},
+            reauth=True,
+            menu=False,
+            script_root="/mlstore",
+            automatic_login=automatic_login,
+        )
+        assert 'var BASE_PATH = "/mlstore";' in result
+        assert f'var LOGIN_PATH = "{login_path}";' in result
+        assert "__MLFLOW_OIDC_" not in result
 
 
 class TestRedirectInjection:
@@ -1246,3 +1268,49 @@ def test_redirect_never_absolute(_node_mapping, _node_mapping_prefixed, hash_val
         assert target.startswith(f"{prefix}/oidc/ui/")
         rest = target[len(f"{prefix}/oidc/ui/") :]
         assert re.fullmatch(r"(users/[^/:<>\\]+/experiments|workspaces/[^/:<>\\]+|users|workspaces)", rest), target
+
+
+# ── Re-auth target, evaluated in node ───────────────────────────────────────
+
+_REAUTH_NODE_HARNESS = r"""
+const fs = require("fs");
+const html = fs.readFileSync(process.argv[1], "utf8");
+const fn = html.match(/\/\/ BEGIN reauthUrl[^\n]*\n([\s\S]*?)\/\/ END reauthUrl/);
+if (!fn) throw new Error("no reauthUrl markers in snippet");
+const reauthUrl = new Function(fn[1] + "\nreturn reauthUrl;")();
+const cases = JSON.parse(fs.readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(cases.map((c) => reauthUrl(c[0], c[1], c[2]))));
+"""
+
+_REAUTH_CASES = [
+    # (base path, login path, next) -> target
+    (("", "/login", "/#/experiments/1"), "/login?next=%2F%23%2Fexperiments%2F1"),
+    (("/mlstore", "/login", "/mlstore/#/experiments/1"), "/mlstore/login?next=%2Fmlstore%2F%23%2Fexperiments%2F1"),
+    (("/mlstore", "/oidc/ui/auth", "/mlstore/?a=1&b=2#/models"), "/mlstore/oidc/ui/auth?next=%2Fmlstore%2F%3Fa%3D1%26b%3D2%23%2Fmodels"),
+    # A next the backend would refuse is not sent at all.
+    (("/mlstore", "/login", "//evil.example/#/x"), "/mlstore/login"),
+    (("", "/oidc/ui/auth", "/\\evil.example"), "/oidc/ui/auth"),
+    (("", "/login", ""), "/login"),
+]
+
+
+def test_reauth_url():
+    """The shipped snippet's target builder, run in node: prefix + login path, ``next`` encoded,
+    and an unsafe ``next`` dropped the same way the SPA's ``isSafeNextPath`` drops it."""
+    import json
+    import shutil
+    import subprocess
+
+    from mlflow_oidc_auth import hack
+
+    node = shutil.which("node")
+    assert node, "node is required to evaluate mlflow_oidc_auth/hack/reauth.html"
+    proc = subprocess.run(
+        [node, "-e", _REAUTH_NODE_HARNESS, os.path.join(hack._HACK_DIR, "reauth.html")],
+        input=json.dumps([list(args) for args, _ in _REAUTH_CASES]),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+    )
+    assert json.loads(proc.stdout) == [expected for _, expected in _REAUTH_CASES]
