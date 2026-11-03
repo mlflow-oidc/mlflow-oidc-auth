@@ -17,10 +17,14 @@ import inspect
 from typing import Any, Dict, List, Optional
 
 from mlflow.entities import Experiment
+from mlflow.entities.lifecycle_stage import LifecycleStage
 from mlflow.entities.model_registry import RegisteredModel
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_model_registry_store, _get_tracking_store
 from mlflow.store.entities.paged_list import PagedList
 from mlflow.store.tracking.abstract_store import AbstractStore
+from mlflow.store.tracking.dbmodels.models import SqlLoggedModel
 from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
 
 from mlflow_oidc_auth.utils.permissions import can_read_experiment, effective_experiment_permission
@@ -427,3 +431,61 @@ def get_run_experiment_id(tracking_store: AbstractStore, run_id: str) -> str:
         with tracking_store.ManagedSessionMaker() as session:
             return str(tracking_store._get_run(session=session, run_uuid=run_id).experiment_id)
     return tracking_store.get_run(run_id).info.experiment_id
+
+
+def _has_logged_model_row_lookup() -> bool:
+    """Whether MLflow's SQL store still has the private query hook ``_get_query(session, model)``.
+
+    ``get_logged_model`` builds its query on this hook, and the workspace-aware store
+    overrides it to scope the query to the request's workspace. ``get_logged_model_experiment_id``
+    builds the same query on it. If an MLflow release changes the hook's signature, it falls
+    back to ``get_logged_model``: checks get slower, not broken. A release that moves the
+    scoping out of the hook would still pass this check; the workspace tests in
+    ``tests/utils/test_logged_model_experiment_id.py`` catch that.
+    """
+    lookup = getattr(SqlAlchemyStore, "_get_query", None)
+    return lookup is not None and {"session", "model"} <= set(inspect.signature(lookup).parameters)
+
+
+_LOGGED_MODEL_ROW_LOOKUP = _has_logged_model_row_lookup()
+
+
+def get_logged_model_experiment_id(tracking_store: AbstractStore, model_id: str) -> str:
+    """
+    Return the id of the experiment a logged model belongs to, without loading the whole model.
+
+    A logged model inherits its permissions from its experiment, so a check on it needs only
+    this id. ``get_logged_model`` on MLflow's SQL store also loads every tag, param and
+    metric data point of the model, and builds an entity for each. A model that collects
+    metrics at every training step makes each check slower as the training goes on,
+    including the check on every ``log-batch`` whose metrics name the model.
+
+    On MLflow's SQL store (workspace-aware or not) this runs the query ``get_logged_model``
+    itself runs: the same ``_get_query`` workspace hook and the same filters (the id, and not
+    deleted). It selects only the experiment id and builds no entity. A missing, deleted or
+    out-of-workspace model raises the same ``RESOURCE_DOES_NOT_EXIST``. Every other store, a
+    SQL store subclass that overrides ``get_logged_model``, and an MLflow release without that
+    hook (``_has_logged_model_row_lookup``) go through ``get_logged_model``.
+
+    Args:
+        tracking_store: The MLflow tracking store.
+        model_id: The logged model ID.
+
+    Returns:
+        The experiment ID, as a string, like ``LoggedModel.experiment_id``.
+
+    Raises:
+        MlflowException: When the model cannot be resolved, as ``get_logged_model`` raises.
+    """
+    if _LOGGED_MODEL_ROW_LOOKUP and getattr(type(tracking_store), "get_logged_model", None) is SqlAlchemyStore.get_logged_model:
+        with tracking_store.ManagedSessionMaker() as session:
+            row = (
+                tracking_store._get_query(session, SqlLoggedModel)
+                .filter(SqlLoggedModel.model_id == model_id, SqlLoggedModel.lifecycle_stage != LifecycleStage.DELETED)
+                .with_entities(SqlLoggedModel.experiment_id)
+                .first()
+            )
+        if row is None:
+            raise MlflowException(f"Logged model with ID '{model_id}' not found.", RESOURCE_DOES_NOT_EXIST)
+        return str(row[0])
+    return tracking_store.get_logged_model(model_id).experiment_id
