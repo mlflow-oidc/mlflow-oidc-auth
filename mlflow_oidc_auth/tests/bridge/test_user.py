@@ -547,3 +547,124 @@ class TestBridgeDataValidation:
         for user_id, username, is_admin in results:
             assert username == f"user{user_id}@example.com"
             assert is_admin == (user_id % 2 == 0)
+
+
+class TestAuthorizationWorkspaceFromEnvironment:
+    """A header-less request that MLflow serves from ``MLFLOW_WORKSPACE`` is authorized in it (issue #482).
+
+    MLflow's ``WorkspaceContext`` sets ``MLFLOW_WORKSPACE`` for the whole process; its demo
+    generation keeps it set while other Flask requests run on the other pool threads. The fixture
+    leaves MLflow's request workspace empty, as a workspace provider without a default workspace
+    does; ``test_request_resolved_workspace_*`` cover a provider with one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _workspaces(self, monkeypatch):
+        from mlflow.utils.workspace_context import clear_server_request_workspace
+
+        from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True)
+        monkeypatch.delenv("MLFLOW_WORKSPACE", raising=False)
+        clear_server_request_workspace()
+        token = set_auth_context(AuthContext(username="bob@example.com", is_admin=False))
+        yield
+        clear_auth_context(token)
+        clear_server_request_workspace()
+
+    @staticmethod
+    def _while_another_request_holds(workspace, check):
+        """Run ``check`` on this thread while another thread is inside ``WorkspaceContext(workspace)``."""
+        import threading
+
+        from mlflow.utils.workspace_context import WorkspaceContext
+
+        entered, done = threading.Event(), threading.Event()
+
+        def other_request():
+            with WorkspaceContext(workspace):
+                entered.set()
+                done.wait(timeout=10)
+
+        thread = threading.Thread(target=other_request)
+        thread.start()
+        try:
+            assert entered.wait(5)
+            return check()
+        finally:
+            done.set()
+            thread.join()
+
+    def test_header_less_request_is_authorized_in_the_environment_workspace(self):
+        from mlflow.utils.workspace_context import get_request_workspace as mlflow_request_workspace
+
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
+
+        served, authorized = self._while_another_request_holds("ws-x", lambda: (mlflow_request_workspace(), get_authorization_workspace()))
+        assert served == "ws-x"
+        assert authorized == "ws-x"
+
+    def test_header_workspace_stays_header_only(self):
+        """Pattern scope and the creation-context rule read the header alone: None stays None."""
+        assert self._while_another_request_holds("ws-x", get_request_workspace) is None
+
+    def test_header_wins_over_the_environment(self):
+        from mlflow.utils.workspace_context import set_server_request_workspace
+
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace, set_auth_context
+
+        set_auth_context(AuthContext(username="bob@example.com", is_admin=False, workspace="ws-b"))
+        set_server_request_workspace("ws-b")
+        assert self._while_another_request_holds("ws-x", get_authorization_workspace) == "ws-b"
+
+    @pytest.mark.parametrize("held", ["ws-x", "default"])
+    def test_request_resolved_workspace_keeps_header_less_behaviour(self, held):
+        """The provider's default workspace for a header-less request is not taken, even when it equals the variable."""
+        from mlflow.utils.workspace_context import set_server_request_workspace
+
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
+
+        set_server_request_workspace("default")
+        assert get_authorization_workspace() is None
+        assert self._while_another_request_holds(held, get_authorization_workspace) is None
+
+    def test_no_environment_workspace_is_none(self):
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
+
+        assert get_authorization_workspace() is None
+
+    def test_workspaces_disabled_ignores_the_environment(self, monkeypatch):
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
+        assert self._while_another_request_holds("ws-x", get_authorization_workspace) is None
+
+    def test_new_pattern_stays_for_every_workspace(self):
+        """An admin's header-less pattern ("All Workspaces") is not narrowed to the held workspace."""
+        from mlflow_oidc_auth.utils.grant_workspace import EVERY_WORKSPACE, new_pattern_workspace
+
+        assert self._while_another_request_holds("ws-x", new_pattern_workspace) == EVERY_WORKSPACE
+
+    def test_non_member_is_denied_while_another_request_holds_the_environment(self):
+        """The race from issue #482: without the fallback, the global default would grant READ in ws-x."""
+        from mlflow_oidc_auth.permissions import READ
+        from mlflow_oidc_auth.utils import grant_context
+        from mlflow_oidc_auth.utils import permissions as perms
+        from mlflow_oidc_auth.utils.permissions import PermissionResult
+
+        def resolve():
+            perms._get_permission_cache().clear()
+            return perms.resolve_permission("experiment", "1", "bob@example.com")
+
+        with (
+            patch.object(grant_context, "walk_sources", return_value=PermissionResult(READ, "fallback")),
+            patch.object(grant_context, "_in_request_workspace", return_value=True),
+            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=None),
+        ):
+            alone = resolve()
+            during = self._while_another_request_holds("ws-x", resolve)
+
+        assert alone.kind == "fallback"
+        assert during.kind == "workspace-deny"

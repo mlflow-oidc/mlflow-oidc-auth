@@ -43,7 +43,9 @@ dependencies = [
   "joserfc>=1.7,<2",
   "uvicorn>=0.41.0",
   "fastapi>=0.132.0",
-  "asgiref>=3.11.1",
+  # <4: middleware/auth_aware_wsgi_middleware.py reads the function behind asgiref's @sync_to_async on
+  # WsgiToAsgiInstance.run_wsgi_app, an implementation detail (issue #482).
+  "asgiref>=3.11.1,<4",
   "httpx2>=2.0.0",
   "cachetools>=5.5.0"
 ]
