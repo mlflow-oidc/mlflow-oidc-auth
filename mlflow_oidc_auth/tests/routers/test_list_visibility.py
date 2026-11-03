@@ -4,47 +4,74 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
 from mlflow_oidc_auth.routers.users import users_router
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 
+CALLER = "user@example.com"
 
-@pytest.mark.parametrize("is_admin", [False, True])
-@pytest.mark.parametrize("paginated", [False, True])
-def test_user_listing_limits_visibility_before_pagination(mock_store: MagicMock, is_admin: bool, paginated: bool) -> None:
+
+def _client(router, is_admin: bool) -> TestClient:
     app = FastAPI()
-    app.include_router(users_router)
-    app.dependency_overrides[get_username] = lambda: "user@example.com"
+    app.include_router(router)
+    app.dependency_overrides[get_username] = lambda: CALLER
     app.dependency_overrides[get_is_admin] = lambda: is_admin
-    mock_store.list_usernames.return_value = ["admin@example.com", "user@example.com"]
-    params = {"limit": 1} if paginated else {}
+    return TestClient(app)
 
-    with patch("mlflow_oidc_auth.store.store", mock_store), TestClient(app) as client:
-        response = client.get("/api/2.0/mlflow/users", params=params)
 
+def _assert_page(response, expected: list[str], paginated: bool) -> None:
     assert response.status_code == 200
-    expected = ["admin@example.com", "user@example.com"] if is_admin else ["user@example.com"]
     assert response.json() == (expected[:1] if paginated else expected)
     if paginated:
         assert response.headers["X-Total-Count"] == str(len(expected))
 
 
+@pytest.mark.parametrize("restricted", [False, True])
 @pytest.mark.parametrize("is_admin", [False, True])
 @pytest.mark.parametrize("paginated", [False, True])
-def test_group_listing_limits_visibility_before_pagination(mock_store: MagicMock, is_admin: bool, paginated: bool) -> None:
-    app = FastAPI()
-    app.include_router(group_permissions_router)
-    app.dependency_overrides[get_username] = lambda: "user@example.com"
-    app.dependency_overrides[get_is_admin] = lambda: is_admin
-    mock_store.get_groups.return_value = ["admins", "developers"]
+def test_user_listing_visibility(mock_store: MagicMock, monkeypatch, restricted: bool, is_admin: bool, paginated: bool) -> None:
+    monkeypatch.setattr(config, "RESTRICT_USER_AND_GROUP_LISTING", restricted)
+    everyone = ["admin@example.com", CALLER, "other@example.com"]
+    mock_store.list_usernames.return_value = everyone
+    params = {"limit": 1} if paginated else {}
+
+    with patch("mlflow_oidc_auth.store.store", mock_store), _client(users_router, is_admin) as client:
+        response = client.get("/api/2.0/mlflow/users", params=params)
+
+    _assert_page(response, [CALLER] if restricted and not is_admin else everyone, paginated)
+
+
+@pytest.mark.parametrize("restricted", [False, True])
+@pytest.mark.parametrize("is_admin", [False, True])
+def test_service_account_listing_visibility(mock_store: MagicMock, monkeypatch, restricted: bool, is_admin: bool) -> None:
+    monkeypatch.setattr(config, "RESTRICT_USER_AND_GROUP_LISTING", restricted)
+    accounts = ["svc-a", "svc-b"]
+    mock_store.list_usernames.return_value = accounts
+
+    with patch("mlflow_oidc_auth.store.store", mock_store), _client(users_router, is_admin) as client:
+        response = client.get("/api/2.0/mlflow/users", params={"service": "true"})
+
+    mock_store.list_usernames.assert_called_once_with(is_service_account=True)
+    _assert_page(response, [] if restricted and not is_admin else accounts, paginated=False)
+
+
+@pytest.mark.parametrize("restricted", [False, True])
+@pytest.mark.parametrize("is_admin", [False, True])
+@pytest.mark.parametrize("paginated", [False, True])
+def test_group_listing_visibility(mock_store: MagicMock, monkeypatch, restricted: bool, is_admin: bool, paginated: bool) -> None:
+    monkeypatch.setattr(config, "RESTRICT_USER_AND_GROUP_LISTING", restricted)
+    mock_store.get_groups.return_value = ["admins", "developers", "other-tenant"]
     mock_store.get_groups_for_user.return_value = ["developers"]
     params = {"limit": 1} if paginated else {}
 
-    with patch("mlflow_oidc_auth.store.store", mock_store), TestClient(app) as client:
+    with patch("mlflow_oidc_auth.store.store", mock_store), _client(group_permissions_router, is_admin) as client:
         response = client.get("/api/2.0/mlflow/permissions/groups", params=params)
 
-    assert response.status_code == 200
-    expected = ["admins", "developers"] if is_admin else ["developers"]
-    assert response.json() == (expected[:1] if paginated else expected)
-    if paginated:
-        assert response.headers["X-Total-Count"] == str(len(expected))
+    if restricted and not is_admin:
+        mock_store.get_groups_for_user.assert_called_once_with(CALLER)
+        mock_store.get_groups.assert_not_called()
+        _assert_page(response, ["developers"], paginated)
+    else:
+        mock_store.get_groups_for_user.assert_not_called()
+        _assert_page(response, ["admins", "developers", "other-tenant"], paginated)

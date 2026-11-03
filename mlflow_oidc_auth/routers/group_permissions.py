@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
     check_experiment_manage_permission,
@@ -194,7 +195,7 @@ async def list_groups(
     """
     List all groups in the system.
 
-    Administrators see all groups; other callers see only groups they belong to.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, non-admins see only groups they belong to.
 
     Parameters:
     -----------
@@ -217,7 +218,8 @@ async def list_groups(
     try:
         from mlflow_oidc_auth.store import store
 
-        visible_groups = store.get_groups() if is_admin else store.get_groups_for_user(username)
+        restricted = config.RESTRICT_USER_AND_GROUP_LISTING and not is_admin
+        visible_groups = store.get_groups_for_user(username) if restricted else store.get_groups()
         groups, headers = paginate_with_headers(visible_groups, key=lambda g: g, params=page)
         if headers:
             return JSONResponse(content=list(groups), headers=headers)

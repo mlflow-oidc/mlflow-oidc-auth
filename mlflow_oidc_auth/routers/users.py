@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission, require_interactive_login
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -369,7 +370,7 @@ async def list_users(
     """
     List users in the system.
 
-    Administrators see all matching users; other callers see only their own username.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, non-admins see only their own username.
 
     Parameters:
     -----------
@@ -399,7 +400,7 @@ async def list_users(
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
-        if not is_admin:
+        if config.RESTRICT_USER_AND_GROUP_LISTING and not is_admin:
             users = [user for user in users if user == username]
         users, headers = paginate_with_headers(users, key=lambda u: u, params=page)
 

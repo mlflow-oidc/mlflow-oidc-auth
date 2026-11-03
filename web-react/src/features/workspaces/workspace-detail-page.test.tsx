@@ -50,6 +50,9 @@ let mockParams: Record<string, string> = { workspaceName: "test-workspace" };
 
 let mockIsAdmin = true;
 let mockUserGroups: Array<{ group_name: string }> = [];
+let mockAllUsers = ["alice", "bob", "newuser"];
+let mockAllAccounts = ["svc-build", "svc-deploy"];
+let mockAllGroups = ["admins", "viewers", "newgroup"];
 
 vi.mock("../../core/hooks/use-workspace-users", () => ({
   useWorkspaceUsers: () => mockUseWorkspaceUsers(),
@@ -60,15 +63,15 @@ vi.mock("../../core/hooks/use-workspace-groups", () => ({
 }));
 
 vi.mock("../../core/hooks/use-all-users", () => ({
-  useAllUsers: () => ({ allUsers: ["alice", "bob", "newuser"], isLoading: false }),
+  useAllUsers: () => ({ allUsers: mockAllUsers, isLoading: false }),
 }));
 
 vi.mock("../../core/hooks/use-all-accounts", () => ({
-  useAllServiceAccounts: () => ({ allServiceAccounts: ["svc-build", "svc-deploy"], isLoading: false }),
+  useAllServiceAccounts: () => ({ allServiceAccounts: mockAllAccounts, isLoading: false }),
 }));
 
 vi.mock("../../core/hooks/use-all-groups", () => ({
-  useAllGroups: () => ({ allGroups: ["admins", "viewers", "newgroup"], isLoading: false }),
+  useAllGroups: () => ({ allGroups: mockAllGroups, isLoading: false }),
 }));
 
 vi.mock("../../core/hooks/use-user", () => ({
@@ -151,15 +154,17 @@ vi.mock("../permissions/components/grant-permission-modal", () => ({
     onSave,
     options,
     label,
+    allowCustomValue,
   }: {
     isOpen: boolean;
     title: string;
     onSave: (name: string, permission: string) => Promise<void>;
     options: string[];
     label: string;
+    allowCustomValue?: boolean;
   }) =>
     isOpen ? (
-      <div data-testid={`grant-modal-${label}`} title={title}>
+      <div data-testid={`grant-modal-${label}`} title={title} data-allow-custom-value={String(Boolean(allowCustomValue))}>
         <span data-testid="grant-modal-options">{options.join(",")}</span>
         <button data-testid={`grant-save-${label}`} onClick={() => void onSave(options[0], "READ")}>
           Save
@@ -174,6 +179,9 @@ describe("WorkspaceDetailPage", () => {
     mockParams = { workspaceName: "test-workspace" };
     mockIsAdmin = true;
     mockUserGroups = [];
+    mockAllUsers = ["alice", "bob", "newuser"];
+    mockAllAccounts = ["svc-build", "svc-deploy"];
+    mockAllGroups = ["admins", "viewers", "newgroup"];
     mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true });
     mockRequest.mockResolvedValue({});
     mockUseWorkspaceUsers.mockReturnValue({
@@ -460,5 +468,30 @@ describe("WorkspaceDetailPage", () => {
 
     expect(screen.getByText("+ Add User")).toBeInTheDocument();
     expect(screen.getByText("+ Add Group")).toBeInTheDocument();
+  });
+
+  it("keeps add buttons usable for a non-admin manager whose user and group lists are restricted", () => {
+    mockIsAdmin = false;
+    mockAllUsers = ["admin"];
+    mockAllAccounts = [];
+    mockAllGroups = [];
+    mockUseWorkspaceUsers.mockReturnValue({
+      workspaceUsers: [{ workspace: "test-workspace", username: "admin", permission: "MANAGE" as PermissionLevel }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+
+    render(<WorkspaceDetailPage />);
+
+    for (const [button, label] of [
+      ["+ Add User", "User"],
+      ["+ Add Service Account", "Service Account"],
+      ["+ Add Group", "Group"],
+    ]) {
+      expect(screen.getByText(button)).toBeEnabled();
+      fireEvent.click(screen.getByText(button));
+      expect(screen.getByTestId(`grant-modal-${label}`)).toHaveAttribute("data-allow-custom-value", "true");
+    }
   });
 });
