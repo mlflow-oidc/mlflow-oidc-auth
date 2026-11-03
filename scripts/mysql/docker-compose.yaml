@@ -12,7 +12,7 @@ services:
     volumes:
       - ./mysql_data:/var/lib/mysql
   mysql-admin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:latest
     container_name: mysql-admin
     ports:
       - "5555:80"
