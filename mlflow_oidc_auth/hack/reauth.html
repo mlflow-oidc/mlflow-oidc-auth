@@ -1,14 +1,29 @@
 <script>
-    // Forces a full page reload when any fetch / XHR returns 401, so that
-    // expired sessions trigger the AuthMiddleware redirect to the IdP login
-    // flow instead of the SPA rendering empty pages forever.
+    // Sends the browser to the login flow when any fetch / XHR returns 401, so
+    // that an expired session lands on a login page instead of the SPA
+    // rendering empty pages forever.
     //
     // React Router intercepts URL-bar Enter as a soft navigation, so without
     // this hook the user has to manually force-reload after a session expiry.
+    // A reload is not enough on its own either: the AuthMiddleware redirect it
+    // would get only sees path + query, and MLflow routes on the hash.
     (function () {
         "use strict";
 
         var BASE_PATH = "__MLFLOW_OIDC_BASE_PATH__";
+        // "/login" with AUTOMATIC_LOGIN_REDIRECT, else the provider picker —
+        // the same choice AuthMiddleware makes for an unauthenticated page load.
+        var LOGIN_PATH = "__MLFLOW_OIDC_LOGIN_PATH__";
+
+        // BEGIN reauthUrl (tests evaluate the code between these markers)
+        function reauthUrl(basePath, loginPath, next) {
+            // Same check as the SPA's isSafeNextPath: a rejected path sends no
+            // ``next`` and the backend picks its own prefix-aware default.
+            var safe = next.charAt(0) === "/" && next.charAt(1) !== "/" && next.indexOf("\\") === -1;
+            return basePath + loginPath + (safe ? "?next=" + encodeURIComponent(next) : "");
+        }
+        // END reauthUrl
+
         var triggered = false;
         function reauth() {
             if (triggered) return;
@@ -17,7 +32,7 @@
             // return the user to where they were. MLflow uses hash routing,
             // so the hash is essential — without it they'd land at the root.
             var next = window.location.pathname + window.location.search + window.location.hash;
-            window.location.assign(BASE_PATH + "/login?next=" + encodeURIComponent(next));
+            window.location.assign(reauthUrl(BASE_PATH, LOGIN_PATH, next));
         }
 
         if (typeof window.fetch === "function") {
