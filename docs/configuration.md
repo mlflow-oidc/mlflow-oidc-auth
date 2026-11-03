@@ -14,6 +14,7 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_PUBLIC_CLIENT` | Boolean | `false` | Declare the client a **public client**: one the provider issued without a client secret. It is registered with no secret, and PKCE (`OIDC_CODE_CHALLENGE`, on by default) authenticates the token exchange instead. Requires PKCE, and refuses an `OIDC_CLIENT_SECRET` set alongside it — both are errors that leave the client unregistered. See [Public clients](#public-clients) |
 | `OIDC_REDIRECT_URI` | String | Auto-detected | Redirect URI for the OIDC callback (`/callback`). If not set, calculated dynamically from proxy headers, which works correctly behind reverse proxies once `TRUSTED_PROXIES` is set. Users must browse MLflow on the same origin as this URI, or login fails at the callback — see [Troubleshooting](troubleshooting#login-fails-after-returning-from-the-identity-provider) |
 | `OIDC_SCOPE` | String | `openid,email,profile` | Comma-separated list of OIDC scopes to request |
+| `OIDC_AUTHORIZE_PARAMS` | JSON object | unset | Extra parameters sent on every authorization request of the synthesised `default` provider, as a JSON object of string values, e.g. `{"access_type": "offline", "prompt": "consent"}`. The same as the registry field [`authorize_params`](#provider-registry-fields), with the same refused names. Unlike a registry entry, an invalid value does not disable the provider: the parameters are dropped and an error is logged |
 | `OIDC_AUDIENCE` | String | None | Expected JWT `aud` claim value (e.g., your client ID or API identifier). When set, bearer tokens are rejected if the `aud` claim doesn't match. Recommended for production to prevent token confusion attacks |
 | `OIDC_ISSUER` | String | None | Expected JWT `iss` claim value. When set, tokens whose issuer does not match are rejected. Also a required precondition for `OIDC_PROVISION_ON_BEARER_AUTH` |
 | `OIDC_PROVISION_ON_BEARER_AUTH` | Boolean | `false` | Auto-create a permission record on first bearer-token authentication for API-first users who never logged in via the browser (fixes ownerless resources, issue #262). Requires **both** `OIDC_AUDIENCE` and `OIDC_ISSUER` set. Provisioned users are **non-admin** and are treated as interactive login from the same provider would treat them: the same group-authorization gate (an admin group name admits only through a provider with `admin_source: claims`), no account for a provider whose `provisioning` is not `jit`, and the same group membership — namespaced as `<provider-id>:<group>` for any provider but `default`, and none for `group_sync: none`. **Note:** unlike browser login (which reads groups from the ID token, or from the UserInfo endpoint with `OIDC_USERINFO_GROUPS` — see [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint)), the bearer path resolves groups from the token itself — the access token must carry the groups claim (or `OIDC_GROUP_DETECTION_PLUGIN` must accept the presented JWT), otherwise the user fails the group gate and is not provisioned (they continue to be denied creation, never silently over-granted) |
@@ -24,7 +25,7 @@ The application is configured through environment variables, `.env` files, or pl
 | `OIDC_USERNAME_FIELD` | String | `email,preferred_username` | Comma-separated list of userinfo/token claim names tried in order to resolve the login identity. The first non-empty string field wins and is lowercased. Use this when your IdP shouldn't be identified by email (e.g. it may be reassigned) or when you want a stable claim like `sub` instead. **Note:** leaving this effectively empty logs a startup warning — no login or bearer-token authentication could ever resolve a username |
 | `OIDC_DISPLAY_NAME_FIELD` | String | `name` | Comma-separated list of userinfo/token claim names tried in order to resolve the human-readable display name shown in the UI. The first non-empty string field wins. **Note:** leaving this effectively empty logs a startup warning — no login could ever resolve a display name |
 | `OIDC_SESSION_EXPIRY_LEEWAY_SECONDS` | Integer | `30` | Clock-skew leeway applied to the IdP-issued token expiry. Sessions are rejected once `now >= expires_at - leeway`, forcing the user back through the OIDC login flow so IdP-side changes (deactivation, group changes, MFA enrollment) take effect within the token's lifetime instead of waiting for the cookie TTL |
-| `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request offline access and persist the refresh token so expired sessions are silently refreshed against the IdP. OIDC providers are asked for the `offline_access` scope, except Google, which rejects that scope, is recognised by its discovery URL (`https://accounts.google.com/.well-known/openid-configuration`) and is sent `access_type=offline` and `prompt=consent` instead; an `offline_access` in `OIDC_SCOPE` is dropped for it with a warning. With Google, every login shows the consent screen and issues a new refresh token (Google keeps a limited number per user and client and retires the oldest), and logging out revokes the user's whole grant to the client at Google, so the user's other sessions can no longer refresh and sign in again on expiry. Disabled by default because many enterprises require additional approval for `offline_access`. The refresh token is kept encrypted on the server-side session row, never in the cookie (see [Sessions](#sessions)), and concurrent requests on an expired session exchange it exactly once, so IdPs with refresh-token rotation and reuse detection do not end the session |
+| `OIDC_USE_REFRESH_TOKEN` | Boolean | `false` | When `true`, request `offline_access` and persist the refresh token in the session so expired sessions are silently refreshed against the IdP without forcing a visible login. `offline_access` is left out for a provider whose discovery document lists `scopes_supported` without it — such a provider rejects the scope — and a warning is logged once; a provider that asks for offline access its own way gets it through `authorize_params` (see [Refresh tokens from providers without `offline_access`](#refresh-tokens-from-providers-without-offline_access)). An `offline_access` written into `OIDC_SCOPE` is always sent. Disabled by default because many enterprises require additional approval for `offline_access`. The refresh token is kept encrypted on the server-side session row, never in the cookie (see [Sessions](#sessions)), and concurrent requests on an expired session exchange it exactly once, so IdPs with refresh-token rotation and reuse detection do not end the session |
 
 ### Provider registry fields
 
@@ -32,6 +33,7 @@ Per-provider fields set on an entry in `AUTH_PROVIDERS` / `AUTH_PROVIDERS_FILE` 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `authorize_params` | Object | `{}` | `oidc` providers only. Extra parameters sent on every authorization request to this provider, as a JSON object of string values — for what a provider needs beyond the standard request, such as `access_type`, `prompt`, `login_hint`, `domain_hint` or `acr_values`. Refused at load, together with the whole entry: a non-string value, and any parameter the login flow sets itself (`state`, `nonce`, `redirect_uri`, `client_id`, `response_type`, `response_mode`, `scope`, `code_challenge`, `code_challenge_method`, `code_verifier`, `request`, `request_uri`, in any letter case), since replacing one would remove a protection, and the names of the OAuth library's own arguments (`url`, `uri`, `client`, `authorization_endpoint`, `self`), which would break every login. For the synthesised `default` provider it comes from `OIDC_AUTHORIZE_PARAMS` |
 | `public_client` | Boolean | `false` | Declare this OIDC provider a **public client**, registered without a client secret and authenticated by PKCE instead. The same rules as `OIDC_PUBLIC_CLIENT`: requires PKCE, and refuses a secret (`OIDC_CLIENT_SECRET_<PROVIDER_ID>`) configured alongside it. Without it, a provider with no secret is not registered. Accepted only on `oidc` providers; set on `saml` or `k8s` the entry is refused at load. Must be a JSON boolean (`"true"` is refused). For the synthesised `default` provider it comes from `OIDC_PUBLIC_CLIENT`. See [Public clients](#public-clients) |
 | `bearer_adopts_unbound_accounts` | Boolean | `false` | `oidc` providers other than `default` only. Let this provider's bearer tokens reach an existing non-admin person's account that no identity has ever been recorded for — typically one its bearer provisioning created before identities were bound — and bind it to the token's `(provider, sub)` on first use, after which only that identity reaches it. Never an account in an email domain whose accounts belong to another provider (unless listed in its `allowed_email_domains`), and never one carrying the identity migration's placeholder: for an account from before identities were recorded, an administrator removes the placeholder first (`DELETE /api/2.0/mlflow/users/{username}/identities`). Off by default. Turn it on for a CI or service-principal issuer whose accounts predate this release. Must be a JSON `true` or `false` |
 | `userinfo_groups` | Boolean | `false` | `oidc` providers only. Let this provider's UserInfo endpoint supply the groups and workspace claims when the ID token lacks them. The same rules as `OIDC_USERINFO_GROUPS`, which sets it for the synthesised `default` provider. Must be a JSON `true` or `false` (a string such as `"true"` is rejected), and is rejected on a `saml` or `k8s` provider. See [Claims and the UserInfo endpoint](#claims-and-the-userinfo-endpoint) |
@@ -139,7 +141,7 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `EXTEND_MLFLOW_MENU` | Boolean | `true` | Inject sign-in/sign-out links and permission management navigation into MLflow's built-in UI |
-| `EXTEND_MLFLOW_REAUTH` | Boolean | `true` | Inject a small script into MLflow's UI that triggers a full page reload on any 401 response. Without this, an expired session leaves the SPA rendering empty pages until a manual force-reload, because React Router intercepts URL-bar navigations as soft routing |
+| `EXTEND_MLFLOW_REAUTH` | Boolean | `true` | Inject a small script into MLflow's UI that, on any 401 response, sends the browser to the login flow under the deployment's base path and returns it to the current page (hash included) afterwards. The target is the provider picker (`oidc/ui/auth`), or the default provider's `/login` when `AUTOMATIC_LOGIN_REDIRECT` is on, the same choice the middleware makes for an unauthenticated page load. Without this, an expired session leaves the SPA rendering empty pages until a manual force-reload, because React Router intercepts URL-bar navigations as soft routing |
 | `EXTEND_MLFLOW_REDIRECT_ADMIN` | Boolean | `true` | Inject a small script into MLflow's UI that sends MLflow's built-in admin pages (`#/admin`, `#/admin/users/<name>`, `#/admin/roles/...`, `#/admin/ws?workspace=<name>`, `#/account`) to the matching page of this plugin's UI under `oidc/ui/`. Those pages are built for MLflow's own basic-auth RBAC and fail against this plugin. The redirect grants nothing: the target page applies its own authorization. It is injected only while `EXTEND_MLFLOW_MENU` or `EXTEND_MLFLOW_REAUTH` is on, so turning both off leaves MLflow's `index.html` untouched |
 | `DEFAULT_LANDING_PAGE_IS_PERMISSIONS` | Boolean | `true` | Use the permissions management page as the default landing page in the admin UI |
 
@@ -349,6 +351,35 @@ membership's owner, and `--username` the member. The journal records them, and
 `"memberships": true` hands all of one user's memberships to the new owner. Without one of these,
 the memberships of a source you have turned off cannot be removed by any other source under
 `enforce`.
+
+### Refresh tokens from providers without `offline_access`
+
+Some providers do not support the `offline_access` scope and ask for offline access with their own
+authorization parameters. With `OIDC_USE_REFRESH_TOKEN=true` such a provider's discovery document
+leaves `offline_access` out of `scopes_supported`, so the plugin does not request it, and the
+provider's `authorize_params` supply what it wants instead.
+
+Google is one. It issues a refresh token for `access_type=offline`, and only when the user consents:
+
+```json
+{
+  "id": "google",
+  "type": "oidc",
+  "discovery_url": "https://accounts.google.com/.well-known/openid-configuration",
+  "issuer": "https://accounts.google.com",
+  "audience": "<client id>",
+  "client_id": "<client id>",
+  "authorize_params": {"access_type": "offline", "prompt": "consent"}
+}
+```
+
+For the synthesised `default` provider, set `OIDC_AUTHORIZE_PARAMS='{"access_type": "offline", "prompt": "consent"}'`.
+
+With `prompt=consent`, Google shows the consent screen on every login and issues a new refresh
+token each time; it keeps a limited number per user and client and retires the oldest. Without
+it, only the first login gets a refresh token. Logging out revokes the refresh token, and Google
+treats that as revoking the user's whole grant to the client, so the user's other sessions can no
+longer refresh and sign in again when they expire.
 
 ## PKCE
 
