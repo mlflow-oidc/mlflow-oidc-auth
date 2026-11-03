@@ -142,6 +142,71 @@ def get_client(provider_id: str = DEFAULT_PROVIDER_ID):
     return getattr(oauth, client_name(provider_id), None)
 
 
+async def _server_metadata(client, provider_id: str, purpose: str) -> Optional[Dict[str, Any]]:
+    """The provider's discovery metadata, or None when it cannot be read.
+
+    Authlib caches the document on the client, so this does not refetch on every login. A
+    failure is logged at debug and returned as None: the code that needs the metadata for real
+    reports discovery being unreachable, and a check built on top of it must not be what breaks
+    a login.
+    """
+    loader = getattr(client, "load_server_metadata", None) if client is not None else None
+    if loader is None:
+        return None
+    try:
+        metadata = await loader()
+    except Exception as exc:
+        logger.debug("Could not load server metadata for %s on '%s': %s", purpose, provider_id, exc)
+        return None
+    return metadata if isinstance(metadata, dict) else None
+
+
+# Providers already told about, so a provider without ``offline_access`` warns once, not per login.
+_offline_access_warned: set[str] = set()
+
+
+async def authorization_request_params(client, provider_id: str = DEFAULT_PROVIDER_ID) -> Dict[str, str]:
+    """Per-provider parameters to add to the authorization request, beyond state and redirect.
+
+    Two things, neither knowing any vendor:
+
+    * The provider's ``authorize_params`` from the registry (``OIDC_AUTHORIZE_PARAMS`` for the
+      synthesised ``default``), validated at load never to touch ``RESERVED_AUTHORIZE_PARAMS``.
+    * A scope without the ``offline_access`` the refresh-token flow would add, when the provider's
+      discovery document lists ``scopes_supported`` and that list leaves it out. Such a provider
+      rejects the request outright, so sending it would make every login fail. A provider that
+      publishes no list is sent the scope as before, and so is one an operator wrote into
+      ``OIDC_SCOPE``: that is a statement about the provider the operator is entitled to make.
+
+    Passed per call rather than as authlib's registered ``authorize_params``, which authlib
+    applies *over* the per-call arguments.
+
+    Parameters:
+        client: The registered authlib client for this provider.
+        provider_id: Registry id of the provider.
+
+    Returns:
+        Keyword arguments for ``authorize_redirect``.
+    """
+    provider = config.AUTH_PROVIDERS.by_id(provider_id)
+    params: Dict[str, str] = dict(provider.authorize_params) if provider is not None else {}
+
+    if config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in _configured_scopes():
+        metadata = await _server_metadata(client, provider_id, "the offline_access check")
+        supported = (metadata or {}).get("scopes_supported")
+        if isinstance(supported, (list, tuple)) and "offline_access" not in supported:
+            params["scope"] = _build_scope(offline_access=False)
+            if provider_id not in _offline_access_warned:
+                _offline_access_warned.add(provider_id)
+                logger.warning(
+                    "Provider '%s' does not list 'offline_access' in scopes_supported, so it is not requested and "
+                    "OIDC_USE_REFRESH_TOKEN gets no refresh token from it unless the provider's authorize_params "
+                    "ask for offline access its own way",
+                    provider_id,
+                )
+    return params
+
+
 async def assert_pkce_supported(client, provider_id: str = DEFAULT_PROVIDER_ID) -> None:
     """Fail the login *before* the redirect if the provider cannot do the configured PKCE method.
 
@@ -163,21 +228,10 @@ async def assert_pkce_supported(client, provider_id: str = DEFAULT_PROVIDER_ID) 
             configured one is not among them.
     """
     method = config.OIDC_CODE_CHALLENGE
-    if not method or client is None:
+    if not method:
         return
 
-    loader = getattr(client, "load_server_metadata", None)
-    if loader is None:
-        return
-
-    try:
-        metadata = await loader()
-    except Exception as exc:
-        # Discovery being unreachable is a different failure, reported by the code that needs
-        # the metadata for real. Never let this check be the thing that breaks a login.
-        logger.debug("Could not load server metadata for PKCE check on '%s': %s", provider_id, exc)
-        return
-
+    metadata = await _server_metadata(client, provider_id, "PKCE check")
     supported = (metadata or {}).get("code_challenge_methods_supported")
     if not supported or not isinstance(supported, (list, tuple, set)):
         return
@@ -328,19 +382,32 @@ def _client_secret_for(provider_id: str) -> Optional[str]:
     return config_manager.get(_secret_env_key(provider_id))
 
 
-def _build_scope() -> str:
+def _configured_scopes() -> list[str]:
+    """``OIDC_SCOPE`` split on commas and whitespace, in the order written."""
+    raw = config.OIDC_SCOPE or ""
+    return [s for s in raw.replace(",", " ").split() if s]
+
+
+def _build_scope(offline_access: bool = True) -> str:
     """Build the space-delimited OIDC scope string for the authorize/token requests.
 
     OAuth 2.0 (RFC 6749 §3.3) requires the ``scope`` parameter to be space-delimited.
     We accept the configured value in comma- or space-separated form (or a mix) and
     always emit space-delimited scopes, so strict providers like Microsoft Entra ID do
     not reject the request (issue #238). ``offline_access`` is appended when the
-    refresh-token flow is enabled. Duplicate scopes are collapsed, order preserved.
+    refresh-token flow is enabled, unless ``offline_access`` is False because the provider
+    says it does not support that scope (see ``authorization_request_params``). One written
+    into ``OIDC_SCOPE`` is always kept. Duplicate scopes are collapsed, order preserved.
+
+    Parameters:
+        offline_access: Whether ``offline_access`` may be appended for the refresh-token flow.
+
+    Returns:
+        The scope string.
     """
 
-    raw = config.OIDC_SCOPE or ""
-    scopes = [s for s in raw.replace(",", " ").split() if s]
-    if config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
+    scopes = _configured_scopes()
+    if offline_access and config.OIDC_USE_REFRESH_TOKEN and "offline_access" not in scopes:
         scopes.append("offline_access")
 
     seen: set[str] = set()

@@ -90,6 +90,39 @@ SAML_ONLY_FIELDS = (
 # not. ``allow_tokens_without_expiry`` is absent only because it has its own refusal above.
 SAML_REFUSED_FIELDS = ("audience", "issuer", "discovery_url", "client_id", "allowed_algorithms") + KUBERNETES_ONLY_FIELDS
 
+# Authorization-request parameters an ``authorize_params`` entry may not set. Each one carries a
+# property the login flow depends on — the CSRF ``state``, the ID token's ``nonce``, PKCE, where the
+# code is sent and how, which client is asking, and the scopes the plugin decides itself — so an
+# operator-supplied value would replace a protection rather than add a hint. ``code_verifier`` is
+# never sent, but authlib reads it from the same keyword arguments as the PKCE secret, so a
+# configured one would pin the verifier to a value sitting in configuration. The last group are
+# the names of authlib's own arguments on the way to the URL; passing one would make every login
+# fail with a TypeError. Compared lowercased.
+RESERVED_AUTHORIZE_PARAMS = frozenset(
+    {
+        "client_id",
+        "code_challenge",
+        "code_challenge_method",
+        "code_verifier",
+        "nonce",
+        "redirect_uri",
+        "request",
+        "request_uri",
+        "response_mode",
+        "response_type",
+        "scope",
+        "state",
+        # authlib's own argument names (StarletteOAuth2App.authorize_redirect,
+        # _create_oauth2_authorization_url, OAuth2Client.create_authorization_url, prepare_grant_uri);
+        # test_authorize_params checks this against the installed authlib's signatures
+        "authorization_endpoint",
+        "client",
+        "self",
+        "uri",
+        "url",
+    }
+)
+
 DEFAULT_SAML_NAME_ID_FORMAT = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
 
 # python3-saml checks ``Conditions`` against a fixed 300 s drift of its own; a configured skew is
@@ -176,6 +209,8 @@ class ProviderConfig:
             provider that does not declare this is a configuration error, not a public client.
             False by default; for the synthesised ``default`` provider it comes from
             ``OIDC_PUBLIC_CLIENT``.
+        authorize_params: ``oidc`` only. Extra authorization-request parameters, never one of
+            ``RESERVED_AUTHORIZE_PARAMS``.
         userinfo_groups: ``oidc`` only. Whether the groups and workspace claims may be read from
             the provider's UserInfo endpoint when the ID token lacks them. They decide access,
             administrator status and workspace membership, so this is opt-in: by default only
@@ -239,6 +274,10 @@ class ProviderConfig:
     # Opt-in: groups and workspace claims may come from UserInfo when the ID token lacks them.
     userinfo_groups: bool = False
     bearer_adopts_unbound_accounts: bool = False
+    # ``oidc`` only: extra parameters sent on every authorization request, as sorted pairs so the
+    # frozen dataclass stays hashable. For parameters a provider defines beyond the standard
+    # request (``access_type``, ``domain_hint``, ...), so no provider's quirks are coded here.
+    authorize_params: Tuple[Tuple[str, str], ...] = ()
     # Kubernetes service-account providers (#314). A cluster's JWKS is often not anonymously
     # readable and often unreachable from wherever MLflow runs, so the keys can come from
     # discovery, from configuration, or from the API server using the pod's own credentials.
@@ -432,6 +471,9 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
     elif bearer_adopts_unbound_accounts and entry.get("id") == DEFAULT_PROVIDER_ID:
         errors.append(f"{label}: 'bearer_adopts_unbound_accounts' does not apply to the 'default' provider, which reaches unbound accounts already")
 
+    authorize_params, authorize_param_errors = _validate_authorize_params(entry.get("authorize_params"), provider_type, label)
+    errors.extend(authorize_param_errors)
+
     allowed_email_domains = _as_tuple(entry.get("allowed_email_domains"))
     if identity_binding == "email" and not allowed_email_domains:
         errors.append(
@@ -543,6 +585,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             public_client=public_client is True,
             userinfo_groups=userinfo_groups is True,
             bearer_adopts_unbound_accounts=bearer_adopts_unbound_accounts is True,
+            authorize_params=authorize_params,
             **saml_fields,
         ),
         [],
@@ -590,6 +633,46 @@ def _validate_field_types(entry: Dict[str, Any], label: str) -> List[str]:
         if value is not None and not isinstance(value, (str, list, tuple)):
             errors.append(f"{label}: '{key}' must be a string or a list of strings, got {type(value).__name__}")
     return errors
+
+
+def _validate_authorize_params(value: Any, provider_type: str, label: str) -> Tuple[Tuple[Tuple[str, str], ...], List[str]]:
+    """Validate ``authorize_params``: a JSON object of string values, on an ``oidc`` provider only.
+
+    Refused rather than coerced or ignored: an operator who wrote the field expects it to reach
+    the IdP, so a value that would not — a number, a nested object, a parameter the login flow
+    owns — is reported at load instead of surfacing as a confusing IdP error at login.
+
+    Parameters:
+        value: The entry's ``authorize_params``, or None when absent.
+        provider_type: The entry's type.
+        label: Entry label for error messages.
+
+    Returns:
+        The parameters as sorted ``(name, value)`` pairs, and any errors.
+    """
+    if value is None or value == {}:
+        return (), []
+    if not isinstance(value, dict):
+        return (), [f"{label}: 'authorize_params' must be a JSON object of string values, got {type(value).__name__}"]
+    if provider_type != "oidc":
+        return (), [f"{label}: 'authorize_params' applies only to an 'oidc' provider, not to {provider_type!r}"]
+
+    errors = []
+    seen: set = set()
+    for name, param in value.items():
+        if not isinstance(name, str) or not name.strip():
+            errors.append(f"{label}: 'authorize_params' has an empty parameter name")
+        elif name.strip() in seen:
+            errors.append(f"{label}: 'authorize_params' names {name.strip()!r} more than once")
+        elif name.strip().lower() in RESERVED_AUTHORIZE_PARAMS:
+            errors.append(f"{label}: 'authorize_params' may not set {name!r}; the login flow sets it, and replacing it would remove a protection")
+        elif not isinstance(param, str):
+            errors.append(f"{label}: 'authorize_params' value for {name!r} must be a string, got {type(param).__name__}")
+        if isinstance(name, str):
+            seen.add(name.strip())
+    if errors:
+        return (), errors
+    return tuple(sorted((name.strip(), param) for name, param in value.items())), []
 
 
 def _validate_algorithms(value: Any, label: str) -> Tuple[Tuple[str, ...], List[str]]:
@@ -1151,7 +1234,22 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         # OIDC_USERINFO_GROUPS. ``is True`` for the same reason: anything but a real boolean must
         # not let UserInfo decide group membership.
         "userinfo_groups": getattr(app_config, "OIDC_USERINFO_GROUPS", False) is True,
+        # OIDC_AUTHORIZE_PARAMS, a JSON object. Text that is not JSON is passed on as-is, so the
+        # entry is refused with the same message a registry entry would get.
+        "authorize_params": _legacy_authorize_params(getattr(app_config, "OIDC_AUTHORIZE_PARAMS", None)),
     }
+
+
+def _legacy_authorize_params(raw: Any) -> Any:
+    """``OIDC_AUTHORIZE_PARAMS`` as a registry value: parsed JSON, None when unset, else the raw text."""
+    if not isinstance(raw, str):
+        return raw
+    if not raw.strip():
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return raw
 
 
 def _reject_duplicate_issuers(providers: List[ProviderConfig]) -> Tuple[List[ProviderConfig], List[str]]:
@@ -1299,6 +1397,12 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             "OIDC_AUDIENCE is not set, so the synthesised 'default' provider carries no audience — matching today's behaviour, "
             "in which no audience check is performed."
         )
+    # Invalid OIDC_AUTHORIZE_PARAMS drop the parameters, not the provider: an empty registry would
+    # lock every user out of an installation over an optional hint. A reserved name is still never
+    # sent, which is the property the refusal exists for.
+    authorize_params, authorize_param_errors = _validate_authorize_params(entry.get("authorize_params"), "oidc", "OIDC_AUTHORIZE_PARAMS")
+    for message in authorize_param_errors:
+        logger.error("%s; no extra authorization parameters are sent for the 'default' provider", message)
     return [
         ProviderConfig(
             id=DEFAULT_PROVIDER_ID,
@@ -1324,5 +1428,6 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             public_client=entry["public_client"],
             userinfo_groups=entry["userinfo_groups"],
             allow_tokens_without_expiry=False,
+            authorize_params=authorize_params,
         )
     ]
