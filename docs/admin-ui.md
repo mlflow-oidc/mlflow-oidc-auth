@@ -39,8 +39,8 @@ These pages appear when `OIDC_GEN_AI_GATEWAY_ENABLED=true` (default):
 
 | Page | Path | Description |
 |------|------|-------------|
-| Users | `/users` | List all users. Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
-| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source, and can create a group by name up front (see below) |
+| Users | `/users` | List all users (non-admins see only themselves when [`RESTRICT_USER_AND_GROUP_LISTING`](configuration#permissions) is enabled). Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
+| Groups | `/groups` | List all groups (non-admins see only groups they belong to when [`RESTRICT_USER_AND_GROUP_LISTING`](configuration#permissions) is enabled). Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source, and can create a group by name up front (see below) |
 | Service Accounts | `/service-accounts` | Manage service accounts and their permissions |
 
 ### Workspaces

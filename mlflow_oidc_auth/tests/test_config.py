@@ -107,6 +107,7 @@ class TestAppConfig(unittest.TestCase):
             "SESSION_COOKIE_SAMESITE",
             "SESSION_COOKIE_SECURE",
             "ENABLE_API_DOCS",
+            "RESTRICT_USER_AND_GROUP_LISTING",
         ]
 
         for var in env_vars_to_clear:
@@ -134,6 +135,7 @@ class TestAppConfig(unittest.TestCase):
         self.assertIsNone(config.OIDC_CLIENT_ID)
         self.assertIsNone(config.OIDC_CLIENT_SECRET)
         self.assertFalse(config.AUTOMATIC_LOGIN_REDIRECT)
+        self.assertFalse(config.RESTRICT_USER_AND_GROUP_LISTING)
         self.assertEqual(config.OIDC_ALEMBIC_VERSION_TABLE, "alembic_version")
         self.assertEqual(config.PERMISSION_SOURCE_ORDER, ["user", "group", "regex", "group-regex"])
         self.assertTrue(config.EXTEND_MLFLOW_MENU)

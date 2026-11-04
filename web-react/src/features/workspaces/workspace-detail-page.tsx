@@ -159,16 +159,14 @@ export default function WorkspaceDetailPage() {
           <Button
             variant="secondary"
             onClick={() => setIsAddUserModalOpen(true)}
-            disabled={availableUsers.length === 0}
-            title={availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
+            title="Add user permission"
           >
             + Add User
           </Button>
           <Button
             variant="secondary"
             onClick={() => setIsAddAccountModalOpen(true)}
-            disabled={availableAccounts.length === 0}
-            title={availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
+            title="Add service account permission"
           >
             + Add Service Account
           </Button>
@@ -198,8 +196,7 @@ export default function WorkspaceDetailPage() {
           <Button
             variant="secondary"
             onClick={() => setIsAddGroupModalOpen(true)}
-            disabled={availableGroups.length === 0}
-            title={availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
+            title="Add group permission"
           >
             + Add Group
           </Button>
@@ -240,6 +237,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant user permissions for workspace ${workspaceName}`}
           label="User"
           options={availableUsers}
+          allowCustomValue
           type="experiments"
           isLoading={isSaving}
         />
@@ -261,6 +259,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant service account permissions for workspace ${workspaceName}`}
           label="Service Account"
           options={availableAccounts}
+          allowCustomValue
           type="experiments"
           isLoading={isSaving}
         />
@@ -282,6 +281,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant group permissions for workspace ${workspaceName}`}
           label="Group"
           options={availableGroups}
+          allowCustomValue
           type="experiments"
           isLoading={isSaving}
         />

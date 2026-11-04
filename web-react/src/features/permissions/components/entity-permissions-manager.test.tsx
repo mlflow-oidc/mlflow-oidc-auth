@@ -208,30 +208,63 @@ describe("EntityPermissionsManager", () => {
   it("filters available users/groups correctly", () => {
     // user1 and group1 are already in mockPermissions
     renderManager();
+    const suggestions = (label: RegExp) => {
+      const input = screen.getByRole("combobox", { name: label });
+      const datalist = document.getElementById(
+        input.getAttribute("list") ?? "",
+      );
+      return Array.from(datalist?.querySelectorAll("option") ?? []).map(
+        (o) => o.value,
+      );
+    };
 
-    // Open user grant modal
     fireEvent.click(screen.getByRole("button", { name: /^\+ Add$/ }));
-    const userOptions = screen.getAllByRole("option");
-    // Options should be: "Select user...", "user2"
-    expect(userOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "user2",
-    );
-    expect(
-      userOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("user1");
+    expect(suggestions(/User/i)).toEqual(["user2"]);
 
-    // Close modal (mocking doesn't really close it here, but we can just check groups)
     fireEvent.click(screen.getByText("Cancel"));
 
-    // Open group grant modal
     fireEvent.click(screen.getByRole("button", { name: /\+ Add Group/i }));
-    const groupOptions = screen.getAllByRole("option");
-    expect(groupOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "group2",
-    );
-    expect(
-      groupOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("group1");
+    expect(suggestions(/Group/i)).toEqual(["group2"]);
+  });
+
+  it("lets a manager grant by typed name when the user and group lists are restricted", async () => {
+    vi.spyOn(useAllUsersModule, "useAllUsers").mockReturnValue({
+      allUsers: ["user1"],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
+      allServiceAccounts: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.spyOn(useAllGroupsModule, "useAllGroups").mockReturnValue({
+      allGroups: ["group1"],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    renderManager();
+
+    for (const name of ["+ Add", "+ Add Service Account", "+ Add Group"]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Group" }));
+    fireEvent.change(screen.getByRole("combobox", { name: /Group/i }), {
+      target: { value: "other-team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockHandleGrantPermission).toHaveBeenCalledWith(
+        "other-team",
+        "READ",
+        "group",
+      );
+    });
   });
 
   describe("workspace scope", () => {
