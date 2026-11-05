@@ -268,6 +268,10 @@ class AppConfig:
         self.OIDC_WORKSPACE_DEFAULT_PERMISSION = config_manager.get("OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS")
         self.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = config_manager.get_bool("OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT", default=False)
         self.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = config_manager.get_bool("OIDC_WORKSPACE_DENY_DEFAULT_CREATION", default=False)
+        # The workspace permission needed to create experiments, models, gateway resources and MCP
+        # servers in a workspace: MANAGE (default) or EDIT. Normalised by
+        # _resolve_workspace_creation_permission below.
+        self.OIDC_WORKSPACE_CREATION_PERMISSION = config_manager.get("OIDC_WORKSPACE_CREATION_PERMISSION", "MANAGE")
 
         # Audit logging settings
         self.AUDIT_LOG_ENABLED = config_manager.get_bool("AUDIT_LOG_ENABLED", default=True)
@@ -311,6 +315,7 @@ class AppConfig:
 
         # Run last: these read settings loaded above.
         self._resolve_workspace_rules_max_permission()
+        self._resolve_workspace_creation_permission()
         self._warn_if_resource_creation_restriction_is_inert()
         self._warn_if_default_permission_is_permissive()
         self._warn_if_username_field_unusable()
@@ -513,6 +518,19 @@ class AppConfig:
                 "WORKSPACE_RULES_MAX_PERMISSION=MANAGE lets workspace group rules grant MANAGE, which can update or delete a workspace "
                 "and grant MANAGE onward. Anyone who can create a group whose name matches such a rule gains that. Prefer EDIT."
             )
+
+    def _resolve_workspace_creation_permission(self) -> None:
+        """Normalise OIDC_WORKSPACE_CREATION_PERMISSION to EDIT or MANAGE.
+
+        EDIT lets workspace members create resources without the workspace-level rights MANAGE
+        carries (update or delete the workspace, grant access onward). An unrecognised value is
+        treated as MANAGE: a typo in a creation threshold must not lower it.
+        """
+        value = str(self.OIDC_WORKSPACE_CREATION_PERMISSION or "").strip().upper()
+        if value not in ("EDIT", "MANAGE"):
+            logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE; treating the unrecognised value as MANAGE.")
+            value = "MANAGE"
+        self.OIDC_WORKSPACE_CREATION_PERMISSION = value
 
     def _warn_if_group_name_unusable(self) -> None:
         """Warn at startup when OIDC_GROUP_NAME or OIDC_ADMIN_GROUP_NAME is unusable.

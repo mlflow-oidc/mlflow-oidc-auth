@@ -194,10 +194,10 @@ def _bridged(auth_context: Any) -> Iterator[None]:
 def can_create_mcp_server(username: str) -> bool:
     """Whether ``username`` may create an MCP server in the request's workspace.
 
-    With workspaces enabled: ``MANAGE`` on the workspace MLflow serves the request from — the one it
-    names, else the default workspace — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and
-    ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``, the same threshold as creating experiments, models and
-    gateway resources. (MLflow's own plugin asks for a workspace grant that carries ``can_use``.)
+    With workspaces enabled: ``OIDC_WORKSPACE_CREATION_PERMISSION`` (``MANAGE`` by default) on the
+    workspace MLflow serves the request from — the one it names, else the default workspace —
+    subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``,
+    the same threshold as creating experiments, models and gateway resources. (MLflow's own plugin asks for a workspace grant that carries ``can_use``.)
 
     With workspaces disabled: administrators only, as before per-server permissions.
     """
@@ -220,8 +220,10 @@ def can_create_mcp_server(username: str) -> bool:
         return False
     if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
         return False
+    from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
+
     permission = get_workspace_permission_cached(username, effective)
-    return permission is not None and permission.can_manage
+    return meets_workspace_creation_threshold(permission, config.OIDC_WORKSPACE_CREATION_PERMISSION)
 
 
 def can_search_mcp_servers(username: str) -> bool:
