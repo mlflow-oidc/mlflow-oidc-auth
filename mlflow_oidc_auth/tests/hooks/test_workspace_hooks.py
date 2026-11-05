@@ -744,6 +744,52 @@ class TestWorkspaceCreationGating:
                                 assert resp is not None
                                 assert resp.status_code == 403
 
+    @pytest.mark.parametrize("path", ["/api/2.0/mlflow/experiments/create", "/api/2.0/mlflow/registered-models/create"])
+    @pytest.mark.parametrize(
+        "granted,threshold,allowed",
+        [
+            ("EDIT", "EDIT", True),
+            ("MANAGE", "EDIT", True),
+            ("READ", "EDIT", False),
+            ("USE", "EDIT", False),
+            ("EDIT", "MANAGE", False),
+        ],
+    )
+    def test_before_request_hook_creation_threshold(self, path, granted, threshold, allowed):
+        """OIDC_WORKSPACE_CREATION_PERMISSION decides which workspace grant may create."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import get_permission
+
+        _app = self._make_flask_app()
+        with _app.test_request_context(path, method="POST"):
+            with patch(
+                "mlflow_oidc_auth.hooks.before_request._get_auth_context",
+                return_value=("testuser", False),
+            ):
+                with patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config:
+                    mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                    mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = False
+                    mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = False
+                    mock_config.OIDC_WORKSPACE_CREATION_PERMISSION = threshold
+                    with patch(
+                        "mlflow_oidc_auth.bridge.user.get_request_workspace",
+                        return_value="team-ws",
+                    ):
+                        with patch(
+                            "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
+                            return_value=get_permission(granted),
+                        ):
+                            with patch(
+                                "mlflow_oidc_auth.hooks.before_request._find_validator",
+                                return_value=None,
+                            ):
+                                resp = before_request_hook()
+                                if allowed:
+                                    assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+                                else:
+                                    assert resp is not None
+                                    assert resp.status_code == 403
+
     def test_before_request_hook_workspaces_disabled_no_creation_check(self):
         """before_request_hook skips creation gating when workspaces disabled."""
         from mlflow_oidc_auth.hooks.before_request import before_request_hook
