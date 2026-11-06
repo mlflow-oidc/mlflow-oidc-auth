@@ -141,3 +141,33 @@ class TestDeletePrefix:
 
         assert all(backend.get(f"bob:ws{i}") is None for i in range(200))
         assert all(backend.get(f"eve:ws{i}") == i for i in range(200))
+
+
+class TestLocalTTLCacheBackendThreads:
+    """The cache is shared by the event loop and the Flask thread pool."""
+
+    def test_concurrent_access_does_not_raise(self):
+        import threading
+
+        backend = LocalTTLCacheBackend(maxsize=64, ttl=0.001)
+        errors = []
+
+        def worker(n):
+            try:
+                for i in range(2000):
+                    key = f"perm:{n}:{i % 50}"
+                    backend.set(key, i)
+                    backend.get(key)
+                    if i % 97 == 0:
+                        backend.delete_prefix(f"perm:{n}:")
+                    if i % 211 == 0:
+                        backend.delete(key)
+            except Exception as e:  # pragma: no cover - the assertion below reports it
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == []
