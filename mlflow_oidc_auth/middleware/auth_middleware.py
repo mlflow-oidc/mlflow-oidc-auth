@@ -9,6 +9,8 @@ Authorization (what the user can do) is handled by RBACMiddleware.
 from typing import Optional, Tuple
 import asyncio
 import base64
+import hmac
+import os
 import threading
 import time
 from contextvars import ContextVar
@@ -30,7 +32,7 @@ from mlflow_oidc_auth.entities.auth_context import (
     AuthContext,
 )
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
+from mlflow_oidc_auth.middleware.route_path import TYPED_GATEWAY_ROUTE, is_unprotected_route, routed_path
 from mlflow_oidc_auth.routers._prefix import API_PATH_PREFIXES
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
@@ -481,6 +483,40 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.debug("Basic auth error traceback", exc_info=True)
             return False, None, "Invalid basic auth format"
 
+    @staticmethod
+    def _internal_gateway_token_user(request: Request, auth_header: str) -> Optional[str]:
+        """The user a server-internal gateway call is made for, or None.
+
+        MLflow's scorer, evaluation and discovery jobs call the in-server gateway with
+        ``Authorization: Basic <user>:<_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN>``, a random token the
+        server generates at startup and shares only with its workers and job subprocesses. It is
+        not the user's password, so ``store.authenticate_user`` would reject it. It is honoured only
+        on the typed gateway routes (:data:`TYPED_GATEWAY_ROUTE`), which never forward
+        ``Authorization`` to a provider, so it never works as a master password anywhere else.
+
+        Whether the named user exists and is active is left to ``dispatch``, as for every other
+        credential: a deactivated or unknown account is denied and audited there, and the lookup
+        is the one ``dispatch`` already makes, so this path adds no query.
+
+        Parameters:
+            request: The incoming request.
+            auth_header: Its ``Authorization`` header, already known to start with ``Basic ``.
+
+        Returns:
+            The lowercased username, or None to fall through to ordinary basic auth.
+        """
+        expected = os.environ.get("_MLFLOW_INTERNAL_GATEWAY_AUTH_TOKEN")
+        if not expected or not TYPED_GATEWAY_ROUTE.match(routed_path(request.scope)):
+            return None
+        _, _, encoded = auth_header.partition(" ")
+        try:
+            username, sep, password = base64.b64decode(encoded.strip(), validate=True).decode("utf-8").partition(":")
+        except ValueError:  # binascii.Error and UnicodeDecodeError are both ValueErrors
+            return None
+        if not sep or not username or not hmac.compare_digest(password.encode(), expected.encode()):
+            return None
+        return username.lower()
+
     def _maybe_provision_bearer_user(self, username: str, token: str, payload) -> None:
         """Issue #262 (Layer 2): create a permission-DB record on first bearer authentication.
 
@@ -910,6 +946,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Try basic authentication first
         auth_header = request.headers.get("authorization")
         if auth_header and auth_header.startswith("Basic "):
+            if internal_user := self._internal_gateway_token_user(request, auth_header):
+                logger.debug("User %s authenticated via the internal gateway token", internal_user)
+                return True, internal_user, ""
             return await self._authenticate_basic_auth(auth_header)
 
         # Try bearer token authentication

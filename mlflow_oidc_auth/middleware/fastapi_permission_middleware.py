@@ -26,7 +26,7 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.mcp_server_registry import finalize_mcp_response, get_mcp_server_validator, is_mcp_server_path
-from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
+from mlflow_oidc_auth.middleware.route_path import TYPED_GATEWAY_ROUTE, is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators.job_submission import can_submit_job
 
@@ -76,11 +76,10 @@ _JOBS_SEARCH_PATH = _JOBS_PREFIX + "/search"
 # proxy routes, stripping only its own ``X-MLflow-Authorization`` — see _strip_client_credentials.
 _GATEWAY_PREFIX = "/gateway/"
 
-# The gateway routes that never forward the caller's headers to a provider: MLflow's typed
-# invocations and chat-completions handlers call the provider's own chat/embeddings methods, which
-# send only the provider's headers. ``Authorization`` is kept on these, because a "sanitize"
+# The gateway routes that never forward the caller's headers to a provider (see
+# ``route_path.TYPED_GATEWAY_ROUTE``). ``Authorization`` is kept on these, because a "sanitize"
 # guardrail makes MLflow call back into its own invocations route with the caller's Authorization.
-_TYPED_GATEWAY_ROUTE = re.compile(r"^/gateway/(?:[^/]+/mlflow/invocations|mlflow/v1/chat/completions)$")
+_TYPED_GATEWAY_ROUTE = TYPED_GATEWAY_ROUTE
 
 
 def _strip_client_credentials(request: Request, path: str) -> None:
