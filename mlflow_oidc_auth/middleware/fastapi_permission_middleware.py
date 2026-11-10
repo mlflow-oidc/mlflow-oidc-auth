@@ -102,6 +102,7 @@ def _strip_client_credentials(request: Request, path: str) -> None:
     Mutates ``request.scope["headers"]``, which the route handler reads.
     """
     drop = {b"cookie"} if _TYPED_GATEWAY_ROUTE.match(path) else {b"cookie", b"authorization"}
+    drop.add(b"x-mlflow-assistant-delegation")
     request.scope["headers"] = [(name, value) for name, value in request.scope.get("headers", []) if name.lower() not in drop]
 
 
