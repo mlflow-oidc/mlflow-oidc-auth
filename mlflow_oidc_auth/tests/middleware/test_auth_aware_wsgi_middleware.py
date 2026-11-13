@@ -11,7 +11,12 @@ This module tests WSGI middleware functionality including:
 - Non-HTTP request handling
 """
 
+import json
+import sys
+
 import pytest
+from flask import Flask, Response, request
+from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mlflow_oidc_auth.entities.auth_context import AuthContext
@@ -351,3 +356,114 @@ class TestAuthAwareWSGIMiddleware:
         assert captured_environ["mlflow_oidc_auth"].username == "integration@example.com"
         assert captured_environ["mlflow_oidc_auth"].is_admin is True
         assert captured_environ["mlflow_oidc_auth"].workspace == "test-ws"
+
+
+SEARCH_PATHS = ("/api/2.0/mlflow/runs/search", "/ajax-api/2.0/mlflow/runs/search")
+
+
+@pytest.mark.parametrize("path", SEARCH_PATHS)
+@pytest.mark.parametrize("static_prefix", ["", "/mlflow", "/nested/mlflow/"])
+@pytest.mark.asyncio
+async def test_large_search_response_after_flask_hooks(path, static_prefix, monkeypatch, sample_asgi_scope, mock_receive, mock_send):
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, static_prefix)
+    path = static_prefix.rstrip("/") + path
+    app = Flask(__name__)
+    expected = json.dumps(
+        {"runs": [{"info": {"run_id": "visible"}, "data": {"tags": [{"key": "payload", "value": "x" * (33 << 20)}]}}], "next_page_token": "next-page"}
+    ).encode()
+    auth_context = AuthContext(username="reader@example.com", is_admin=False)
+
+    @app.post(path)
+    def search():
+        return Response(b"unfiltered", mimetype="application/json")
+
+    @app.after_request
+    def filter_response(response):
+        assert request.environ["mlflow_oidc_auth"] is auth_context
+        # Flask restores Content-Length when a response hook replaces the body.
+        response.set_data(expected)
+        response.headers.add("Set-Cookie", "first=one; Secure; HttpOnly")
+        response.headers.add("Set-Cookie", "second=two; Secure; HttpOnly")
+        assert response.content_length == len(expected)
+        return response
+
+    sample_asgi_scope.update(method="POST", path=path, mlflow_oidc_auth=auth_context)
+    await AuthAwareWSGIMiddleware(app)(sample_asgi_scope, mock_receive, mock_send)
+    messages = mock_send.messages
+    assert messages[0]["status"] == 200
+    headers = messages[0]["headers"]
+    assert b"content-length" not in dict(headers)
+    assert dict(headers)[b"content-type"] == b"application/json"
+    assert [value for name, value in headers if name == b"set-cookie"] == [b"first=one; Secure; HttpOnly", b"second=two; Secure; HttpOnly"]
+    assert b"".join(message.get("body", b"") for message in messages[1:]) == expected
+    assert not messages[-1].get("more_body", False)
+
+
+@pytest.mark.parametrize("path", SEARCH_PATHS)
+@pytest.mark.parametrize(
+    "method,status",
+    [
+        ("POST", "400 Bad Request"),
+        ("POST", "403 Forbidden"),
+        ("POST", "500 Internal Server Error"),
+        ("POST", "302 Found"),
+        ("HEAD", "200 OK"),
+        ("GET", "200 OK"),
+    ],
+)
+@pytest.mark.parametrize("static_prefix", ["", "/mlflow/"])
+def test_search_errors_and_other_methods_keep_framing(path, method, status, static_prefix, monkeypatch):
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, static_prefix)
+    path = static_prefix.rstrip("/") + path
+    headers = [("Content-Length", "2"), ("Content-Type", "application/json")]
+
+    def application(environ, start_response):
+        start_response(status, headers)
+        return [b"ok"]
+
+    start_response = MagicMock()
+    result = AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD=method, PATH_INFO=path), start_response)
+    assert result == [b"ok"]
+    assert start_response.call_args.args[:2] == (status, headers)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/2.0/mlflow/runs/get",
+        "/api/2.0/mlflow/runs/search/",
+        "/api/2.0/mlflow-artifacts/artifacts/file",
+        "/mlflow-extra/api/2.0/mlflow/runs/search",
+        "/mlflow/api/2.0/mlflow/runs/get",
+    ],
+)
+def test_other_routes_keep_framing(path, monkeypatch):
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
+    headers = [("Content-Length", "2")]
+
+    def application(environ, start_response):
+        start_response("200 OK", headers)
+        return [b"ok"]
+
+    start_response = MagicMock()
+    AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD="POST", PATH_INFO=path), start_response)
+    assert start_response.call_args.args[:2] == ("200 OK", headers)
+
+
+def test_search_preserves_wsgi_response_contract():
+    headers = [("cOnTeNt-LeNgTh", "2"), ("Set-Cookie", "first=one"), ("Set-Cookie", "second=two")]
+    try:
+        raise ValueError("replacement response")
+    except ValueError:
+        exc_info = sys.exc_info()
+    body = MagicMock()
+    start_response = MagicMock()
+
+    def application(environ, wrapped_start_response):
+        assert wrapped_start_response("200 OK", headers, exc_info) is start_response.return_value
+        return body
+
+    result = AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD="POST", PATH_INFO=SEARCH_PATHS[0]), start_response)
+    assert result is body
+    start_response.assert_called_once_with("200 OK", headers[1:], exc_info)
+    assert headers[0] == ("cOnTeNt-LeNgTh", "2")

@@ -1,5 +1,19 @@
 # Troubleshooting
 
+## Run searches exceed a reverse proxy response limit
+
+Cloud Run limits non-streamed HTTP/1 responses to [32 MiB](https://docs.cloud.google.com/run/quotas). MLflow paginates run searches by run count, so a page with many tags, parameters, or metrics can exceed that limit. Successful `POST` responses on `/api/2.0/mlflow/runs/search` and `/ajax-api/2.0/mlflow/runs/search` omit `Content-Length` after Flask response hooks finish. [Uvicorn then uses chunked transfer encoding](https://uvicorn.dev/server-behavior/#http-headers), allowing Cloud Run to deliver the complete result. The route matching respects MLflow's configured `--static-prefix`. This behavior is enabled by default for these two routes; error responses, other methods, and other routes retain their framing. Reverse proxies that buffer responses may need separate configuration.
+
+The bridge preserves the body, pagination token, cookies, and authorization checks. It does not generate results incrementally or reduce MLflow query cost or memory usage. Reducing `max_results` can reduce the payload, but it does not impose a byte limit.
+
+The bridge regression creates a 33 MiB response, rewrites it in a Flask response hook, and checks the final ASGI headers and exact body on both paths:
+
+```bash
+pytest mlflow_oidc_auth/tests/middleware/test_auth_aware_wsgi_middleware.py -k large_search_response
+```
+
+This local check does not verify a deployment or reverse proxy. Verify oversized results, pagination, and a non-admin caller's denied access through the deployed service before treating a proxy failure as resolved.
+
 ## Login fails after returning from the identity provider
 
 **Symptom.** Signing in at the identity provider works, but back on MLflow the login fails. The log
