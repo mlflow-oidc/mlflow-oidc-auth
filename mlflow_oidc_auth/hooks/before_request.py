@@ -715,6 +715,7 @@ for _suffix, _method, _validator in (
     # UI-started background jobs: a run is created in the experiment and the named traces
     # are read, so UPDATE on the experiment and READ on every trace's experiment.
     ("mlflow/issues/invoke", "POST", validate_can_invoke_issue_detection),
+    ("mlflow/issues/schedule/state", "POST", validate_can_update_experiment),
     ("mlflow/genai/evaluate/invoke", "POST", validate_can_invoke_genai_evaluate),
     # Reading and cancelling those jobs goes through the job's experiment.
     ("mlflow/jobs/<job_id>", "GET", validate_can_read_job),

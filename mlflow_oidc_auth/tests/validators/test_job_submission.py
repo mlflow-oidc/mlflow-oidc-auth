@@ -121,6 +121,11 @@ def test_issue_detection():
     assert not can_submit_job(_issues(model="gateway:/hidden-endpoint"), OUTSIDER)
 
 
+@pytest.mark.parametrize("instructions", [None, "Focus on failed requests"])
+def test_issue_detection_accepts_instructions(instructions):
+    assert can_submit_job(_issues(instructions=instructions), OUTSIDER)
+
+
 @pytest.mark.parametrize("model", ["gateway:/hidden-endpoint", "gateway://hidden-endpoint", "gateway:///hidden-endpoint", "Gateway:/hidden-endpoint"])
 def test_issue_detection_checks_the_endpoint_mlflow_calls(model):
     # MLflow splits on the first ":/" and strips leading slashes, so all of these call hidden-endpoint.
@@ -139,6 +144,38 @@ def test_issue_detection_denies_a_malformed_model(model):
     assert not can_submit_job(_issues(run_id="r-missing"), OUTSIDER)
     assert not can_submit_job(_issues(trace_ids=["t-victim"]), OUTSIDER)
     assert not can_submit_job(_issues(experiment_id=VICTIM), OUTSIDER)
+
+
+def _scheduled_issues(**overrides):
+    params = {
+        "experiment_id": OWN,
+        "window_lower_bound_ms": 0,
+        "window_upper_bound_ms": 1000,
+        "categories": ["c"],
+        "instructions": "Focus on failed requests",
+        "trace_filter": "status = 'ERROR'",
+        "model": "gateway:/open-endpoint",
+    }
+    params.update(overrides)
+    return _job("scheduled_issue_detection", **params)
+
+
+def test_scheduled_issue_detection_needs_update_on_the_experiment():
+    assert can_submit_job(_scheduled_issues(), OUTSIDER)
+    assert not can_submit_job(_scheduled_issues(experiment_id=VICTIM), OUTSIDER)
+    assert not can_submit_job(_scheduled_issues(experiment_id=VICTIM), READER)
+    assert can_submit_job(_scheduled_issues(experiment_id=VICTIM), EDITOR)
+    assert not can_submit_job(_scheduled_issues(experiment_id=None), OUTSIDER)
+
+
+@pytest.mark.parametrize("model", ["gateway:/hidden-endpoint", "gateway:/"])
+def test_scheduled_issue_detection_denies_unusable_models(model):
+    assert not can_submit_job(_scheduled_issues(model=model), OUTSIDER)
+
+
+@pytest.mark.parametrize("make", [_issues, _scheduled_issues])
+def test_issue_detection_denies_non_text_instructions(make):
+    assert not can_submit_job(make(instructions=[]), OUTSIDER)
 
 
 # --- genai evaluate ----------------------------------------------------------------------
@@ -228,6 +265,8 @@ _ADDED_AFTER_FLOOR = {
     # MLflow 3.16.1
     "invoke_scorer": {"scorer_version"},
     "invoke_genai_evaluate": {"experiment_id", "scorer_versions"},
+    # MLflow 3.18.0
+    "invoke_issue_detection": {"instructions"},
 }
 
 
@@ -236,11 +275,15 @@ def test_declared_params_match_the_job_function_signatures():
     and a declared one it does not take is a known later addition (else the list has drifted)."""
     import inspect
 
+    from mlflow.server.jobs import _ALLOWED_JOB_NAME_LIST
     from mlflow.server.jobs.utils import _load_function, get_job_fn_fullname
 
     from mlflow_oidc_auth.validators.job_submission import _JOB_CHECKS
 
     for job_name, (declared, _check) in _JOB_CHECKS.items():
+        if job_name not in _ALLOWED_JOB_NAME_LIST:
+            assert job_name == "scheduled_issue_detection"  # Added in MLflow 3.18.0.
+            continue
         fn = _load_function(get_job_fn_fullname(job_name))
         accepted = set(inspect.signature(fn).parameters)
         assert accepted <= declared, (job_name, accepted - declared)
