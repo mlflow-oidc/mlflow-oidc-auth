@@ -12,6 +12,9 @@ from types import SimpleNamespace
 import pytest
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+from mlflow.server import app as mlflow_app
+
+from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
 
 from mlflow_oidc_auth.tests.hooks.authz_harness import (
     ADMIN,
@@ -204,3 +207,15 @@ def test_issue_detection_checks_the_endpoint_mlflow_calls(permission_store, endp
 def test_search_issues_scope_only_in_the_query_string_does_not_count(prefix):
     """MLflow reads the POST body only; with no experiment there it searches every experiment."""
     assert denied(hook(f"{prefix}/3.0/mlflow/issues/search", "POST", READER, body={}, query={"experiment_id": VICTIM}))
+
+
+def test_schedule_state_requires_update_on_the_experiment():
+    path = "/ajax-api/3.0/mlflow/issues/schedule/state"
+    if not any(rule.rule == path for rule in mlflow_app.url_map.iter_rules()):
+        assert (path, "POST") not in BEFORE_REQUEST_VALIDATORS
+        return
+    assert denied(hook(path, "POST", OUTSIDER, body={"experiment_id": VICTIM}))
+    assert denied(hook(path, "POST", READER, body={"experiment_id": VICTIM}))
+    assert allowed(hook(path, "POST", EDITOR, body={"experiment_id": VICTIM}))
+    assert allowed(hook(path, "POST", OUTSIDER, body={"experiment_id": OWN}))
+    assert denied(hook(path, "POST", OUTSIDER, body={"experiment_id": OWN}, query={"experiment_id": VICTIM}))

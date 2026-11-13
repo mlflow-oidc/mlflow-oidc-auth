@@ -233,6 +233,7 @@ _ARGS_ONLY_EXEMPT_SUFFIXES = (
 # The job routes read only the <job_id> path parameter.
 _PLAIN_JSON_EXEMPT_SUFFIXES = (
     "mlflow/issues/invoke",
+    "mlflow/issues/schedule/state",
     "mlflow/genai/evaluate/invoke",
     "mlflow/scorers/online-config",
     "mlflow/scorers/online-configs",
