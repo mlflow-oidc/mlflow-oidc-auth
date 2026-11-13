@@ -9,8 +9,10 @@ from asgiref.wsgi import WsgiToAsgi as WSGIMiddleware
 
 from starlette.types import Receive, Scope, Send
 import asyncio
+from types import TracebackType
 
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+from mlflow_oidc_auth.hooks.route_policy import strip_static_prefix
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
@@ -40,8 +42,25 @@ class AuthInjectingWSGIApp:
             # Inject AuthContext as a single object — bridge functions read from this
             environ[AUTH_CONTEXT_KEY] = auth_context
 
-        # Call the Flask app with enhanced environ
-        return self.flask_app(environ, start_response)
+        def start_streamed_response(
+            status: str,
+            headers: list[tuple[str, str]],
+            exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
+        ) -> object:
+            if (
+                environ.get("REQUEST_METHOD") == "POST"
+                and strip_static_prefix(environ.get("PATH_INFO", ""))
+                in {
+                    "/api/2.0/mlflow/runs/search",
+                    "/ajax-api/2.0/mlflow/runs/search",
+                }
+                and status.startswith("200 ")
+            ):
+                # Remove the length after Flask hooks so Uvicorn can stream searches beyond Cloud Run's 32 MiB limit.
+                headers = [(name, value) for name, value in headers if name.lower() != "content-length"]
+            return start_response(status, headers, exc_info)
+
+        return self.flask_app(environ, start_streamed_response)
 
 
 class AuthAwareWSGIMiddleware:
