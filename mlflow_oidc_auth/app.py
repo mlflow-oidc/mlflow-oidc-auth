@@ -208,6 +208,19 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
     except ImportError:
         logger.debug("mlflow.server.mcp_server_api not available — MCP registry endpoints disabled")
 
+    # Skill registry (MLflow 3.18+): /api/3.0/mlflow/skills/* and the /ajax-api twin, mounted as
+    # MLflow mounts them (each already carries its static prefix). Authorized by
+    # middleware/skill_registry.py through fastapi_permission_middleware; never include this
+    # router without that validator.
+    try:
+        from mlflow.server.skill_registry_api import get_skill_registry_api_route_prefixes, skill_registry_router
+
+        for route_prefix in get_skill_registry_api_route_prefixes():
+            oidc_app.include_router(skill_registry_router, prefix=route_prefix)
+        logger.info("Included MLflow skill registry router (/api/3.0/mlflow/skills)")
+    except ImportError:
+        logger.debug("mlflow.server.skill_registry_api not available — skill registry endpoints disabled")
+
 
 def add_middleware_stack(oidc_app: FastAPI) -> None:
     """Install the plugin's middleware on ``oidc_app`` in its required order.

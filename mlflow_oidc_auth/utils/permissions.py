@@ -173,6 +173,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     MCP_SERVER,
     PROMPT,
     REGISTERED_MODEL,
+    SKILL,
     PERMISSION_REGISTRY,
     best_matching_regex,
     flush_grant_contexts,
@@ -735,6 +736,40 @@ def can_delete_mcp_server(name: str, user: str) -> bool:
 def can_manage_mcp_server(name: str, user: str) -> bool:
     permission = _mcp_server_write_permission(name, user)
     return permission is not None and permission.can_manage
+
+
+def effective_skill_permission(key: str, user: str) -> PermissionResult:
+    """The caller's permission on a skill of the request's workspace.
+
+    ``key`` is the skill key (``utils/skill_key.py``). User grant, then group grants
+    (``PERMISSION_SOURCE_ORDER``), then — with workspaces enabled — the caller's permission on the
+    workspace MLflow serves the request from: the one it names, else MLflow's default workspace
+    (``current_grant_workspace``), never ``DEFAULT_MLFLOW_PERMISSION``, so a permissive global
+    default cannot reach into a workspace the caller holds nothing on. With workspaces disabled the
+    global default applies, as for registered models and prompts.
+    """
+    result = resolve_permission(SKILL, key, user)
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    ws_perm = get_workspace_permission_cached(user, current_grant_workspace())
+    if ws_perm is not None:
+        return PermissionResult(ws_perm, "workspace")
+    return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+
+def can_read_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_read
+
+
+def can_update_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_update
+
+
+def can_manage_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_manage
 
 
 # ---------------------------------------------------------------------------

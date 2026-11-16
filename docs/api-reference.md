@@ -13,7 +13,7 @@ All endpoints except health probes, login/callback, and static files require aut
 When workspaces are enabled, include the `X-MLFLOW-WORKSPACE` header to specify the active workspace.
 
 With workspaces enabled, the permission APIs for registered models, prompts, AI Gateway resources
-and MCP servers read and write the grants of the workspace the request names — the `default`
+MCP servers and skills read and write the grants of the workspace the request names — the `default`
 workspace when it names none — and pattern-permission responses carry a `workspace` field: the
 workspace a pattern applies in, or `*` for every workspace. A pattern created with a workspace named
 applies only there. See [Workspaces](workspaces#grants-on-models-prompts-and-gateway-resources).
@@ -67,6 +67,7 @@ counts only the resources that caller may see, never the ones hidden from them.
 | `GET /api/2.0/mlflow/permissions/gateways/secrets` | `key` |
 | `GET /api/2.0/mlflow/permissions/gateways/model-definitions` | `name` |
 | `GET /api/2.0/mlflow/permissions/mcp-servers` | `name` |
+| `GET /api/2.0/mlflow/permissions/skills` | `name` |
 | `GET /api/2.0/mlflow/permissions/groups` | the group name (`string[]`) |
 | `GET /api/2.0/mlflow/permissions/groups/details` | `group_name` |
 | `GET /api/2.0/mlflow/users` (also with `service=true`) | the username (`string[]`) |
@@ -368,6 +369,23 @@ the request's workspace. See [Permissions → MCP Server Registry](permissions#m
 | GET | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers` | Admin, or server MANAGE per row | A group's grants |
 | POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/groups/{group_name}/mcp-servers/{name}` | Server MANAGE | A group's grant on a server |
 
+### Skills
+
+MLflow 3.18+ skill registry. `{name}` is the skill key: `<name>`, or `@<organization>/<name>` for a
+skill in an organization (URL-encode it as one segment or send it as is — both are accepted). A key
+no skill could have is refused with `400`. Grants are read and written in the request's workspace.
+See [Permissions → Skill Registry](permissions#skill-registry).
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/2.0/mlflow/permissions/skills` | Authenticated | List the skills the caller can manage (all for an admin) |
+| GET | `/api/2.0/mlflow/permissions/skills/{name}/users` | Skill MANAGE | List user permissions |
+| GET | `/api/2.0/mlflow/permissions/skills/{name}/groups` | Skill MANAGE | List group permissions |
+| GET | `/api/2.0/mlflow/permissions/users/{username}/skills` | The user, or Admin | A user's effective permission on each skill of the request's workspace |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/users/{username}/skills/{name}` | Skill MANAGE | A user's grant on a skill (`{"permission": "READ"}`) |
+| GET | `/api/2.0/mlflow/permissions/groups/{group_name}/skills` | Admin, or skill MANAGE per row | A group's grants |
+| POST / GET / PATCH / DELETE | `/api/2.0/mlflow/permissions/groups/{group_name}/skills/{name}` | Skill MANAGE | A group's grant on a skill |
+
 ---
 
 ## User Permission CRUD
@@ -400,6 +418,7 @@ For each resource type, the following CRUD operations are available:
 | Gateway Secrets | `gateways/secrets` | `{name}` |
 | Gateway Model Definitions | `gateways/model-definitions` | `{name}` |
 | MCP Servers | `mcp-servers` | `{name}` (`<namespace>/<slug>`; no regex patterns) |
+| Skills | `skills` | `{name}` (`<name>` or `@<organization>/<name>`; no regex patterns) |
 
 **Request body (POST/PATCH):**
 ```json
@@ -431,7 +450,7 @@ For each resource type, regex pattern permissions are also available:
 
 **Pattern path segments:** `experiment-patterns`, `registered-models-patterns`, `prompts-patterns`, `scorer-patterns`, `gateways/endpoints-patterns`, `gateways/secrets-patterns`, `gateways/model-definitions-patterns`
 
-**Total: 75 user permission endpoints** (7 resource types x 10 operations each, plus 5 for MCP servers, which have no pattern permissions)
+**Total: 80 user permission endpoints** (7 resource types x 10 operations each, plus 5 each for MCP servers and skills, which have no pattern permissions)
 
 ---
 

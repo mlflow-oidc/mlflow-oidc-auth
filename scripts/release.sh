@@ -4,4 +4,4 @@ pushd web-react &&\
 yarn install &&\
 yarn release &&\
 popd &&\
-python -m build
+python3 -m build

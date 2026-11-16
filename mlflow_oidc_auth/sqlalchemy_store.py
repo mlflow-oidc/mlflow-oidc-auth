@@ -66,6 +66,8 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionPermissionGroupRegexRepository,
     MCPServerGroupPermissionRepository,
     MCPServerPermissionRepository,
+    SkillGroupPermissionRepository,
+    SkillPermissionRepository,
     UserRepository,
     UserTokenRepository,
     UserIdentityRepository,
@@ -136,6 +138,9 @@ class SqlAlchemyStore:
         # MCP server registry permissions (workspace-scoped; no regex sources)
         self.mcp_server_repo = MCPServerPermissionRepository(self.ManagedSessionMaker)
         self.mcp_server_group_repo = MCPServerGroupPermissionRepository(self.ManagedSessionMaker)
+        # Skill registry permissions (workspace-scoped; no regex sources)
+        self.skill_repo = SkillPermissionRepository(self.ManagedSessionMaker)
+        self.skill_group_repo = SkillGroupPermissionRepository(self.ManagedSessionMaker)
 
         # Workspace permissions
         self.workspace_permission_repo = WorkspacePermissionRepository(self.ManagedSessionMaker)
@@ -555,7 +560,7 @@ class SqlAlchemyStore:
 
         Parameters:
             resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
-                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``, ``skill``.
             username: The user.
 
         Returns:
@@ -572,6 +577,7 @@ class SqlAlchemyStore:
             "gateway_secret": self.gateway_secret_repo,
             "gateway_model_definition": self.gateway_model_definition_repo,
             "mcp_server": self.mcp_server_repo,
+            "skill": self.skill_repo,
         }
         return repos[resource_type].list_permissions_for_user_by_precedence(username)
 
@@ -584,7 +590,7 @@ class SqlAlchemyStore:
 
         Parameters:
             resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
-                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``, ``skill``.
             username: The user.
 
         Returns:
@@ -601,6 +607,7 @@ class SqlAlchemyStore:
             "gateway_secret": self.gateway_secret_group_repo,
             "gateway_model_definition": self.gateway_model_definition_group_repo,
             "mcp_server": self.mcp_server_group_repo,
+            "skill": self.skill_group_repo,
         }
         return repos[resource_type].list_permissions_for_user_groups(username)
 
@@ -1199,6 +1206,56 @@ class SqlAlchemyStore:
     def delete_group_mcp_server_permission(self, group_name: str, name: str):
         return self.mcp_server_group_repo.revoke_group_permission(group_name, name)
 
+    # skill_repo — grants on MLflow's skill registry, in the request's grant workspace. ``name`` is
+    # the skill key (utils/skill_key.py).
+    def create_skill_permission(self, name: str, username: str, permission: str):
+        return self.skill_repo.grant_permission(name, username, permission)
+
+    def get_skill_permission(self, name: str, username: str):
+        return self.skill_repo.get_permission(name, username)
+
+    def list_skill_permissions(self, username: str):
+        return self.skill_repo.list_permissions_for_user(username)
+
+    def list_skill_users(self, name: str):
+        """``(username, permission, is_service_account)`` for every user grant on ``name``."""
+        return self.skill_repo.list_users_for_resource(name)
+
+    def update_skill_permission(self, name: str, username: str, permission: str):
+        return self.skill_repo.update_permission(name, username, permission)
+
+    def delete_skill_permission(self, name: str, username: str) -> None:
+        return self.skill_repo.revoke_permission(name, username)
+
+    def wipe_skill_permissions(self, name: str) -> None:
+        """Delete every user and group grant on ``name`` in the request's grant workspace."""
+        self.skill_repo.wipe(name)
+        self.skill_group_repo.wipe(name)
+
+    # skill_group_repo
+    def create_group_skill_permission(self, group_name: str, name: str, permission: str):
+        return self.skill_group_repo.grant_group_permission(group_name, name, permission)
+
+    def get_group_skill_permission(self, group_name: str, name: str):
+        return self.skill_group_repo.get_group_permission_for_group(name, group_name)
+
+    def list_group_skill_permissions(self, group_name: str):
+        return self.skill_group_repo.list_permissions_for_group(group_name)
+
+    def list_skill_groups(self, name: str):
+        """``(group_name, permission)`` for every group grant on ``name``."""
+        return self.skill_group_repo.list_groups_for_resource(name)
+
+    def get_user_skill_group_permission(self, name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on ``name`` (resolution)."""
+        return self.skill_group_repo.get_group_permission_for_user_resource(name, username)
+
+    def update_group_skill_permission(self, group_name: str, name: str, permission: str):
+        return self.skill_group_repo.update_group_permission(group_name, name, permission)
+
+    def delete_group_skill_permission(self, group_name: str, name: str):
+        return self.skill_group_repo.revoke_group_permission(group_name, name)
+
     # gateway_model_definition_repo
     def create_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
         return self.gateway_model_definition_repo.grant_permission(gateway_name, username, permission)
@@ -1392,7 +1449,7 @@ class SqlAlchemyStore:
         """Delete every permission recorded for a workspace.
 
         Used for cascade-delete when a workspace is removed: the user and group workspace grants,
-        and the grants on the workspace's registered models, prompts, gateway resources and MCP servers — which
+        and the grants on the workspace's registered models, prompts, gateway resources, MCP servers and skills — which
         would otherwise come back to life on a same-named resource in a workspace later created
         under the same name.
 
@@ -1962,6 +2019,14 @@ _PERMISSION_CUD_METHODS = [
     "create_group_mcp_server_permission",
     "update_group_mcp_server_permission",
     "delete_group_mcp_server_permission",
+    # Skill permissions (user- and group-scoped)
+    "create_skill_permission",
+    "update_skill_permission",
+    "delete_skill_permission",
+    "wipe_skill_permissions",
+    "create_group_skill_permission",
+    "update_group_skill_permission",
+    "delete_group_skill_permission",
     # Group membership (affects group-scoped permission resolution)
     "set_user_groups",
     "add_user_to_group",

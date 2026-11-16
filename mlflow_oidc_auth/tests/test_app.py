@@ -461,6 +461,31 @@ class TestIncludeMlflowFastapiRouters:
         assert "/api/3.0/mlflow/mcp-servers" in paths
         assert "/ajax-api/3.0/mlflow/mcp-servers" in paths
 
+    def test_skill_registry_router_included(self):
+        """Test the skill registry (MLflow 3.18+) is served on both the API and UI prefix."""
+        pytest.importorskip("mlflow.server.skill_registry_api")
+        paths = self._paths()
+        assert "/api/3.0/mlflow/skills" in paths
+        assert "/ajax-api/3.0/mlflow/skills" in paths
+
+    def test_every_included_skill_route_has_a_validator(self):
+        """A skill route served without the registry validator would be open to any authenticated user."""
+        pytest.importorskip("mlflow.server.skill_registry_api")
+        from mlflow_oidc_auth.middleware.fastapi_permission_middleware import _find_fastapi_validator
+
+        skill_paths = [path for path in self._paths() if "/mlflow/skills" in path]
+        assert skill_paths
+        for path in skill_paths:
+            assert _find_fastapi_validator(path) is not None, path
+
+    def test_missing_skill_registry_is_tolerated(self):
+        """Test an MLflow without the skill registry serves no skill routes instead of raising."""
+        with patch.dict("sys.modules", {"mlflow.server.skill_registry_api": None}):
+            paths = self._paths()
+
+        assert not [path for path in paths if "/mlflow/skills" in path]
+        assert "/gateway/mlflow/v1/chat/completions" in paths
+
     def test_gateway_and_assistant_routers_included(self):
         """Test the previously registered routers are still included."""
         paths = self._paths()

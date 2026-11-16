@@ -201,12 +201,27 @@ def can_create_mcp_server(username: str) -> bool:
 
     With workspaces disabled: administrators only, as before per-server permissions.
     """
-    from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
-
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # One registry and no workspace to delegate through: registering a server stays an
         # administrator's job, as before per-server permissions (admins never reach this check).
         return False
+    return can_create_in_request_workspace(username)
+
+
+def can_create_in_request_workspace(username: str) -> bool:
+    """Whether ``username`` may create a registry resource in the workspace MLflow serves the request from.
+
+    Only meaningful with workspaces enabled. ``MANAGE`` on that workspace — the one the request
+    names, else MLflow's default — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and
+    ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``. Shared by the MCP server and skill registries.
+
+    Parameters:
+        username: The caller.
+
+    Returns:
+        True when the caller may create there.
+    """
+    from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
     from mlflow_oidc_auth.bridge.user import get_request_workspace
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace

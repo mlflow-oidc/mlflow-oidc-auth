@@ -68,6 +68,7 @@ GATEWAY_ENDPOINT = permission_kinds.GATEWAY_ENDPOINT.name
 GATEWAY_SECRET = permission_kinds.GATEWAY_VAULT.name
 GATEWAY_MODEL_DEFINITION = permission_kinds.GATEWAY_MODEL_DEFINITION.name
 MCP_SERVER = permission_kinds.MCP_SERVER.name
+SKILL = permission_kinds.SKILL.name
 
 #: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
 #: (MCP servers have no pattern sources) skips it silently; only an unknown name is a misconfiguration.
@@ -323,6 +324,18 @@ _TYPE_SPECS: Dict[str, TypeSpec] = {
         key=lambda p: p.name,
         user_one=lambda s, r, n, u: s.get_mcp_server_permission(r, u).permission,
         group_one=lambda s, r, n, u: s.get_user_mcp_server_group_permission(r, u).permission,
+    ),
+    # Skills have no pattern grants either. The resource id is the skill key (utils/skill_key.py).
+    SKILL: TypeSpec(
+        kind=permission_kinds.SKILL,
+        label="skill name",
+        user=lambda s, u: s.list_user_grants(SKILL, u),
+        group=lambda s, u: s.list_user_groups_grants(SKILL, u),
+        regex=None,
+        group_regex=None,
+        key=lambda p: p.name,
+        user_one=lambda s, r, n, u: s.get_skill_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_skill_group_permission(r, u).permission,
     ),
 }
 

@@ -2,7 +2,7 @@
 FastAPI Permission Middleware for MLflow OIDC Auth.
 
 This middleware enforces authorization on FastAPI-native routes (gateway invocations,
-OTel trace ingestion, assistant, job API, MCP server registry) that bypass Flask and
+OTel trace ingestion, assistant, job API, MCP server registry, skill registry) that bypass Flask and
 therefore bypass the Flask ``before_request_hook``.
 
 It mirrors the upstream ``add_fastapi_permission_middleware`` from
@@ -26,6 +26,7 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.mcp_server_registry import finalize_mcp_response, get_mcp_server_validator, is_mcp_server_path
+from mlflow_oidc_auth.middleware.skill_registry import finalize_skill_response, get_skill_registry_validator, is_skill_registry_path
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators.job_submission import can_submit_job
@@ -431,6 +432,9 @@ def _find_fastapi_validator(
     if _is_mcp_server_path(path):
         return get_mcp_server_validator(path)
 
+    if is_skill_registry_path(path):
+        return get_skill_registry_validator(path)
+
     return None
 
 
@@ -480,7 +484,7 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
     This middleware runs AFTER ``AuthMiddleware`` (which has already set
     ``request.state.username`` / ``request.state.is_admin`` and the ASGI
     scope ``mlflow_oidc_auth`` dict).  It only activates for routes served
-    directly by FastAPI (gateway, otel, assistant, job API) — all other
+    directly by FastAPI (gateway, otel, assistant, job API, MCP and skill registries) — all other
     requests fall through to the Flask WSGI mount where the Flask hooks
     handle authorization.
     """
@@ -526,6 +530,8 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             if _is_mcp_server_path(path):
                 # Admins are never filtered or granted anything, but a server they delete takes its grants with it.
                 return await finalize_mcp_response(path, username, request, response, request.scope.get(AUTH_CONTEXT_KEY), is_admin=True)
+            if is_skill_registry_path(path):
+                return await finalize_skill_response(path, username, request, response, request.scope.get(AUTH_CONTEXT_KEY), is_admin=True)
             return response
 
         # Bridge AuthContext into ContextVar so downstream permission code
@@ -560,4 +566,6 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
             return await _filtered_gateway_models_response(username, response, auth_context)
         if _is_mcp_server_path(path):
             return await finalize_mcp_response(path, username, request, response, auth_context)
+        if is_skill_registry_path(path):
+            return await finalize_skill_response(path, username, request, response, auth_context)
         return response

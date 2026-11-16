@@ -255,6 +255,58 @@ def _get_experiment_id_from_view_args():
     return None
 
 
+def _requested_artifact_path() -> Optional[str]:
+    """The artifact path a non-LIST proxy request names (its ``artifact_path`` view argument)."""
+    view_args = request.view_args
+    return view_args.get("artifact_path") if view_args else None
+
+
+def _skill_key_from_artifact_path(artifact_path: Optional[str]) -> Optional[str]:
+    """The key of the skill whose uploaded content ``artifact_path`` lies in, or None.
+
+    MLflow's skill registry (3.18+) stores uploaded skill content under
+    ``skills/[@<organization>/]<name>/<token>/...`` of the request's workspace, and its client pulls
+    a skill by reading those paths through the artifact proxy. Only a path that MLflow's own
+    ``parse_skill_upload_path`` resolves to one skill, that ``validate_path_is_safe`` accepts, and
+    whose first normalized segment is the upload root, counts. Every other spelling — the root
+    itself, an organization directory, ``workspaces/<ws>/skills/...``, ``.`` or ``..`` segments —
+    names no skill here and is left to the experiment rules, which deny it.
+    """
+    if not artifact_path or not isinstance(artifact_path, str):
+        return None
+    try:
+        from mlflow.store.tracking.skill_registry.artifact_paths import SKILL_UPLOAD_ROOT, parse_skill_upload_path
+    except ImportError:
+        return None
+    try:
+        validate_path_is_safe(artifact_path)
+    except Exception:
+        return None
+    segments = _artifact_path_segments(artifact_path)
+    if not segments or segments[0] != SKILL_UPLOAD_ROOT:
+        return None
+    identity = parse_skill_upload_path(artifact_path)
+    if identity is None:
+        return None
+    from mlflow_oidc_auth.utils.skill_key import format_skill_key
+
+    return format_skill_key(identity.organization, identity.name)
+
+
+def _can_read_skill_content(skill_key: str, username: str) -> bool:
+    """READ on an existing skill of the request's workspace; a skill that does not exist is denied."""
+    from mlflow_oidc_auth.utils.permissions import can_read_skill
+    from mlflow_oidc_auth.utils.skill_key import parse_skill_key
+
+    try:
+        organization, name = parse_skill_key(skill_key)
+        _get_tracking_store().get_skill(name=name, organization=organization)
+    except Exception:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the artifact path names no existing skill")
+        return False
+    return can_read_skill(skill_key, username)
+
+
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
     """The caller's permission on the experiment an artifact-proxy request names.
 
@@ -335,6 +387,13 @@ def _can_list_artifacts(username: str) -> bool:
                 continue
             logger.warning(f"Denying artifact list for {username}: a root path is named alongside an experiment path")
             return False
+        skill_key = _skill_key_from_artifact_path(path)
+        if skill_key is not None:
+            # A skill's uploaded content: READ on the skill, as for pulling it.
+            if not _can_read_skill_content(skill_key, username):
+                logger.warning(f"Denying artifact list for {username}: the requested path names no readable skill")
+                return False
+            continue
         experiment_id = _experiment_id_from_artifact_path(path)
         if not _artifact_experiment_permission(experiment_id, username).can_read:
             logger.warning(f"Denying artifact list for {username}: the requested path names no readable experiment")
@@ -365,6 +424,11 @@ def validate_can_manage_experiment(username: str) -> bool:
 def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
     if _is_artifact_list_request():
         return _can_list_artifacts(username)
+    # Skill content is read-only through the proxy: MLflow's server writes and reclaims it itself,
+    # so the update and delete validators below never treat a skill path as anything but unknown.
+    skill_key = _skill_key_from_artifact_path(_requested_artifact_path())
+    if skill_key is not None:
+        return _can_read_skill_content(skill_key, username)
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 

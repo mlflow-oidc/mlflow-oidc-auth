@@ -49,6 +49,8 @@ def mock_store():
     store.gateway_model_definition_group_regex_repo = MagicMock()
     store.mcp_server_repo = MagicMock()
     store.mcp_server_group_repo = MagicMock()
+    store.skill_repo = MagicMock()
+    store.skill_group_repo = MagicMock()
     store.workspace_permission_repo = MagicMock()
     store.workspace_group_permission_repo = MagicMock()
     store.workspace_regex_permission_repo = MagicMock()
@@ -405,6 +407,14 @@ class TestComprehensiveCUDCoverage:
             "create_group_mcp_server_permission": ("group1", "com.example/server", "READ"),
             "update_group_mcp_server_permission": ("group1", "com.example/server", "MANAGE"),
             "delete_group_mcp_server_permission": ("group1", "com.example/server"),
+            # Skills
+            "create_skill_permission": ("@acme/reviewer", "user1", "READ"),
+            "update_skill_permission": ("@acme/reviewer", "user1", "MANAGE"),
+            "delete_skill_permission": ("@acme/reviewer", "user1"),
+            "wipe_skill_permissions": ("@acme/reviewer",),
+            "create_group_skill_permission": ("group1", "@acme/reviewer", "READ"),
+            "update_group_skill_permission": ("group1", "@acme/reviewer", "MANAGE"),
+            "delete_group_skill_permission": ("group1", "@acme/reviewer"),
             "create_group_gateway_model_definition_permission": (
                 "group1",
                 "model1",

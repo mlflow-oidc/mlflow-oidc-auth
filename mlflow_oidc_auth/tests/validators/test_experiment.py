@@ -193,6 +193,7 @@ def test_validate_can_manage_experiment():
 def test_validate_can_read_experiment_artifact_proxy():
     with (
         patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch("mlflow_oidc_auth.validators.experiment._requested_artifact_path", return_value="123/artifacts/model.pkl"),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
             return_value=DummyPermission(can_read=True),
@@ -346,6 +347,7 @@ def test_validate_can_read_experiment_artifact_proxy_false():
     """Test when user cannot read experiment artifact proxy"""
     with (
         patch("mlflow_oidc_auth.validators.experiment._is_artifact_list_request", return_value=False),
+        patch("mlflow_oidc_auth.validators.experiment._requested_artifact_path", return_value="123/artifacts/model.pkl"),
         patch(
             "mlflow_oidc_auth.validators.experiment._get_permission_from_experiment_id_artifact_proxy",
             return_value=DummyPermission(can_read=False),
