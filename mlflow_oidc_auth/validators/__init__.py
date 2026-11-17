@@ -6,6 +6,7 @@ from mlflow_oidc_auth.validators.experiment import (
     validate_can_read_experiment,
     validate_can_read_experiment_artifact_proxy,
     validate_can_read_experiment_by_name,
+    validate_can_set_experiment_tag,
     validate_can_update_experiment,
     validate_can_update_experiment_artifact_proxy,
     validate_can_read_experiments_from_experiment_ids,
@@ -117,6 +118,7 @@ from mlflow_oidc_auth.validators.issue import (
     validate_can_search_issues,
     validate_can_invoke_issue_detection,
     validate_can_invoke_genai_evaluate,
+    validate_can_sync_issue_detection_schedule,
 )
 
 from mlflow_oidc_auth.validators.review import (
@@ -141,6 +143,7 @@ from mlflow_oidc_auth.validators.job import (
 __all__ = [
     "validate_can_read_experiment",
     "validate_can_read_experiment_by_name",
+    "validate_can_set_experiment_tag",
     "validate_can_update_experiment",
     "validate_can_create_experiment",
     "validate_can_delete_experiment",
@@ -227,6 +230,7 @@ __all__ = [
     "validate_can_search_issues",
     "validate_can_invoke_issue_detection",
     "validate_can_invoke_genai_evaluate",
+    "validate_can_sync_issue_detection_schedule",
     "validate_can_read_label_schema",
     "validate_can_manage_label_schema",
     "validate_can_create_review_queue",

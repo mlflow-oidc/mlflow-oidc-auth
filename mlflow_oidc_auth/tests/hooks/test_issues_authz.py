@@ -204,3 +204,184 @@ def test_issue_detection_checks_the_endpoint_mlflow_calls(permission_store, endp
 def test_search_issues_scope_only_in_the_query_string_does_not_count(prefix):
     """MLflow reads the POST body only; with no experiment there it searches every experiment."""
     assert denied(hook(f"{prefix}/3.0/mlflow/issues/search", "POST", READER, body={}, query={"experiment_id": VICTIM}))
+
+
+SCHEDULE_STATE = "/ajax-api/3.0/mlflow/issues/schedule/state"
+
+
+@pytest.fixture
+def schedule_state_route():
+    """The route exists from MLflow 3.18; on an older MLflow there is nothing to authorize."""
+    from mlflow_oidc_auth.hooks.before_request import BEFORE_REQUEST_VALIDATORS
+
+    if not any(path.endswith("mlflow/issues/schedule/state") for path, _ in BEFORE_REQUEST_VALIDATORS):
+        pytest.skip("MLflow's issue detection schedule arrived in 3.18")
+
+
+def test_syncing_a_detection_schedule_needs_update_on_the_experiment(schedule_state_route):
+    assert allowed(hook(SCHEDULE_STATE, "POST", EDITOR, body={"experiment_id": VICTIM}))
+    assert denied(hook(SCHEDULE_STATE, "POST", READER, body={"experiment_id": VICTIM}))
+    assert denied(hook(SCHEDULE_STATE, "POST", OUTSIDER, body={"experiment_id": VICTIM}))
+    assert allowed(hook(SCHEDULE_STATE, "POST", OUTSIDER, body={"experiment_id": OWN}))
+
+
+def test_syncing_a_detection_schedule_without_an_experiment_is_admin_only(schedule_state_route):
+    assert denied(hook(SCHEDULE_STATE, "POST", MANAGER, body={}))
+    assert allowed(hook(SCHEDULE_STATE, "POST", ADMIN, body={}))
+
+
+def test_syncing_a_detection_schedule_authorizes_the_query_string_too(schedule_state_route):
+    assert denied(hook(SCHEDULE_STATE, "POST", OUTSIDER, body={"experiment_id": OWN}, query={"experiment_id": VICTIM}))
+
+
+@pytest.mark.parametrize(
+    "user, body, query, expected",
+    [
+        (EDITOR, {"experiment_id": VICTIM}, None, True),
+        (READER, {"experiment_id": VICTIM}, None, False),
+        (OUTSIDER, {"experiment_id": VICTIM}, None, False),
+        (OUTSIDER, {"experiment_id": OWN}, None, True),
+        (OUTSIDER, {"experiment_id": OWN}, {"experiment_id": VICTIM}, False),
+        (OUTSIDER, {"experimentId": VICTIM, "experiment_id": OWN}, None, False),
+        (MANAGER, {}, None, False),
+    ],
+)
+def test_the_schedule_state_validator_on_any_mlflow(user, body, query, expected):
+    """The validator itself, so it is exercised where MLflow predates the route (3.16, 3.17) too."""
+    from mlflow.server import app
+
+    from mlflow_oidc_auth.validators import validate_can_sync_issue_detection_schedule
+
+    with app.test_request_context(SCHEDULE_STATE, method="POST", json=body, query_string=query or {}):
+        assert validate_can_sync_issue_detection_schedule(user) is expected
+
+
+# --- the recurring detection schedule (MLflow 3.18) -------------------------------------------
+SET_EXPERIMENT_TAG = "/api/2.0/mlflow/experiments/set-experiment-tag"
+CREATE_EXPERIMENT = "/api/2.0/mlflow/experiments/create"
+SCHEDULE_TAG = "mlflow.issueDetection.schedule"
+
+
+def _schedule(model):
+    import json
+
+    return json.dumps({"version": 1, "cadence": "daily", "model": model})
+
+
+@pytest.fixture
+def shared_gateway_denied(permission_store):
+    from mlflow_oidc_auth.utils.permissions import flush_permission_cache
+
+    permission_store.create_gateway_secret_permission("shared-key", OUTSIDER, "NO_PERMISSIONS")
+    permission_store.create_gateway_endpoint_permission("shared-endpoint", OUTSIDER, "NO_PERMISSIONS")
+    flush_permission_cache()
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        {"provider": "openai", "model": "m", "secretId": "sec-1"},
+        {"provider": "openai", "model": "m", "secretId": "sec-unknown"},
+        {"endpointName": "shared-endpoint"},
+        {"endpointName": "/shared-endpoint"},
+        {"endpointName": " shared-endpoint "},
+        {"provider": "gateway", "model": "shared-endpoint"},
+        {"provider": " GATEWAY ", "model": "/shared-endpoint"},
+        {"endpointName": "shared-endpoint", "secretId": "sec-1"},
+        {"endpointName": ["shared-endpoint"]},
+        "gateway:/shared-endpoint",
+    ],
+)
+def test_a_schedule_tag_needs_use_on_the_model_it_runs_on(shared_gateway_denied, model):
+    """The scheduler runs on the tag's endpoint or decrypted secret: editing one's own experiment is not enough."""
+    body = {"experiment_id": OWN, "key": SCHEDULE_TAG, "value": _schedule(model)}
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body=body))
+    assert denied(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body={"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(model)}]}))
+
+
+def test_a_schedule_tag_on_a_usable_model_is_allowed(shared_gateway_denied):
+    for model in ({"provider": "openai", "model": "m", "secretId": "sec-1"}, {"endpointName": "shared-endpoint"}, {"provider": "openai", "model": "m"}):
+        assert allowed(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}))
+    # No model, or one MLflow will not run: the server's default, nothing named.
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body={"experiment_id": OWN, "key": SCHEDULE_TAG, "value": _schedule(None)}))
+    assert allowed(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body={"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(None)}]}))
+
+
+def test_a_schedule_tag_still_needs_update_on_the_experiment(shared_gateway_denied):
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", READER, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(None)}))
+
+
+def test_a_second_copy_of_the_key_or_value_cannot_hide_the_schedule(shared_gateway_denied):
+    denied_value = _schedule({"endpointName": "shared-endpoint"})
+    assert denied(
+        hook(
+            SET_EXPERIMENT_TAG,
+            "POST",
+            OUTSIDER,
+            body={"experiment_id": OWN, "key": "harmless", "value": _schedule(None)},
+            query={"key": SCHEDULE_TAG, "value": denied_value},
+        )
+    )
+
+
+def test_other_experiment_tags_are_unaffected(shared_gateway_denied):
+    body = {"experiment_id": OWN, "key": "note", "value": _schedule({"endpointName": "shared-endpoint"})}
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body=body))
+
+
+@pytest.mark.parametrize("value", ["not json", "[]", '"a string"'])
+def test_a_schedule_tag_that_is_not_a_schedule_envelope_is_refused(shared_gateway_denied, value):
+    """Every schedule MLflow writes is a JSON object; anything else has no use but to slip past a parser."""
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body={"experiment_id": OWN, "key": SCHEDULE_TAG, "value": value}))
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"version": 2, "cadence": "daily", "model": {"endpointName": "shared-endpoint"}},
+        {"version": 1, "cadence": "fortnightly", "model": {"provider": "openai", "model": "m", "secretId": "sec-1"}},
+    ],
+)
+def test_a_schedule_this_mlflow_would_not_run_is_still_checked(shared_gateway_denied, envelope):
+    """A later MLflow may run an envelope this one ignores, and on 3.16/3.17 there is no scheduler yet."""
+    import json
+
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body={"experiment_id": OWN, "key": SCHEDULE_TAG, "value": json.dumps(envelope)}))
+
+
+def test_a_scheduler_module_that_cannot_be_loaded_denies(shared_gateway_denied, monkeypatch):
+    """MLflow internals moving must not switch the check off."""
+    from mlflow_oidc_auth.validators import _detection_schedule
+
+    def broken():
+        raise ImportError("parse_detection_schedule moved")
+
+    monkeypatch.setattr(_detection_schedule, "_mlflow_schedule_parser", broken)
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(None)}))
+
+
+def test_the_scheduler_module_is_absent_only_when_mlflow_has_none(monkeypatch):
+    from mlflow_oidc_auth.validators import _detection_schedule
+
+    monkeypatch.setattr(_detection_schedule, "_SCHEDULE_MODULE", "mlflow.no_such_package.schedule")
+    assert _detection_schedule._mlflow_schedule_parser() is None
+
+
+def test_the_scheduler_parser_decides_when_mlflow_has_one(shared_gateway_denied, monkeypatch):
+    """Where the stored envelope looks harmless but MLflow's parser reads a gateway model, the parser wins."""
+    from types import SimpleNamespace
+
+    from mlflow_oidc_auth.validators import _detection_schedule
+
+    parsed = SimpleNamespace(model=SimpleNamespace(secret_id="", to_model_uri=lambda: "gateway:/shared-endpoint"))
+    monkeypatch.setattr(_detection_schedule, "_mlflow_schedule_parser", lambda: lambda raw: parsed)
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", OUTSIDER, body={"experiment_id": OWN, "key": SCHEDULE_TAG, "value": _schedule(None)}))
+
+
+def test_a_create_body_naming_the_schedule_tag_that_cannot_be_read_denies(shared_gateway_denied, monkeypatch):
+    from mlflow_oidc_auth.validators import experiment
+
+    monkeypatch.setattr(experiment, "request_body_dict", lambda: {})
+    body = {"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(None)}]}
+    assert denied(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body=body))
+    assert allowed(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body={"name": "mine", "tags": [{"key": "note", "value": "v"}]}))

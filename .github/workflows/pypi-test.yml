@@ -29,7 +29,7 @@ jobs:
           node-version: 24
       - name: Make release
         id: release
-        uses: cycjimmy/semantic-release-action@v6
+        uses: cycjimmy/semantic-release-action@ad51787758d9654d5a75150a89a6fa9b3ccef95e # v8.1.4
         with:
           extra_plugins: |
             @semantic-release/exec

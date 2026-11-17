@@ -13,9 +13,10 @@ params name, so a non-admin submission is authorized against them, per job funct
   absent or the caller.
 
 A job function not listed here, a parameter a job function does not declare, or a value of
-the wrong type denies. This covers the job functions MLflow 3.16.1 allows
+the wrong type denies. This covers the job functions MLflow 3.18.0 allows
 (``mlflow.server.jobs._ALLOWED_JOB_NAME_LIST``); one added by a later release, or through
-``_MLFLOW_ALLOWED_JOB_NAME_LIST``, is admin-only until it is classified here.
+``_MLFLOW_ALLOWED_JOB_NAME_LIST``, is admin-only until it is classified here. MLflow's scheduled
+issue detection is classified as admin-only on purpose: its scheduler, not a user, submits it.
 """
 
 from __future__ import annotations
@@ -119,6 +120,17 @@ def _check_issue_detection(params: dict[str, Any], username: str) -> None:
     _gateway_model(params.get("model"), username)
 
 
+def _check_scheduled_issue_detection(params: dict[str, Any], username: str) -> None:
+    """Never a non-admin's to submit.
+
+    MLflow's own scheduler dispatches this job (``mlflow.genai.discovery.scheduler``) from an
+    experiment's stored detection schedule, with a trace window it computed. Submitted by hand, it
+    would analyze every trace of that window and advance the experiment's detection checkpoint for
+    its owner. Nothing a caller holds makes that theirs to start, so it stays admin-only.
+    """
+    raise _Unauthorized
+
+
 def _check_genai_evaluate(params: dict[str, Any], username: str) -> None:
     _update_on_run(params.get("run_id"), username)
     _update_on_traces(params.get("trace_ids"), username)
@@ -145,7 +157,13 @@ _JOB_CHECKS: dict[str, tuple[frozenset[str], Callable[[dict[str, Any], str], Non
     ),
     "run_online_trace_scorer": (frozenset({"experiment_id", "online_scorers"}), _check_online_scorer),
     "run_online_session_scorer": (frozenset({"experiment_id", "online_scorers"}), _check_online_scorer),
-    "invoke_issue_detection": (frozenset({"experiment_id", "trace_ids", "categories", "run_id", "model"}), _check_issue_detection),
+    # ``instructions`` (MLflow 3.18) is free text for the model; it names no resource.
+    "invoke_issue_detection": (frozenset({"experiment_id", "trace_ids", "categories", "run_id", "model", "instructions"}), _check_issue_detection),
+    # MLflow 3.18: dispatched by MLflow's scheduler, never by a non-admin (see the check).
+    "scheduled_issue_detection": (
+        frozenset({"experiment_id", "window_lower_bound_ms", "window_upper_bound_ms", "categories", "instructions", "trace_filter", "model"}),
+        _check_scheduled_issue_detection,
+    ),
     "invoke_genai_evaluate": (
         frozenset({"trace_ids", "serialized_scorers", "run_id", "username", "scorer_versions", "experiment_id"}),
         _check_genai_evaluate,

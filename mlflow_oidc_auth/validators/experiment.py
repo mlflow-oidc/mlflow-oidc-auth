@@ -10,6 +10,8 @@ from mlflow.utils.uri import validate_path_is_safe
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, get_permission, intersect_permissions
+from mlflow_oidc_auth.utils.request_helpers import request_body_dict
+from mlflow_oidc_auth.validators._detection_schedule import DETECTION_SCHEDULE_TAG, detection_schedule_values_in_tags, detection_schedules_permitted
 from mlflow_oidc_auth.utils import (
     all_source_values,
     effective_experiment_permission,
@@ -398,14 +400,48 @@ def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     return all(effective_experiment_permission(e, username).permission.can_update for e in get_request_param_values("experiment_id"))
 
 
-def validate_can_create_experiment(username: str) -> bool:
-    """Authorize CreateExperiment when RESTRICT_RESOURCE_CREATION is enabled.
+def _create_experiment_schedules_permitted(username: str) -> bool:
+    """USE on the models of any detection schedule a CreateExperiment request tags the experiment with.
 
-    No-op (allow) unless the flag is set. When set, the user needs EDIT+ for the
+    The tags are read from the body as MLflow parses it. A body that names the schedule tag but
+    that could not be read that way denies, rather than counting as carrying no schedule.
+    """
+    values = detection_schedule_values_in_tags(request_body_dict().get("tags"))
+    if not values:
+        try:
+            raw = request.get_data(cache=True, as_text=True)
+        except Exception:
+            return False
+        if DETECTION_SCHEDULE_TAG in raw:
+            return False
+    return detection_schedules_permitted(values, username)
+
+
+def validate_can_set_experiment_tag(username: str) -> bool:
+    """UPDATE on the experiment; for the issue-detection schedule tag, USE on the model it names.
+
+    See :func:`mlflow_oidc_auth.validators._detection_schedule.detection_schedules_permitted`. Every key and value
+    in every request source is considered, so a second copy cannot hide the one MLflow stores.
+    """
+    if not validate_can_update_experiment(username):
+        return False
+    if DETECTION_SCHEDULE_TAG not in {str(key) for key in all_source_values("key")}:
+        return True
+    return detection_schedules_permitted(all_source_values("value"), username)
+
+
+def validate_can_create_experiment(username: str) -> bool:
+    """Authorize CreateExperiment.
+
+    An initial issue-detection schedule tag needs USE on the model it names (see
+    :func:`validate_can_set_experiment_tag`). Otherwise a no-op (allow) unless
+    RESTRICT_RESOURCE_CREATION is set. When set, the user needs EDIT+ for the
     new experiment name, resolved from name regex / group-regex with a workspace
     fallback. This composes with the workspace creation gate in before_request_hook:
     both must pass, so enabling workspaces never grants more than either check alone.
     """
+    if not _create_experiment_schedules_permitted(username):
+        return False
     if not config.RESTRICT_RESOURCE_CREATION:
         return True
     return all(effective_new_experiment_permission(name, username).permission.can_update for name in get_request_param_values("name"))
