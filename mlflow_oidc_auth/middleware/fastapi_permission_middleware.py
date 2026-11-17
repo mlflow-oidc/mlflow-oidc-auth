@@ -26,7 +26,12 @@ from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import AuthAwareWSGIMiddleware
 from mlflow_oidc_auth.middleware.mcp_server_registry import finalize_mcp_response, get_mcp_server_validator, is_mcp_server_path
-from mlflow_oidc_auth.middleware.skill_registry import finalize_skill_response, get_skill_registry_validator, is_skill_registry_path
+from mlflow_oidc_auth.middleware.skill_registry import (
+    finalize_skill_response,
+    get_skill_registry_validator,
+    is_skill_registry_path,
+    prepare_admin_skill_request,
+)
 from mlflow_oidc_auth.middleware.route_path import is_unprotected_route, routed_path
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
 from mlflow_oidc_auth.validators.job_submission import can_submit_job
@@ -526,6 +531,15 @@ def add_fastapi_permission_middleware(app: FastAPI) -> None:
         if is_admin:
             if path.startswith(_GATEWAY_PREFIX):
                 _strip_client_credentials(request, path)
+            if is_skill_registry_path(path):
+                # So MLflow reports which skills an admin's registration created (their leftover grants go).
+                try:
+                    refusal = await prepare_admin_skill_request(path, request, request.scope.get(AUTH_CONTEXT_KEY))
+                except Exception as e:
+                    logger.error("Skill registry: could not prepare an admin registration: %s", type(e).__name__)
+                    return JSONResponse(status_code=500, content={"detail": "Failed to authorize the request"})
+                if refusal is not None:
+                    return refusal
             response = await call_next(request)
             if _is_mcp_server_path(path):
                 # Admins are never filtered or granted anything, but a server they delete takes its grants with it.

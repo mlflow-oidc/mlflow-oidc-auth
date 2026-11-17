@@ -293,8 +293,47 @@ def _skill_key_from_artifact_path(artifact_path: Optional[str]) -> Optional[str]
     return format_skill_key(identity.organization, identity.name)
 
 
-def _can_read_skill_content(skill_key: str, username: str) -> bool:
-    """READ on an existing skill of the request's workspace; a skill that does not exist is denied."""
+def _skill_upload_token(artifact_path: str, organization: str, name: str) -> Optional[str]:
+    """The upload directory (``<token>``) of ``skills/[@<organization>/]<name>/<token>/...``, or None above it."""
+    segments = _artifact_path_segments(artifact_path)
+    depth = 3 if organization else 2
+    return segments[depth] if len(segments) > depth else None
+
+
+def _live_upload_tokens(organization: str, name: str) -> set[str]:
+    """The upload directories the skill's versions record as their content.
+
+    Only a version whose MLflow source lies in the skill's own upload tree counts. Reads every page
+    of the skill's versions.
+    """
+    from mlflow_oidc_auth.utils.skill_key import format_skill_key
+
+    prefix = "skills/" + format_skill_key(organization, name) + "/"
+    tokens: set[str] = set()
+    page_token = None
+    while True:
+        page = _get_tracking_store().search_skill_versions(name=name, organization=organization, max_results=1000, page_token=page_token)
+        for version in page:
+            artifact_path = getattr(getattr(version, "source", None), "artifact_path", None)
+            if not isinstance(artifact_path, str):
+                continue
+            artifact_path = artifact_path.removeprefix("mlflow-artifacts:").strip("/")
+            if artifact_path.startswith(prefix):
+                tokens.add(artifact_path[len(prefix) :].split("/", 1)[0])
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            return tokens
+
+
+def _can_read_skill_content(skill_key: str, username: str, artifact_path: Optional[str] = None) -> bool:
+    """READ on an existing skill of the request's workspace, and only on content a version of it records.
+
+    A skill that does not exist is denied. A path inside one upload directory
+    (``skills/<key>/<token>/...``) is readable only while a version of the skill records that
+    directory: content a deleted skill or version left behind — MLflow reclaims it best-effort — is
+    never handed to whoever holds READ on a skill of the same name now. A path above the upload
+    directories (listing ``skills/<key>``) needs READ alone; it shows directory names, not content.
+    """
     from mlflow_oidc_auth.utils.permissions import can_read_skill
     from mlflow_oidc_auth.utils.skill_key import parse_skill_key
 
@@ -304,7 +343,20 @@ def _can_read_skill_content(skill_key: str, username: str) -> bool:
     except Exception:
         logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the artifact path names no existing skill")
         return False
-    return can_read_skill(skill_key, username)
+    if not can_read_skill(skill_key, username):
+        return False
+    token = _skill_upload_token(artifact_path, organization, name) if artifact_path else None
+    if token is None:
+        return True
+    try:
+        live = _live_upload_tokens(organization, name)
+    except Exception:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the skill's versions could not be read")
+        return False
+    if token not in live:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: no version of the skill records this content")
+        return False
+    return True
 
 
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
@@ -390,7 +442,7 @@ def _can_list_artifacts(username: str) -> bool:
         skill_key = _skill_key_from_artifact_path(path)
         if skill_key is not None:
             # A skill's uploaded content: READ on the skill, as for pulling it.
-            if not _can_read_skill_content(skill_key, username):
+            if not _can_read_skill_content(skill_key, username, path):
                 logger.warning(f"Denying artifact list for {username}: the requested path names no readable skill")
                 return False
             continue
@@ -426,9 +478,10 @@ def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
         return _can_list_artifacts(username)
     # Skill content is read-only through the proxy: MLflow's server writes and reclaims it itself,
     # so the update and delete validators below never treat a skill path as anything but unknown.
-    skill_key = _skill_key_from_artifact_path(_requested_artifact_path())
+    artifact_path = _requested_artifact_path()
+    skill_key = _skill_key_from_artifact_path(artifact_path)
     if skill_key is not None:
-        return _can_read_skill_content(skill_key, username)
+        return _can_read_skill_content(skill_key, username, artifact_path)
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 

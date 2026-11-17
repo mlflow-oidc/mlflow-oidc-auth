@@ -760,6 +760,29 @@ def effective_skill_permission(key: str, user: str) -> PermissionResult:
     return PermissionResult(NO_PERMISSIONS, "workspace-deny")
 
 
+def skill_permission_resolver(user: str) -> Callable[[str], PermissionResult]:
+    """:func:`effective_skill_permission` for many skills of one request, from one bulk grant context.
+
+    The same decision, but the caller's direct grants on skills are read once (see
+    ``grant_context.load_grant_context(bulk=True)``) rather than per skill, so filtering a list or
+    authorizing a batch costs a fixed number of statements. The workspace fallback applies in
+    ``current_grant_workspace()`` with workspaces enabled, exactly as the single-skill check.
+
+    Parameters:
+        user: The caller.
+
+    Returns:
+        A function from a skill key to the caller's permission on that skill.
+    """
+    workspace = None
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        workspace = current_grant_workspace()
+    ctx = load_grant_context(user, workspace, bulk=True)
+    return lambda key: resolve(ctx, SKILL, key)
+
+
 def can_read_skill(key: str, user: str) -> bool:
     return effective_skill_permission(key, user).permission.can_read
 

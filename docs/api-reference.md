@@ -373,7 +373,8 @@ the request's workspace. See [Permissions → MCP Server Registry](permissions#m
 
 MLflow 3.18+ skill registry. `{name}` is the skill key: `<name>`, or `@<organization>/<name>` for a
 skill in an organization (URL-encode it as one segment or send it as is — both are accepted). A key
-no skill could have is refused with `400`. Grants are read and written in the request's workspace.
+no skill could have is refused with `400`, and a grant is only created or changed on a skill that
+exists (`404` otherwise). Grants are read and written in the request's workspace.
 See [Permissions → Skill Registry](permissions#skill-registry).
 
 | Method | Path | Auth | Purpose |

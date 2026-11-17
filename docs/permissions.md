@@ -616,25 +616,32 @@ workspace member out of it.
   setting admits creations through pattern grants, which skills do not have, so with it set only
   administrators create skills.
 
-A grant that already exists under the new skill's key and does not let the caller edit (`READ`,
-`NO_PERMISSIONS`) refuses the creation: creating the skill must not turn it into `MANAGE`. Any other
-grant left under that key — from a deleted skill of the same name, or written ahead of the skill —
-is removed when the skill is created, so the creator starts as its only grantee.
+A grant can only be written on a skill that exists (the permission API answers `404` otherwise),
+so the only grants a new skill's key can already hold are leftovers of a deleted skill of the same
+name whose cleanup failed. One that does not let the caller edit (`READ`, `NO_PERMISSIONS`)
+refuses the creation: creating the skill must not turn it into `MANAGE`. Every other leftover is
+removed when the skill is created — by anyone, administrators included — so the new skill never
+inherits an old one's grants and a non-admin creator starts as its only grantee.
 
 **Search.** MLflow's search takes the set of skills the caller may read and applies it before
 paginating, so a page holds `max_results` readable skills and a page token says nothing about
-hidden ones. The response is checked again item by item before it is returned.
+hidden ones. The response is held item by item to the same set again before it is returned.
 
 **Skill content.** Uploaded skill content is stored by MLflow's server under
 `skills/[@<organization>/]<name>/…` of the artifact store, and `mlflow.genai.pull` reads it through
 the artifact proxy. Reading or listing those paths needs `READ` on the skill, which must exist.
+Inside one upload directory (`skills/<skill>/<token>/…`) only content a current version of the
+skill records is served: what a deleted version or skill left behind — MLflow reclaims it
+best-effort — stays unreadable even to someone who holds `READ` on a skill of that name now.
+Only the workspace-relative spelling is recognized; `workspaces/<ws>/skills/…` is refused.
 Nothing but an administrator writes or deletes there through the proxy — MLflow's server stores and
 reclaims skill content itself when a version is registered or deleted. A skill whose source is an
 external location (git, OCI, a ZIP URL) is fetched by the client with the user's own credentials
 for that location; this plugin only governs the registry entry.
 
 **Deleting a skill** deletes its user and group grants in the request's workspace, so a skill later
-created under the same name starts with none.
+created under the same name starts with none. The cleanup runs after MLflow has deleted the skill;
+if the name was taken again in between, only the new creator's own grant is kept.
 
 Skill permissions are managed through:
 
@@ -646,9 +653,12 @@ Skill permissions are managed through:
 | `GET /api/2.0/mlflow/permissions/skills` | Skills of the request's workspace the caller can manage (all for an admin) |
 | `GET /api/2.0/mlflow/permissions/skills/<skill>/users` · `…/groups` | Who holds a grant on a skill |
 | `GET /api/2.0/mlflow/permissions/users/<username>/skills` | A user's effective permissions |
-| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/skills/<skill>` | A user's grant (`{"permission": "READ"}`) |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/skills/<skill>` | A user's grant (`{"permission": "READ"}`); `POST` and `PATCH` need the skill to exist |
 | `GET /api/2.0/mlflow/permissions/groups/<group>/skills` | A group's grants |
-| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/skills/<skill>` | A group's grant |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/skills/<skill>` | A group's grant; `POST` and `PATCH` need the skill to exist |
+
+Errors on the registry routes come back as MLflow itself returns them (`{"error_code", "message"}`
+with MLflow's status code), which MLflow's skill clients parse.
 
 MLflow marks the skill registry as experimental: its routes may change in a minor release. A route
 this plugin does not recognise is refused to everyone but administrators until it is mapped.

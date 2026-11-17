@@ -25,6 +25,7 @@ Route                                          Requires
                                                the creator is granted ``MANAGE``
 ``DELETE /skills/<skill>[/...]`` (the rest)    ``MANAGE`` on the skill; deleting the skill also
 ``PATCH  .../versions/<v>`` to ``deleted``     deletes its grants in the request's workspace
+                                               (a re-creator's own grant is kept)
 =============================================  ================================================
 
 ``<skill>`` is ``<name>`` or ``@<organization>/<name>``.
@@ -42,6 +43,8 @@ stored, is denied.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -137,38 +140,45 @@ class SkillRoute:
         return None if self.name is None else format_skill_key(self.organization, self.name)
 
 
+@functools.cache
 def skill_route_prefixes() -> tuple[str, ...]:
-    """Every prefix the registry may be served under: the bare paths and the static-prefixed ones.
+    """Every prefix the registry is served under: the bare paths and the static-prefixed ones.
 
     MLflow mounts the registry at ``get_skill_registry_api_route_prefixes()``, which puts its static
-    prefix in front of both paths. On an MLflow without the registry the static prefix is applied
-    here the same way, so the match never depends on the installed version.
+    prefix in front of both paths. Empty on an MLflow without the registry: nothing is mounted
+    there, so those paths stay with Flask (a 404), exactly as before this plugin knew of skills.
+
+    Computed once per process: the static prefix is fixed at startup, and this runs on every
+    request the FastAPI permission middleware sees.
     """
-    prefixes = list(SKILL_PREFIXES)
     try:
         from mlflow.server.skill_registry_api import get_skill_registry_api_route_prefixes
-
-        prefixes.extend(get_skill_registry_api_route_prefixes())
     except ImportError:
-        try:
-            from mlflow.server.handlers import _add_static_prefix
-
-            prefixes.extend(_add_static_prefix(p) for p in SKILL_PREFIXES)
-        except Exception:
-            logger.debug("Could not apply MLflow's static prefix to the skill registry paths")
+        return ()
+    prefixes = set(SKILL_PREFIXES) | set(get_skill_registry_api_route_prefixes())
     # Longest first, so a static-prefixed mount is never mistaken for a bare one.
-    return tuple(sorted(set(prefixes), key=len, reverse=True))
+    return tuple(sorted(prefixes, key=len, reverse=True))
+
+
+def _strip_prefix(path: str) -> Optional[str]:
+    """``path`` below the registry prefix it is on (``""`` for the prefix itself), or None when off it."""
+    for prefix in skill_route_prefixes():
+        if path == prefix or path.startswith(prefix + "/"):
+            return path[len(prefix) :]
+    return None
 
 
 def is_skill_registry_path(path: str) -> bool:
     """Whether ``path`` is on the skill registry, with or without MLflow's static prefix.
 
-    Deliberately wide: anything starting with a registry prefix is routed to the registry validator,
-    which denies whatever it cannot resolve to one of MLflow's routes.
+    A registry prefix, or anything below it on a segment boundary (``/skillsfoo`` is not on it), as
+    MLflow's own ``is_skill_registry_api_path`` decides. Everything on it goes to the registry
+    validator, which denies whatever it cannot resolve to one of MLflow's routes.
     """
-    return path.startswith(skill_route_prefixes())
+    return _strip_prefix(path) is not None
 
 
+@functools.cache
 def _registry_routes() -> tuple:
     """MLflow's skill registry routes in registration order; empty on an MLflow without the registry."""
     try:
@@ -192,11 +202,8 @@ def resolve_skill_route(path: str, method: str) -> Optional[SkillRoute]:
     Returns:
         The resolved route, or None.
     """
-    for prefix in skill_route_prefixes():
-        if path == prefix or path.startswith(prefix + "/"):
-            suffix = path[len(prefix) :]
-            break
-    else:
+    suffix = _strip_prefix(path)
+    if suffix is None:
         return None
     scope = {"type": "http", "path": suffix, "method": method.upper(), "root_path": ""}
     for route in _registry_routes():
@@ -236,19 +243,67 @@ def can_create_skill(username: str) -> bool:
     return can_create_in_request_workspace(username)
 
 
-def _can_create_named(key: str, username: str) -> bool:
+def _can_create_named(key: str, username: str, permission_of: Optional[Callable[[str], Any]] = None) -> bool:
     """Create rights, unless a grant already stored under ``key`` keeps ``username`` from changing it.
 
-    A grant can outlive its skill (or be written ahead of it). One that does not let the caller
-    edit — ``READ``, or ``NO_PERMISSIONS`` to shut them out — must not be overridden by creating
-    the skill and collecting the creator's ``MANAGE``.
+    A grant can outlive its skill, when the delete cascade failed (the permission API refuses to
+    write one ahead of it). One that does not let the caller edit — ``READ``, or
+    ``NO_PERMISSIONS`` to shut them out — must not be overridden by creating the skill and
+    collecting the creator's ``MANAGE``.
+
+    Parameters:
+        key: The skill key.
+        username: The caller.
+        permission_of: A resolver from :func:`~mlflow_oidc_auth.utils.permissions.skill_permission_resolver`
+            to reuse across a batch; omitted, the single-skill check.
     """
     from mlflow_oidc_auth.utils.permissions import effective_skill_permission
 
-    result = effective_skill_permission(key, username)
+    result = permission_of(key) if permission_of is not None else effective_skill_permission(key, username)
     if result.kind in ("user", "group") and not result.permission.can_update:
         return False
     return can_create_skill(username)
+
+
+def _existing_skill_names(organization: str, names: set[str]) -> set[str]:
+    """Which of ``names`` in ``organization`` the request's workspace holds, in one registry query.
+
+    Raises:
+        Exception: Any lookup failure — the caller denies.
+    """
+    from mlflow.server.handlers import _get_tracking_store
+
+    found = _get_tracking_store().search_skills(
+        max_results=len(names),
+        include_skill_identities=[(organization, name) for name in sorted(names)],
+    )
+    return {skill.name for skill in found if (getattr(skill, "organization", "") or "") == organization} & names
+
+
+def _authorize_registration(targets: list[tuple[str, str]], username: str) -> Optional[dict[str, bool]]:
+    """Authorize registering a version of each target: ``{name: exists}``, or None to deny.
+
+    A skill that exists needs ``EDIT``; one that does not is created by MLflow, so it needs create
+    rights (:func:`_can_create_named`). Existence is read in one query and grants from one bulk
+    context, so a batch costs a fixed number of statements.
+    """
+    from mlflow_oidc_auth.utils.permissions import skill_permission_resolver
+
+    organizations = {organization for organization, _ in targets}
+    if len(organizations) != 1:
+        return None
+    (organization,) = organizations
+    names = {name for _, name in targets}
+    existing = _existing_skill_names(organization, names)
+    permission_of = skill_permission_resolver(username)
+    expected: dict[str, bool] = {}
+    for name in sorted(names):
+        key = format_skill_key(organization, name)
+        exists = name in existing
+        if not (permission_of(key).permission.can_update if exists else _can_create_named(key, username, permission_of)):
+            return None
+        expected[name] = exists
+    return expected
 
 
 def _skill_exists(organization: str, name: str) -> bool:
@@ -286,9 +341,10 @@ def skill_search_scope(username: str) -> tuple[Optional[list[tuple[str, str]]], 
         ``(include, exclude)`` as ``(organization, name)`` pairs, as ``search_skills`` takes them.
     """
     from mlflow_oidc_auth.store import store
-    from mlflow_oidc_auth.utils.permissions import SKILL, effective_skill_permission
+    from mlflow_oidc_auth.utils.permissions import SKILL, skill_permission_resolver
 
-    baseline_read = effective_skill_permission(_NO_GRANT_KEY, username).permission.can_read
+    permission_of = skill_permission_resolver(username)
+    baseline_read = permission_of(_NO_GRANT_KEY).permission.can_read
     keys = {grant.name for grant in store.list_user_grants(SKILL, username)} | {grant.name for grant in store.list_user_groups_grants(SKILL, username)}
     exceptions: set[tuple[str, str]] = set()
     for key in keys:
@@ -297,7 +353,7 @@ def skill_search_scope(username: str) -> tuple[Optional[list[tuple[str, str]]], 
         except ValueError:
             # No skill MLflow can store answers to this key, so there is nothing to include or exclude.
             continue
-        if effective_skill_permission(key, username).permission.can_read != baseline_read:
+        if permission_of(key).permission.can_read != baseline_read:
             exceptions.add(identity)
     ordered = sorted(exceptions)
     return (None, ordered) if baseline_read else (ordered, [])
@@ -340,15 +396,16 @@ async def _registration_targets(route: SkillRoute, request: Request) -> Optional
 
 def get_skill_registry_validator(path: str) -> Callable[[str, Request], Awaitable[bool]]:
     """Return the validator for a skill registry request (see the module docstring)."""
-    from mlflow_oidc_auth.utils.permissions import can_update_skill, effective_skill_permission
+    from mlflow_oidc_auth.utils.permissions import effective_skill_permission
 
     async def validator(username: str, request: Request) -> bool:
         route = resolve_skill_route(path, request.method)
         if route is None:
             return False
         if route.operation == SEARCH:
-            # MLflow's handler narrows its query to this scope before paginating.
-            request.state.skill_identity_scope = skill_search_scope(username)
+            # MLflow's handler narrows its query to this scope before paginating, and
+            # finalize_skill_response holds the response to the same scope.
+            request.state.skill_identity_scope = await asyncio.to_thread(skill_search_scope, username)
             return True
         if route.operation == CREATE:
             body = await _json_object(request)
@@ -364,14 +421,11 @@ def get_skill_registry_validator(path: str) -> Callable[[str, Request], Awaitabl
             targets = await _registration_targets(route, request)
             if targets is None:
                 return False
-            expected: dict[str, bool] = {}
-            for organization, name in targets:
-                key = format_skill_key(organization, name)
-                # MLflow creates a skill that does not exist yet, so that registration is a creation.
-                exists = _skill_exists(organization, name)
-                if not (can_update_skill(key, username) if exists else _can_create_named(key, username)):
-                    return False
-                expected[name] = exists
+            # Store and grant reads are synchronous; a bulk batch holds up to _MAX_BULK_TARGETS
+            # skills, so they run off the event loop (the auth and workspace context go with them).
+            expected = await asyncio.to_thread(_authorize_registration, targets, username)
+            if expected is None:
+                return False
             # MLflow's handler refuses the registration if a skill appeared or vanished since:
             # what was authorized here is then no longer what it would do.
             request.state.skill_expected_parent_exists = expected if route.operation == BULK_REGISTER else expected[route.name]
@@ -400,22 +454,72 @@ def get_skill_registry_validator(path: str) -> Callable[[str, Request], Awaitabl
     return validator
 
 
+async def prepare_admin_skill_request(path: str, request: Request, auth_context: Any) -> Optional[Response]:
+    """Before an admin's registration: tell MLflow which targets exist.
+
+    Admins skip the validator, which is what hands MLflow ``skill_expected_parent_exists``; without
+    it MLflow does not report the skills a registration created, and :func:`finalize_skill_response`
+    could not clear the grants left under their keys. MLflow refuses the registration if a target
+    appeared or vanished since, as for everyone else.
+
+    A registration body this cannot read is refused here (``400``, in MLflow's error format) rather
+    than handed to MLflow without the expectation: were MLflow to accept it, the skill it created
+    would keep the grants left under its key.
+
+    Returns:
+        None to go on, or the response refusing the request.
+
+    Raises:
+        Exception: The registry lookup failed. The caller refuses the request rather than let a
+            registration create a skill whose leftover grants would then go uncleared.
+    """
+    route = resolve_skill_route(path, request.method)
+    if route is None or route.operation not in (REGISTER, BULK_REGISTER):
+        return
+    targets = await _registration_targets(route, request)
+    if not targets:
+        return JSONResponse(status_code=400, content={"error_code": "INVALID_PARAMETER_VALUE", "message": "Invalid skill registration request"})
+    organization = targets[0][0]
+    names = {name for _, name in targets}
+
+    def existing() -> set[str]:
+        with bridged_auth_context(auth_context):
+            return _existing_skill_names(organization, names)
+
+    found = await asyncio.to_thread(existing)
+    expected = {name: name in found for name in names}
+    request.state.skill_expected_parent_exists = expected if route.operation == BULK_REGISTER else expected[route.name]
+    return None
+
+
 # ---------------------------------------------------------------------------
 # After MLflow's handler
 # ---------------------------------------------------------------------------
 
 
-def _filter_search_body(username: str, body: bytes) -> bytes:
-    """Keep only the skills ``username`` may READ.
+def _filter_search_body(scope: Any, body: bytes, permission_of: Callable[[str], Any]) -> bytes:
+    """Keep only the skills the caller may READ: inside the validator's scope, and readable by key.
 
-    MLflow already narrowed its query to :func:`skill_search_scope`; this re-checks every item, so
-    a registry that ignored the scope still returns nothing the caller may not read.
+    MLflow already narrowed its query to that scope (:func:`skill_search_scope`). Every item is held
+    to it again, and resolved by its own key as well, the way ``GET /skills/<skill>`` resolves it:
+    a registry that ignored the scope returns nothing unreadable, and a list never shows a skill
+    its detail route refuses — say a skill whose name differs only in case from a denied one, where
+    the grant database compares names without case and the registry with it. The resolver reads the
+    caller's grants once (see :func:`~mlflow_oidc_auth.utils.permissions.skill_permission_resolver`).
+
+    Parameters:
+        scope: ``request.state.skill_identity_scope``: ``(include, exclude)``.
+        body: MLflow's response body.
+        permission_of: The caller's resolver, from a key to their permission on that skill.
 
     Raises:
-        ValueError: The body is not a skill list response.
+        ValueError: The body is not a skill list response, or there is no scope to hold it to.
     """
-    from mlflow_oidc_auth.utils.permissions import can_read_skill
-
+    if not (isinstance(scope, tuple) and len(scope) == 2):
+        raise ValueError("no skill search scope for this request")
+    include, exclude = scope
+    allowed = None if include is None else set(include)
+    denied = set(exclude or ())
     data = json.loads(body)
     items = data.get("skills") if isinstance(data, dict) else None
     if not isinstance(items, list):
@@ -424,13 +528,15 @@ def _filter_search_body(username: str, body: bytes) -> bytes:
     for item in items:
         if not isinstance(item, dict):
             continue
+        organization, name = item.get("organization") or "", item.get("name")
         try:
-            organization, name = item.get("organization") or "", item.get("name")
             validate_skill_identity(organization, name)
-            if can_read_skill(format_skill_key(organization, name), username):
-                visible.append(item)
-        except Exception as e:
-            logger.error("Skill registry: permission check failed: %s", type(e).__name__)
+        except ValueError:
+            continue
+        identity = (organization, name)
+        in_scope = (identity in allowed) if allowed is not None else (identity not in denied)
+        if in_scope and permission_of(format_skill_key(organization, name)).permission.can_read:
+            visible.append(item)
     data["skills"] = visible
     return json.dumps(data).encode()
 
@@ -457,12 +563,14 @@ def _grant_creator_manage(key: str, username: str) -> None:
         store.update_skill_permission(key, username, MANAGE_PERMISSION.name)
 
 
-def _grant_created_skills(request: Request, username: str, auth_context: Any) -> None:
+def _grant_created_skills(request: Request, username: str, auth_context: Any, grant: bool = True) -> None:
     """Grant the caller MANAGE on the skills MLflow's handler reports it created. Never raises.
 
     The handler lists them in ``request.state.skill_created_parents``. Each is looked up again: only
     a skill MLflow recorded this caller as the creator of, in the workspace the grant is written in,
-    is granted — a skill someone else created in between is theirs.
+    is granted — a skill someone else created in between is theirs. With ``grant=False`` (an admin,
+    who is never granted anything) the leftover grants under its key are still removed, so a new
+    skill never inherits the grants of an earlier one of the same name, whoever creates it.
     """
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
@@ -479,53 +587,108 @@ def _grant_created_skills(request: Request, username: str, auth_context: Any) ->
                 workspace = getattr(skill, "workspace", None)
                 if config.MLFLOW_ENABLE_WORKSPACES and workspace is not None and workspace != current_grant_workspace():
                     raise ValueError("skill created outside the request's grant workspace")
-                _grant_creator_manage(format_skill_key(organization, name), username)
+                key = format_skill_key(organization, name)
+                if grant:
+                    _grant_creator_manage(key, username)
+                else:
+                    from mlflow_oidc_auth.store import store
+
+                    store.wipe_skill_permissions(key)
         except Exception as e:
             # The skill exists; failing the response would make the client retry into a conflict.
             # Without a MANAGE grant it is governed by workspace permissions until someone grants one.
             logger.error("Skill registry: could not grant the creator MANAGE: %s", type(e).__name__)
 
 
+def _recreated_skill_creator(organization: str, name: str) -> Optional[str]:
+    """The creator of a skill stored under the key again, ``""`` when there is none or it is unknown.
+
+    A failed lookup counts as "none": the grants are then wiped, never kept on a guess.
+    """
+    from mlflow.server.handlers import _get_tracking_store
+
+    try:
+        skill = _get_tracking_store().get_skill(name=name, organization=organization)
+    except Exception:
+        return ""
+    return getattr(skill, "created_by", None) or ""
+
+
+def _cascade_delete(route: SkillRoute, auth_context: Any) -> None:
+    """Delete the grants on the skill ``route`` just deleted, in the request's grant workspace.
+
+    MLflow committed the delete before this runs, so a skill may already be stored under the key
+    again. Its creator's own grant — the ``MANAGE`` :func:`_grant_created_skills` gave them — is
+    kept; every other grant is a leftover of the deleted skill and goes, even if the new creator's
+    own cleanup failed.
+    """
+    from mlflow.exceptions import MlflowException
+
+    from mlflow_oidc_auth.store import store
+
+    with bridged_auth_context(auth_context):
+        creator = _recreated_skill_creator(route.organization, route.name)
+        kept = None
+        if creator:
+            try:
+                kept = store.get_skill_permission(route.key, creator).permission
+            except MlflowException:
+                kept = None
+        store.wipe_skill_permissions(route.key)
+        if kept is not None:
+            store.create_skill_permission(route.key, creator, kept)
+
+
 async def finalize_skill_response(path: str, username: str, request: Request, response: Response, auth_context: Any, is_admin: bool = False) -> Response:
     """Post-process a registry response.
 
-    For an admin only the delete cascade runs: an admin sees everything and is never granted
-    anything, but the grants on a skill an admin deletes must go with it. For everyone else:
+    An admin sees everything and is never granted anything, but the leftover grants under the key
+    of a skill an admin creates are removed, and the grants on a skill an admin deletes go with it.
+    For everyone else:
 
-    * a search response is re-checked item by item; a body that cannot be filtered is an error,
-      never the unfiltered list;
-    * a successful create, or a registration that created its skill, grants the creator ``MANAGE``
-      in the request's workspace — only once MLflow returned success;
-    * a successful skill delete removes the skill's grants in the request's workspace.
+    * a search response is held item by item to the scope the validator computed; a body that
+      cannot be filtered is an error, never the unfiltered list;
+    * a successful create, or a registration that created its skill, replaces any grants left under
+      its key with the creator's ``MANAGE`` in the request's workspace — only once MLflow returned
+      success;
+    * a successful skill delete removes the skill's grants in the request's workspace, all but the
+      creator's own if a skill of that name was created again in between.
 
     Non-2xx responses are returned unchanged.
     """
     route = resolve_skill_route(path, request.method)
     if route is None or not 200 <= response.status_code < 300:
         return response
+    if is_admin and route.operation in (CREATE, REGISTER, BULK_REGISTER):
+        await asyncio.to_thread(_grant_created_skills, request, username, auth_context, False)
+        return response
     if is_admin and route.operation != DELETE_SKILL:
         return response
 
     if route.operation == SEARCH:
         body = await buffer_body(response)
-        try:
+        scope = getattr(request.state, "skill_identity_scope", None)
+
+        def filtered_body() -> bytes:
+            from mlflow_oidc_auth.utils.permissions import skill_permission_resolver
+
             with bridged_auth_context(auth_context):
-                filtered = _filter_search_body(username, body)
+                return _filter_search_body(scope, body, skill_permission_resolver(username))
+
+        try:
+            filtered = await asyncio.to_thread(filtered_body)
         except Exception as e:
             logger.error("Failed to filter skill registry response: %s", type(e).__name__)
             return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
         return rebuilt_response(response, filtered)
 
     if route.operation in (CREATE, REGISTER, BULK_REGISTER):
-        _grant_created_skills(request, username, auth_context)
+        await asyncio.to_thread(_grant_created_skills, request, username, auth_context)
         return response
 
     if route.operation == DELETE_SKILL and route.key is not None:
         try:
-            from mlflow_oidc_auth.store import store
-
-            with bridged_auth_context(auth_context):
-                store.wipe_skill_permissions(route.key)
+            await asyncio.to_thread(_cascade_delete, route, auth_context)
         except Exception as e:
             # Stale grants are wiped again if a skill is created under this key, but until then
             # they are visible in the permission API: make the failure loud.
@@ -541,6 +704,7 @@ __all__ = [
     "finalize_skill_response",
     "get_skill_registry_validator",
     "is_skill_registry_path",
+    "prepare_admin_skill_request",
     "resolve_skill_route",
     "skill_route_prefixes",
     "skill_search_scope",

@@ -13,7 +13,9 @@ Three routers, all gated with dependencies from ``dependencies.py``:
 * ``/api/2.0/mlflow/permissions/groups/{group_name}/skills[/{name}]`` — a group's grants.
 
 Changing a grant needs MANAGE on the skill (or admin), as for registered models and experiments:
-the creator of a skill holds MANAGE and may share it.
+the creator of a skill holds MANAGE and may share it. A grant is only created or changed on a skill
+that exists (404 otherwise); reading and revoking one need no skill, so a grant a deleted skill left
+behind can still be found and removed.
 """
 
 from typing import List
@@ -35,7 +37,8 @@ from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils import get_is_admin, get_username
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_skills
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
-from mlflow_oidc_auth.utils.permissions import can_manage_skill, effective_skill_permission
+from mlflow_oidc_auth.utils.permissions import skill_permission_resolver
+from mlflow_oidc_auth.utils.skill_key import parse_skill_key
 
 logger = get_logger()
 
@@ -62,6 +65,33 @@ GROUP_SKILL_PERMISSION_DETAIL = "/{group_name}/skills/{name:path}"
 _ERROR_DETAIL = {409: "Permission already exists", 404: "Not found", 400: "Invalid permission"}
 
 
+def _require_existing_skill(name: str) -> None:
+    """Refuse to write a grant on a skill the request's workspace does not hold.
+
+    A grant written ahead of its skill would be inherited by whoever creates it, or wiped when a
+    non-admin does — either way not what the writer meant. Reading and revoking a grant need no
+    skill, so a leftover of a deleted one can still be inspected and removed.
+
+    Raises:
+        HTTPException: 404 when there is no such skill.
+    """
+    from mlflow.exceptions import MlflowException
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+    from mlflow.server.handlers import _get_tracking_store
+
+    organization, skill_name = parse_skill_key(name)
+    tracking_store = _get_tracking_store()
+    if not hasattr(tracking_store, "get_skill"):
+        # An MLflow without the skill registry (before 3.18) holds no skill at all.
+        raise HTTPException(status_code=404, detail="Skill not found")
+    try:
+        tracking_store.get_skill(name=skill_name, organization=organization)
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            raise HTTPException(status_code=404, detail="Skill not found")
+        raise
+
+
 def _http_error(e: Exception, action: str) -> HTTPException:
     """Map a store error to an HTTP error without echoing internals."""
     status = mlflow_error_status(e)
@@ -86,7 +116,8 @@ async def list_skills(username: str = Depends(get_username), is_admin: bool = De
     try:
         skills = fetch_all_skills()
         if not is_admin:
-            skills = [s for s in skills if can_manage_skill(s["name"], username)]
+            permission_of = skill_permission_resolver(username)
+            skills = [s for s in skills if permission_of(s["name"]).permission.can_manage]
     except Exception as e:
         raise _http_error(e, "retrieve skills")
     # Paginate strictly after the permission filter: the total never counts a hidden skill.
@@ -145,13 +176,15 @@ async def get_user_skill_permissions(
     """Admins see every skill; the user themselves those they can reach; others only skills they MANAGE."""
     try:
         results: List[NamedPermissionSummary] = []
+        permission_of = skill_permission_resolver(username)
+        caller_permission_of = skill_permission_resolver(current_username) if not is_admin and current_username != username else None
         for skill in fetch_all_skills():
             name = skill.get("name")
             if not name:
                 continue
-            if not is_admin and current_username != username and not can_manage_skill(name, current_username):
+            if caller_permission_of is not None and not caller_permission_of(name).permission.can_manage:
                 continue
-            result = effective_skill_permission(name, username)
+            result = permission_of(name)
             if not is_admin and current_username == username and result.permission.name == NO_PERMISSIONS.name:
                 continue
             results.append(NamedPermissionSummary(name=name, permission=result.permission.name, kind=result.kind))
@@ -173,7 +206,10 @@ async def create_user_skill_permission(
     actor: str = Depends(check_skill_manage_permission),
 ) -> NamedPermissionSummary:
     try:
+        _require_existing_skill(name)
         perm = store.create_skill_permission(name, username, permission_data.permission)
+    except HTTPException:
+        raise
     except Exception as e:
         raise _http_error(e, "create skill permission")
     emit_audit_event(
@@ -215,7 +251,10 @@ async def update_user_skill_permission(
     actor: str = Depends(check_skill_manage_permission),
 ) -> StatusMessageResponse:
     try:
+        _require_existing_skill(name)
         store.update_skill_permission(name, username, permission_data.permission)
+    except HTTPException:
+        raise
     except Exception as e:
         raise _http_error(e, "update skill permission")
     emit_audit_event(
@@ -264,7 +303,12 @@ async def get_group_skill_permissions(
 ) -> List[GroupNamedPermissionItem]:
     try:
         perms = store.list_group_skill_permissions(group_name)
-        return [GroupNamedPermissionItem(name=p.name, permission=p.permission) for p in perms if is_admin or can_manage_skill(p.name, current_username)]
+        permission_of = None if is_admin else skill_permission_resolver(current_username)
+        return [
+            GroupNamedPermissionItem(name=p.name, permission=p.permission)
+            for p in perms
+            if permission_of is None or permission_of(p.name).permission.can_manage
+        ]
     except Exception as e:
         raise _http_error(e, "retrieve group skill permissions")
 
@@ -282,7 +326,10 @@ async def create_group_skill_permission(
     actor: str = Depends(check_skill_manage_permission),
 ) -> GroupNamedPermissionItem:
     try:
+        _require_existing_skill(name)
         perm = store.create_group_skill_permission(group_name, name, permission_data.permission)
+    except HTTPException:
+        raise
     except Exception as e:
         raise _http_error(e, "create group skill permission")
     emit_audit_event(
@@ -324,7 +371,10 @@ async def update_group_skill_permission(
     actor: str = Depends(check_skill_manage_permission),
 ) -> StatusMessageResponse:
     try:
+        _require_existing_skill(name)
         store.update_group_skill_permission(group_name, name, permission_data.permission)
+    except HTTPException:
+        raise
     except Exception as e:
         raise _http_error(e, "update group skill permission")
     emit_audit_event(

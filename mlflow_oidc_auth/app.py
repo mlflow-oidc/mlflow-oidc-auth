@@ -16,7 +16,7 @@ from starlette.middleware.sessions import (
 )
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.exceptions import register_exception_handlers
+from mlflow_oidc_auth.exceptions import register_exception_handlers, register_skill_registry_exception_handlers
 from mlflow_oidc_auth.graphql import install_mlflow_graphql_authorization_middleware
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
@@ -276,6 +276,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)
+    register_skill_registry_exception_handlers(oidc_app)
 
     conflicts = static_prefix_conflicts()
     if conflicts:

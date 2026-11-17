@@ -1,3 +1,5 @@
+import json
+
 """Per-skill permissions on MLflow's skill registry (MLflow 3.18+).
 
 These tests serve MLflow's own ``skill_registry_router`` over a real MLflow tracking store, mounted
@@ -119,14 +121,50 @@ class TestRouteResolution:
         assert resolve_skill_route(API + suffix, method) is None
 
     def test_a_path_merely_starting_with_the_prefix_is_not_the_registry(self):
+        """A segment boundary, as MLflow's own ``is_skill_registry_api_path``: Flask answers it (a 404)."""
         assert resolve_skill_route(API + "-other", "GET") is None
-        assert skill_registry.is_skill_registry_path(API + "-other")  # still routed to the validator, which denies
+        assert not skill_registry.is_skill_registry_path(API + "-other")
+        assert skill_registry.is_skill_registry_path(API)
+        assert skill_registry.is_skill_registry_path(API + "/")
+        assert skill_registry.is_skill_registry_path(AJAX + "/@acme/reviewer")
+
+    def test_an_mlflow_without_the_registry_has_no_registry_paths(self, monkeypatch):
+        """Nothing is mounted there, so the paths stay with Flask, as before the plugin knew of skills."""
+        import builtins
+
+        real_import = builtins.__import__
+
+        def no_registry(name, *args, **kwargs):
+            if name == "mlflow.server.skill_registry_api":
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        skill_registry.skill_route_prefixes.cache_clear()
+        monkeypatch.setattr(builtins, "__import__", no_registry)
+        try:
+            assert skill_registry.skill_route_prefixes() == ()
+            assert not skill_registry.is_skill_registry_path(API + "/reviewer")
+        finally:
+            monkeypatch.undo()
+            skill_registry.skill_route_prefixes.cache_clear()
+
+    def test_the_prefixes_are_computed_once(self):
+        skill_registry.skill_route_prefixes.cache_clear()
+        skill_registry.skill_route_prefixes()
+        skill_registry.is_skill_registry_path(API)
+        resolve_skill_route(API + "/reviewer", "GET")
+        assert skill_registry.skill_route_prefixes.cache_info().misses == 1
 
     def test_static_prefix(self, monkeypatch):
         from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 
         monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
-        assert resolve_skill_route("/mlflow" + API + "/@acme/reviewer", "DELETE") == SkillRoute(DELETE_SKILL, "acme", "reviewer")
+        skill_registry.skill_route_prefixes.cache_clear()
+        try:
+            assert resolve_skill_route("/mlflow" + API + "/@acme/reviewer", "DELETE") == SkillRoute(DELETE_SKILL, "acme", "reviewer")
+        finally:
+            monkeypatch.delenv(STATIC_PREFIX_ENV_VAR)
+            skill_registry.skill_route_prefixes.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +228,7 @@ def _clients(monkeypatch):
     from mlflow.server.skill_registry_api import skill_registry_router
 
     from mlflow_oidc_auth.app import add_middleware_stack
-    from mlflow_oidc_auth.exceptions import register_exception_handlers
+    from mlflow_oidc_auth.exceptions import register_exception_handlers, register_skill_registry_exception_handlers
     from mlflow_oidc_auth.routers.skill_permissions import group_skill_permissions_router, skill_permissions_router, user_skill_permissions_router
     from mlflow_oidc_auth.tests.scim.conftest import basic
 
@@ -201,6 +239,7 @@ def _clients(monkeypatch):
     )
     app = FastAPI()
     register_exception_handlers(app)
+    register_skill_registry_exception_handlers(app)
     app.include_router(skill_registry_router, prefix=API)
     app.include_router(skill_registry_router, prefix=AJAX)
     app.include_router(skill_permissions_router)
@@ -237,6 +276,23 @@ def _grants(store):
     with store.ManagedSessionMaker() as session:
         rows = session.query(SqlUser.username, SqlSkillPermission.name, SqlSkillPermission.workspace, SqlSkillPermission.permission)
         return sorted(tuple(row) for row in rows.join(SqlUser, SqlUser.id == SqlSkillPermission.user_id).all())
+
+
+def _seed(store, *grants):
+    """Write grants straight into the store in team-a, as a leftover of a deleted skill would be."""
+    from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+    from mlflow_oidc_auth.entities.auth_context import AuthContext
+
+    token = set_auth_context(AuthContext(username=ADMIN, is_admin=True, workspace="team-a"))
+    try:
+        for kind, principal, key, permission in grants:
+            if kind == "user":
+                store.create_skill_permission(key, principal, permission)
+            else:
+                store.create_group_skill_permission(principal, key, permission)
+    finally:
+        clear_auth_context(token)
+    _clear_cache()
 
 
 def _names(response):
@@ -362,6 +418,39 @@ class TestCreate:
         assert api.admin.post(API, json={"name": "reviewer"}, headers=A).status_code == 200
         assert _grants(store) == []
 
+    def test_an_admin_registration_body_it_cannot_read_is_refused(self, api, store, members):
+        response = api.admin.post(f"{API}/bulk-register", json={"skills": [7]}, headers=A)
+
+        assert response.status_code == 400
+        assert response.json()["error_code"] == "INVALID_PARAMETER_VALUE"
+        assert _names(api.admin.get(API, headers=A)) == []
+
+    def test_an_admin_registration_is_refused_when_its_targets_cannot_be_looked_up(self, api, store, members, monkeypatch):
+        """Otherwise MLflow would create the skill without reporting it, and its leftover grants would stay."""
+
+        def failing(organization, names):
+            raise RuntimeError("registry unavailable")
+
+        monkeypatch.setattr(skill_registry, "_existing_skill_names", failing)
+
+        assert api.admin.post(f"{API}/reviewer/versions", json=REMOTE, headers=A).status_code == 500
+        assert _names(api.admin.get(API, headers=A)) == []
+
+    @pytest.mark.parametrize("how", ["create", "register"])
+    def test_a_skill_an_admin_creates_does_not_inherit_leftover_grants(self, api, store, members, how):
+        """Whoever creates it, a new skill starts with no grants of an earlier one of the same name."""
+        _seed(store, ("user", CAROL, "reviewer", "MANAGE"), ("group", "team", "reviewer", "EDIT"))
+
+        if how == "create":
+            assert api.admin.post(API, json={"name": "reviewer"}, headers=A).status_code == 200
+        else:
+            assert api.admin.post(f"{API}/reviewer/versions", json=REMOTE, headers=A).status_code == 200
+        _clear_cache()
+
+        assert _grants(store) == []
+        assert store.list_group_skill_permissions("team") == []
+        assert api.carol.get(f"{API}/reviewer", headers=A).status_code == 403
+
 
 # ---------------------------------------------------------------------------
 # Reading
@@ -483,11 +572,47 @@ class TestSearch:
 
         assert _names(api.bob.get(API, headers=ws("team-b"))) == []
 
-    def test_a_registry_that_ignored_the_scope_still_returns_only_readable_skills(self, api, three, monkeypatch):
-        """Defence in depth: the response is re-checked item by item."""
-        monkeypatch.setattr(skill_registry, "skill_search_scope", lambda username: (None, []))
+    def test_a_registry_that_ignored_the_scope_still_returns_only_readable_skills(self, api, three, registry, monkeypatch):
+        """Defence in depth: the response is held item by item to the scope MLflow was handed."""
+        original = type(registry).search_skills
 
-        assert _names(api.carol.get(API, headers=A)) == []
+        def ignoring_the_scope(self, *args, include_skill_identities=None, exclude_skill_identities=None, **kwargs):
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(type(registry), "search_skills", ignoring_the_scope)
+        assert api.alice.post(f"{USERS}/{CAROL}/skills/beta", json={"permission": "READ"}, headers=A).status_code == 201
+        assert api.alice.post(f"{USERS}/{BOB}/skills/gamma", json={"permission": "NO_PERMISSIONS"}, headers=A).status_code == 201
+        _clear_cache()
+
+        assert _names(api.carol.get(API, headers=A)) == [("", "beta")]
+        assert _names(api.bob.get(API, headers=A)) == [("", "alpha"), ("", "beta")]
+
+    def test_the_response_filter_resolves_from_one_bulk_context(self, api, three, monkeypatch):
+        """The scope and the response filter each read the caller's grants once, not once per skill."""
+        from mlflow_oidc_auth.utils import permissions
+
+        calls = []
+        real = permissions.skill_permission_resolver
+        monkeypatch.setattr(permissions, "skill_permission_resolver", lambda user: calls.append(user) or real(user))
+        assert _names(api.bob.get(API, headers=A)) == [("", "alpha"), ("", "beta"), ("", "gamma")]
+        assert calls == [BOB, BOB]  # skill_search_scope in the validator, then the response filter
+
+    def test_a_response_without_a_scope_is_an_error(self):
+        with pytest.raises(ValueError):
+            skill_registry._filter_search_body(None, b'{"skills": []}', lambda key: None)
+
+    def test_an_item_in_scope_its_own_key_denies_is_withheld(self):
+        """List and detail agree: an in-scope item whose key resolves to no READ is dropped, as
+        when the grant database matches a denied name without regard to case."""
+        from mlflow_oidc_auth.models import PermissionResult
+        from mlflow_oidc_auth.permissions import NO_PERMISSIONS, READ
+
+        body = json.dumps({"skills": [{"organization": "", "name": "Secret"}, {"organization": "", "name": "public"}]}).encode()
+        permission_of = lambda key: PermissionResult(NO_PERMISSIONS if key.lower() == "secret" else READ, "user")  # noqa: E731
+
+        filtered = json.loads(skill_registry._filter_search_body((None, [("", "secret")]), body, permission_of))
+
+        assert [item["name"] for item in filtered["skills"]] == ["public"]
 
     def test_an_admin_sees_everything(self, api, three):
         assert len(_names(api.admin.get(API, headers=A))) == 3
@@ -609,6 +734,22 @@ class TestRegister:
         assert len(api.alice.get(f"{API}/reviewer/versions", headers=A).json()["skill_versions"]) == 1
         assert _names(api.admin.get(API, headers=A)) == [("", "reviewer")]
 
+    def test_bulk_register_reads_the_registry_once(self, api, store, reviewer, registry, monkeypatch):
+        """Which targets exist is one registry query, however many the batch names."""
+        calls = []
+        original = type(registry).search_skills
+
+        def counting(self, *args, **kwargs):
+            calls.append(kwargs.get("include_skill_identities"))
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(type(registry), "search_skills", counting)
+        body = {"skills": [{"name": name, **REMOTE} for name in ("reviewer", "one", "two", "three")]}
+
+        assert api.alice.post(f"{API}/bulk-register", json=body, headers=A).status_code == 200
+        assert calls == [[("", "one"), ("", "reviewer"), ("", "three"), ("", "two")]]
+        assert _grants(store) == [(ALICE, key, "team-a", "MANAGE") for key in ("one", "reviewer", "three", "two")]
+
     @pytest.mark.parametrize("body", [{}, {"skills": []}, {"skills": "reviewer"}, {"skills": [{"name": "Bad Name"}]}, {"skills": [7]}, []])
     def test_a_bulk_body_naming_no_storable_skills_is_refused(self, api, members, body):
         assert api.alice.post(f"{API}/bulk-register", json=body, headers=A).status_code == 403
@@ -640,6 +781,39 @@ class TestDelete:
         _clear_cache()
 
         assert api.carol.get(f"{API}/reviewer", headers=A).status_code == 403
+
+    def test_the_cascade_keeps_only_the_grant_of_whoever_created_the_skill_again(self, api, store, reviewer, monkeypatch):
+        """MLflow commits the delete before the cascade runs. If the name was taken again meanwhile,
+        its creator keeps their grant; every leftover goes, even if their own cleanup failed."""
+        self._share(api)
+        monkeypatch.setattr(skill_registry, "_recreated_skill_creator", lambda organization, name: ALICE)
+
+        assert api.alice.delete(f"{API}/reviewer", headers=A).status_code == 200
+
+        assert _grants(store) == [(ALICE, "reviewer", "team-a", "MANAGE")]
+        assert store.list_group_skill_permissions("team") == []
+
+    def test_a_cascade_that_cannot_look_the_name_up_again_still_wipes(self, api, store, reviewer, registry, monkeypatch):
+        self._share(api)
+        original = type(registry).get_skill
+        state = {"deleted": False}
+        original_delete = type(registry).delete_skill
+
+        def delete_then_fail(self, *args, **kwargs):
+            result = original_delete(self, *args, **kwargs)
+            state["deleted"] = True
+            return result
+
+        def get_skill(self, *args, **kwargs):
+            if state["deleted"]:
+                raise RuntimeError("tracking store unavailable")
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(type(registry), "delete_skill", delete_then_fail)
+        monkeypatch.setattr(type(registry), "get_skill", get_skill)
+
+        assert api.alice.delete(f"{API}/reviewer", headers=A).status_code == 200
+        assert _grants(store) == []
 
     def test_a_refused_delete_keeps_the_grants(self, api, store, reviewer):
         self._share(api)
@@ -682,6 +856,48 @@ class TestPermissionApi:
         assert api.admin.post(f"{USERS}/{CAROL}/skills/{key}", json={"permission": "READ"}, headers=A).status_code in (400, 404)
         assert _grants(store) == []
 
+    @pytest.mark.parametrize("method", ["post", "patch"])
+    def test_a_grant_is_only_written_on_a_skill_that_exists(self, api, store, members, method):
+        """A grant written ahead of a skill would be inherited by, or wiped for, whoever creates it."""
+        for client in (api.admin, api.alice):
+            send = getattr(client, method)
+            assert send(f"{USERS}/{CAROL}/skills/ghost", json={"permission": "MANAGE"}, headers=A).status_code == 404
+            assert send(f"{GROUPS}/team/skills/ghost", json={"permission": "MANAGE"}, headers=A).status_code == 404
+        assert _grants(store) == []
+        assert store.list_group_skill_permissions("team") == []
+
+    def test_an_mlflow_without_the_registry_holds_no_skill_to_grant_on(self, api, store, members, monkeypatch):
+        monkeypatch.setattr("mlflow.server.handlers._get_tracking_store", lambda *a, **k: SimpleNamespace())
+
+        assert api.admin.post(f"{USERS}/{CAROL}/skills/reviewer", json={"permission": "READ"}, headers=A).status_code == 404
+        assert _grants(store) == []
+
+    def test_a_leftover_grant_can_still_be_read_and_revoked(self, api, store, members):
+        _seed(store, ("user", CAROL, "ghost", "MANAGE"), ("group", "team", "ghost", "EDIT"))
+
+        assert api.admin.get(f"{USERS}/{CAROL}/skills/ghost", headers=A).json()["permission"] == "MANAGE"
+        assert api.admin.delete(f"{USERS}/{CAROL}/skills/ghost", headers=A).status_code == 200
+        assert api.admin.delete(f"{GROUPS}/team/skills/ghost", headers=A).status_code == 200
+        assert _grants(store) == []
+
+    def test_the_bulk_resolver_decides_as_the_single_check(self, api, store, reviewer):
+        from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
+        from mlflow_oidc_auth.entities.auth_context import AuthContext
+        from mlflow_oidc_auth.utils.permissions import effective_skill_permission, skill_permission_resolver
+
+        assert api.alice.post(f"{USERS}/{CAROL}/skills/reviewer", json={"permission": "EDIT"}, headers=A).status_code == 201
+        assert api.alice.post(f"{USERS}/{BOB}/skills/reviewer", json={"permission": "NO_PERMISSIONS"}, headers=A).status_code == 201
+        for workspace in ("team-a", "team-b"):
+            token = set_auth_context(AuthContext(username=ADMIN, is_admin=True, workspace=workspace))
+            try:
+                for user in (ALICE, BOB, CAROL):
+                    _clear_cache()
+                    permission_of = skill_permission_resolver(user)
+                    for key in ("reviewer", "other", "@acme/reviewer"):
+                        assert permission_of(key) == effective_skill_permission(key, user), (workspace, user, key)
+            finally:
+                clear_auth_context(token)
+
     def test_the_list_holds_only_skills_the_caller_manages(self, api, reviewer):
         assert [s["name"] for s in api.alice.get(PERMS, headers=A).json()] == ["reviewer"]
         assert api.bob.get(PERMS, headers=A).json() == []
@@ -696,6 +912,28 @@ class TestPermissionApi:
 # ---------------------------------------------------------------------------
 # Workspaces disabled: the global default decides, as for models and prompts
 # ---------------------------------------------------------------------------
+
+
+class TestErrors:
+    """The registry answers errors as MLflow does; the plugin's own APIs keep their format."""
+
+    def test_a_missing_skill_is_mlflows_404(self, api, members):
+        response = api.admin.get(f"{API}/ghost", headers=A)
+
+        assert response.status_code == 404
+        assert response.json()["error_code"] == "RESOURCE_DOES_NOT_EXIST"
+
+    def test_a_request_that_fails_validation_is_mlflows_400(self, api, members):
+        response = api.admin.post(API, json={"name": "reviewer", "icons": "not-a-list"}, headers=A)
+
+        assert response.status_code == 400
+        assert response.json()["error_code"] == "INVALID_PARAMETER_VALUE"
+
+    def test_the_permission_api_keeps_its_own_format(self, api, members):
+        response = api.admin.post(f"{USERS}/{CAROL}/skills/ghost", json={"permission": "READ"}, headers=A)
+
+        assert response.status_code == 404
+        assert "detail" in response.json()
 
 
 class TestWithoutWorkspaces:

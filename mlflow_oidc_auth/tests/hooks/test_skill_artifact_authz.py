@@ -46,6 +46,15 @@ class _Skills(BaseFakeTrackingStore):
             raise MlflowException("no such skill", error_code=RESOURCE_DOES_NOT_EXIST)
         return SimpleNamespace(name=name, organization=organization, workspace="default")
 
+    def search_skill_versions(self, name, organization="", max_results=None, page_token=None, **kwargs):
+        """One version per skill, whose content is the ``TOKEN`` upload."""
+        prefix = f"skills/@{organization}/{name}" if organization else f"skills/{name}"
+        return _Page([SimpleNamespace(name=name, organization=organization, source=SimpleNamespace(artifact_path=f"{prefix}/{TOKEN}", subpath=None))])
+
+
+class _Page(list):
+    token = None
+
 
 @pytest.fixture(autouse=True)
 def permission_store(tmp_path, monkeypatch):
@@ -96,6 +105,18 @@ class TestReadingSkillContent:
         path = f"{prefix}/2.0/mlflow-artifacts/presigned/{CONTENT}"
         assert allowed(hook(path, "GET", READER))
         assert denied(hook(path, "GET", OUTSIDER))
+
+    def test_content_no_version_records_is_refused(self, prefix):
+        """What a deleted version or skill of the same name left behind is not this skill's content."""
+        stale = "fedcba9876543210fedcba9876543210"
+        assert denied(hook(_artifact(prefix, f"skills/reviewer/{stale}/SKILL.md"), "GET", READER))
+        assert denied(hook(_artifact(prefix, f"skills/reviewer/{stale}/SKILL.md"), "GET", EDITOR))
+        assert denied(hook(_list(prefix), "GET", READER, query={"path": f"skills/reviewer/{stale}"}))
+        assert denied(hook(_artifact(prefix, f"skills/@acme/reviewer/{stale}/SKILL.md"), "GET", READER))
+
+    def test_listing_above_the_uploads_needs_read_alone(self, prefix):
+        assert allowed(hook(_list(prefix), "GET", READER, query={"path": "skills/reviewer"}))
+        assert denied(hook(_list(prefix), "GET", OUTSIDER, query={"path": "skills/reviewer"}))
 
     def test_a_skill_that_does_not_exist_is_refused_whatever_the_default(self, prefix):
         """The default is MANAGE; a leftover tree of a deleted skill must not become readable by it."""
