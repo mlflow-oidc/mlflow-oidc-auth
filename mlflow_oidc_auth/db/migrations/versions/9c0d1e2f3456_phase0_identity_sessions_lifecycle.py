@@ -123,8 +123,12 @@ def upgrade() -> None:
     # --- backfill --------------------------------------------------------------------------
     # Existing rows predate these columns, so their creation time is unknowable; the migration
     # time is the honest approximation and is recorded rather than left NULL.
+    # Built with SQLAlchemy rather than a raw string so the table name is quoted for the
+    # backend: ``groups`` is a reserved word in MySQL 8, where ``UPDATE groups ...`` is a
+    # syntax error.
     for table in ("users", "groups"):
-        op.execute(f"UPDATE {table} SET created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP")  # nosec B608 - fixed literals
+        target = sa.table(table, sa.column("created_at"), sa.column("updated_at"))
+        op.execute(target.update().values(created_at=sa.func.current_timestamp(), updated_at=sa.func.current_timestamp()))
 
     # Every pre-existing user gets an identity so that identity resolution (#309) never finds a
     # stranded account. Their subject is the username, which is what today's lookups key on.

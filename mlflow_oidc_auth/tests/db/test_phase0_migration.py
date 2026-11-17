@@ -13,6 +13,7 @@ backend. Run locally with, for example::
         pytest mlflow_oidc_auth/tests/db/test_phase0_migration.py
 """
 
+import io
 import os
 
 import pytest
@@ -324,3 +325,17 @@ class TestIdentityUniqueness:
 
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM user_identities WHERE subject = 'alice@example.com'")).scalar() == 2
+
+
+def test_backfill_quotes_the_groups_table_for_mysql():
+    """``groups`` is reserved in MySQL 8, so the backfill must quote it (#494).
+
+    Rendered in offline mode, which needs no MySQL server or driver.
+    """
+    cfg = _get_alembic_config("mysql://user@localhost/auth")
+    cfg.output_buffer = io.StringIO()
+    upgrade(cfg, f"{PREVIOUS_REVISION}:{PHASE0_REVISION}", sql=True)
+    sql = cfg.output_buffer.getvalue()
+
+    assert "UPDATE `groups` SET" in sql
+    assert "UPDATE groups " not in sql
