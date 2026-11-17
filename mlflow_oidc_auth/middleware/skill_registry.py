@@ -53,7 +53,7 @@ from starlette.routing import Match
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
-from mlflow_oidc_auth.middleware.mcp_server_registry import _bridged, _buffer, _rebuilt, can_create_in_request_workspace
+from mlflow_oidc_auth.middleware.registry_support import bridged_auth_context, buffer_body, can_create_in_request_workspace, rebuilt_response
 from mlflow_oidc_auth.utils.skill_key import format_skill_key, parse_skill_key, validate_skill_identity
 
 logger = get_logger()
@@ -472,7 +472,7 @@ def _grant_created_skills(request: Request, username: str, auth_context: Any) ->
             validate_skill_identity(organization, name)
             from mlflow.server.handlers import _get_tracking_store
 
-            with _bridged(auth_context):
+            with bridged_auth_context(auth_context):
                 skill = _get_tracking_store().get_skill(name=name, organization=organization)
                 if getattr(skill, "created_by", None) != username:
                     continue
@@ -507,14 +507,14 @@ async def finalize_skill_response(path: str, username: str, request: Request, re
         return response
 
     if route.operation == SEARCH:
-        body = await _buffer(response)
+        body = await buffer_body(response)
         try:
-            with _bridged(auth_context):
+            with bridged_auth_context(auth_context):
                 filtered = _filter_search_body(username, body)
         except Exception as e:
             logger.error("Failed to filter skill registry response: %s", type(e).__name__)
             return JSONResponse(status_code=500, content={"detail": "Failed to filter response"})
-        return _rebuilt(response, filtered)
+        return rebuilt_response(response, filtered)
 
     if route.operation in (CREATE, REGISTER, BULK_REGISTER):
         _grant_created_skills(request, username, auth_context)
@@ -524,7 +524,7 @@ async def finalize_skill_response(path: str, username: str, request: Request, re
         try:
             from mlflow_oidc_auth.store import store
 
-            with _bridged(auth_context):
+            with bridged_auth_context(auth_context):
                 store.wipe_skill_permissions(route.key)
         except Exception as e:
             # Stale grants are wiped again if a skill is created under this key, but until then
