@@ -410,7 +410,7 @@ def test_large_head_response_keeps_length():
     assert _framing_after("HEAD", LARGE) == [("Content-Length", str(LARGE)), ("Content-Type", "application/json")]
 
 
-@pytest.mark.parametrize("value", ["", "abc", "1e9", "²"])
+@pytest.mark.parametrize("value", ["", "abc", "1e9", "²", "-1", "+99999999999", "99_999_999_999"])
 def test_unparseable_length_is_left_alone(value):
     headers = [("Content-Length", value)]
 
@@ -469,14 +469,15 @@ def test_uvicorn_sends_large_response_chunked(monkeypatch):
     def small_body():
         return Response(small, mimetype="application/json")
 
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(AuthAwareWSGIMiddleware(app), host="127.0.0.1", port=port, lifespan="off", log_config=None))
-    thread = threading.Thread(target=server.run, daemon=True)
+    # Uvicorn serves on a socket bound here, so no other process can take the port in between.
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(AuthAwareWSGIMiddleware(app), lifespan="off", log_config=None))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
     thread.start()
     try:
-        for _ in range(100):
+        for _ in range(600):
             if server.started:
                 break
             time.sleep(0.05)
@@ -502,6 +503,7 @@ def test_uvicorn_sends_large_response_chunked(monkeypatch):
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+        listener.close()
 
 
 def test_wsgi_response_contract_is_preserved():

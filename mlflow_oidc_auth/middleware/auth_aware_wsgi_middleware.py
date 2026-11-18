@@ -25,11 +25,16 @@ STREAMED_RESPONSE_THRESHOLD_BYTES = 16 << 20
 
 
 def _declared_length(value: str) -> int:
-    """The byte count a ``Content-Length`` value declares, or -1 if it is not a number."""
-    try:
-        return int(value)
-    except ValueError:
-        return -1
+    """The byte count a ``Content-Length`` value declares.
+
+    Parameters:
+        value: The header value. Only ASCII digits are a length (RFC 9110), so ``+1``, ``1_000`` or ``1e9`` are not.
+
+    Returns:
+        The declared length, or -1 when ``value`` is not one.
+    """
+    value = value.strip()
+    return int(value) if value.isascii() and value.isdigit() else -1
 
 
 def _without_large_content_length(method: str, status: str, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
