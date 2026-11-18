@@ -78,14 +78,24 @@ def _collapse(connection, table: str, resource: str, principal: str) -> int:
     """
     t = sa.table(table, sa.column("id", sa.Integer), sa.column(resource, sa.String), sa.column(principal, sa.Integer), sa.column("workspace", sa.String))
     removed = connection.execute(t.delete().where(t.c.workspace.isnot(None), t.c.workspace != DEFAULT_WORKSPACE)).rowcount or 0
+    # The ids are selected first and deleted by id: MySQL refuses a DELETE whose subquery reads the
+    # table being deleted from (error 1093).
     kept = sa.alias(t, "kept")
     duplicate = sa.exists().where(kept.c[resource] == t.c[resource], kept.c[principal] == t.c[principal], kept.c.workspace == DEFAULT_WORKSPACE)
-    removed += connection.execute(t.delete().where(t.c.workspace.is_(None), duplicate)).rowcount or 0
+    removed += _delete_ids(connection, t, sa.select(t.c.id).where(t.c.workspace.is_(None), duplicate))
     # Unassigned grants that duplicate one another (a rolling upgrade can write those): keep the
     # oldest of each, so the name-only constraint can be restored.
     oldest = sa.select(sa.func.min(t.c.id)).where(t.c.workspace.is_(None)).group_by(t.c[resource], t.c[principal])
-    removed += connection.execute(t.delete().where(t.c.workspace.is_(None), t.c.id.not_in(oldest.scalar_subquery()))).rowcount or 0
+    removed += _delete_ids(connection, t, sa.select(t.c.id).where(t.c.workspace.is_(None), t.c.id.not_in(oldest.scalar_subquery())))
     return removed
+
+
+def _delete_ids(connection, t, ids_query, batch: int = 500) -> int:
+    """Delete the rows whose ids ``ids_query`` selects, in batches. Returns how many were deleted."""
+    ids = list(connection.execute(ids_query).scalars())
+    for start in range(0, len(ids), batch):
+        connection.execute(t.delete().where(t.c.id.in_(ids[start : start + batch])))
+    return len(ids)
 
 
 def downgrade() -> None:

@@ -137,7 +137,7 @@ jobs:
   # credentials below are throwaway values for a container local to this runner.
   #
   # The phase0 migration broke on MySQL 8 (#494): ``groups`` is reserved there, and MySQL's
-  # non-transactional DDL left the revision half-applied. Its upgrade-path tests run against a
+  # non-transactional DDL left the revision half-applied. Every migration test runs against a
   # real MySQL here, in one job of their own rather than a container on every Python shard.
   mysql-migrations:
     name: Migrations (MySQL)

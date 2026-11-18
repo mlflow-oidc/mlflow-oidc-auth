@@ -6,8 +6,8 @@ T-SQL has no boolean literal keywords. The migration now builds the UPDATE/DELET
 SQLAlchemy Core (``sa.table`` + ``.update()``/``.delete()``) so each dialect renders the bound
 value the way it expects.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixture as the Phase 0 migration tests. A separate, connection-free test
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixture as the Phase 0 migration tests. A separate, connection-free test
 below compiles the migration's statements for the ``mssql`` dialect to catch a regression back to
 a bare ``TRUE``/``FALSE`` literal without needing a live SQL Server.
 """

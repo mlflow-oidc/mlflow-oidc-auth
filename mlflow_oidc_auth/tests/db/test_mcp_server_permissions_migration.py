@@ -1,7 +1,7 @@
 """MCP server permissions migration: two workspace-scoped grant tables, and a downgrade that drops them.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixtures as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixtures as the Phase 0 migration tests.
 """
 
 import pytest
@@ -16,6 +16,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     _upgrade,
     db_uri,
     engine,
+    sql,
 )
 
 PREVIOUS_REVISION = "c9d0e1f2a3b4"
@@ -33,13 +34,13 @@ def _seed_principals(engine) -> None:
             text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) VALUES ('u', 'u', :f, :f, :t, 'manual')"),
             {"f": False, "t": True},
         )
-        conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('g', 'manual')"))
+        conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('g', 'manual')"))
 
 
 def _grant(conn, table: str, name: str, workspace, permission: str = "READ") -> None:
     principal, source, _ = TABLES[table]
     conn.execute(
-        text(f"INSERT INTO {table} (name, {principal}, permission, workspace) SELECT :n, id, :p, :w FROM {source}"),
+        text(f"INSERT INTO {table} (name, {principal}, permission, workspace) SELECT :n, id, :p, :w FROM {conn.dialect.identifier_preparer.quote(source)}"),
         {"n": name, "p": permission, "w": workspace},
     )
 
@@ -95,7 +96,7 @@ class TestUpgrade:
         _seed_principals(engine)
         with Session(engine) as session, session.begin():
             user_id = session.execute(text("SELECT id FROM users")).scalar_one()
-            group_id = session.execute(text("SELECT id FROM groups")).scalar_one()
+            group_id = session.execute(sql(session, "SELECT id FROM {groups}")).scalar_one()
             session.add(SqlMCPServerPermission(name="com.example/weather", user_id=user_id, permission="MANAGE", workspace="team-a"))
             session.add(SqlMCPServerGroupPermission(name="com.example/weather", group_id=group_id, permission="READ", workspace="team-a"))
         with engine.connect() as conn:
