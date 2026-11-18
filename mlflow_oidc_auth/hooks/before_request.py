@@ -206,6 +206,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_logged_model,
     validate_can_read_registered_model,
     validate_can_read_run,
+    validate_can_set_experiment_tag,
     validate_can_update_experiment,
     validate_can_update_experiment_artifact_proxy,
     validate_can_update_logged_model,
@@ -272,6 +273,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_issues,
     validate_can_invoke_issue_detection,
     validate_can_invoke_genai_evaluate,
+    validate_can_sync_issue_detection_schedule,
     validate_can_read_label_schema,
     validate_can_manage_label_schema,
     validate_can_create_review_queue,
@@ -364,7 +366,7 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteExperiment: validate_can_delete_experiment,
     RestoreExperiment: validate_can_delete_experiment,
     UpdateExperiment: validate_can_update_experiment,
-    SetExperimentTag: validate_can_update_experiment,
+    SetExperimentTag: validate_can_set_experiment_tag,
     DeleteExperimentTag: validate_can_update_experiment,
     # Routes for runs
     CreateRun: validate_can_update_experiment,
@@ -716,6 +718,9 @@ for _suffix, _method, _validator in (
     # are read, so UPDATE on the experiment and READ on every trace's experiment.
     ("mlflow/issues/invoke", "POST", validate_can_invoke_issue_detection),
     ("mlflow/genai/evaluate/invoke", "POST", validate_can_invoke_genai_evaluate),
+    # Recomputes an experiment's issue-detection schedule state and writes it back as experiment
+    # tags (MLflow 3.18): UPDATE on the experiment.
+    ("mlflow/issues/schedule/state", "POST", validate_can_sync_issue_detection_schedule),
     # Reading and cancelling those jobs goes through the job's experiment.
     ("mlflow/jobs/<job_id>", "GET", validate_can_read_job),
     ("mlflow/jobs/cancel/<job_id>", "PATCH", validate_can_cancel_job),

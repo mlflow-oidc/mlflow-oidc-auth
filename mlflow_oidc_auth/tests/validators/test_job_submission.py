@@ -213,6 +213,14 @@ def test_unclassifiable_submissions_are_denied(payload):
     assert not can_submit_job(payload, OUTSIDER)
 
 
+def test_scheduled_issue_detection_is_admin_only():
+    """MLflow's scheduler submits it; a non-admin cannot, whatever they hold on the experiment."""
+    payload = _job("scheduled_issue_detection", experiment_id=OWN, window_lower_bound_ms=0, window_upper_bound_ms=1, categories=["c"])
+
+    assert not can_submit_job(payload, OUTSIDER)
+    assert not can_submit_job(payload, EDITOR)
+
+
 def test_every_job_mlflow_allows_is_classified():
     from mlflow.server.jobs import _ALLOWED_JOB_NAME_LIST
 
@@ -228,7 +236,13 @@ _ADDED_AFTER_FLOOR = {
     # MLflow 3.16.1
     "invoke_scorer": {"scorer_version"},
     "invoke_genai_evaluate": {"experiment_id", "scorer_versions"},
+    # MLflow 3.18.0
+    "invoke_issue_detection": {"instructions"},
 }
+
+#: Job functions an MLflow release after the floor added. On an MLflow that predates one there is
+#: no function to compare with; the validator still refuses it there, as an unknown job.
+_JOBS_ADDED_AFTER_FLOOR = {"scheduled_issue_detection"}  # MLflow 3.18.0
 
 
 def test_declared_params_match_the_job_function_signatures():
@@ -240,7 +254,11 @@ def test_declared_params_match_the_job_function_signatures():
 
     from mlflow_oidc_auth.validators.job_submission import _JOB_CHECKS
 
+    from mlflow.server.jobs import _ALLOWED_JOB_NAME_LIST
+
     for job_name, (declared, _check) in _JOB_CHECKS.items():
+        if job_name in _JOBS_ADDED_AFTER_FLOOR and job_name not in _ALLOWED_JOB_NAME_LIST:
+            continue
         fn = _load_function(get_job_fn_fullname(job_name))
         accepted = set(inspect.signature(fn).parameters)
         assert accepted <= declared, (job_name, accepted - declared)

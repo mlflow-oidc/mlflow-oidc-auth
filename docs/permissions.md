@@ -348,6 +348,8 @@ and as the reviewer of an item.
 | Issues (`3.0/mlflow/issues…`) | `GET issues/<id>`, `issues/search` | READ on the experiment (search must name one) |
 | | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
 | `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
+| `issues/schedule/state` (MLflow 3.18+) | recompute an experiment's issue-detection schedule state and write it back | EDIT on `experiment_id`; naming none is admin only |
+| `experiments/set-experiment-tag`, `experiments/create` with the `mlflow.issueDetection.schedule` tag (MLflow 3.18+) | save a recurring issue-detection schedule, which MLflow's scheduler runs on the model it names | as for any experiment tag or creation, plus USE on the gateway endpoint (`model.endpointName`, or `model.provider` `gateway`) or stored secret (`model.secretId`) the schedule names, as for `issues/invoke`; a value that is not a JSON object is refused |
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
 | | `create`, `update`, `delete` | MANAGE on the experiment |
 | | a schema with no experiment | readable by any authenticated user; writable by admins only |
@@ -440,12 +442,22 @@ run or dataset that cannot be resolved is refused.
 |---|---|
 | `invoke_scorer` | EDIT on `experiment_id` and on the experiment of every trace in `trace_ids`; `username`, if given, must be the caller |
 | `run_online_trace_scorer`, `run_online_session_scorer` | EDIT on `experiment_id` and on every scorer named in `online_scorers` |
-| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is a gateway model (`gateway:/<endpoint>`; leading slashes in the name are ignored, as MLflow ignores them); a malformed `model` is refused |
+| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is a gateway model (`gateway:/<endpoint>`; leading slashes in the name are ignored, as MLflow ignores them); a malformed `model` is refused. `instructions` (MLflow 3.18+) is free text and names no resource |
+| `scheduled_issue_detection` (MLflow 3.18+) | admin only: MLflow's scheduler submits it from an experiment's stored detection schedule |
 | `invoke_genai_evaluate` | EDIT on the experiment of `run_id`, of every trace in `trace_ids`, and on `experiment_id` if given; `username`, if given, must be the caller |
 | `optimize_prompts` | EDIT on `experiment_id` and on the experiment of `run_id`; EDIT on the prompt in `prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`), which the job registers a new version of; READ on every experiment linked to `dataset_id`, if given |
 | any other job function | admin only |
 
 A parameter the job function does not declare, or a value of the wrong type, is refused.
+
+**Recurring issue detection (MLflow 3.18+).** A schedule saved in the `mlflow.issueDetection.schedule`
+experiment tag is checked when it is written: USE on the endpoint or secret it names. MLflow's
+scheduler then runs it on the server with no user identity, so revoking that USE afterwards does
+not stop a schedule already saved; delete the tag (`DeleteExperimentTag`, EDIT on the experiment)
+to stop it. A schedule that names no endpoint or secret runs on the server's default detection
+model or the provider credentials in the server's environment, as `issues/invoke` without one does.
+Rewriting a schedule (to pause it or change its cadence) needs USE on its model again; anyone with
+EDIT can delete it.
 
 The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
 experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).
