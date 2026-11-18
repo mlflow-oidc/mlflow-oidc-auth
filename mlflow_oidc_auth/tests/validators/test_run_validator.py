@@ -149,3 +149,60 @@ def test_validate_can_update_run_artifact_denies_when_run_uuid_is_absent() -> No
 
     with app.test_request_context("/", method="POST", json={"run_id": "MY-OWN-RUN"}):
         assert validate_can_update_run_artifact("bob") is False
+
+
+def _two_run_fixtures():
+    def run_for(run_id):
+        run = MagicMock()
+        run.info.experiment_id = {"OWN-RUN": "own-exp", "VICTIM-RUN": "victim-exp"}[run_id]
+        return run
+
+    def perm_for(experiment_id, username):
+        return SimpleNamespace(permission=get_permission("EDIT" if experiment_id == "own-exp" else "READ"))
+
+    return run_for, perm_for
+
+
+def test_validate_can_update_run_artifact_checks_run_id_next_to_run_uuid() -> None:
+    """MLflow 3.18's handler writes into ``run_id or run_uuid``: an editable run under
+    one name must not authorize another run under the other, in either order."""
+
+    app = Flask(__name__)
+    run_for, perm_for = _two_run_fixtures()
+    queries = (
+        "run_uuid=OWN-RUN&run_id=VICTIM-RUN",
+        "run_id=VICTIM-RUN&run_uuid=OWN-RUN",
+        "run_id=OWN-RUN&run_uuid=VICTIM-RUN",
+        "run_uuid=OWN-RUN&run_id=OWN-RUN&run_id=VICTIM-RUN",
+        "run_id=VICTIM-RUN",
+    )
+    for query in queries:
+        with (
+            app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"artifact bytes"),
+            patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
+            patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
+        ):
+            mock_tracking_store.return_value.get_run.side_effect = run_for
+            assert validate_can_update_run_artifact("bob") is False, query
+
+
+def test_validate_can_update_run_artifact_accepts_run_id_alone() -> None:
+    """MLflow 3.18 clients may name the run as ``run_id`` only; the owner's upload passes."""
+
+    app = Flask(__name__)
+    run_for, perm_for = _two_run_fixtures()
+    for query in ("run_id=OWN-RUN", "run_id=OWN-RUN&run_uuid=OWN-RUN", "run_id=&run_uuid=OWN-RUN"):
+        with (
+            app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"artifact bytes"),
+            patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
+            patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
+        ):
+            mock_tracking_store.return_value.get_run.side_effect = run_for
+            assert validate_can_update_run_artifact("bob") is True, query
+            assert {c.args[0] for c in mock_tracking_store.return_value.get_run.call_args_list} == {"OWN-RUN"}
+
+
+def test_validate_can_update_run_artifact_denies_when_every_run_name_is_empty() -> None:
+    app = Flask(__name__)
+    with app.test_request_context("/?run_id=&run_uuid=&path=f.txt", method="POST", data=b"x"):
+        assert validate_can_update_run_artifact("bob") is False

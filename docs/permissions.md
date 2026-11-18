@@ -256,7 +256,7 @@ Artifact routes outside the proxy:
 | Route | Requires |
 |-------|----------|
 | `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
-| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on every run the query string names under `run_id` or `run_uuid` |
 | `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
 | `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
 | `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`); a request naming neither is refused |

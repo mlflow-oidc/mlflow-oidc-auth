@@ -86,30 +86,32 @@ def validate_can_read_run_artifact(username: str) -> bool:
 def validate_can_update_run_artifact(username: str) -> bool:
     """Checks UPDATE permission on run artifacts (POST /mlflow/upload-artifact).
 
-    Reads ``run_uuid`` from the QUERY STRING, because that is the only place MLflow's
-    ``upload_artifact_handler`` looks::
+    Reads ``run_id`` and ``run_uuid`` from the QUERY STRING, because that is the only
+    place MLflow's ``upload_artifact_handler`` looks. Which one it writes into depends on
+    the MLflow version::
 
-        args = request.args
-        run_uuid = args.get("run_uuid")
+        run_uuid = args.get("run_uuid")                      # MLflow <= 3.17
+        run_id = args.get("run_id") or args.get("run_uuid")  # MLflow >= 3.18
 
-    The shared ``get_request_param`` helper reads the BODY on a POST, so the plugin
+    Every value of both names, repetitions included, must be updatable (the union rule),
+    so the run MLflow writes into is checked whichever version is installed and whichever
+    of the two names it prefers.
+
+    The shared ``get_request_param`` helper reads the BODY on a POST, so the plugin once
     authorized the run named in the body while MLflow wrote the artifact into the run
-    named in the query string — the inverse of the #285 divergence, and a cross-tenant
-    artifact write (issue #288). This route is the only one bound to this validator, so
-    mirroring its handler exactly is safe.
+    named in the query string (issue #288). This route is the only one bound to this
+    validator, so mirroring its handler is safe.
 
-    A request with no ``run_uuid`` query parameter is refused rather than passed along:
+    A request naming no run in the query string is refused rather than passed along:
     MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
-    Every repetition of ``run_uuid`` in the query string must be updatable too (the
-    union rule). The BODY is deliberately not consulted: on this route it is the
-    artifact itself, so reading it as JSON would refuse an owner uploading a JSON file
-    that happens to contain a ``run_id``, and reading it as form data would consume a
-    multipart stream before the handler sees it.
+    The BODY is deliberately not consulted: on this route it is the artifact itself, so
+    reading it as JSON would refuse an owner uploading a JSON file that happens to
+    contain a ``run_id``, and reading it as form data would consume a multipart stream
+    before the handler sees it.
     """
-    run_id = request.args.get("run_uuid")
-    if not run_id:
+    run_ids = list(dict.fromkeys(r for name in ("run_id", "run_uuid") for r in request.args.getlist(name) if r))
+    if not run_ids:
         return False
-    run_ids = list(dict.fromkeys([run_id, *(r for r in request.args.getlist("run_uuid") if r)]))
     return all(_permission_for_run(r, username).can_update for r in run_ids)
 
 
