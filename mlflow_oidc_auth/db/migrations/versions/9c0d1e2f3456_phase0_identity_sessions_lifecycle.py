@@ -25,6 +25,8 @@ Two backfill choices are load-bearing and are asserted by tests:
 import sqlalchemy as sa
 from alembic import op
 
+from mlflow_oidc_auth.db.migrations.resumable import ResumableSchema
+
 # revision identifiers, used by Alembic.
 revision = "9c0d1e2f3456"
 down_revision = "8a9b0c1de234"
@@ -39,9 +41,23 @@ LEGACY_PROVIDER_ID = "default"
 MANUAL = "manual"
 
 
+# Tables whose timestamps the backfill fills. Lightweight table objects rather than raw SQL so
+# each backend quotes the names: ``groups`` is a reserved word in MySQL 8, where an unquoted
+# ``UPDATE groups ...`` is a syntax error (#494).
+_TIMESTAMPED_TABLES = (
+    sa.table("users", sa.column("created_at"), sa.column("updated_at")),
+    sa.table("groups", sa.column("created_at"), sa.column("updated_at")),
+)
+
+
 def upgrade() -> None:
+    # Resumable: a run interrupted on MySQL or SQLite, where the DDL below is not rolled back,
+    # leaves its objects behind, and the next start replays this revision (#494).
+    schema = ResumableSchema(revision)
+    create_table, create_index, add_column = schema.create_table, schema.create_index, schema.add_column
+
     # --- identity (#309) -------------------------------------------------------------------
-    op.create_table(
+    create_table(
         "user_identities",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("provider_id", sa.String(length=255), nullable=False),
@@ -53,10 +69,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("provider_id", "subject", name="uq_user_identities_provider_subject"),
     )
-    op.create_index("ix_user_identities_user_id", "user_identities", ["user_id"])
+    create_index("ix_user_identities_user_id", "user_identities", ["user_id"])
 
     # --- sessions (#310) -------------------------------------------------------------------
-    op.create_table(
+    create_table(
         "auth_sessions",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         # Opaque 256-bit identifier. Sized for either encoding a caller may choose (64 hex
@@ -75,13 +91,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_auth_sessions_user_id"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_auth_sessions_session_id", "auth_sessions", ["session_id"], unique=True)
-    op.create_index("ix_auth_sessions_user_id", "auth_sessions", ["user_id"])
+    create_index("ix_auth_sessions_session_id", "auth_sessions", ["session_id"], unique=True)
+    create_index("ix_auth_sessions_user_id", "auth_sessions", ["user_id"])
     # Revocation sweeps and expiry sweeps both scan by expiry.
-    op.create_index("ix_auth_sessions_expires_at", "auth_sessions", ["expires_at"])
+    create_index("ix_auth_sessions_expires_at", "auth_sessions", ["expires_at"])
 
     # --- in-flight authorization state (#310) ----------------------------------------------
-    op.create_table(
+    create_table(
         "auth_state",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("state", sa.String(length=255), nullable=False),
@@ -93,75 +109,77 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_auth_state_state", "auth_state", ["state"], unique=True)
+    create_index("ix_auth_state_state", "auth_state", ["state"], unique=True)
     # These rows are short-lived and swept in bulk.
-    op.create_index("ix_auth_state_expires_at", "auth_state", ["expires_at"])
+    create_index("ix_auth_state_expires_at", "auth_state", ["expires_at"])
 
     # --- lifecycle columns (#311) ----------------------------------------------------------
     # server_default populates existing rows in the same statement, so there is no window in
     # which a row exists with no value. active is NOT NULL/true so nobody is denied later.
-    op.add_column("users", sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()))
-    op.add_column("users", sa.Column("managed_by", sa.String(length=255), nullable=False, server_default=MANUAL))
-    op.add_column("users", sa.Column("external_id", sa.String(length=255), nullable=True))
+    add_column("users", sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()))
+    add_column("users", sa.Column("managed_by", sa.String(length=255), nullable=False, server_default=MANUAL))
+    add_column("users", sa.Column("external_id", sa.String(length=255), nullable=True))
     # Timestamps are added nullable and filled by an explicit UPDATE below. SQLite refuses
     # ADD COLUMN with a non-constant default (CURRENT_TIMESTAMP) — but only once the table has
     # rows, accepting it on an empty one. Declaring them NOT NULL DEFAULT now() would therefore
     # pass every fresh-install test and fail on exactly the deployments that have users.
-    op.add_column("users", sa.Column("created_at", sa.DateTime(), nullable=True))
-    op.add_column("users", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    add_column("users", sa.Column("created_at", sa.DateTime(), nullable=True))
+    add_column("users", sa.Column("updated_at", sa.DateTime(), nullable=True))
     # Unique *index* rather than a constraint: both backends allow repeated NULLs in a unique
     # index, which is what "unique when present" means here.
-    op.create_index("ix_users_external_id", "users", ["external_id"], unique=True)
+    create_index("ix_users_external_id", "users", ["external_id"], unique=True)
 
-    op.add_column("user_groups", sa.Column("managed_by", sa.String(length=255), nullable=False, server_default=MANUAL))
+    add_column("user_groups", sa.Column("managed_by", sa.String(length=255), nullable=False, server_default=MANUAL))
 
-    op.add_column("groups", sa.Column("external_id", sa.String(length=255), nullable=True))
-    op.add_column("groups", sa.Column("created_at", sa.DateTime(), nullable=True))
-    op.add_column("groups", sa.Column("updated_at", sa.DateTime(), nullable=True))
-    op.create_index("ix_groups_external_id", "groups", ["external_id"], unique=True)
+    add_column("groups", sa.Column("external_id", sa.String(length=255), nullable=True))
+    add_column("groups", sa.Column("created_at", sa.DateTime(), nullable=True))
+    add_column("groups", sa.Column("updated_at", sa.DateTime(), nullable=True))
+    create_index("ix_groups_external_id", "groups", ["external_id"], unique=True)
 
     # --- backfill --------------------------------------------------------------------------
     # Existing rows predate these columns, so their creation time is unknowable; the migration
-    # time is the honest approximation and is recorded rather than left NULL.
-    # Built with SQLAlchemy rather than a raw string so the table name is quoted for the
-    # backend: ``groups`` is a reserved word in MySQL 8, where ``UPDATE groups ...`` is a
-    # syntax error.
-    for table in ("users", "groups"):
-        target = sa.table(table, sa.column("created_at"), sa.column("updated_at"))
-        op.execute(target.update().values(created_at=sa.func.current_timestamp(), updated_at=sa.func.current_timestamp()))
+    # time is the honest approximation and is recorded rather than left NULL. Each column is
+    # filled only where it is still NULL, so a resumed run leaves alone what an earlier attempt
+    # already wrote, and finishes what it did not.
+    for target in _TIMESTAMPED_TABLES:
+        for column in (target.c.created_at, target.c.updated_at):
+            op.execute(target.update().where(column.is_(None)).values({column.name: sa.func.current_timestamp()}))
 
     # Every pre-existing user gets an identity so that identity resolution (#309) never finds a
     # stranded account. Their subject is the username, which is what today's lookups key on.
-    # id is omitted so the backend assigns it, and created_at falls to its server default.
+    # id is omitted so the backend assigns it, and created_at falls to its server default. Users
+    # that already have a legacy identity are skipped, so a resumed run cannot hit the
+    # (provider_id, subject) unique constraint.
     op.execute(sa.text("""
             INSERT INTO user_identities (provider_id, subject, user_id)
             SELECT :provider_id, users.username, users.id FROM users
+            WHERE NOT EXISTS (
+                SELECT 1 FROM user_identities
+                WHERE user_identities.provider_id = :provider_id AND user_identities.subject = users.username
+            )
             """).bindparams(provider_id=LEGACY_PROVIDER_ID))
 
 
 def downgrade() -> None:
-    op.drop_index("ix_groups_external_id", table_name="groups")
-    op.drop_column("groups", "updated_at")
-    op.drop_column("groups", "created_at")
-    op.drop_column("groups", "external_id")
+    # Resumable for the same reason as upgrade(): on MySQL and SQLite an interrupted downgrade
+    # keeps what it already dropped. The indexes of the tables dropped below go with their tables;
+    # dropping them first fails on MySQL for an index a foreign key relies on.
+    schema = ResumableSchema(revision)
 
-    op.drop_column("user_groups", "managed_by")
+    schema.drop_index("ix_groups_external_id", "groups")
+    schema.drop_column("groups", "updated_at")
+    schema.drop_column("groups", "created_at")
+    schema.drop_column("groups", "external_id")
 
-    op.drop_index("ix_users_external_id", table_name="users")
-    op.drop_column("users", "updated_at")
-    op.drop_column("users", "created_at")
-    op.drop_column("users", "external_id")
-    op.drop_column("users", "managed_by")
-    op.drop_column("users", "active")
+    schema.drop_column("user_groups", "managed_by")
 
-    op.drop_index("ix_auth_state_expires_at", table_name="auth_state")
-    op.drop_index("ix_auth_state_state", table_name="auth_state")
-    op.drop_table("auth_state")
+    schema.drop_index("ix_users_external_id", "users")
+    schema.drop_column("users", "updated_at")
+    schema.drop_column("users", "created_at")
+    schema.drop_column("users", "external_id")
+    schema.drop_column("users", "managed_by")
+    schema.drop_column("users", "active")
 
-    op.drop_index("ix_auth_sessions_expires_at", table_name="auth_sessions")
-    op.drop_index("ix_auth_sessions_user_id", table_name="auth_sessions")
-    op.drop_index("ix_auth_sessions_session_id", table_name="auth_sessions")
-    op.drop_table("auth_sessions")
-
-    op.drop_index("ix_user_identities_user_id", table_name="user_identities")
-    op.drop_table("user_identities")
+    schema.drop_table("auth_state")
+    schema.drop_table("auth_sessions")
+    schema.drop_table("user_identities")

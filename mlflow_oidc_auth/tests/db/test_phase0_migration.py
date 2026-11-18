@@ -4,12 +4,17 @@ The migration itself is mechanical; what these tests defend are the two backfill
 later issues depend on, and the head invariant that motivated putting all of Phase 0 in one
 revision.
 
-**Postgres.** Every test here runs against SQLite, and against PostgreSQL too when
+**Postgres and MySQL.** Every test here runs against SQLite, and against PostgreSQL too when
 ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped otherwise, so the default suite stays
-dependency-free). CI should set it — a migration verified on one backend is verified on one
-backend. Run locally with, for example::
+dependency-free). CI sets it — a migration verified on one backend is verified on one backend.
+The upgrade-path tests at the end also run against MySQL when ``MLFLOW_OIDC_TEST_MYSQL_URI`` is
+set, because this revision broke there (#494): ``groups`` is a reserved word in MySQL 8, and
+MySQL commits each DDL statement on its own, so a failure part-way left the revision half-applied.
+
+Run locally with, for example::
 
     MLFLOW_OIDC_TEST_POSTGRES_URI=postgresql+psycopg2://user@127.0.0.1:5432/test \\
+    MLFLOW_OIDC_TEST_MYSQL_URI=mysql+pymysql://user:password@127.0.0.1:3306/test \\
         pytest mlflow_oidc_auth/tests/db/test_phase0_migration.py
 """
 
@@ -17,9 +22,11 @@ import io
 import os
 
 import pytest
+from alembic import op
 from alembic.command import downgrade, upgrade
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.sql.dml import Update
 
 from mlflow_oidc_auth.db.utils import _get_alembic_config
 
@@ -27,6 +34,7 @@ PREVIOUS_REVISION = "8a9b0c1de234"
 PHASE0_REVISION = "9c0d1e2f3456"
 
 POSTGRES_URI = os.environ.get("MLFLOW_OIDC_TEST_POSTGRES_URI")
+MYSQL_URI = os.environ.get("MLFLOW_OIDC_TEST_MYSQL_URI")
 
 
 def _sqlite_uri(tmp_path) -> str:
@@ -35,7 +43,11 @@ def _sqlite_uri(tmp_path) -> str:
 
 @pytest.fixture(params=["sqlite", "postgres"])
 def db_uri(request, tmp_path):
-    """A database URI per backend. Postgres cases skip unless a server is configured."""
+    """A database URI per backend. Postgres cases skip unless a server is configured.
+
+    Shared by the other migration test modules. MySQL is not in it: only the upgrade path of this
+    revision is verified there (``upgrade_engine`` below), not every revision's downgrade.
+    """
     if request.param == "sqlite":
         return _sqlite_uri(tmp_path)
     if not POSTGRES_URI:
@@ -43,16 +55,47 @@ def db_uri(request, tmp_path):
     return POSTGRES_URI
 
 
-@pytest.fixture
-def engine(db_uri):
+def _clean_engine(db_uri):
+    """An engine on an emptied database. Refuses any database whose name does not mark it as a test one."""
     eng = create_engine(db_uri)
+    if eng.dialect.name != "sqlite" and "test" not in (eng.url.database or "").lower():
+        eng.dispose()
+        pytest.fail(f"refusing to empty database {eng.url.database!r}: these tests drop everything in it; use a database named for tests")
     if eng.dialect.name == "postgresql":
         # Start from a clean slate: the migration chain owns the public schema for this run.
         with eng.begin() as conn:
             conn.execute(text("DROP SCHEMA public CASCADE"))
             conn.execute(text("CREATE SCHEMA public"))
+    elif eng.dialect.name == "mysql":
+        # Same clean slate: the test database is recreated, so nothing survives between tests.
+        database = eng.url.database
+        with eng.begin() as conn:
+            conn.execute(text(f"DROP DATABASE IF EXISTS `{database}`"))
+            conn.execute(text(f"CREATE DATABASE `{database}`"))
+        eng.dispose()
     yield eng
     eng.dispose()
+
+
+@pytest.fixture
+def engine(db_uri):
+    yield from _clean_engine(db_uri)
+
+
+@pytest.fixture(params=["sqlite", "postgres", "mysql"])
+def upgrade_engine(request, tmp_path):
+    """An engine per backend, MySQL included, for the upgrade-path tests of this revision (#494)."""
+    if request.param == "mysql":
+        if not MYSQL_URI:
+            pytest.skip("MLFLOW_OIDC_TEST_MYSQL_URI is not set")
+        uri = MYSQL_URI
+    elif request.param == "postgres":
+        if not POSTGRES_URI:
+            pytest.skip("MLFLOW_OIDC_TEST_POSTGRES_URI is not set")
+        uri = POSTGRES_URI
+    else:
+        uri = _sqlite_uri(tmp_path)
+    yield from _clean_engine(uri)
 
 
 def _alembic_config(engine):
@@ -85,17 +128,19 @@ def _seed_legacy_data(engine) -> None:
     """Insert users, groups and memberships as they exist at the previous revision.
 
     Raw SQL on purpose: the ORM models already carry the Phase 0 columns, so using them here
-    would not reproduce a pre-migration database.
+    would not reproduce a pre-migration database. ``groups`` is quoted for the backend, since it
+    is a reserved word in MySQL.
     """
+    groups = engine.dialect.identifier_preparer.quote("groups")
     with engine.begin() as conn:
         for i, name in enumerate(["alice@example.com", "bob@example.com", "svc@example.com"], start=1):
             conn.execute(
                 text("INSERT INTO users (username, display_name, password_hash, is_admin, is_service_account) " "VALUES (:u, :d, :h, :a, :s)"),
                 {"u": name, "d": name, "h": "not-a-real-hash", "a": i == 1, "s": i == 3},
             )
-        conn.execute(text("INSERT INTO groups (group_name) VALUES ('legacy-team')"))
+        conn.execute(text(f"INSERT INTO {groups} (group_name) VALUES ('legacy-team')"))
         conn.execute(
-            text("INSERT INTO user_groups (user_id, group_id) " "SELECT users.id, groups.id FROM users, groups WHERE groups.group_name = 'legacy-team'")
+            text(f"INSERT INTO user_groups (user_id, group_id) SELECT users.id, {groups}.id FROM users, {groups} WHERE {groups}.group_name = 'legacy-team'")
         )
 
 
@@ -339,3 +384,161 @@ def test_backfill_quotes_the_groups_table_for_mysql():
 
     assert "UPDATE `groups` SET" in sql
     assert "UPDATE groups " not in sql
+
+
+def _version_table() -> str:
+    from mlflow_oidc_auth.config import config as app_config
+
+    return app_config.OIDC_ALEMBIC_VERSION_TABLE
+
+
+class TestResumeAfterPartialRun:
+    """A run that failed part-way must be able to finish on the next start (#494).
+
+    MySQL commits every DDL statement on its own, and Alembic's SQLite runs DDL outside the
+    migration's transaction too, so on both a failed run leaves this revision's tables and columns
+    in place while the version table still names the previous revision: the failure tests
+    exercise the resume path there. PostgreSQL rolls the whole revision back, so on it they check
+    that the resumable operations change nothing about a clean retry.
+    """
+
+    @staticmethod
+    def _fail_on(monkeypatch, name: str, predicate):
+        """Make ``op.<name>`` raise for the first call ``predicate`` accepts."""
+        real = getattr(op, name)
+
+        def wrapper(*args, **kwargs):
+            if predicate(*args, **kwargs):
+                raise RuntimeError("simulated failure")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(op, name, wrapper)
+
+    def test_upgrade_over_existing_data(self, upgrade_engine):
+        """The #494 path itself: an existing database with users and groups, upgraded to head."""
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        _seed_legacy_data(engine)
+
+        _upgrade(engine, "head")
+
+        groups = engine.dialect.identifier_preparer.quote("groups")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM user_identities WHERE provider_id = 'default'")).scalar() == 3
+            assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
+            assert conn.execute(text(f"SELECT count(*) FROM {groups} WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
+
+    def test_upgrade_finishes_after_a_failed_backfill(self, upgrade_engine, monkeypatch):
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        _seed_legacy_data(engine)
+        with monkeypatch.context() as patched:
+            # The first timestamp UPDATE, after every DDL statement has already run.
+            self._fail_on(patched, "execute", lambda statement, *a, **k: isinstance(statement, Update))
+            with pytest.raises(RuntimeError, match="simulated failure"):
+                _upgrade(engine, "head")
+
+        _upgrade(engine, "head")
+
+        groups = engine.dialect.identifier_preparer.quote("groups")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM user_identities WHERE provider_id = 'default'")).scalar() == 3
+            assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
+            assert conn.execute(text(f"SELECT count(*) FROM {groups} WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
+
+    def test_replay_finishes_a_partial_backfill_without_duplicating_it(self, upgrade_engine):
+        """The worst case of a partial run: every object exists and part of the backfill landed."""
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        _seed_legacy_data(engine)
+        _upgrade(engine, PHASE0_REVISION)
+        with engine.begin() as conn:
+            # Back to the state a crash part-way through the backfill would leave.
+            conn.execute(text("DELETE FROM user_identities WHERE subject <> 'alice@example.com'"))
+            conn.execute(text("UPDATE users SET created_at = NULL, updated_at = NULL WHERE username = 'bob@example.com'"))
+            conn.execute(text("UPDATE users SET updated_at = NULL WHERE username = 'svc@example.com'"))
+            conn.execute(text(f"UPDATE {_version_table()} SET version_num = :rev"), {"rev": PREVIOUS_REVISION})
+            alice_created = conn.execute(text("SELECT created_at FROM users WHERE username = 'alice@example.com'")).scalar()
+
+        _upgrade(engine, "head")
+
+        with engine.connect() as conn:
+            subjects = sorted(r[0] for r in conn.execute(text("SELECT subject FROM user_identities WHERE provider_id = 'default'")))
+            assert subjects == ["alice@example.com", "bob@example.com", "svc@example.com"]
+            assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
+            assert conn.execute(text("SELECT created_at FROM users WHERE username = 'alice@example.com'")).scalar() == alice_created
+
+    def test_replay_refuses_an_index_of_a_different_shape(self, upgrade_engine):
+        """An existing object is trusted by name only when its shape matches: never record a wrong schema as applied."""
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        with engine.begin() as conn:
+            # A non-unique index under the name this revision gives its unique one.
+            conn.execute(text("ALTER TABLE users ADD COLUMN external_id VARCHAR(255)"))
+            conn.execute(text("CREATE INDEX ix_users_external_id ON users (external_id)"))
+
+        with pytest.raises(RuntimeError, match="ix_users_external_id"):
+            _upgrade(engine, PHASE0_REVISION)
+
+        with engine.connect() as conn:
+            assert conn.execute(text(f"SELECT version_num FROM {_version_table()}")).scalar() == PREVIOUS_REVISION
+
+    @pytest.mark.parametrize(
+        "repair",
+        [
+            # user_identities without its (provider_id, subject) uniqueness: two users could share an identity.
+            "CREATE TABLE user_identities (id INTEGER PRIMARY KEY, provider_id VARCHAR(255) NOT NULL, subject VARCHAR(255) NOT NULL, "
+            "user_id INTEGER NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, last_login_at TIMESTAMP NULL)",
+            # users.active nullable: a NULL would be read as neither active nor inactive.
+            "ALTER TABLE users ADD COLUMN active BOOLEAN NULL",
+        ],
+        ids=["identity-without-unique-subject", "nullable-active"],
+    )
+    def test_replay_refuses_a_hand_repaired_schema_that_is_weaker(self, upgrade_engine, repair):
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        with engine.begin() as conn:
+            conn.execute(text(repair))
+
+        with pytest.raises(RuntimeError, match="refusing to record this revision as applied"):
+            _upgrade(engine, PHASE0_REVISION)
+
+        with engine.connect() as conn:
+            assert conn.execute(text(f"SELECT version_num FROM {_version_table()}")).scalar() == PREVIOUS_REVISION
+
+    def test_phase0_round_trip(self, upgrade_engine):
+        """This revision's own downgrade, on every backend (#494 made MySQL one of them)."""
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        _seed_legacy_data(engine)
+        _upgrade(engine, PHASE0_REVISION)
+
+        _downgrade(engine, PREVIOUS_REVISION)
+
+        inspector = inspect(engine)
+        assert not ({"user_identities", "auth_sessions", "auth_state"} & set(inspector.get_table_names()))
+        assert not ({"active", "managed_by", "external_id", "created_at", "updated_at"} & {c["name"] for c in inspector.get_columns("users")})
+
+        _upgrade(engine, PHASE0_REVISION)
+
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT count(*) FROM user_identities")).scalar() == 3
+
+    def test_downgrade_finishes_after_an_interrupted_run(self, upgrade_engine, monkeypatch):
+        engine = upgrade_engine
+        _upgrade(engine, PREVIOUS_REVISION)
+        _seed_legacy_data(engine)
+        _upgrade(engine, PHASE0_REVISION)
+        with monkeypatch.context() as patched:
+            # Part-way: the groups and user_groups columns are gone, the users ones not yet.
+            self._fail_on(patched, "drop_column", lambda table, column, *a, **k: table == "users")
+            with pytest.raises(RuntimeError, match="simulated failure"):
+                _downgrade(engine, PREVIOUS_REVISION)
+
+        _downgrade(engine, PREVIOUS_REVISION)
+
+        inspector = inspect(engine)
+        assert not ({"user_identities", "auth_sessions", "auth_state"} & set(inspector.get_table_names()))
+        assert "managed_by" not in {c["name"] for c in inspector.get_columns("user_groups")}
+        with engine.connect() as conn:
+            assert conn.execute(text(f"SELECT version_num FROM {_version_table()}")).scalar() == PREVIOUS_REVISION
