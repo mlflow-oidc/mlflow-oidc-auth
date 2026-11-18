@@ -139,39 +139,24 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddUserModalOpen(true)}
-              disabled={!scope.canChange || availableUsers.length === 0}
-              title={grantControlTitle(
-                scope,
-                availableUsers.length === 0
-                  ? "All users already have permissions"
-                  : "Add user permission",
-              )}
+              disabled={!scope.canChange}
+              title={grantControlTitle(scope, "Add user permission")}
             >
               + Add
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddAccountModalOpen(true)}
-              disabled={!scope.canChange || availableAccounts.length === 0}
-              title={grantControlTitle(
-                scope,
-                availableAccounts.length === 0
-                  ? "All service accounts already have permissions"
-                  : "Add service account permission",
-              )}
+              disabled={!scope.canChange}
+              title={grantControlTitle(scope, "Add service account permission")}
             >
               + Add Service Account
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddGroupModalOpen(true)}
-              disabled={!scope.canChange || availableGroups.length === 0}
-              title={grantControlTitle(
-                scope,
-                availableGroups.length === 0
-                  ? "All groups already have permissions"
-                  : "Add group permission",
-              )}
+              disabled={!scope.canChange}
+              title={grantControlTitle(scope, "Add group permission")}
             >
               + Add Group
             </Button>
@@ -219,6 +204,7 @@ export function EntityPermissionsManager({
           title={`Grant user permissions for ${resourceName}`}
           label="User"
           options={availableUsers}
+          allowCustomValue
           type={resourceType}
           isLoading={isSaving}
         />
@@ -235,6 +221,7 @@ export function EntityPermissionsManager({
           title={`Grant service account permissions for ${resourceName}`}
           label="Service account"
           options={availableAccounts}
+          allowCustomValue
           type={resourceType}
           isLoading={isSaving}
         />
@@ -255,6 +242,7 @@ export function EntityPermissionsManager({
           title={`Grant group permissions for ${resourceName}`}
           label="Group"
           options={availableGroups}
+          allowCustomValue
           type={resourceType}
           isLoading={isSaving}
         />
