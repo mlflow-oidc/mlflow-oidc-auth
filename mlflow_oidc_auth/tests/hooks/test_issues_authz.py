@@ -7,6 +7,7 @@ trace's experiment, and for issue detection USE on a named gateway secret or end
 Driven through the real hook and permission store (see ``authz_harness``).
 """
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -448,3 +449,20 @@ def test_the_required_credential_variables_follow_mlflows_provider_table():
         {"aws_access_key_id": "AWS_ACCESS_KEY_ID", "aws_secret_access_key": "AWS_SECRET_ACCESS_KEY", "aws_session_token": "AWS_SESSION_TOKEN"}
     ) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
     assert _required_credential_variables(None) == set()
+
+
+def test_reading_a_secret_first_keeps_mlflows_job_map_whole():
+    """The check must not be the first import of MLflow's job module: in a fresh process that
+    drops issue detection from MLflow's job-name map, and every detection job is then refused."""
+    import subprocess
+    import sys
+
+    script = (
+        "from mlflow_oidc_auth.validators._detection_schedule import secret_supplies_provider_credentials\n"
+        "secret_supplies_provider_credentials('openai', 'no-such-secret')\n"
+        "from mlflow.server.jobs.utils import get_job_fn_fullname\n"
+        "print(get_job_fn_fullname('invoke_issue_detection'))\n"
+    )
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, env={**os.environ, "MLFLOW_DISABLE_AGENT_HINT": "1"})
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip().endswith("invoke_issue_detection_job")

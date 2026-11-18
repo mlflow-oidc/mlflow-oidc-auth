@@ -69,6 +69,10 @@ def secret_supplies_provider_credentials(provider: object, secret_id: object) ->
     if not isinstance(provider, str) or not provider.strip() or not isinstance(secret_id, str) or not secret_id:
         return False
     try:
+        # mlflow.server.jobs.utils first: its post-import hook builds MLflow's job-name map by
+        # importing every job module, so importing the job module first registers it half-loaded
+        # and leaves issue detection out of the map for the life of the process.
+        import mlflow.server.jobs.utils  # noqa: F401
         from mlflow.genai.discovery.job import _fetch_provider_credentials
         from mlflow.server.handlers import _get_tracking_store
         from mlflow.utils.providers import _CORE_PROVIDER_ENV_VARS
