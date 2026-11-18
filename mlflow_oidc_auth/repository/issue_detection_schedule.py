@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
+from mlflow.exceptions import MlflowException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlIssueDetectionScheduleAuthor
@@ -60,32 +62,46 @@ class IssueDetectionScheduleRepository:
     def _row(self, session: Session, experiment_id: str) -> Optional[SqlIssueDetectionScheduleAuthor]:
         return session.query(SqlIssueDetectionScheduleAuthor).filter(SqlIssueDetectionScheduleAuthor.experiment_id == str(experiment_id)).one_or_none()
 
+    def _upsert(self, experiment_id: str, update: Callable[[SqlIssueDetectionScheduleAuthor], None]) -> None:
+        """Create or update the row for ``experiment_id``; a concurrent insert of it is retried as an update."""
+        for attempt in range(2):
+            try:
+                with self._Session(read_only=False) as session:
+                    row = self._row(session, experiment_id)
+                    if row is None:
+                        row = SqlIssueDetectionScheduleAuthor(experiment_id=str(experiment_id), recorded_at=_now())
+                        session.add(row)
+                    update(row)
+                    session.flush()
+                return
+            except MlflowException as e:
+                # MLflow's managed session wraps the database error.
+                if attempt or not isinstance(e.__cause__, IntegrityError):
+                    raise
+
     def record_author(self, experiment_id: str, workspace: Optional[str], author: str, model_fingerprint: str) -> None:
         """Credit the schedule now stored on ``experiment_id`` to ``author``, clearing any guard pause."""
-        with self._Session(read_only=False) as session:
-            row = self._row(session, experiment_id)
-            if row is None:
-                row = SqlIssueDetectionScheduleAuthor(experiment_id=str(experiment_id))
-                session.add(row)
+
+        def update(row: SqlIssueDetectionScheduleAuthor) -> None:
             row.workspace = workspace
             row.author = author
             row.model_fingerprint = model_fingerprint
             row.recorded_at = _now()
             row.guard_paused_at = None
             row.guard_reason = None
-            session.flush()
+
+        self._upsert(experiment_id, update)
 
     def mark_guard_paused(self, experiment_id: str, workspace: Optional[str], reason: str) -> None:
         """Note that the guard paused the schedule on ``experiment_id``, keeping its recorded writer."""
-        with self._Session(read_only=False) as session:
-            row = self._row(session, experiment_id)
-            now = _now()
-            if row is None:
-                row = SqlIssueDetectionScheduleAuthor(experiment_id=str(experiment_id), workspace=workspace, recorded_at=now)
-                session.add(row)
-            row.guard_paused_at = now
+
+        def update(row: SqlIssueDetectionScheduleAuthor) -> None:
+            if row.author is None:
+                row.workspace = workspace
+            row.guard_paused_at = _now()
             row.guard_reason = reason
-            session.flush()
+
+        self._upsert(experiment_id, update)
 
     def get(self, experiment_id: str) -> Optional[ScheduleAuthorRecord]:
         with self._Session() as session:

@@ -51,7 +51,10 @@ class _TrackingStore:
         self.tags[experiment_id][tag.key] = tag.value
 
     def get_secret_info(self, secret_id=None, **_):
-        return SimpleNamespace(secret_name="team-key")
+        return SimpleNamespace(secret_name="team-key", auth_config={})
+
+    def _get_decrypted_secret(self, secret_id):
+        return {"api_key": "placeholder-value"}  # a placeholder, never a credential
 
 
 @pytest.fixture
@@ -143,3 +146,18 @@ def test_the_check_pauses_what_the_guard_would_and_says_why(admin, store, tracki
     assert not json.loads(tracking.tags["2"][TAG])["paused"]
     listed = {e["experiment_id"]: e for e in admin.get(SCHEDULES).json()["schedules"]}
     assert listed["1"]["paused"] is True and listed["1"]["guard_reason"] == guard.REASON_UNKNOWN_AUTHOR and listed["1"]["violation"] is None
+
+
+def test_a_check_that_errors_is_listed_as_failed_not_raised(admin, store, tracking, monkeypatch):
+    guard.record_author("2", None, ALICE, tracking.tags["2"][TAG])
+
+    def unavailable(username):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(store, "get_user", unavailable)
+    response = admin.get(SCHEDULES)
+
+    assert response.status_code == 200
+    entries = {e["experiment_id"]: e for e in response.json()["schedules"]}
+    assert entries["2"]["violation"] == guard.REASON_CHECK_FAILED
+    assert not json.loads(tracking.tags["2"][TAG])["paused"]

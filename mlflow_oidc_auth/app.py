@@ -101,9 +101,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     # MLflow 3.18 recurring issue detection: re-check stored schedules against their writers.
-    from mlflow_oidc_auth.issue_detection_guard import start_guard, stop_guard
-
     try:
+        from mlflow_oidc_auth.issue_detection_guard import start_guard
+
         if start_guard():
             logger.info("Issue detection schedule guard started")
     except Exception:
@@ -112,7 +112,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield  # App runs here
 
     # Shutdown: Cleanup if needed
-    stop_guard()
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import stop_guard
+
+        stop_guard()
+    except Exception:
+        logger.warning("Issue detection schedule guard could not stop", exc_info=True)
     logger.info("Shutting down MLflow OIDC Auth Plugin...")
 
 

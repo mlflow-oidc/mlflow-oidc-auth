@@ -167,9 +167,13 @@ def flush_permission_cache() -> None:
 
 def _notify_schedule_guard() -> None:
     """A grant, membership or user changed: let the issue detection schedule guard re-check soon."""
-    from mlflow_oidc_auth.issue_detection_guard import permissions_changed
+    # Best effort, and never in the way of the invalidation it follows or precedes.
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import permissions_changed
 
-    permissions_changed()
+        permissions_changed()
+    except Exception:
+        logger.debug("Could not notify the issue detection schedule guard", exc_info=True)
 
 
 # Resource type constants. Defined with the resolver (utils/grant_context.py) and re-exported here.

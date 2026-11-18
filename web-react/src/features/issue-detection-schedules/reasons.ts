@@ -8,6 +8,7 @@ export const REASON_LABELS: Record<string, string> = {
   author_cannot_use_model: "Writer can no longer use the endpoint or key",
   server_credentials_admin_only:
     "Runs on server credentials, which only admins may use",
+  check_failed: "Could not be checked just now (retried next pass)",
 };
 
 export const reasonLabel = (reason: string | null | undefined) =>

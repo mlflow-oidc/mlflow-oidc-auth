@@ -13,6 +13,7 @@ from mlflow_oidc_auth import issue_detection_guard as guard
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission
+from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.issue_detection_schedule import (
     IssueDetectionScheduleEntry,
     IssueDetectionScheduleListResponse,
@@ -32,6 +33,8 @@ issue_detection_schedules_router = APIRouter(
 )
 
 SWEEP = "/check"
+
+logger = get_logger()
 
 
 def _text(value: object) -> Optional[str]:
@@ -57,6 +60,15 @@ def _model(state: guard.ScheduleState) -> Optional[IssueDetectionScheduleModel]:
     )
 
 
+def _live_violation(state: guard.ScheduleState, record: object) -> Optional[str]:
+    """The guard's verdict now, from the record already loaded; a check that errors is reported, not raised."""
+    try:
+        return guard.violation(state.experiment_id, state.workspace, state.raw, record=record)
+    except Exception:
+        logger.warning("Could not check the issue detection schedule of experiment %s", state.experiment_id, exc_info=True)
+        return guard.REASON_CHECK_FAILED
+
+
 @issue_detection_schedules_router.get("", response_model=IssueDetectionScheduleListResponse, summary="List issue detection schedules")
 def list_issue_detection_schedules() -> IssueDetectionScheduleListResponse:
     """Every stored schedule on an active experiment, in every workspace, with its recorded writer."""
@@ -66,6 +78,7 @@ def list_issue_detection_schedules() -> IssueDetectionScheduleListResponse:
         records: Dict[str, object] = {record.experiment_id: record for record in store.list_detection_schedule_authors()}
         for state in guard.list_schedules():
             record = records.get(state.experiment_id)
+            recorded = record.to_json() if record is not None else {}
             running = state.readable and not state.paused
             schedules.append(
                 IssueDetectionScheduleEntry(
@@ -77,10 +90,10 @@ def list_issue_detection_schedules() -> IssueDetectionScheduleListResponse:
                     uses_server_credentials=state.uses_server_credentials,
                     model=_model(state),
                     author=getattr(record, "author", None),
-                    recorded_at=record.to_json()["recorded_at"] if record is not None else None,
-                    guard_paused_at=record.to_json()["guard_paused_at"] if record is not None else None,
+                    recorded_at=recorded.get("recorded_at"),
+                    guard_paused_at=recorded.get("guard_paused_at"),
                     guard_reason=getattr(record, "guard_reason", None),
-                    violation=guard.violation(state.experiment_id, state.workspace, state.raw) if running else None,
+                    violation=_live_violation(state, record) if running else None,
                 )
             )
     return IssueDetectionScheduleListResponse(

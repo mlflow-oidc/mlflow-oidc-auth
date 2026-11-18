@@ -41,6 +41,9 @@ from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Iterator, List, Optional
 
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.validators._detection_schedule import (
@@ -59,6 +62,8 @@ REASON_AUTHOR_INACTIVE = "author_deactivated"
 REASON_NO_EXPERIMENT_UPDATE = "author_cannot_update_experiment"
 REASON_NO_MODEL_USE = "author_cannot_use_model"
 REASON_SERVER_CREDENTIALS = "server_credentials_admin_only"
+#: Reported by the admin listing only: the check raised (a transient fault); nothing is paused for it.
+REASON_CHECK_FAILED = "check_failed"
 
 REASONS = (
     REASON_UNKNOWN_AUTHOR,
@@ -247,40 +252,44 @@ def list_schedules() -> List[ScheduleState]:
     return states
 
 
-def violation(experiment_id: str, workspace: Optional[str], raw: str) -> Optional[str]:
+_UNLOADED = object()
+
+
+def violation(experiment_id: str, workspace: Optional[str], raw: str, record: Any = _UNLOADED) -> Optional[str]:
     """Why the schedule ``raw`` on ``experiment_id`` may not keep running, or None if it may.
 
     The recorded writer is checked as if writing the value again now, through the same checks a
-    write goes through. Any failure while checking is a reason to pause, never to keep running.
+    write goes through. Those checks deny on what they cannot resolve; an error escaping them (a
+    database outage, say) raises, so the pass reports the schedule as failed and retries it next
+    pass instead of pausing every schedule for a transient fault.
     """
     from mlflow_oidc_auth.store import store
     from mlflow_oidc_auth.utils.permissions import effective_experiment_permission
 
-    record = store.get_detection_schedule_author(experiment_id)
+    if record is _UNLOADED:
+        record = store.get_detection_schedule_author(experiment_id)
     if record is None or not record.author:
         return REASON_UNKNOWN_AUTHOR
     if record.model_fingerprint != model_fingerprint(raw):
         return REASON_MODEL_CHANGED
     try:
         user = store.get_user(record.author)
-    except Exception:
-        return REASON_AUTHOR_DELETED
+    except MlflowException as e:
+        if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return REASON_AUTHOR_DELETED
+        raise
     if not getattr(user, "active", True):
         return REASON_AUTHOR_INACTIVE
     if user.is_admin:
         return None
     request_workspace = workspace if config.MLFLOW_ENABLE_WORKSPACES else None
-    try:
-        with _in_workspace(workspace), _as_user(record.author, False, request_workspace):
-            if not effective_experiment_permission(experiment_id, record.author).permission.can_update:
-                return REASON_NO_EXPERIMENT_UPDATE
-            if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY and schedule_uses_server_credentials(raw):
-                return REASON_SERVER_CREDENTIALS
-            if not detection_schedules_permitted([raw], record.author):
-                return REASON_NO_MODEL_USE
-    except Exception:
-        logger.warning("Issue detection schedule guard could not check experiment %s; pausing it", experiment_id, exc_info=True)
-        return REASON_NO_MODEL_USE
+    with _in_workspace(workspace), _as_user(record.author, False, request_workspace):
+        if not effective_experiment_permission(experiment_id, record.author).permission.can_update:
+            return REASON_NO_EXPERIMENT_UPDATE
+        if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY and schedule_uses_server_credentials(raw):
+            return REASON_SERVER_CREDENTIALS
+        if not detection_schedules_permitted([raw], record.author):
+            return REASON_NO_MODEL_USE
     return None
 
 
@@ -355,6 +364,7 @@ class _Guard:
         self._stop = threading.Event()
         self._interval = 0.0
         self._last_pass = 0.0
+        self._schedules_seen = True
 
     @property
     def running(self) -> bool:
@@ -367,10 +377,13 @@ class _Guard:
             if self.running:
                 return True
             self._interval = float(max(interval_seconds, MIN_INTERVAL_SECONDS))
-            self._stop.clear()
+            # Each thread gets its own stop and wake events, so a thread a slow stop() left
+            # finishing a pass can never be revived by the next start().
+            self._stop = threading.Event()
+            self._wake = threading.Event()
             # A first pass soon after startup covers schedules stored before this server started.
             self._wake.set()
-            self._thread = threading.Thread(target=self._run, name="issue-detection-schedule-guard", daemon=True)
+            self._thread = threading.Thread(target=self._run, args=(self._stop, self._wake), name="issue-detection-schedule-guard", daemon=True)
             self._thread.start()
             return True
 
@@ -384,22 +397,25 @@ class _Guard:
             thread.join(timeout=5)
 
     def trigger(self) -> None:
-        if self.running:
+        # Nothing to re-check when the last pass found no running schedule; the periodic pass
+        # still picks up schedules written since.
+        if self.running and self._schedules_seen:
             self._wake.set()
 
-    def _run(self) -> None:
-        while not self._stop.is_set():
-            if self._wake.wait(self._interval):
-                self._wake.clear()
+    def _run(self, stop: threading.Event, wake: threading.Event) -> None:
+        while not stop.is_set():
+            if wake.wait(self._interval):
+                wake.clear()
                 delay = max(TRIGGER_DELAY_SECONDS, self._last_pass + TRIGGER_MIN_GAP_SECONDS - time.monotonic())
-                if self._stop.wait(delay):
+                if stop.wait(delay):
                     break
-                self._wake.clear()
-            if self._stop.is_set():
+                wake.clear()
+            if stop.is_set():
                 break
             self._last_pass = time.monotonic()
             try:
                 result = sweep()
+                self._schedules_seen = result.checked > 0 or bool(result.failed)
                 if result.paused or result.failed:
                     logger.info("Issue detection schedule guard: %d checked, %d paused, %d failed", result.checked, len(result.paused), len(result.failed))
             except Exception:

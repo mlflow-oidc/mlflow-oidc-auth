@@ -217,7 +217,8 @@ def test_a_schedule_rewritten_while_being_checked_is_not_overwritten(tracking, m
     assert tracking.writes == []
 
 
-def test_a_failure_while_checking_pauses_rather_than_keeps_running(tracking, monkeypatch):
+def test_a_transient_failure_while_checking_is_retried_not_paused(tracking, monkeypatch):
+    """A database blip must not pause every schedule for good; the next pass checks again."""
     from mlflow_oidc_auth.utils import permissions
 
     _store(tracking, OWN, _schedule({"endpointName": "open-endpoint"}), author=OUTSIDER)
@@ -225,8 +226,23 @@ def test_a_failure_while_checking_pauses_rather_than_keeps_running(tracking, mon
     def broken(*_args, **_kwargs):
         raise RuntimeError("permission store unavailable")
 
-    monkeypatch.setattr(permissions, "effective_experiment_permission", broken)
-    assert [p["reason"] for p in guard.sweep().paused] == [guard.REASON_NO_MODEL_USE]
+    with monkeypatch.context() as patched:
+        patched.setattr(permissions, "effective_experiment_permission", broken)
+        result = guard.sweep()
+    assert result.paused == [] and result.failed == [OWN] and not _paused(tracking, OWN)
+    assert guard.sweep().failed == []
+
+
+def test_a_user_lookup_error_is_not_read_as_a_deleted_writer(tracking, permission_store, monkeypatch):
+    _store(tracking, OWN, _schedule({"endpointName": "open-endpoint"}), author=OUTSIDER)
+
+    def unavailable(username):
+        raise RuntimeError("database unavailable")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(permission_store, "get_user", unavailable)
+        result = guard.sweep()
+    assert result.paused == [] and result.failed == [OWN]
 
 
 def test_resuming_a_paused_schedule_credits_whoever_resumed_it(tracking, permission_store):
@@ -334,6 +350,15 @@ def test_writing_the_schedule_tag_records_its_writer(tracking, permission_store)
     assert guard.sweep().paused == []
 
 
+def test_a_value_stored_re_serialized_is_still_credited(tracking, permission_store):
+    value = _schedule({"endpointName": "open-endpoint"})
+    tracking.tags[OWN] = {TAG: json.dumps(json.loads(value), indent=2)}
+
+    _after(SET_TAG, OUTSIDER, {"experiment_id": OWN, "key": TAG, "value": value})
+
+    assert permission_store.get_detection_schedule_author(OWN).author == OUTSIDER
+
+
 def test_a_value_another_write_replaced_is_not_credited_to_this_writer(tracking, permission_store):
     """Two writes racing: the one whose value MLflow no longer holds credits nobody."""
     stored = _schedule({"endpointName": "shared-endpoint"})
@@ -414,7 +439,7 @@ def test_the_background_check_runs_once_at_startup_and_again_when_triggered(monk
     def counting_sweep():
         passes.append(1)
         ran.set()
-        return guard.SweepResult()
+        return guard.SweepResult(checked=1)
 
     monkeypatch.setattr(guard, "sweep", counting_sweep)
     monkeypatch.setattr(guard, "TRIGGER_DELAY_SECONDS", 0.01)
@@ -442,7 +467,7 @@ def test_triggered_passes_are_spaced_out(monkeypatch):
     def counting_sweep():
         starts.append(time.monotonic())
         ran.set()
-        return guard.SweepResult()
+        return guard.SweepResult(checked=1)
 
     monkeypatch.setattr(guard, "sweep", counting_sweep)
     monkeypatch.setattr(guard, "TRIGGER_DELAY_SECONDS", 0.01)
@@ -457,6 +482,66 @@ def test_triggered_passes_are_spaced_out(monkeypatch):
         assert starts[1] - starts[0] >= 0.45
     finally:
         background.stop()
+
+
+def test_a_permission_change_wakes_the_guard_only_when_schedules_exist(monkeypatch):
+    background = guard._Guard()
+    monkeypatch.setattr(guard._Guard, "running", property(lambda self: True))
+    background._schedules_seen = False
+    background.trigger()
+    assert not background._wake.is_set()
+    background._schedules_seen = True
+    background.trigger()
+    assert background._wake.is_set()
+
+
+def test_a_restart_never_revives_a_thread_still_finishing_a_pass(monkeypatch):
+    release = threading.Event()
+    entered = threading.Event()
+    passes = []
+
+    def slow_sweep():
+        passes.append(threading.current_thread())
+        entered.set()
+        release.wait(5)
+        return guard.SweepResult()
+
+    monkeypatch.setattr(guard, "sweep", slow_sweep)
+    monkeypatch.setattr(guard, "TRIGGER_DELAY_SECONDS", 0.01)
+    background = guard._Guard()
+    background.start(3600)
+    assert entered.wait(5)
+    first = passes[0]
+    old_stop = background._stop
+    with monkeypatch.context() as patched:
+        patched.setattr(threading.Thread, "join", lambda self, timeout=None: None)  # stop() gives up waiting
+        background.stop()
+    background.start(3600)
+    try:
+        assert old_stop.is_set() and background._stop is not old_stop
+        release.set()
+        first.join(5)
+        assert not first.is_alive()
+    finally:
+        release.set()
+        background.stop()
+
+
+def test_a_failing_guard_import_never_blocks_cache_invalidation(monkeypatch):
+    import builtins
+
+    from mlflow_oidc_auth.utils import permissions, workspace_cache
+
+    real_import = builtins.__import__
+
+    def failing(name, *args, **kwargs):
+        if name == "mlflow_oidc_auth.issue_detection_guard":
+            raise ImportError("moved")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing)
+    permissions._notify_schedule_guard()
+    workspace_cache._notify_schedule_guard()
 
 
 def test_a_permission_change_asks_for_a_pass(monkeypatch):

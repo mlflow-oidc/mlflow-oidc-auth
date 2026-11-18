@@ -207,17 +207,19 @@ def _record_detection_schedule_writer(experiment_id: Any, written: Optional[str]
     """Credit the detection schedule now stored on ``experiment_id`` to the caller, or forget its writer.
 
     ``written`` is the value this request stored (None for a delete). The caller is credited only
-    when what MLflow now holds is that value: if another write landed in between, that write's own
-    hook records its writer, and a value nobody is credited for is paused by the guard. Best
+    when what MLflow now holds names the model that value named: if another write landed in
+    between, that write's own hook records its writer, and a value nobody is credited for is
+    paused by the guard. Best
     effort: a schedule whose writer could not be recorded is paused as having no known writer.
     """
     try:
-        from mlflow_oidc_auth.issue_detection_guard import forget_author, record_author
+        from mlflow_oidc_auth.issue_detection_guard import forget_author, model_fingerprint, record_author
         from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
         raw = _get_tracking_store().get_experiment(str(experiment_id)).tags.get(DETECTION_SCHEDULE_TAG)
         if raw:
-            if written is None or raw != written:
+            # Compared by model: MLflow may store the value re-serialized, and only the model is credited.
+            if written is None or model_fingerprint(raw) != model_fingerprint(written):
                 return
             workspace = current_grant_workspace() if config.MLFLOW_ENABLE_WORKSPACES else None
             record_author(str(experiment_id), workspace, get_fastapi_username(), raw)
