@@ -120,6 +120,9 @@ _COPIED_ROUTE_FIELDS = (
     # FastAPI 0.164+: a per-route request body limit. A twin without it would accept bodies
     # the "/api" original refuses.
     "max_body_size",
+    # FastAPI 0.165+: per-route limits on form fields, files and part size. A twin without them
+    # would parse forms the "/api" original refuses.
+    "form_limits",
 )
 
 # Suffix appended to a twin's route name so ``url_path_for()`` stays unambiguous.
