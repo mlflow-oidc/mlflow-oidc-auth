@@ -117,6 +117,9 @@ _COPIED_ROUTE_FIELDS = (
     "openapi_extra",
     "generate_unique_id_function",
     "strict_content_type",
+    # FastAPI 0.164+: a per-route request body limit. A twin without it would accept bodies
+    # the "/api" original refuses.
+    "max_body_size",
 )
 
 # Suffix appended to a twin's route name so ``url_path_for()`` stays unambiguous.
