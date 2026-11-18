@@ -9,6 +9,7 @@ This module tests WSGI middleware functionality including:
 - WSGI application wrapping and execution
 - Error handling and edge cases
 - Non-HTTP request handling
+- Response framing for unbounded MLflow read routes
 """
 
 import json
@@ -16,6 +17,7 @@ import sys
 
 import pytest
 from flask import Flask, Response, request
+from mlflow.server import app as mlflow_app
 from mlflow.server.handlers import STATIC_PREFIX_ENV_VAR
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +25,7 @@ from mlflow_oidc_auth.entities.auth_context import AuthContext
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import (
     AuthAwareWSGIMiddleware,
     AuthInjectingWSGIApp,
+    UNBOUNDED_READ_ROUTES,
 )
 
 
@@ -359,13 +362,43 @@ class TestAuthAwareWSGIMiddleware:
 
 
 SEARCH_PATHS = ("/api/2.0/mlflow/runs/search", "/ajax-api/2.0/mlflow/runs/search")
+UNBOUNDED = sorted(UNBOUNDED_READ_ROUTES)
+ERROR_STATUSES = ("400 Bad Request", "403 Forbidden", "404 Not Found", "500 Internal Server Error", "302 Found", "204 No Content")
+FRAMED = [("Content-Length", "2"), ("Content-Type", "application/json")]
 
 
-@pytest.mark.parametrize("path", SEARCH_PATHS)
+def _framing_after(method: str, path: str, status: str = "200 OK") -> list[tuple[str, str]]:
+    """Headers the bridge passes on when the wrapped app answers the request with a length."""
+
+    def application(environ, start_response):
+        start_response(status, list(FRAMED))
+        return [b"ok"]
+
+    start_response = MagicMock()
+    assert AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD=method, PATH_INFO=path), start_response) == [b"ok"]
+    assert start_response.call_args.args[0] == status
+    return start_response.call_args.args[1]
+
+
+def test_unbounded_read_routes_are_served_by_mlflow():
+    """Every listed pair is a route MLflow serves with that method, so the list cannot drift to dead entries."""
+    served = {(method, str(rule)) for rule in mlflow_app.url_map.iter_rules() for method in rule.methods}
+    assert set(UNBOUNDED) - served == set()
+
+
+@pytest.mark.parametrize("method,path", UNBOUNDED)
+@pytest.mark.parametrize("static_prefix", ["", "/mlflow", "/nested/mlflow/"])
+def test_unbounded_read_routes_drop_length(method, path, static_prefix, monkeypatch):
+    monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, static_prefix)
+    assert _framing_after(method, static_prefix.rstrip("/") + path) == [("Content-Type", "application/json")]
+
+
+@pytest.mark.parametrize("path", SEARCH_PATHS + ("/ajax-api/3.0/mlflow/traces/get",))
 @pytest.mark.parametrize("static_prefix", ["", "/mlflow", "/nested/mlflow/"])
 @pytest.mark.asyncio
 async def test_large_search_response_after_flask_hooks(path, static_prefix, monkeypatch, sample_asgi_scope, mock_receive, mock_send):
     monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, static_prefix)
+    method = "GET" if path.endswith("/traces/get") else "POST"
     path = static_prefix.rstrip("/") + path
     app = Flask(__name__)
     expected = json.dumps(
@@ -373,7 +406,7 @@ async def test_large_search_response_after_flask_hooks(path, static_prefix, monk
     ).encode()
     auth_context = AuthContext(username="reader@example.com", is_admin=False)
 
-    @app.post(path)
+    @app.route(path, methods=[method])
     def search():
         return Response(b"unfiltered", mimetype="application/json")
 
@@ -387,7 +420,7 @@ async def test_large_search_response_after_flask_hooks(path, static_prefix, monk
         assert response.content_length == len(expected)
         return response
 
-    sample_asgi_scope.update(method="POST", path=path, mlflow_oidc_auth=auth_context)
+    sample_asgi_scope.update(method=method, path=path, mlflow_oidc_auth=auth_context)
     await AuthAwareWSGIMiddleware(app)(sample_asgi_scope, mock_receive, mock_send)
     messages = mock_send.messages
     assert messages[0]["status"] == 200
@@ -399,55 +432,38 @@ async def test_large_search_response_after_flask_hooks(path, static_prefix, monk
     assert not messages[-1].get("more_body", False)
 
 
-@pytest.mark.parametrize("path", SEARCH_PATHS)
-@pytest.mark.parametrize(
-    "method,status",
-    [
-        ("POST", "400 Bad Request"),
-        ("POST", "403 Forbidden"),
-        ("POST", "500 Internal Server Error"),
-        ("POST", "302 Found"),
-        ("HEAD", "200 OK"),
-        ("GET", "200 OK"),
-    ],
-)
+@pytest.mark.parametrize("method,path", UNBOUNDED)
+@pytest.mark.parametrize("status", ERROR_STATUSES)
 @pytest.mark.parametrize("static_prefix", ["", "/mlflow/"])
-def test_search_errors_and_other_methods_keep_framing(path, method, status, static_prefix, monkeypatch):
+def test_unbounded_read_route_errors_keep_framing(method, path, status, static_prefix, monkeypatch):
     monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, static_prefix)
-    path = static_prefix.rstrip("/") + path
-    headers = [("Content-Length", "2"), ("Content-Type", "application/json")]
-
-    def application(environ, start_response):
-        start_response(status, headers)
-        return [b"ok"]
-
-    start_response = MagicMock()
-    result = AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD=method, PATH_INFO=path), start_response)
-    assert result == [b"ok"]
-    assert start_response.call_args.args[:2] == (status, headers)
+    assert _framing_after(method, static_prefix.rstrip("/") + path, status) == FRAMED
 
 
 @pytest.mark.parametrize(
-    "path",
+    "other,path", [(other, path) for method, path in UNBOUNDED for other in ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE") if other != method]
+)
+def test_unbounded_read_routes_keep_framing_for_other_methods(other, path):
+    """HEAD in particular keeps its length: a HEAD response reports the size of the GET body."""
+    assert _framing_after(other, path) == FRAMED
+
+
+@pytest.mark.parametrize(
+    "method,path",
     [
-        "/api/2.0/mlflow/runs/get",
-        "/api/2.0/mlflow/runs/search/",
-        "/api/2.0/mlflow-artifacts/artifacts/file",
-        "/mlflow-extra/api/2.0/mlflow/runs/search",
-        "/mlflow/api/2.0/mlflow/runs/get",
+        ("GET", "/api/2.0/mlflow/runs/get"),
+        ("POST", "/api/2.0/mlflow/runs/search/"),
+        ("GET", "/api/2.0/mlflow-artifacts/artifacts/file"),
+        ("POST", "/mlflow-extra/api/2.0/mlflow/runs/search"),
+        ("GET", "/mlflow/api/2.0/mlflow/runs/get"),
+        ("GET", "/api/2.0/mlflow/metrics/get-history-bulk"),
+        ("GET", "/api/3.0/mlflow/traces/tr-1"),
+        ("POST", "/api/2.0/mlflow/experiments/search"),
     ],
 )
-def test_other_routes_keep_framing(path, monkeypatch):
+def test_other_routes_keep_framing(method, path, monkeypatch):
     monkeypatch.setenv(STATIC_PREFIX_ENV_VAR, "/mlflow")
-    headers = [("Content-Length", "2")]
-
-    def application(environ, start_response):
-        start_response("200 OK", headers)
-        return [b"ok"]
-
-    start_response = MagicMock()
-    AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD="POST", PATH_INFO=path), start_response)
-    assert start_response.call_args.args[:2] == ("200 OK", headers)
+    assert _framing_after(method, path) == FRAMED
 
 
 def test_search_preserves_wsgi_response_contract():

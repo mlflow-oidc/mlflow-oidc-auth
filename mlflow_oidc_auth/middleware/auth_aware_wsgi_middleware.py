@@ -17,6 +17,30 @@ from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
+#: MLflow read endpoints whose successful response has no size bound: they page by item count (runs,
+#: models, traces, metric points), not by bytes, or return one whole trace. Their ``200`` responses are
+#: sent without ``Content-Length`` so proxies that cap non-streamed responses (Cloud Run: 32 MiB) can
+#: deliver them. ``(method, path)`` pairs, paths without MLflow's static prefix; HEAD is not listed,
+#: so a HEAD response keeps its length.
+UNBOUNDED_READ_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        (method, api + path)
+        for api in ("/api", "/ajax-api")
+        for method, path in (
+            ("POST", "/2.0/mlflow/runs/search"),
+            ("POST", "/2.0/mlflow/logged-models/search"),
+            ("GET", "/2.0/mlflow/metrics/get-history"),
+            ("GET", "/2.0/mlflow/metrics/get-history-bulk-interval"),
+            ("GET", "/2.0/mlflow/traces"),
+            ("POST", "/3.0/mlflow/traces/search"),
+            ("GET", "/3.0/mlflow/traces/get"),
+            ("GET", "/3.0/mlflow/traces/batchGet"),
+        )
+    }
+    # MLflow serves the bulk metric history only under /ajax-api.
+    | {("GET", "/ajax-api/2.0/mlflow/metrics/get-history-bulk")}
+)
+
 
 class AuthInjectingWSGIApp:
     """
@@ -42,25 +66,18 @@ class AuthInjectingWSGIApp:
             # Inject AuthContext as a single object — bridge functions read from this
             environ[AUTH_CONTEXT_KEY] = auth_context
 
-        def start_streamed_response(
+        def start_response_with_framing(
             status: str,
             headers: list[tuple[str, str]],
             exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
         ) -> object:
-            if (
-                environ.get("REQUEST_METHOD") == "POST"
-                and strip_static_prefix(environ.get("PATH_INFO", ""))
-                in {
-                    "/api/2.0/mlflow/runs/search",
-                    "/ajax-api/2.0/mlflow/runs/search",
-                }
-                and status.startswith("200 ")
-            ):
-                # Remove the length after Flask hooks so Uvicorn can stream searches beyond Cloud Run's 32 MiB limit.
+            if status.startswith("200 ") and (environ.get("REQUEST_METHOD", ""), strip_static_prefix(environ.get("PATH_INFO", ""))) in UNBOUNDED_READ_ROUTES:
+                # Flask hooks have run, so this is the final length. Without it Uvicorn sends the body
+                # chunked, which Cloud Run delivers past its 32 MiB limit on non-streamed responses.
                 headers = [(name, value) for name, value in headers if name.lower() != "content-length"]
             return start_response(status, headers, exc_info)
 
-        return self.flask_app(environ, start_streamed_response)
+        return self.flask_app(environ, start_response_with_framing)
 
 
 class AuthAwareWSGIMiddleware:

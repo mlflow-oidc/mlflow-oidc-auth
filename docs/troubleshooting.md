@@ -1,18 +1,28 @@
 # Troubleshooting
 
-## Run searches exceed a reverse proxy response limit
+## Large searches fail behind a proxy with a response size limit
 
-Cloud Run limits non-streamed HTTP/1 responses to [32 MiB](https://docs.cloud.google.com/run/quotas). MLflow paginates run searches by run count, so a page with many tags, parameters, or metrics can exceed that limit. Successful `POST` responses on `/api/2.0/mlflow/runs/search` and `/ajax-api/2.0/mlflow/runs/search` omit `Content-Length` after Flask response hooks finish. [Uvicorn then uses chunked transfer encoding](https://uvicorn.dev/server-behavior/#http-headers), allowing Cloud Run to deliver the complete result. The route matching respects MLflow's configured `--static-prefix`. This behavior is enabled by default for these two routes; error responses, other methods, and other routes retain their framing. Reverse proxies that buffer responses may need separate configuration.
+**Symptom.** Opening a large experiment, run comparison, metric chart or trace fails with a 5xx
+from the proxy, while smaller pages work. Cloud Run, for one, refuses non-streamed HTTP/1
+responses over [32 MiB](https://docs.cloud.google.com/run/quotas).
 
-The bridge preserves the body, pagination token, cookies, and authorization checks. It does not generate results incrementally or reduce MLflow query cost or memory usage. Reducing `max_results` can reduce the payload, but it does not impose a byte limit.
+**Cause.** MLflow pages these reads by item count, not by size, so one page of runs with many
+tags or a single large trace can go past the limit.
 
-The bridge regression creates a 33 MiB response, rewrites it in a Flask response hook, and checks the final ASGI headers and exact body on both paths:
+**What the plugin does.** A successful (`200`) response on these routes is sent without
+`Content-Length`, so [Uvicorn sends it chunked](https://uvicorn.dev/server-behavior/#http-headers) and
+the proxy streams it through:
 
-```bash
-pytest mlflow_oidc_auth/tests/middleware/test_auth_aware_wsgi_middleware.py -k large_search_response
-```
+| Method | Route (under `/api` and `/ajax-api`, after any `--static-prefix`) |
+|---|---|
+| POST | `/2.0/mlflow/runs/search`, `/2.0/mlflow/logged-models/search`, `/3.0/mlflow/traces/search` |
+| GET | `/2.0/mlflow/metrics/get-history`, `/2.0/mlflow/metrics/get-history-bulk-interval`, `/2.0/mlflow/traces`, `/3.0/mlflow/traces/get`, `/3.0/mlflow/traces/batchGet` |
+| GET | `/ajax-api/2.0/mlflow/metrics/get-history-bulk` (served only under `/ajax-api`) |
 
-This local check does not verify a deployment or reverse proxy. Verify oversized results, pagination, and a non-admin caller's denied access through the deployed service before treating a proxy failure as resolved.
+The header is removed after the plugin's response filtering has run, so the body, page token and
+authorization are unchanged. Errors, `HEAD` and every other route keep their length. MLflow still
+builds the whole page in memory; lower `max_results` if the server, not the proxy, is the limit. A
+proxy that buffers whole responses (rather than streaming chunks) needs its own limit raised.
 
 ## Login fails after returning from the identity provider
 
