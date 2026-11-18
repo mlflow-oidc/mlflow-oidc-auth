@@ -214,6 +214,22 @@ class TestAliasFidelity:
         (route,) = ajax_alias_router(router).routes
         assert route.max_body_size == 1024
 
+    def test_preserves_the_form_limits(self):
+        """A twin must parse no more form than its original allows (FastAPI 0.165+)."""
+        if "form_limits" not in inspect.signature(APIRouter.add_api_route).parameters:
+            pytest.skip("this FastAPI has no per-route form limits")
+        router = APIRouter(prefix="/api/2.0/mlflow/users")
+        limits = {"max_fields": 3, "max_files": 0, "max_part_size": 1024}
+
+        @router.post("/", form_limits=limits)
+        async def create():  # pragma: no cover
+            return {}
+
+        (original,) = router.routes
+        (route,) = ajax_alias_router(router).routes
+        assert route.form_limits == limits
+        assert route.form_limits is not original.form_limits, "the twin gets its own copy"
+
 
 class TestAppRegistration:
     """The app-level helper must register both prefixes for real routers.
