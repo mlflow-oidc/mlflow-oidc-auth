@@ -75,8 +75,10 @@ A resource id can reach MLflow in the URL path, the query string, or the request
 The plugin reads the id from the same place MLflow will: on a protobuf API route that is
 the path parameter if there is one, otherwise the query string for a `GET` that has one
 and the JSON body for every other request (the query string is ignored on `POST`,
-`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only
-(every `run_id` and `run_uuid` value, even on an MLflow that reads only one of them), and `gateway-proxy` uses the query string on `GET` and the body otherwise.
+`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only.
+It authorizes every `run_id` and `run_uuid` value there: MLflow 3.18 writes into `run_id`
+(falling back to `run_uuid`), and earlier versions into `run_uuid`. `gateway-proxy` uses the
+query string on `GET` and the body otherwise.
 
 Every other value the request carries for that field — in any source, under either the
 `snake_case` or the `camelCase` spelling — is authorized as well. If a request names two

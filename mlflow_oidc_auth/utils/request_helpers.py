@@ -326,7 +326,7 @@ def query_string_values(*params: str) -> list:
 
     For the few routes whose MLflow handler reads only ``request.args`` (so the body must stay
     unread, see ``validate_can_update_run_artifact``). Exact spellings only: unlike
-    :func:``all_source_values`` there is no camelCase twin, because such a handler reads none.
+    ``all_source_values`` there is no camelCase twin, because such a handler reads none.
     Order follows ``params``, then the query string.
     """
     return list(dict.fromkeys(value for param in params for value in request.args.getlist(param) if value))

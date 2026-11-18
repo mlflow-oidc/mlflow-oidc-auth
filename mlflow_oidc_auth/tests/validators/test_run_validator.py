@@ -1,7 +1,7 @@
-import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from flask import Flask
 
 from mlflow_oidc_auth.permissions import get_permission
@@ -153,9 +153,16 @@ def test_validate_can_update_run_artifact_denies_when_run_uuid_is_absent() -> No
 
 
 def _two_run_fixtures():
+    from mlflow.exceptions import MlflowException
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+    experiments = {"OWN-RUN": "own-exp", "VICTIM-RUN": "victim-exp"}
+
     def run_for(run_id):
+        if run_id not in experiments:
+            raise MlflowException(f"Run '{run_id}' not found", RESOURCE_DOES_NOT_EXIST)
         run = MagicMock()
-        run.info.experiment_id = {"OWN-RUN": "own-exp", "VICTIM-RUN": "victim-exp"}[run_id]
+        run.info.experiment_id = experiments[run_id]
         return run
 
     def perm_for(experiment_id, username):
@@ -192,42 +199,84 @@ def test_validate_can_update_run_artifact_checks_run_id_next_to_run_uuid(query) 
         assert "VICTIM-RUN" in {c.args[0] for c in mock_tracking_store.return_value.get_run.call_args_list}
 
 
-def test_validate_can_update_run_artifact_never_allows_an_unknown_run() -> None:
-    """A run that cannot be resolved (blank, or not found) must fail closed, never pass."""
-    from mlflow.exceptions import MlflowException
-    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
-
+@pytest.mark.parametrize("query", ["run_id=MISSING&run_uuid=OWN-RUN", "run_uuid=OWN-RUN&run_id=%20", "run_uuid=MISSING"])
+def test_validate_can_update_run_artifact_denies_an_unknown_run(query) -> None:
+    """A run that cannot be resolved (not found, or whitespace, which MLflow would look up as
+    given) is refused like one the caller cannot update."""
     app = Flask(__name__)
     run_for, perm_for = _two_run_fixtures()
-
-    def lookup(run_id):
-        if run_id in ("OWN-RUN", "VICTIM-RUN"):
-            return run_for(run_id)
-        raise MlflowException(f"Run '{run_id}' not found", RESOURCE_DOES_NOT_EXIST)
-
-    for query in ("run_id=MISSING&run_uuid=OWN-RUN", "run_id=%20&run_uuid=OWN-RUN"):
-        with (
-            app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"x"),
-            patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
-            patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
-        ):
-            mock_tracking_store.return_value.get_run.side_effect = lookup
-            with pytest.raises(MlflowException):
-                validate_can_update_run_artifact("bob")
+    with (
+        app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"x"),
+        patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
+        patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
+    ):
+        mock_tracking_store.return_value.get_run.side_effect = run_for
+        assert validate_can_update_run_artifact("bob") is False
 
 
 def test_upload_artifact_handler_reads_only_these_query_names() -> None:
     """Pins what the installed MLflow's handler reads, so an upgrade that reads another run
-    parameter (or the body) fails here instead of silently writing into an unchecked run."""
+    parameter, another request source or the query string another way fails here instead of
+    silently writing into a run the validator never checked.
+
+    Walks the handler's syntax tree: every use of ``request`` must be one of the attributes it
+    reads today, every use of the query string must be ``args.get("<literal>")`` with a known
+    name, and the run it writes into must come from ``run_id`` / ``run_uuid`` only.
+    """
+    import ast
     import inspect
-    import re
+    import textwrap
 
     from mlflow.server import handlers
 
-    source = inspect.getsource(handlers.upload_artifact_handler)
-    assert set(re.findall(r'args\.get\("([^"]+)"\)', source)) <= {"run_id", "run_uuid", "path"}
-    assert re.search(r'args\.get\("run_(uuid|id)"\)', source), "the handler no longer names its run in the query string"
-    assert "get_json" not in source and "request.form" not in source and "_get_request_message" not in source
+    tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(handlers.upload_artifact_handler))))
+    function = tree.body[0]
+    parents = {child: node for node in ast.walk(function) for child in ast.iter_child_nodes(node)}
+
+    def is_query(node) -> bool:
+        return (isinstance(node, ast.Name) and node.id == "args") or (
+            isinstance(node, ast.Attribute) and node.attr == "args" and isinstance(node.value, ast.Name) and node.value.id == "request"
+        )
+
+    def query_name(call) -> str | None:
+        """The literal name of an ``args.get("<name>")`` call, else None."""
+        if (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "get"
+            and is_query(call.func.value)
+            and len(call.args) == 1
+            and not call.keywords
+            and isinstance(call.args[0], ast.Constant)
+            and isinstance(call.args[0].value, str)
+        ):
+            return call.args[0].value
+        return None
+
+    request_attributes = {
+        node.attr for node in ast.walk(function) if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "request"
+    }
+    assert request_attributes <= {"args", "content_length", "data"}, request_attributes
+
+    names = set()
+    for node in ast.walk(function):
+        if not is_query(node) or (isinstance(node, ast.Attribute) and isinstance(parents.get(node), ast.Assign)):
+            continue  # ``args = request.args`` itself
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            continue
+        call = parents.get(parents.get(node))
+        name = query_name(call)
+        assert name is not None, f"the handler reads the query string some other way: {ast.unparse(parents.get(node))}"
+        names.add(name)
+    assert names <= {"run_id", "run_uuid", "path"}, names
+
+    get_run = [n for n in ast.walk(function) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "get_run"]
+    assert len(get_run) == 1 and isinstance(get_run[0].args[0], ast.Name)
+    run_variable = get_run[0].args[0].id
+    assignments = [n for n in ast.walk(function) if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == run_variable for t in n.targets)]
+    assert len(assignments) == 1
+    sources = {query_name(n) for n in ast.walk(assignments[0].value) if isinstance(n, ast.Call)}
+    assert sources and sources <= {"run_id", "run_uuid"}, sources
 
 
 def test_validate_can_update_run_artifact_accepts_run_id_alone() -> None:

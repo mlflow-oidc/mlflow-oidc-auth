@@ -1,3 +1,4 @@
+from mlflow.exceptions import MlflowException
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
@@ -111,8 +112,9 @@ def validate_can_update_run_artifact(username: str) -> bool:
     named in the query string (issue #288). This route is the only one bound to this
     validator, so mirroring its handler is safe.
 
-    A request naming no run in the query string is refused rather than passed along:
-    MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
+    A request naming no run in the query string, or a run that cannot be resolved, is
+    refused rather than passed along: MLflow rejects it anyway, and resolving nothing must
+    never mean allow.
     The BODY is deliberately not consulted: on this route it is the artifact itself, so
     reading it as JSON would refuse an owner uploading a JSON file that happens to
     contain a ``run_id``, and reading it as form data would consume a multipart stream
@@ -121,7 +123,12 @@ def validate_can_update_run_artifact(username: str) -> bool:
     run_ids = query_string_values("run_id", "run_uuid")
     if not run_ids:
         return False
-    return all(_permission_for_run(r, username).can_update for r in run_ids)
+    try:
+        return all(_permission_for_run(r, username).can_update for r in run_ids)
+    except MlflowException:
+        # A run that cannot be resolved (not found, or a blank id MLflow would look up as given) is
+        # refused like one the caller cannot update.
+        return False
 
 
 def validate_can_read_metric_history_bulk_interval(username: str) -> bool:
