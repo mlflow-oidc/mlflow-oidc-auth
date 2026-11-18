@@ -234,6 +234,23 @@ describe("SharedPermissionsPage", () => {
     expect(screen.getByText("MCP Servers")).toBeInTheDocument();
   });
 
+  it("always shows a Skills tab and offers no regex mode on it", () => {
+    mockUseUser.mockReturnValue({
+      currentUser: { is_admin: true, username: "" },
+    });
+    localStorage.setItem("_mlflow_is_regex_mode", "true");
+    render(
+      <SharedPermissionsPage
+        type="skills"
+        baseRoute="/users"
+        entityKind="user"
+      />,
+    );
+
+    expect(screen.getByText("Skills")).toBeInTheDocument();
+    expect(screen.queryByTestId("regex-switch")).not.toBeInTheDocument();
+  });
+
   it("offers no regex mode on the MCP servers tab: there is no pattern API", () => {
     mockUseUser.mockReturnValue({
       currentUser: { is_admin: true, username: "" },

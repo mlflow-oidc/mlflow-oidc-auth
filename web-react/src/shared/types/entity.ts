@@ -45,14 +45,18 @@ export type PermissionType =
   | "ai-endpoints"
   | "ai-secrets"
   | "ai-models"
-  | "mcp-servers";
+  | "mcp-servers"
+  | "skills";
 
-/** Permission types that also have regex (pattern) permissions. MCP servers have none. */
-export type RegexPermissionType = Exclude<PermissionType, "mcp-servers">;
+/** Permission types that also have regex (pattern) permissions. MCP servers and skills have none. */
+export type RegexPermissionType = Exclude<
+  PermissionType,
+  "mcp-servers" | "skills"
+>;
 
 export const supportsRegexPermissions = (
   type: PermissionType,
-): type is RegexPermissionType => type !== "mcp-servers";
+): type is RegexPermissionType => type !== "mcp-servers" && type !== "skills";
 
 export type EntityPermission = {
   kind: PermissionKind;
@@ -203,6 +207,17 @@ export type McpServerListItem = {
   workspace?: string | null;
 };
 
+// Skill registry types. `name` is the grant key: "<name>" or "@<organization>/<name>".
+export type SkillListItem = {
+  name: string;
+  organization?: string;
+  skill_name: string;
+  description?: string | null;
+  status?: string | null;
+  latest_version?: number | null;
+  workspace?: string | null;
+};
+
 // Workspace types
 export type WorkspaceListItem = {
   name: string;
@@ -332,3 +347,11 @@ export type WorkspaceMemberCounts = {
   users: number;
   groups: number;
 };
+
+/** A stored MLflow 3.18 issue detection schedule, as the schedule guard sees it. */
+export type IssueDetectionSchedule =
+  components["schemas"]["IssueDetectionScheduleEntry"];
+export type IssueDetectionScheduleList =
+  components["schemas"]["IssueDetectionScheduleListResponse"];
+export type IssueDetectionScheduleCheck =
+  components["schemas"]["IssueDetectionScheduleSweepResponse"];

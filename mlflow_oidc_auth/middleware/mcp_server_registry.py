@@ -43,18 +43,20 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Awaitable, Callable
-from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from typing import Any, Optional
 
 from fastapi import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import compile_path
 
-from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
+from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.registry_support import bridged_auth_context as _bridged
+from mlflow_oidc_auth.middleware.registry_support import buffer_body as _buffer
+from mlflow_oidc_auth.middleware.registry_support import can_create_in_request_workspace
+from mlflow_oidc_auth.middleware.registry_support import rebuilt_response as _rebuilt
 
 logger = get_logger()
 
@@ -177,20 +179,6 @@ def resolve_mcp_route(path: str, method: str) -> Optional[MCPRoute]:
     return None
 
 
-@contextmanager
-def _bridged(auth_context: Any) -> Iterator[None]:
-    """Bridge the caller's ``AuthContext`` while permissions are resolved or grants written.
-
-    The grant workspace and the workspace fallback both come from it.
-    """
-    token = set_auth_context(auth_context) if isinstance(auth_context, AuthContext) else None
-    try:
-        yield
-    finally:
-        if token is not None:
-            clear_auth_context(token)
-
-
 def can_create_mcp_server(username: str) -> bool:
     """Whether ``username`` may create an MCP server in the request's workspace.
 
@@ -201,27 +189,11 @@ def can_create_mcp_server(username: str) -> bool:
 
     With workspaces disabled: administrators only, as before per-server permissions.
     """
-    from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
-
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # One registry and no workspace to delegate through: registering a server stays an
         # administrator's job, as before per-server permissions (admins never reach this check).
         return False
-
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
-    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
-    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
-
-    workspace = get_request_workspace()
-    # MLflow's resolved workspace for a request that names none: its default, which a workspace
-    # provider may call something other than ``default``.
-    effective = workspace or current_grant_workspace()
-    if workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
-        return False
-    if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
-        return False
-    permission = get_workspace_permission_cached(username, effective)
-    return permission is not None and permission.can_manage
+    return can_create_in_request_workspace(username)
 
 
 def can_search_mcp_servers(username: str) -> bool:
@@ -369,17 +341,6 @@ def _filter_search_body(username: str, body: bytes, list_key: str, name_key: str
         visible.append(item)
     data[list_key] = visible
     return json.dumps(data).encode()
-
-
-async def _buffer(response: Response) -> bytes:
-    return b"".join([chunk async for chunk in response.body_iterator])
-
-
-def _rebuilt(response: Response, body: bytes) -> Response:
-    """``body`` as a response with ``response``'s status, headers (repeated ones included) and background."""
-    rebuilt = Response(content=body, status_code=response.status_code, media_type="application/json", background=response.background)
-    rebuilt.raw_headers.extend((k, v) for k, v in response.raw_headers if k.lower() not in (b"content-length", b"content-type"))
-    return rebuilt
 
 
 def _grant_creator_manage(name: str, username: str) -> None:

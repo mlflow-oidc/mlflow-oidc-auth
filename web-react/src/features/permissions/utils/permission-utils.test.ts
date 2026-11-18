@@ -38,6 +38,45 @@ describe("getPermissionUrl", () => {
     });
   });
 
+  describe("Skill permissions", () => {
+    it("generates user and group skill URLs", () => {
+      expect(
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "skills",
+          identifier: "@acme/reviewer",
+        }),
+      ).toBe(
+        `/api/2.0/mlflow/permissions/users/${entityName}/skills/%40acme%2Freviewer`,
+      );
+      expect(
+        getPermissionUrl({
+          entityKind: "group",
+          entityName,
+          type: "skills",
+          identifier: "reviewer",
+        }),
+      ).toBe(
+        `/api/2.0/mlflow/permissions/groups/${entityName}/skills/reviewer`,
+      );
+      expect(
+        getPermissionUrl({ entityKind: "group", entityName, type: "skills" }),
+      ).toBe(`/api/2.0/mlflow/permissions/groups/${entityName}/skills`);
+    });
+
+    it("refuses pattern URLs: skills have no pattern API", () => {
+      expect(() =>
+        getPermissionUrl({
+          entityKind: "user",
+          entityName,
+          type: "skills",
+          isPattern: true,
+        }),
+      ).toThrow();
+    });
+  });
+
   describe("Normal Permissions", () => {
     it("generates user experiment permission URL", () => {
       const url = getPermissionUrl({

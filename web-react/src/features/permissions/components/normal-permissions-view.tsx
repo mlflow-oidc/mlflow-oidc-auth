@@ -21,6 +21,9 @@ import { useAllGatewayModels } from "../../../core/hooks/use-all-gateway-models"
 import { useUserMcpServerPermissions } from "../../../core/hooks/use-user-mcp-server-permissions";
 import { useGroupMcpServerPermissions } from "../../../core/hooks/use-group-mcp-server-permissions";
 import { useAllMcpServers } from "../../../core/hooks/use-all-mcp-servers";
+import { useUserSkillPermissions } from "../../../core/hooks/use-user-skill-permissions";
+import { useGroupSkillPermissions } from "../../../core/hooks/use-group-skill-permissions";
+import { useAllSkills } from "../../../core/hooks/use-all-skills";
 import { EntityListTable } from "../../../shared/components/entity-list-table";
 import PageStatus from "../../../shared/components/page/page-status";
 import { SearchInput } from "../../../shared/components/search-input";
@@ -116,6 +119,12 @@ export const NormalPermissionsView = ({
   const groupMcpServerHook = useGroupMcpServerPermissions({
     groupName: entityKind === "group" ? entityName : null,
   });
+  const userSkillHook = useUserSkillPermissions({
+    username: entityKind === "user" ? entityName : null,
+  });
+  const groupSkillHook = useGroupSkillPermissions({
+    groupName: entityKind === "group" ? entityName : null,
+  });
 
   const activeHook =
     entityKind === "user"
@@ -127,6 +136,7 @@ export const NormalPermissionsView = ({
           "ai-secrets": userGatewaySecretHook,
           "ai-models": userGatewayModelHook,
           "mcp-servers": userMcpServerHook,
+          skills: userSkillHook,
         }[type]
       : {
           experiments: groupExperimentHook,
@@ -136,6 +146,7 @@ export const NormalPermissionsView = ({
           "ai-secrets": groupGatewaySecretHook,
           "ai-models": groupGatewayModelHook,
           "mcp-servers": groupMcpServerHook,
+          skills: groupSkillHook,
         }[type];
 
   const { isLoading, error, refresh, permissions } = activeHook;
@@ -147,6 +158,7 @@ export const NormalPermissionsView = ({
   const { allGatewaySecrets } = useAllGatewaySecrets();
   const { allGatewayModels } = useAllGatewayModels();
   const { allMcpServers } = useAllMcpServers();
+  const { allSkills } = useAllSkills();
 
   const getAvailableEntities = () => {
     if (type === "experiments") {
@@ -188,6 +200,11 @@ export const NormalPermissionsView = ({
     }
     if (type === "mcp-servers") {
       return (allMcpServers || [])
+        .filter((s) => !existingNames.has(s.name))
+        .map((s) => s.name);
+    }
+    if (type === "skills") {
+      return (allSkills || [])
         .filter((s) => !existingNames.has(s.name))
         .map((s) => s.name);
     }
@@ -403,7 +420,9 @@ export const NormalPermissionsView = ({
                           ? "AI model"
                           : type === "mcp-servers"
                             ? "MCP server"
-                            : "AI endpoint"}
+                            : type === "skills"
+                              ? "skill"
+                              : "AI endpoint"}
               </Button>
             )}
           </div>
@@ -447,7 +466,9 @@ export const NormalPermissionsView = ({
                     ? "AI model"
                     : type === "mcp-servers"
                       ? "MCP server"
-                      : "AI Endpoint"
+                      : type === "skills"
+                        ? "skill"
+                        : "AI Endpoint"
         } permissions for ${entityName}`}
         label={
           type === "experiments"
@@ -462,7 +483,9 @@ export const NormalPermissionsView = ({
                     ? "AI Model"
                     : type === "mcp-servers"
                       ? "MCP Server"
-                      : "AI Endpoint"
+                      : type === "skills"
+                        ? "Skill"
+                        : "AI Endpoint"
         }
         options={availableEntities}
         type={type}

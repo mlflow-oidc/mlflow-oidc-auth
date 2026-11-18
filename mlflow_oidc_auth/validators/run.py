@@ -1,8 +1,14 @@
+from mlflow.exceptions import MlflowException
 from mlflow.server.handlers import _get_tracking_store
-from flask import request
 
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
-from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values, get_run_experiment_id
+from mlflow_oidc_auth.utils import (
+    all_source_values,
+    effective_experiment_permission,
+    get_request_param_values,
+    get_run_experiment_id,
+    query_string_values,
+)
 from mlflow_oidc_auth.validators._referenced import nested_body_values, referenced_logged_model_permission, referenced_run_permission
 
 
@@ -86,31 +92,43 @@ def validate_can_read_run_artifact(username: str) -> bool:
 def validate_can_update_run_artifact(username: str) -> bool:
     """Checks UPDATE permission on run artifacts (POST /mlflow/upload-artifact).
 
-    Reads ``run_uuid`` from the QUERY STRING, because that is the only place MLflow's
-    ``upload_artifact_handler`` looks::
+    Reads ``run_id`` and ``run_uuid`` from the QUERY STRING, because that is the only
+    place MLflow's ``upload_artifact_handler`` looks. Which one it writes into depends on
+    the MLflow version::
 
-        args = request.args
-        run_uuid = args.get("run_uuid")
+        run_uuid = args.get("run_uuid")                      # MLflow <= 3.17
+        run_id = args.get("run_id") or args.get("run_uuid")  # MLflow >= 3.18
 
-    The shared ``get_request_param`` helper reads the BODY on a POST, so the plugin
+    Every value of both names, repetitions included, must be updatable (the union rule),
+    so the run MLflow writes into is checked whichever version is installed and whichever
+    of the two names it prefers. On MLflow 3.16/3.17, which ignores ``run_id`` here, a
+    ``run_id`` the caller cannot update is still refused: deliberately stricter than the
+    handler, never looser. ``test_upload_artifact_handler_reads_only_these_query_names``
+    pins the names the installed handler reads, so an MLflow upgrade that reads another
+    one fails a test instead of opening a gap.
+
+    The shared ``get_request_param`` helper reads the BODY on a POST, so the plugin once
     authorized the run named in the body while MLflow wrote the artifact into the run
-    named in the query string — the inverse of the #285 divergence, and a cross-tenant
-    artifact write (issue #288). This route is the only one bound to this validator, so
-    mirroring its handler exactly is safe.
+    named in the query string (issue #288). This route is the only one bound to this
+    validator, so mirroring its handler is safe.
 
-    A request with no ``run_uuid`` query parameter is refused rather than passed along:
-    MLflow rejects it with 400 regardless, and resolving nothing must never mean allow.
-    Every repetition of ``run_uuid`` in the query string must be updatable too (the
-    union rule). The BODY is deliberately not consulted: on this route it is the
-    artifact itself, so reading it as JSON would refuse an owner uploading a JSON file
-    that happens to contain a ``run_id``, and reading it as form data would consume a
-    multipart stream before the handler sees it.
+    A request naming no run in the query string, or a run that cannot be resolved, is
+    refused rather than passed along: MLflow rejects it anyway, and resolving nothing must
+    never mean allow.
+    The BODY is deliberately not consulted: on this route it is the artifact itself, so
+    reading it as JSON would refuse an owner uploading a JSON file that happens to
+    contain a ``run_id``, and reading it as form data would consume a multipart stream
+    before the handler sees it.
     """
-    run_id = request.args.get("run_uuid")
-    if not run_id:
+    run_ids = query_string_values("run_id", "run_uuid")
+    if not run_ids:
         return False
-    run_ids = list(dict.fromkeys([run_id, *(r for r in request.args.getlist("run_uuid") if r)]))
-    return all(_permission_for_run(r, username).can_update for r in run_ids)
+    try:
+        return all(_permission_for_run(r, username).can_update for r in run_ids)
+    except MlflowException:
+        # A run that cannot be resolved (not found, or a blank id MLflow would look up as given) is
+        # refused like one the caller cannot update.
+        return False
 
 
 def validate_can_read_metric_history_bulk_interval(username: str) -> bool:

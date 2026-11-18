@@ -26,6 +26,12 @@ describe("pageTitleFor", () => {
       "/users/alice/mcp-servers",
       "alice · MCP servers · Users · MLflow Access Control",
     ],
+    ["/skills", "Skills · MLflow Access Control"],
+    [
+      "/skills/@acme%2Freviewer",
+      "@acme/reviewer · Skills · MLflow Access Control",
+    ],
+    ["/groups/team/skills", "team · Skills · Groups · MLflow Access Control"],
     ["/trash/runs", "Trash · MLflow Access Control"],
     ["/user/tokens", "My account · MLflow Access Control"],
     ["/scim", "SCIM · MLflow Access Control"],

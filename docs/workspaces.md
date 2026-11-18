@@ -243,6 +243,13 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 | **Trash** | Deleted experiments and runs are filtered by workspace. Restore and hard-delete are workspace-scoped |
 | **Webhooks** | Webhook CRUD operations are scoped to the active workspace |
 
+### Skill registry
+
+MLflow (3.18+) keeps a skill registry per workspace, and each skill has its own user and group
+grants, recorded in the skill's workspace (see [Permissions → Skill Registry](permissions#skill-registry)).
+Without a grant on a skill, the caller's permission on the workspace decides; creating a skill needs
+`MANAGE` on the workspace. Deleting a workspace removes the grants on its skills.
+
 ### MCP server registry
 
 MLflow keeps an MCP server registry per workspace, and each server has its own user and group

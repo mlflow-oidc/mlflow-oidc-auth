@@ -1,7 +1,7 @@
 """SCIM token table migration (issue #321): single head, round trip, and no effect on existing data.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixture as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixture as the Phase 0 migration tests.
 """
 
 import pytest
