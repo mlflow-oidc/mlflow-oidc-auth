@@ -75,7 +75,13 @@ def validate_can_invoke_issue_detection(username: str) -> bool:
         return False
     # MLflow reads the body: a secret it would load must carry the provider's credentials itself.
     body = request_body_dict()
-    if isinstance(body, dict) and body.get("secret_id") and not secret_supplies_provider_credentials(body.get("provider"), body.get("secret_id")):
+    # With an endpoint named, MLflow runs the job on that gateway endpoint and the secret's values go unused.
+    if (
+        isinstance(body, dict)
+        and body.get("secret_id")
+        and not body.get("endpoint_name")
+        and not secret_supplies_provider_credentials(body.get("provider"), body.get("secret_id"))
+    ):
         return False
     return all(can_use_endpoint_name(name, username) for name in all_source_values("endpoint_name"))
 

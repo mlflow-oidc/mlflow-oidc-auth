@@ -417,6 +417,12 @@ def test_issue_detection_reads_the_secret_as_the_provider_mlflow_loads_it_for(pr
     assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=body)) is expected
 
 
+def test_issue_detection_does_not_read_a_secret_an_endpoint_makes_unused():
+    """MLflow runs on the named endpoint, so only USE on the secret and endpoint is checked."""
+    body = _detection(VICTIM, ["tr-victim"], secret_id="sec-base-only", endpoint_name="shared-endpoint")
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=body))
+
+
 def test_issue_detection_refuses_a_secret_mlflow_cannot_read(monkeypatch):
     def unreadable(self, secret_id):
         raise RuntimeError("cannot decrypt")
