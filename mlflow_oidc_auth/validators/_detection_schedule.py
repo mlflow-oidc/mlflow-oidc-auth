@@ -111,8 +111,8 @@ def _secret_supplies_provider_credentials(provider: str, secret_id: str) -> bool
             return False
         supplied = _fetch_provider_credentials(_get_tracking_store(), name, secret_id)
     except Exception as e:
-        # Never the secret's values: only that it could not be read, and why in type.
-        logger.warning("Could not read gateway secret %s for provider %s (%s); denying", secret_id, provider, type(e).__name__)
+        # Nothing about the secret itself: only that one could not be read, and the error's type.
+        logger.warning("Could not read a gateway secret for issue detection (%s); denying", type(e).__name__)
         return False
     return isinstance(supplied, dict) and all(supplied.get(variable) for variable in required)
 
