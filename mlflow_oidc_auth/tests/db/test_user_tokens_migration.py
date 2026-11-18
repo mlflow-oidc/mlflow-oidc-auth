@@ -146,7 +146,9 @@ class TestUpgrade:
         _upgrade(engine, TOKENS_REVISION)
 
         expires_at = _as_datetime(_tokens(engine)["forever@example.com"].expires_at)
-        assert before + timedelta(days=364) < expires_at <= _now() + timedelta(days=365)
+        # MySQL's DATETIME rounds fractional seconds to the nearest second, so the stored
+        # expiry can be up to half a second later than the one the migration computed.
+        assert before + timedelta(days=364) < expires_at <= _now() + timedelta(days=365, seconds=1)
 
     def test_expired_and_empty_secrets_are_not_carried_over(self, engine):
         _upgrade(engine, PREVIOUS_REVISION)
