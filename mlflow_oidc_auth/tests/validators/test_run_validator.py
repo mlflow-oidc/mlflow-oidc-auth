@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -163,27 +164,70 @@ def _two_run_fixtures():
     return run_for, perm_for
 
 
-def test_validate_can_update_run_artifact_checks_run_id_next_to_run_uuid() -> None:
-    """MLflow 3.18's handler writes into ``run_id or run_uuid``: an editable run under
-    one name must not authorize another run under the other, in either order."""
-
-    app = Flask(__name__)
-    run_for, perm_for = _two_run_fixtures()
-    queries = (
+@pytest.mark.parametrize(
+    "query",
+    [
         "run_uuid=OWN-RUN&run_id=VICTIM-RUN",
         "run_id=VICTIM-RUN&run_uuid=OWN-RUN",
         "run_id=OWN-RUN&run_uuid=VICTIM-RUN",
         "run_uuid=OWN-RUN&run_id=OWN-RUN&run_id=VICTIM-RUN",
         "run_id=VICTIM-RUN",
-    )
-    for query in queries:
+        "run_id=&run_uuid=VICTIM-RUN",
+    ],
+)
+def test_validate_can_update_run_artifact_checks_run_id_next_to_run_uuid(query) -> None:
+    """MLflow 3.18's handler writes into ``run_id or run_uuid``: an editable run under
+    one name must not authorize another run under the other, in either order."""
+
+    app = Flask(__name__)
+    run_for, perm_for = _two_run_fixtures()
+    with (
+        app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"artifact bytes"),
+        patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
+        patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
+    ):
+        mock_tracking_store.return_value.get_run.side_effect = run_for
+        assert validate_can_update_run_artifact("bob") is False
+        # The deny came from checking the run MLflow could write into, not from anything else.
+        assert "VICTIM-RUN" in {c.args[0] for c in mock_tracking_store.return_value.get_run.call_args_list}
+
+
+def test_validate_can_update_run_artifact_never_allows_an_unknown_run() -> None:
+    """A run that cannot be resolved (blank, or not found) must fail closed, never pass."""
+    from mlflow.exceptions import MlflowException
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+
+    app = Flask(__name__)
+    run_for, perm_for = _two_run_fixtures()
+
+    def lookup(run_id):
+        if run_id in ("OWN-RUN", "VICTIM-RUN"):
+            return run_for(run_id)
+        raise MlflowException(f"Run '{run_id}' not found", RESOURCE_DOES_NOT_EXIST)
+
+    for query in ("run_id=MISSING&run_uuid=OWN-RUN", "run_id=%20&run_uuid=OWN-RUN"):
         with (
-            app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"artifact bytes"),
+            app.test_request_context(f"/?{query}&path=f.txt", method="POST", data=b"x"),
             patch("mlflow_oidc_auth.validators.run._get_tracking_store") as mock_tracking_store,
             patch("mlflow_oidc_auth.validators.run.effective_experiment_permission", side_effect=perm_for),
         ):
-            mock_tracking_store.return_value.get_run.side_effect = run_for
-            assert validate_can_update_run_artifact("bob") is False, query
+            mock_tracking_store.return_value.get_run.side_effect = lookup
+            with pytest.raises(MlflowException):
+                validate_can_update_run_artifact("bob")
+
+
+def test_upload_artifact_handler_reads_only_these_query_names() -> None:
+    """Pins what the installed MLflow's handler reads, so an upgrade that reads another run
+    parameter (or the body) fails here instead of silently writing into an unchecked run."""
+    import inspect
+    import re
+
+    from mlflow.server import handlers
+
+    source = inspect.getsource(handlers.upload_artifact_handler)
+    assert set(re.findall(r'args\.get\("([^"]+)"\)', source)) <= {"run_id", "run_uuid", "path"}
+    assert re.search(r'args\.get\("run_(uuid|id)"\)', source), "the handler no longer names its run in the query string"
+    assert "get_json" not in source and "request.form" not in source and "_get_request_message" not in source
 
 
 def test_validate_can_update_run_artifact_accepts_run_id_alone() -> None:

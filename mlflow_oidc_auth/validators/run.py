@@ -1,8 +1,13 @@
 from mlflow.server.handlers import _get_tracking_store
-from flask import request
 
 from mlflow_oidc_auth.permissions import Permission, intersect_permissions
-from mlflow_oidc_auth.utils import all_source_values, effective_experiment_permission, get_request_param_values, get_run_experiment_id
+from mlflow_oidc_auth.utils import (
+    all_source_values,
+    effective_experiment_permission,
+    get_request_param_values,
+    get_run_experiment_id,
+    query_string_values,
+)
 from mlflow_oidc_auth.validators._referenced import nested_body_values, referenced_logged_model_permission, referenced_run_permission
 
 
@@ -95,7 +100,11 @@ def validate_can_update_run_artifact(username: str) -> bool:
 
     Every value of both names, repetitions included, must be updatable (the union rule),
     so the run MLflow writes into is checked whichever version is installed and whichever
-    of the two names it prefers.
+    of the two names it prefers. On MLflow 3.16/3.17, which ignores ``run_id`` here, a
+    ``run_id`` the caller cannot update is still refused: deliberately stricter than the
+    handler, never looser. ``test_upload_artifact_handler_reads_only_these_query_names``
+    pins the names the installed handler reads, so an MLflow upgrade that reads another
+    one fails a test instead of opening a gap.
 
     The shared ``get_request_param`` helper reads the BODY on a POST, so the plugin once
     authorized the run named in the body while MLflow wrote the artifact into the run
@@ -109,7 +118,7 @@ def validate_can_update_run_artifact(username: str) -> bool:
     contain a ``run_id``, and reading it as form data would consume a multipart stream
     before the handler sees it.
     """
-    run_ids = list(dict.fromkeys(r for name in ("run_id", "run_uuid") for r in request.args.getlist(name) if r))
+    run_ids = query_string_values("run_id", "run_uuid")
     if not run_ids:
         return False
     return all(_permission_for_run(r, username).can_update for r in run_ids)
