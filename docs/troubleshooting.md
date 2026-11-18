@@ -1,5 +1,25 @@
 # Troubleshooting
 
+## Large responses fail behind a proxy with a response size limit
+
+**Symptom.** Opening a large experiment, run comparison, metric chart or trace, or downloading a
+large artifact, fails with a 5xx from the proxy, while smaller ones work. Cloud Run, for one,
+refuses non-streamed HTTP/1 responses over [32 MiB](https://docs.cloud.google.com/run/quotas).
+
+**Cause.** MLflow pages its reads by item count, not by size, so one page of runs with many tags,
+or a single large trace, can go past the limit.
+
+**What the plugin does.** A successful (`200`) response from MLflow that declares more than
+16 MiB is sent without `Content-Length`, on any route, so [Uvicorn sends it chunked](https://uvicorn.dev/server-behavior/#http-headers)
+and the proxy streams it through. The header is removed after the plugin's response filtering
+has run, so the body, page token and authorization are unchanged. Smaller responses, `HEAD`,
+range replies (`206`) and errors keep their length. A large download therefore shows no total
+size in the browser while it runs.
+
+MLflow still builds the whole page in memory; lower `max_results` if the server, not the proxy,
+is the limit. A proxy that buffers whole responses rather than streaming chunks needs its own
+limit raised.
+
 ## Login fails after returning from the identity provider
 
 **Symptom.** Signing in at the identity provider works, but back on MLflow the login fails. The log

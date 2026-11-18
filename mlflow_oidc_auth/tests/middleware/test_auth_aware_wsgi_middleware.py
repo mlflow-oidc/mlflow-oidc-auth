@@ -9,15 +9,26 @@ This module tests WSGI middleware functionality including:
 - WSGI application wrapping and execution
 - Error handling and edge cases
 - Non-HTTP request handling
+- Chunked framing for large responses
 """
 
+import http.client
+import json
+import socket
+import sys
+import threading
+import time
+
 import pytest
+import uvicorn
+from flask import Flask, Response, request
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mlflow_oidc_auth.entities.auth_context import AuthContext
 from mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware import (
     AuthAwareWSGIMiddleware,
     AuthInjectingWSGIApp,
+    STREAMED_RESPONSE_THRESHOLD_BYTES,
 )
 
 
@@ -351,3 +362,164 @@ class TestAuthAwareWSGIMiddleware:
         assert captured_environ["mlflow_oidc_auth"].username == "integration@example.com"
         assert captured_environ["mlflow_oidc_auth"].is_admin is True
         assert captured_environ["mlflow_oidc_auth"].workspace == "test-ws"
+
+
+LARGE = STREAMED_RESPONSE_THRESHOLD_BYTES + 1
+ERROR_STATUSES = ("206 Partial Content", "302 Found", "400 Bad Request", "403 Forbidden", "404 Not Found", "500 Internal Server Error")
+ROUTES = [
+    ("POST", "/api/2.0/mlflow/runs/search"),
+    ("POST", "/mlflow/ajax-api/2.0/mlflow/runs/search"),
+    ("GET", "/ajax-api/3.0/mlflow/traces/get"),
+    ("GET", "/ajax-api/2.0/mlflow/get-trace-artifact"),
+    ("GET", "/api/2.0/mlflow-artifacts/artifacts/model.pkl"),
+    ("POST", "/api/2.0/mlflow/experiments/search"),
+]
+
+
+def _framing_after(method: str, length: int, status: str = "200 OK", path: str = "/api/2.0/mlflow/runs/search") -> list[tuple[str, str]]:
+    """Headers the bridge passes on when the wrapped app declares a body of ``length`` bytes."""
+
+    def application(environ, start_response):
+        start_response(status, [("Content-Length", str(length)), ("Content-Type", "application/json")])
+        return [b"ok"]
+
+    start_response = MagicMock()
+    assert AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD=method, PATH_INFO=path), start_response) == [b"ok"]
+    assert start_response.call_args.args[0] == status
+    return start_response.call_args.args[1]
+
+
+@pytest.mark.parametrize("method,path", ROUTES)
+def test_large_response_drops_length_on_any_route(method, path):
+    assert _framing_after(method, LARGE, path=path) == [("Content-Type", "application/json")]
+
+
+@pytest.mark.parametrize("method,path", ROUTES)
+@pytest.mark.parametrize("length", [0, 2, STREAMED_RESPONSE_THRESHOLD_BYTES])
+def test_response_up_to_threshold_keeps_length(method, path, length):
+    assert _framing_after(method, length, path=path) == [("Content-Length", str(length)), ("Content-Type", "application/json")]
+
+
+@pytest.mark.parametrize("status", ERROR_STATUSES)
+def test_large_non_200_response_keeps_length(status):
+    assert _framing_after("GET", LARGE, status) == [("Content-Length", str(LARGE)), ("Content-Type", "application/json")]
+
+
+def test_large_head_response_keeps_length():
+    """A HEAD response reports the size of the GET body, so it must keep the length."""
+    assert _framing_after("HEAD", LARGE) == [("Content-Length", str(LARGE)), ("Content-Type", "application/json")]
+
+
+@pytest.mark.parametrize("value", ["", "abc", "1e9", "²", "-1", "+99999999999", "99_999_999_999"])
+def test_unparseable_length_is_left_alone(value):
+    headers = [("Content-Length", value)]
+
+    def application(environ, start_response):
+        start_response("200 OK", headers)
+        return []
+
+    start_response = MagicMock()
+    AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD="GET", PATH_INFO="/"), start_response)
+    assert start_response.call_args.args[1] == headers
+
+
+@pytest.mark.asyncio
+async def test_large_response_after_flask_hooks(sample_asgi_scope, mock_receive, mock_send):
+    """A response hook that replaces the body leaves Flask's restored length; the bridge drops it for the final body."""
+    app = Flask(__name__)
+    expected = json.dumps({"runs": [{"data": {"tags": [{"key": "payload", "value": "x" * LARGE}]}}], "next_page_token": "next-page"}).encode()
+    auth_context = AuthContext(username="reader@example.com", is_admin=False)
+
+    @app.post("/api/2.0/mlflow/runs/search")
+    def search():
+        return Response(b"unfiltered", mimetype="application/json")
+
+    @app.after_request
+    def filter_response(response):
+        assert request.environ["mlflow_oidc_auth"] is auth_context
+        response.set_data(expected)
+        response.headers.add("Set-Cookie", "first=one; Secure; HttpOnly")
+        response.headers.add("Set-Cookie", "second=two; Secure; HttpOnly")
+        assert response.content_length == len(expected)
+        return response
+
+    sample_asgi_scope.update(method="POST", path="/api/2.0/mlflow/runs/search", mlflow_oidc_auth=auth_context)
+    await AuthAwareWSGIMiddleware(app)(sample_asgi_scope, mock_receive, mock_send)
+    messages = mock_send.messages
+    assert messages[0]["status"] == 200
+    headers = messages[0]["headers"]
+    assert b"content-length" not in dict(headers)
+    assert dict(headers)[b"content-type"] == b"application/json"
+    assert [value for name, value in headers if name == b"set-cookie"] == [b"first=one; Secure; HttpOnly", b"second=two; Secure; HttpOnly"]
+    assert b"".join(message.get("body", b"") for message in messages[1:]) == expected
+    assert not messages[-1].get("more_body", False)
+
+
+def test_uvicorn_sends_large_response_chunked(monkeypatch):
+    """Through a real Uvicorn server: a large body arrives chunked and whole, a small one and HEAD keep their length."""
+    monkeypatch.setattr("mlflow_oidc_auth.middleware.auth_aware_wsgi_middleware.STREAMED_RESPONSE_THRESHOLD_BYTES", 1024)
+    app = Flask(__name__)
+    large, small = b"x" * 4096, b"{}"
+
+    @app.get("/large")
+    def large_body():
+        return Response(large, mimetype="application/json")
+
+    @app.get("/small")
+    def small_body():
+        return Response(small, mimetype="application/json")
+
+    # Uvicorn serves on a socket bound here, so no other process can take the port in between.
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(AuthAwareWSGIMiddleware(app), lifespan="off", log_config=None))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    thread.start()
+    try:
+        for _ in range(600):
+            if server.started:
+                break
+            time.sleep(0.05)
+        assert server.started
+
+        def fetch(method: str, path: str) -> tuple[http.client.HTTPResponse, bytes]:
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            connection.request(method, path)
+            response = connection.getresponse()
+            body = response.read()
+            connection.close()
+            return response, body
+
+        response, body = fetch("GET", "/large")
+        assert response.getheader("Transfer-Encoding") == "chunked"
+        assert response.getheader("Content-Length") is None
+        assert body == large
+        response, body = fetch("GET", "/small")
+        assert response.getheader("Content-Length") == "2"
+        assert body == small
+        response, _ = fetch("HEAD", "/large")
+        assert response.getheader("Content-Length") == str(len(large))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        listener.close()
+
+
+def test_wsgi_response_contract_is_preserved():
+    headers = [("cOnTeNt-LeNgTh", str(LARGE)), ("Set-Cookie", "first=one"), ("Set-Cookie", "second=two")]
+    try:
+        raise ValueError("replacement response")
+    except ValueError:
+        exc_info = sys.exc_info()
+    body = MagicMock()
+    start_response = MagicMock()
+
+    def application(environ, wrapped_start_response):
+        assert wrapped_start_response("200 OK", headers, exc_info) is start_response.return_value
+        return body
+
+    result = AuthInjectingWSGIApp(application, {})(dict(REQUEST_METHOD="POST", PATH_INFO="/api/2.0/mlflow/runs/search"), start_response)
+    assert result is body
+    start_response.assert_called_once_with("200 OK", headers[1:], exc_info)
+    assert headers[0] == ("cOnTeNt-LeNgTh", str(LARGE))
