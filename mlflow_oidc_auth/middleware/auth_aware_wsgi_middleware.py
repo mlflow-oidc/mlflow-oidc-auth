@@ -12,34 +12,45 @@ import asyncio
 from types import TracebackType
 
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
-from mlflow_oidc_auth.hooks.route_policy import strip_static_prefix
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
-#: MLflow read endpoints whose successful response has no size bound: they page by item count (runs,
-#: models, traces, metric points), not by bytes, or return one whole trace. Their ``200`` responses are
-#: sent without ``Content-Length`` so proxies that cap non-streamed responses (Cloud Run: 32 MiB) can
-#: deliver them. ``(method, path)`` pairs, paths without MLflow's static prefix; HEAD is not listed,
-#: so a HEAD response keeps its length.
-UNBOUNDED_READ_ROUTES: frozenset[tuple[str, str]] = frozenset(
-    {
-        (method, api + path)
-        for api in ("/api", "/ajax-api")
-        for method, path in (
-            ("POST", "/2.0/mlflow/runs/search"),
-            ("POST", "/2.0/mlflow/logged-models/search"),
-            ("GET", "/2.0/mlflow/metrics/get-history"),
-            ("GET", "/2.0/mlflow/metrics/get-history-bulk-interval"),
-            ("GET", "/2.0/mlflow/traces"),
-            ("POST", "/3.0/mlflow/traces/search"),
-            ("GET", "/3.0/mlflow/traces/get"),
-            ("GET", "/3.0/mlflow/traces/batchGet"),
-        )
-    }
-    # MLflow serves the bulk metric history only under /ajax-api.
-    | {("GET", "/ajax-api/2.0/mlflow/metrics/get-history-bulk")}
-)
+#: A non-HEAD ``200`` response declaring more than this many bytes is sent without ``Content-Length``,
+#: so Uvicorn sends it chunked. Proxies that cap non-streamed responses then stream it through
+#: instead of failing it (Cloud Run refuses non-streamed HTTP/1 responses over 32 MiB). MLflow pages
+#: its reads by item count, not size, so any read can get there: a run search page, a whole trace, an
+#: artifact. Smaller responses, the bulk of the traffic, keep their exact length.
+STREAMED_RESPONSE_THRESHOLD_BYTES = 16 << 20
+
+
+def _declared_length(value: str) -> int:
+    """The byte count a ``Content-Length`` value declares, or -1 if it is not a number."""
+    try:
+        return int(value)
+    except ValueError:
+        return -1
+
+
+def _without_large_content_length(method: str, status: str, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """``headers`` with ``Content-Length`` removed when it declares a large ``200`` body.
+
+    HEAD keeps its length: it reports the size of the GET body, which a client may rely on. Any other
+    status (a ``206`` range reply above all) keeps its framing, as does a length that is not a number.
+
+    Parameters:
+        method: The request method (WSGI ``REQUEST_METHOD``).
+        status: The WSGI status line, e.g. ``"200 OK"``.
+        headers: The response headers as Flask passes them to ``start_response``.
+
+    Returns:
+        The headers to send, a new list when one is removed.
+    """
+    if method == "HEAD" or status.split(" ", 1)[0] != "200":
+        return headers
+    if not any(name.lower() == "content-length" and _declared_length(value) > STREAMED_RESPONSE_THRESHOLD_BYTES for name, value in headers):
+        return headers
+    return [(name, value) for name, value in headers if name.lower() != "content-length"]
 
 
 class AuthInjectingWSGIApp:
@@ -71,10 +82,8 @@ class AuthInjectingWSGIApp:
             headers: list[tuple[str, str]],
             exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
         ) -> object:
-            if status.startswith("200 ") and (environ.get("REQUEST_METHOD", ""), strip_static_prefix(environ.get("PATH_INFO", ""))) in UNBOUNDED_READ_ROUTES:
-                # Flask hooks have run, so this is the final length. Without it Uvicorn sends the body
-                # chunked, which Cloud Run delivers past its 32 MiB limit on non-streamed responses.
-                headers = [(name, value) for name, value in headers if name.lower() != "content-length"]
+            # Flask's response hooks have run, so this is the final length of the filtered body.
+            headers = _without_large_content_length(environ.get("REQUEST_METHOD", ""), status, headers)
             return start_response(status, headers, exc_info)
 
         return self.flask_app(environ, start_response_with_framing)

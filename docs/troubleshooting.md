@@ -1,28 +1,24 @@
 # Troubleshooting
 
-## Large searches fail behind a proxy with a response size limit
+## Large responses fail behind a proxy with a response size limit
 
-**Symptom.** Opening a large experiment, run comparison, metric chart or trace fails with a 5xx
-from the proxy, while smaller pages work. Cloud Run, for one, refuses non-streamed HTTP/1
-responses over [32 MiB](https://docs.cloud.google.com/run/quotas).
+**Symptom.** Opening a large experiment, run comparison, metric chart or trace, or downloading a
+large artifact, fails with a 5xx from the proxy, while smaller ones work. Cloud Run, for one,
+refuses non-streamed HTTP/1 responses over [32 MiB](https://docs.cloud.google.com/run/quotas).
 
-**Cause.** MLflow pages these reads by item count, not by size, so one page of runs with many
-tags or a single large trace can go past the limit.
+**Cause.** MLflow pages its reads by item count, not by size, so one page of runs with many tags,
+or a single large trace, can go past the limit.
 
-**What the plugin does.** A successful (`200`) response on these routes is sent without
-`Content-Length`, so [Uvicorn sends it chunked](https://uvicorn.dev/server-behavior/#http-headers) and
-the proxy streams it through:
+**What the plugin does.** A successful (`200`) response from MLflow that declares more than
+16 MiB is sent without `Content-Length`, on any route, so [Uvicorn sends it chunked](https://uvicorn.dev/server-behavior/#http-headers)
+and the proxy streams it through. The header is removed after the plugin's response filtering
+has run, so the body, page token and authorization are unchanged. Smaller responses, `HEAD`,
+range replies (`206`) and errors keep their length. A large download therefore shows no total
+size in the browser while it runs.
 
-| Method | Route (under `/api` and `/ajax-api`, after any `--static-prefix`) |
-|---|---|
-| POST | `/2.0/mlflow/runs/search`, `/2.0/mlflow/logged-models/search`, `/3.0/mlflow/traces/search` |
-| GET | `/2.0/mlflow/metrics/get-history`, `/2.0/mlflow/metrics/get-history-bulk-interval`, `/2.0/mlflow/traces`, `/3.0/mlflow/traces/get`, `/3.0/mlflow/traces/batchGet` |
-| GET | `/ajax-api/2.0/mlflow/metrics/get-history-bulk` (served only under `/ajax-api`) |
-
-The header is removed after the plugin's response filtering has run, so the body, page token and
-authorization are unchanged. Errors, `HEAD` and every other route keep their length. MLflow still
-builds the whole page in memory; lower `max_results` if the server, not the proxy, is the limit. A
-proxy that buffers whole responses (rather than streaming chunks) needs its own limit raised.
+MLflow still builds the whole page in memory; lower `max_results` if the server, not the proxy,
+is the limit. A proxy that buffers whole responses rather than streaming chunks needs its own
+limit raised.
 
 ## Login fails after returning from the identity provider
 
