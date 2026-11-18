@@ -510,3 +510,17 @@ def test_reading_a_secret_first_keeps_mlflows_job_map_whole(tmp_path):
     done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, cwd=tmp_path, env=env)
     assert done.returncode == 0, done.stderr[-2000:]
     assert done.stdout.strip().endswith("invoke_issue_detection_job")
+
+
+def test_mlflows_invoke_handler_reads_only_the_snake_case_credential_keys():
+    """The credential check reads ``secret_id`` / ``endpoint_name`` / ``provider`` from the JSON
+    body because that is all MLflow reads; another spelling or source must fail here first."""
+    import inspect
+    import re
+
+    from mlflow.server import handlers
+
+    source = inspect.getsource(inspect.unwrap(handlers._invoke_issue_detection_handler))
+    assert set(re.findall(r'request_json\.get\("([A-Za-z_]+)"\)', source)) >= {"secret_id", "endpoint_name", "provider"}
+    for spelling in ("secretId", "endpointName", "request.args", "request.form", "request.values"):
+        assert spelling not in source, spelling
