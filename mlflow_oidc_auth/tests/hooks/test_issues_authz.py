@@ -46,8 +46,7 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
     def get_trace_info(self, trace_id):
         return SimpleNamespace(experiment_id=EXPERIMENT_OF[trace_id], trace_id=trace_id) if trace_id in EXPERIMENT_OF else _missing("Trace", trace_id)
 
-    # Secret values are placeholders, never credentials. "sec-base-only" supplies a base URL and
-    # no API key: MLflow would run the job with the server's own key, sent to that URL.
+    # Secret values are placeholders, never credentials. "sec-base-only" lacks the provider's API key.
     SECRETS = {
         "sec-1": ("shared-key", {"api_key": "placeholder-value"}, {}),
         "sec-base-only": ("base-only", {}, {"api_base": "https://example.invalid/v1"}),
@@ -406,7 +405,7 @@ def test_a_create_body_naming_the_schedule_tag_that_cannot_be_read_denies(shared
 
 
 def test_issue_detection_refuses_a_secret_without_the_providers_key():
-    """MLflow fills every variable a secret does not supply from the server's environment."""
+    """A named secret must carry the provider's API key itself."""
     assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-base-only")))
     assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-1")))
 

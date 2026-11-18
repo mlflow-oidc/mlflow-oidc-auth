@@ -61,12 +61,10 @@ def secret_supplies_provider_credentials(provider: object, secret_id: object) ->
     """Whether the secret ``secret_id`` itself carries ``provider``'s credentials, as MLflow reads it.
 
     MLflow turns a named secret into environment variables for the job
-    (``mlflow.genai.discovery.job._fetch_provider_credentials``) and starts the job with the server's
-    own environment underneath them. A variable the secret does not supply is therefore taken from
-    the server: a secret carrying only a base URL, say, runs with the server's API key, sent to that
-    URL. So a named secret must supply every credential variable itself. This reads the secret with
-    MLflow's own function; an unknown provider, a secret that cannot be read, or an MLflow that no
-    longer has the function denies.
+    (``mlflow.genai.discovery.job._fetch_provider_credentials``) on top of the server's own
+    environment, so a named secret must supply every credential variable itself. This reads the
+    secret with MLflow's own function; an unknown provider, a secret that cannot be read, or an
+    MLflow that no longer has the function denies.
     """
     if not isinstance(provider, str) or not provider.strip() or not isinstance(secret_id, str) or not secret_id:
         return False
