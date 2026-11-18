@@ -192,17 +192,17 @@ export default function WorkspaceDetailPage() {
       {membersHidden(usersError) ? (
         membersHiddenNotice
       ) : (
-      <WorkspaceMembersSection
-        title="Users"
-        members={userMembers}
-        isLoading={isUsersLoading}
-        error={usersError}
-        onUpdate={handleUpdateUser}
-        onRemove={handleRemoveUser}
-        onRefresh={refreshUsers}
-        nameLabel="Username"
-        canManage={canManage}
-      />
+        <WorkspaceMembersSection
+          title="Users"
+          members={userMembers}
+          isLoading={isUsersLoading}
+          error={usersError}
+          onUpdate={handleUpdateUser}
+          onRemove={handleRemoveUser}
+          onRefresh={refreshUsers}
+          nameLabel="Username"
+          canManage={canManage}
+        />
       )}
 
       {/* Group section action buttons */}
@@ -227,17 +227,17 @@ export default function WorkspaceDetailPage() {
       {membersHidden(groupsError) ? (
         membersHiddenNotice
       ) : (
-      <WorkspaceMembersSection
-        title="Groups"
-        members={groupMembers}
-        isLoading={isGroupsLoading}
-        error={groupsError}
-        onUpdate={handleUpdateGroup}
-        onRemove={handleRemoveGroup}
-        onRefresh={refreshGroups}
-        nameLabel="Group Name"
-        canManage={canManage}
-      />
+        <WorkspaceMembersSection
+          title="Groups"
+          members={groupMembers}
+          isLoading={isGroupsLoading}
+          error={groupsError}
+          onUpdate={handleUpdateGroup}
+          onRemove={handleRemoveGroup}
+          onRefresh={refreshGroups}
+          nameLabel="Group Name"
+          canManage={canManage}
+        />
       )}
 
       {/* Grant permission modals — same pattern as EntityPermissionsManager */}
