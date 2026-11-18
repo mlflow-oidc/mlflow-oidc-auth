@@ -16,9 +16,9 @@ jobs:
     name: Conventional commit title validation
     runs-on: ubuntu-latest
     steps:
-      # Pinned to the commit of v6.1.1: a third-party action running in a pull_request_target
+      # Pinned to the commit of v6.1.2: a third-party action running in a pull_request_target
       # job with a write-scoped token on fork PR metadata.
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

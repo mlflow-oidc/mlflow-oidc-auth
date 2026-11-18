@@ -349,6 +349,45 @@ def fetch_all_gateway_model_definitions() -> List[Dict[str, Any]]:
     return all_models
 
 
+def fetch_all_skills() -> List[Dict[str, Any]]:
+    """Fetch every skill of the request's workspace from MLflow's skill registry.
+
+    The registry exists from MLflow 3.18; on an older MLflow there is nothing to list.
+
+    Returns:
+        One dictionary per skill with ``name`` (the skill key, see ``utils/skill_key.py``),
+        ``organization``, ``skill_name``, ``description``, ``status``, ``latest_version`` and
+        ``workspace``.
+    """
+    from mlflow_oidc_auth.utils.skill_key import format_skill_key
+
+    store = _get_tracking_store()
+    if not hasattr(store, "search_skills"):
+        return []
+    skills: List[Dict[str, Any]] = []
+    page_token = None
+    while True:
+        page = store.search_skills(max_results=1000, page_token=page_token)
+        for skill in page:
+            status = getattr(skill, "status", None)
+            organization = getattr(skill, "organization", "") or ""
+            skills.append(
+                {
+                    "name": format_skill_key(organization, skill.name),
+                    "organization": organization,
+                    "skill_name": skill.name,
+                    "description": getattr(skill, "description", None),
+                    "status": str(status) if status is not None else None,
+                    "latest_version": getattr(skill, "latest_version", None),
+                    "workspace": getattr(skill, "workspace", None),
+                }
+            )
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            break
+    return skills
+
+
 def fetch_all_mcp_servers() -> List[Dict[str, Any]]:
     """Fetch every MCP server of the request's workspace from MLflow's MCP server registry.
 

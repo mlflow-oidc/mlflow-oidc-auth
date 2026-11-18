@@ -48,6 +48,7 @@ PROMPT_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/prompts")
 REGISTERED_MODEL_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/registered-models")
 GATEWAY_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/gateways")
 MCP_SERVER_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/mcp-servers")
+SKILL_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/skills")
 USER_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/users")
 SCORERS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/scorers", version=3)
 USERS_ROUTER_PREFIX = _get_rest_path("/mlflow/users")
@@ -58,6 +59,7 @@ WEBHOOK_ROUTER_PREFIX = "/oidc/webhook"
 WORKSPACE_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces", version=3)
 WORKSPACE_REGEX_PERMISSIONS_ROUTER_PREFIX = _get_rest_path("/mlflow/permissions/workspaces/regex", version=3)
 WORKSPACE_RULES_ROUTER_PREFIX = _get_rest_path("/mlflow/workspace-rules", version=3)
+ISSUE_DETECTION_SCHEDULES_ROUTER_PREFIX = _get_rest_path("/mlflow/issue-detection-schedules", version=3)
 # SCIM 2.0 (RFC 7644) lives at the conventional root path rather than under MLflow's REST prefix:
 # directories are configured with a base URL ending in /scim/v2, and it has no "/ajax-api" twin.
 SCIM_ROUTER_PREFIX = "/scim/v2"

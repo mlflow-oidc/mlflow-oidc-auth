@@ -1412,6 +1412,287 @@
         "title": "HealthStatusResponse",
         "type": "object"
       },
+      "IssueDetectionScheduleEntry": {
+        "description": "One experiment's stored issue detection schedule and what the guard knows about it.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded writer of the schedule",
+            "title": "Author"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_name": {
+            "title": "Experiment Name",
+            "type": "string"
+          },
+          "guard_paused_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the guard last paused this schedule",
+            "title": "Guard Paused At"
+          },
+          "guard_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the guard last paused it",
+            "title": "Guard Reason"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueDetectionScheduleModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "readable": {
+            "description": "Whether MLflow's scheduler reads this value as a schedule",
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "uses_server_credentials": {
+            "description": "Runs on the MLflow server's own provider credentials",
+            "title": "Uses Server Credentials",
+            "type": "boolean"
+          },
+          "violation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the guard would pause this running schedule now, if it would",
+            "title": "Violation"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "experiment_name",
+          "readable",
+          "paused",
+          "uses_server_credentials"
+        ],
+        "title": "IssueDetectionScheduleEntry",
+        "type": "object"
+      },
+      "IssueDetectionScheduleListResponse": {
+        "properties": {
+          "guard_interval_seconds": {
+            "title": "Guard Interval Seconds",
+            "type": "integer"
+          },
+          "guard_running": {
+            "description": "Whether this server process runs the background check",
+            "title": "Guard Running",
+            "type": "boolean"
+          },
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDetectionScheduleEntry"
+            },
+            "title": "Schedules",
+            "type": "array"
+          },
+          "server_credentials_admin_only": {
+            "title": "Server Credentials Admin Only",
+            "type": "boolean"
+          },
+          "supported": {
+            "description": "Whether this MLflow has recurring issue detection",
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "supported",
+          "guard_running",
+          "guard_interval_seconds",
+          "server_credentials_admin_only",
+          "schedules"
+        ],
+        "title": "IssueDetectionScheduleListResponse",
+        "type": "object"
+      },
+      "IssueDetectionScheduleModel": {
+        "description": "The model a stored schedule names, as stored.",
+        "properties": {
+          "endpoint_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AI Gateway endpoint the schedule runs through",
+            "title": "Endpoint Name"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model of a direct model selection",
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider of a direct model selection",
+            "title": "Provider"
+          },
+          "secret_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gateway secret a direct selection runs with",
+            "title": "Secret Id"
+          },
+          "secret_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of that secret, when it still resolves",
+            "title": "Secret Name"
+          }
+        },
+        "title": "IssueDetectionScheduleModel",
+        "type": "object"
+      },
+      "IssueDetectionSchedulePaused": {
+        "properties": {
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "reason"
+        ],
+        "title": "IssueDetectionSchedulePaused",
+        "type": "object"
+      },
+      "IssueDetectionScheduleSweepResponse": {
+        "properties": {
+          "checked": {
+            "description": "Running schedules checked",
+            "title": "Checked",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Experiments whose schedule could not be checked or paused",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "paused": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDetectionSchedulePaused"
+            },
+            "title": "Paused",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked",
+          "paused",
+          "failed"
+        ],
+        "title": "IssueDetectionScheduleSweepResponse",
+        "type": "object"
+      },
       "McpServerListItem": {
         "description": "An MCP server of the request's workspace.",
         "properties": {
@@ -2885,6 +3166,82 @@
           "service_account_source"
         ],
         "title": "ServiceAccountSourceResponse",
+        "type": "object"
+      },
+      "SkillListItem": {
+        "description": "A skill of the request's workspace.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "latest_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Version"
+          },
+          "name": {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "title": "Name",
+            "type": "string"
+          },
+          "organization": {
+            "default": "",
+            "description": "Organization, empty for none",
+            "title": "Organization",
+            "type": "string"
+          },
+          "skill_name": {
+            "description": "Skill name within the organization",
+            "title": "Skill Name",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "required": [
+          "name",
+          "organization",
+          "skill_name",
+          "description",
+          "status",
+          "latest_version",
+          "workspace"
+        ],
+        "title": "SkillListItem",
         "type": "object"
       },
       "StartupResponse": {
@@ -10097,6 +10454,319 @@
         ]
       }
     },
+    "/api/2.0/mlflow/permissions/groups/{group_name}/skills": {
+      "get": {
+        "description": "The group's grants in the request's workspace: all of them for an admin, otherwise those on skills the caller can MANAGE.",
+        "operationId": "get_group_skill_permissions_api_2_0_mlflow_permissions_groups__group_name__skills_get",
+        "parameters": [
+          {
+            "description": "The group",
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "description": "The group",
+              "title": "Group Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GroupNamedPermissionItem"
+                  },
+                  "title": "Response Get Group Skill Permissions Api 2 0 Mlflow Permissions Groups  Group Name  Skills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List a group's skill grants",
+        "tags": [
+          "group skill permissions"
+        ]
+      }
+    },
+    "/api/2.0/mlflow/permissions/groups/{group_name}/skills/{name}": {
+      "delete": {
+        "operationId": "delete_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__delete",
+        "parameters": [
+          {
+            "description": "The group",
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "description": "The group",
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke a group's grant on a skill",
+        "tags": [
+          "group skill permissions"
+        ]
+      },
+      "get": {
+        "operationId": "get_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__get",
+        "parameters": [
+          {
+            "description": "The group",
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "description": "The group",
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupNamedPermissionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get a group's grant on a skill",
+        "tags": [
+          "group skill permissions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__patch",
+        "parameters": [
+          {
+            "description": "The group",
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "description": "The group",
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayPermission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change a group's grant on a skill",
+        "tags": [
+          "group skill permissions"
+        ]
+      },
+      "post": {
+        "operationId": "create_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__post",
+        "parameters": [
+          {
+            "description": "The group to grant",
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "description": "The group to grant",
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayPermission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupNamedPermissionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant a group a permission on a skill",
+        "tags": [
+          "group skill permissions"
+        ]
+      }
+    },
     "/api/2.0/mlflow/permissions/groups/{group_name}/users": {
       "get": {
         "description": "Retrieves a list of users who are members of the specified group.",
@@ -10765,6 +11435,210 @@
         "summary": "List users with permissions for a registered model",
         "tags": [
           "registered model permissions"
+        ]
+      }
+    },
+    "/api/2.0/mlflow/permissions/skills": {
+      "get": {
+        "description": "Skills of the request's workspace: all of them for an admin, otherwise those the caller can MANAGE.",
+        "operationId": "list_skills_api_2_0_mlflow_permissions_skills_get",
+        "parameters": [
+          {
+            "description": "Page size (1..500). Omit for the full list.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 500,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Page size (1..500). Omit for the full list.",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "Items to skip before the page. Ignored without limit.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Items to skip before the page. Ignored without limit.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match on the item's name.",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring match on the item's name.",
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillListItem"
+                  },
+                  "title": "Response List Skills Api 2 0 Mlflow Permissions Skills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List skills the caller may manage",
+        "tags": [
+          "skill permissions"
+        ]
+      }
+    },
+    "/api/2.0/mlflow/permissions/skills/{name}/groups": {
+      "get": {
+        "operationId": "get_skill_groups_api_2_0_mlflow_permissions_skills__name__groups_get",
+        "parameters": [
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GroupPermissionEntry"
+                  },
+                  "title": "Response Get Skill Groups Api 2 0 Mlflow Permissions Skills  Name  Groups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List groups with a grant on a skill",
+        "tags": [
+          "skill permissions"
+        ]
+      }
+    },
+    "/api/2.0/mlflow/permissions/skills/{name}/users": {
+      "get": {
+        "operationId": "get_skill_users_api_2_0_mlflow_permissions_skills__name__users_get",
+        "parameters": [
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserPermission"
+                  },
+                  "title": "Response Get Skill Users Api 2 0 Mlflow Permissions Skills  Name  Users Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List users with a grant on a skill",
+        "tags": [
+          "skill permissions"
         ]
       }
     },
@@ -15514,6 +16388,319 @@
         ]
       }
     },
+    "/api/2.0/mlflow/permissions/users/{username}/skills": {
+      "get": {
+        "description": "Effective permissions of a user on the skills of the request's workspace.",
+        "operationId": "get_user_skill_permissions_api_2_0_mlflow_permissions_users__username__skills_get",
+        "parameters": [
+          {
+            "description": "The user",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "description": "The user",
+              "title": "Username",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NamedPermissionSummary"
+                  },
+                  "title": "Response Get User Skill Permissions Api 2 0 Mlflow Permissions Users  Username  Skills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List a user's skill permissions",
+        "tags": [
+          "user skill permissions"
+        ]
+      }
+    },
+    "/api/2.0/mlflow/permissions/users/{username}/skills/{name}": {
+      "delete": {
+        "operationId": "delete_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__delete",
+        "parameters": [
+          {
+            "description": "The user",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "description": "The user",
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke a user's grant on a skill",
+        "tags": [
+          "user skill permissions"
+        ]
+      },
+      "get": {
+        "operationId": "get_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__get",
+        "parameters": [
+          {
+            "description": "The user",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "description": "The user",
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamedPermissionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get a user's grant on a skill",
+        "tags": [
+          "user skill permissions"
+        ]
+      },
+      "patch": {
+        "operationId": "update_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__patch",
+        "parameters": [
+          {
+            "description": "The user",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "description": "The user",
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayPermission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change a user's grant on a skill",
+        "tags": [
+          "user skill permissions"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__post",
+        "parameters": [
+          {
+            "description": "The user to grant",
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "description": "The user to grant",
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Skill key: <name> or @<organization>/<name>",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "Skill key: <name> or @<organization>/<name>",
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayPermission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamedPermissionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant a user a permission on a skill",
+        "tags": [
+          "user skill permissions"
+        ]
+      }
+    },
     "/api/2.0/mlflow/scim/activity": {
       "get": {
         "description": "The SCIM activity log, newest first. Page with `before` set to the last row's `id`. Admins only.",
@@ -17239,6 +18426,56 @@
         "summary": "Delete one of a user's access tokens",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/3.0/mlflow/issue-detection-schedules": {
+      "get": {
+        "description": "Every stored schedule on an active experiment, in every workspace, with its recorded writer.",
+        "operationId": "list_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetectionScheduleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - administrators only"
+          }
+        },
+        "summary": "List issue detection schedules",
+        "tags": [
+          "issue detection schedules"
+        ]
+      }
+    },
+    "/api/3.0/mlflow/issue-detection-schedules/check": {
+      "post": {
+        "description": "Run the schedule guard's check once, now, and pause every schedule that may not keep running.",
+        "operationId": "check_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetectionScheduleSweepResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - administrators only"
+          }
+        },
+        "summary": "Check issue detection schedules now",
+        "tags": [
+          "issue detection schedules"
         ]
       }
     },

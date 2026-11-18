@@ -12,6 +12,7 @@ import { useUserGatewayEndpointPermissions } from "../../core/hooks/use-user-gat
 import { useUserGatewaySecretPermissions } from "../../core/hooks/use-user-gateway-secret-permissions";
 import { useUserGatewayModelPermissions } from "../../core/hooks/use-user-gateway-model-permissions";
 import { useUserMcpServerPermissions } from "../../core/hooks/use-user-mcp-server-permissions";
+import { useUserSkillPermissions } from "../../core/hooks/use-user-skill-permissions";
 import { EntityListTable } from "../../shared/components/entity-list-table";
 import { SearchInput } from "../../shared/components/search-input";
 import type { ColumnConfig } from "../../shared/types/table";
@@ -35,6 +36,7 @@ export const UserPage = () => {
   const secretHook = useUserGatewaySecretPermissions({ username });
   const modelGatewayHook = useUserGatewayModelPermissions({ username });
   const mcpServerHook = useUserMcpServerPermissions({ username });
+  const skillHook = useUserSkillPermissions({ username });
   const grantScope = useGrantWorkspaceScope(tab as PermissionType);
 
   const activeHook =
@@ -48,6 +50,7 @@ export const UserPage = () => {
       "ai-secrets": secretHook,
       "ai-models": modelGatewayHook,
       "mcp-servers": mcpServerHook,
+      skills: skillHook,
     }[
       tab as
         | "info"
@@ -59,6 +62,7 @@ export const UserPage = () => {
         | "ai-secrets"
         | "ai-models"
         | "mcp-servers"
+        | "skills"
     ] || null;
 
   const {
@@ -87,6 +91,7 @@ export const UserPage = () => {
         ]
       : []),
     { id: "mcp-servers", label: "MCP\u00A0Servers" },
+    { id: "skills", label: "Skills" },
   ];
 
   const permissionColumns: ColumnConfig<PermissionItem>[] = [
