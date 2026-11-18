@@ -70,6 +70,10 @@ const WorkspaceDetailPage = React.lazy(
 const WorkspaceRulesPage = React.lazy(
   () => import("./features/workspace-rules/workspace-rules-page"),
 );
+const IssueDetectionSchedulesPage = React.lazy(
+  () =>
+    import("./features/issue-detection-schedules/issue-detection-schedules-page"),
+);
 
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
 const UserPage = React.lazy(() => import("./features/user/user-page"));
@@ -412,6 +416,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WorkspaceRulesPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/issue-detection-schedules"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <IssueDetectionSchedulesPage />
           </ProtectedLayoutRoute>
         }
       />

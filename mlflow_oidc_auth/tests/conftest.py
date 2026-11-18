@@ -26,6 +26,11 @@ dotenv.load_dotenv = lambda *args, **kwargs: False
 # layer, not MLflow's storage policy, so opt in for the suite.
 os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
+# The issue detection schedule guard's background thread would sweep whatever tracking store a
+# test that enters the app lifespan happens to use, concurrently with the test. Its tests drive
+# the guard directly instead.
+os.environ.setdefault("ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS", "0")
+
 # Imported once, here, before any test runs — the reference identity `_config_module_guard`
 # below checks every test against (#353).
 import mlflow_oidc_auth

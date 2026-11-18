@@ -21,6 +21,9 @@ export const STATIC_API_ENDPOINTS = {
   // Workspace group rules (admin only)
   WORKSPACE_RULES: "/api/3.0/mlflow/workspace-rules",
   WORKSPACE_RULES_PREVIEW: "/api/3.0/mlflow/workspace-rules/preview",
+  ISSUE_DETECTION_SCHEDULES: "/api/3.0/mlflow/issue-detection-schedules",
+  ISSUE_DETECTION_SCHEDULES_CHECK:
+    "/api/3.0/mlflow/issue-detection-schedules/check",
 
   // User management
   SERVICE_ACCOUNT_SOURCES: "/api/2.0/mlflow/users/service-account-sources",

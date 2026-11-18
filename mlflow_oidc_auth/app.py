@@ -5,6 +5,7 @@ This module provides a FastAPI application factory that can be used as an altern
 to the default MLflow server when OIDC authentication is required.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -100,9 +101,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "OIDC authentication will not be available until configuration is corrected."
         )
 
+    # MLflow 3.18 recurring issue detection: re-check stored schedules against their writers.
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import start_guard
+
+        if start_guard():
+            logger.info("Issue detection schedule guard started")
+    except Exception:
+        logger.warning("Issue detection schedule guard could not start", exc_info=True)
+
     yield  # App runs here
 
     # Shutdown: Cleanup if needed
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import stop_guard
+
+        # The join waits for a pass in flight; keep it off the event loop.
+        await asyncio.to_thread(stop_guard)
+    except Exception:
+        logger.warning("Issue detection schedule guard could not stop", exc_info=True)
     logger.info("Shutting down MLflow OIDC Auth Plugin...")
 
 

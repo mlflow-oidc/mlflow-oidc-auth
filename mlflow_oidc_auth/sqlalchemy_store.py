@@ -494,7 +494,7 @@ class SqlAlchemyStore:
         Raises:
             MlflowException: If the user does not exist.
         """
-        return self.user_repo.update(
+        updated = self.user_repo.update(
             username=username,
             is_admin=is_admin,
             is_service_account=is_service_account,
@@ -504,6 +504,12 @@ class SqlAlchemyStore:
             admin_override=admin_override,
             revoke_tokens=revoke_tokens,
         )
+        if active is False or is_admin is False:
+            # A deactivated or demoted writer's schedules may have to stop.
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
+        return updated
 
     def delete_user(self, username: str, *, written_by: Optional[str] = None, admin_override: bool = False, actor: Optional[str] = None):
         """Hard-delete a user through the ownership guard (#360). See :meth:`UserRepository.delete`."""
@@ -1642,6 +1648,36 @@ class SqlAlchemyStore:
         """Sweep SCIM activity recorded before ``cutoff``. Returns the count."""
         return self._scim_activity_repo().delete_older_than(cutoff)
 
+    def _issue_detection_schedule_repo(self):
+        """Recorded issue-detection schedule writers, created on first use like the SCIM repositories."""
+        repo = getattr(self, "_issue_detection_schedule_repository", None)
+        if repo is None:
+            from mlflow_oidc_auth.repository.issue_detection_schedule import IssueDetectionScheduleRepository
+
+            repo = IssueDetectionScheduleRepository(self.ManagedSessionMaker)
+            self._issue_detection_schedule_repository = repo
+        return repo
+
+    def record_detection_schedule_author(self, experiment_id: str, workspace: Optional[str], author: str, model_fingerprint: str) -> None:
+        """Credit an experiment's stored detection schedule to its writer."""
+        self._issue_detection_schedule_repo().record_author(experiment_id, workspace, author, model_fingerprint)
+
+    def mark_detection_schedule_guard_paused(self, experiment_id: str, workspace: Optional[str], reason: str) -> None:
+        """Record that the schedule guard paused an experiment's detection schedule, and why."""
+        self._issue_detection_schedule_repo().mark_guard_paused(experiment_id, workspace, reason)
+
+    def get_detection_schedule_author(self, experiment_id: str):
+        """The recorded writer of an experiment's detection schedule, or None."""
+        return self._issue_detection_schedule_repo().get(experiment_id)
+
+    def list_detection_schedule_authors(self):
+        """Every recorded detection schedule writer."""
+        return self._issue_detection_schedule_repo().list()
+
+    def delete_detection_schedule_author(self, experiment_id: str) -> None:
+        """Forget an experiment's recorded schedule writer (its schedule tag was deleted)."""
+        self._issue_detection_schedule_repo().delete(experiment_id)
+
     @staticmethod
     def _user_detail(row) -> dict:
         return {
@@ -1799,6 +1835,10 @@ class SqlAlchemyStore:
         if revoke_credential:
             kwargs["revoke_tokens"] = True
         self.user_repo.update(username, **kwargs)
+        if active is False:
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
         return self.get_user_detail(username)
 
     def delete_user_with_hook(

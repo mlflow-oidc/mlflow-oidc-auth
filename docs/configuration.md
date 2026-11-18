@@ -222,6 +222,13 @@ token. See [SCIM Provisioning](scim).
 | `ORPHAN_FALLBACK_PRINCIPAL` | String | None | Username that receives `MANAGE` on resources a hard-deleted user was the last manager of. When unset, orphans are only reported as `resource.orphaned` audit events |
 | `USER_RETENTION_DAYS` | Integer | `0` | Reserved for a future purge of deactivated users. `0` means never; nothing reads it yet |
 
+### Issue detection (MLflow 3.18+)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS` | Integer | `300` | How often each server process re-checks stored issue detection schedules against their recorded writer, pausing any the writer could no longer write (minimum 30). A pass also runs soon after a permission change, at most once a minute. `0` turns the background check off: schedules are then checked only when written and when an administrator runs the check from the admin UI. See [Recurring issue detection](permissions.md#job-api). |
+| `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY` | Boolean | `false` | When `true`, only administrators may run issue detection on the MLflow server's own provider credentials, whether one-off (`issues/invoke`), as a job, or on a schedule. Everyone else must name a gateway endpoint or secret they have USE on. Recommended for multi-tenant servers whose environment holds provider API keys. |
+
 ### Logging
 
 | Variable | Type | Default | Description |

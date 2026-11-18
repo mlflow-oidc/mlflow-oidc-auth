@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from flask import Response, g, has_app_context, request
 from mlflow.protos.model_registry_pb2 import (
     CreateRegisteredModel,
@@ -18,6 +18,7 @@ from mlflow.protos.service_pb2 import (
     DeleteGatewayEndpoint,
     DeleteGatewayModelDefinition,
     DeleteGatewaySecret,
+    DeleteExperimentTag,
     DeleteScorer,
     DeleteWorkspace,
     ListGatewayEndpoints,
@@ -29,6 +30,7 @@ from mlflow.protos.service_pb2 import (
     SearchEvaluationDatasets,
     SearchExperiments,
     SearchLoggedModels,
+    SetExperimentTag,
     UpdateGatewayEndpoint,
     UpdateGatewayModelDefinition,
 )
@@ -61,6 +63,7 @@ from mlflow_oidc_auth.utils import (
     get_experiment_ids,
     get_model_name,
     get_request_param,
+    request_body_dict,
 )
 from mlflow_oidc_auth.utils.grant_context import (
     EXPERIMENT,
@@ -74,6 +77,7 @@ from mlflow_oidc_auth.utils.grant_context import (
     resolve,
     resolve_scorer,
 )
+from mlflow_oidc_auth.validators._detection_schedule import DETECTION_SCHEDULE_TAG, detection_schedule_values_in_tags
 from mlflow_oidc_auth.validators._experiment_scope import permission_on_all_experiments
 from mlflow_oidc_auth.validators.experiment import get_active_artifact_experiments, is_artifact_root_listing
 from mlflow_oidc_auth.validators.review import is_review_queue_member
@@ -192,6 +196,59 @@ def _set_can_manage_experiment_permission(resp: Response):
     experiment_id = response_message.experiment_id
     username = get_fastapi_username()
     store.create_experiment_permission(experiment_id, username, MANAGE.name)
+    body = request_body_dict()
+    values = detection_schedule_values_in_tags(body.get("tags")) if isinstance(body, dict) else []
+    if values:
+        # MLflow keeps the last of repeated keys.
+        _record_detection_schedule_writer(experiment_id, values[-1] if isinstance(values[-1], str) else None)
+
+
+def _record_detection_schedule_writer(experiment_id: Any, written: Optional[str]) -> None:
+    """Credit the detection schedule now stored on ``experiment_id`` to the caller, or forget its writer.
+
+    ``written`` is the value this request stored (None for a delete). The caller is credited only
+    when what MLflow now holds names the model that value named: if another write landed in
+    between, that write's own hook records its writer, and a value nobody is credited for is
+    paused by the guard. Best
+    effort: a schedule whose writer could not be recorded is paused as having no known writer.
+    """
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import forget_author, model_fingerprint, record_author
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        raw = _get_tracking_store().get_experiment(str(experiment_id)).tags.get(DETECTION_SCHEDULE_TAG)
+        if raw:
+            # Compared by model: MLflow may store the value re-serialized, and only the model is credited.
+            if written is None or model_fingerprint(raw) != model_fingerprint(written):
+                return
+            workspace = current_grant_workspace() if config.MLFLOW_ENABLE_WORKSPACES else None
+            record_author(str(experiment_id), workspace, get_fastapi_username(), raw)
+        else:
+            forget_author(str(experiment_id))
+    except Exception:
+        get_logger().warning("Could not record the writer of experiment %s's issue detection schedule", experiment_id, exc_info=True)
+
+
+def _record_detection_schedule_tag_set(resp: Response) -> None:
+    """SetExperimentTag of the detection schedule tag: credit the value written to the caller."""
+    _record_detection_schedule_tag_write(deleted=False)
+
+
+def _record_detection_schedule_tag_delete(resp: Response) -> None:
+    """DeleteExperimentTag of the detection schedule tag: forget its writer."""
+    _record_detection_schedule_tag_write(deleted=True)
+
+
+def _record_detection_schedule_tag_write(deleted: bool) -> None:
+    body = request_body_dict()
+    if not isinstance(body, dict) or body.get("key") != DETECTION_SCHEDULE_TAG:
+        return
+    # MLflow's JSON parsing accepts the camelCase spelling too.
+    experiment_id = body.get("experiment_id") or body.get("experimentId")
+    if not experiment_id:
+        return
+    written = None if deleted else body.get("value")
+    _record_detection_schedule_writer(experiment_id, written if isinstance(written, str) else None)
 
 
 def _set_can_manage_registered_model_permission(resp: Response):
@@ -1062,6 +1119,8 @@ GATEWAY_SECRETS_CONFIG_PATH = _get_ajax_path("/mlflow/gateway/secrets/config", v
 
 AFTER_REQUEST_PATH_HANDLERS = {
     CreateExperiment: _set_can_manage_experiment_permission,
+    SetExperimentTag: _record_detection_schedule_tag_set,
+    DeleteExperimentTag: _record_detection_schedule_tag_delete,
     CreateRegisteredModel: _set_can_manage_registered_model_permission,
     DeleteRegisteredModel: _delete_can_manage_registered_model_permission,
     SearchExperiments: _filter_search_experiments,

@@ -8,6 +8,7 @@ Driven through the real hook and permission store (see ``authz_harness``).
 """
 
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -423,6 +424,36 @@ def test_issue_detection_does_not_read_a_secret_an_endpoint_makes_unused():
     assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=body))
 
 
+def test_a_blank_endpoint_name_does_not_skip_the_secrets_credentials():
+    body = _detection(VICTIM, ["tr-victim"], secret_id="sec-base-only", endpoint_name="  ")
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body))
+
+
+def test_a_schedule_on_an_endpoint_does_not_read_the_secret_it_also_names():
+    model = {"endpointName": "shared-endpoint", "provider": "openai", "model": "m", "secretId": "sec-base-only"}
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}))
+
+
+def test_a_schedule_write_decrypts_each_secret_once(monkeypatch):
+    reads = []
+    real = _FakeTrackingStore._get_decrypted_secret
+
+    def counting(self, secret_id):
+        reads.append(secret_id)
+        return real(self, secret_id)
+
+    monkeypatch.setattr(_FakeTrackingStore, "_get_decrypted_secret", counting)
+    model = {"provider": "openai", "model": "m", "secretId": "sec-1"}
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}))
+    assert reads == ["sec-1"]
+
+
+def test_the_provider_is_read_as_mlflow_reads_it():
+    """MLflow lower-cases the provider and nothing else, so a padded one is an unknown provider."""
+    body = {**_detection(VICTIM, ["tr-victim"], secret_id="sec-1"), "provider": "openai "}
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body))
+
+
 def test_issue_detection_refuses_a_secret_mlflow_cannot_read(monkeypatch):
     def unreadable(self, secret_id):
         raise RuntimeError("cannot decrypt")
@@ -457,7 +488,7 @@ def test_the_required_credential_variables_follow_mlflows_provider_table():
     assert _required_credential_variables(None) == set()
 
 
-def test_reading_a_secret_first_keeps_mlflows_job_map_whole():
+def test_reading_a_secret_first_keeps_mlflows_job_map_whole(tmp_path):
     """The check must not be the first import of MLflow's job module: in a fresh process that
     drops issue detection from MLflow's job-name map, and every detection job is then refused."""
     import subprocess
@@ -469,6 +500,87 @@ def test_reading_a_secret_first_keeps_mlflows_job_map_whole():
         "from mlflow.server.jobs.utils import get_job_fn_fullname\n"
         "print(get_job_fn_fullname('invoke_issue_detection'))\n"
     )
-    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, env={**os.environ, "MLFLOW_DISABLE_AGENT_HINT": "1"})
+    repo_root = str(Path(__file__).resolve().parents[3])
+    env = {
+        **os.environ,
+        "MLFLOW_DISABLE_AGENT_HINT": "1",
+        "MLFLOW_TRACKING_URI": f"sqlite:///{tmp_path / 'mlflow.db'}",
+        "PYTHONPATH": os.pathsep.join(filter(None, [repo_root, os.environ.get("PYTHONPATH")])),
+    }
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, cwd=tmp_path, env=env)
     assert done.returncode == 0, done.stderr[-2000:]
     assert done.stdout.strip().endswith("invoke_issue_detection_job")
+
+
+# --- ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY ---------------------------------------------
+
+
+@pytest.fixture
+def server_credentials_admin_only(monkeypatch):
+    from mlflow_oidc_auth.config import config
+
+    monkeypatch.setattr(config, "ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY", True)
+
+
+def test_invoke_on_server_credentials_is_admin_only_when_configured(server_credentials_admin_only):
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"])))
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="", endpoint_name="")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-1")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], endpoint_name="shared-endpoint")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", ADMIN, body=_detection(VICTIM, ["tr-victim"])))
+
+
+def test_invoke_on_server_credentials_reads_the_body_mlflow_reads(server_credentials_admin_only):
+    """MLflow decides from the JSON body alone: a secret or endpoint in the query string does not count."""
+    body = _detection(VICTIM, ["tr-victim"])
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body, query={"secret_id": "sec-1"}))
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body, query={"endpoint_name": "shared-endpoint"}))
+
+
+def test_invoke_on_server_credentials_is_open_by_default():
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"])))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [None, {"provider": "openai", "model": "m"}, {"provider": "openai", "model": "m", "secretId": ""}, "not-an-object"],
+)
+def test_a_schedule_on_server_credentials_is_admin_only_when_configured(server_credentials_admin_only, model):
+    body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))
+    assert denied(hook(CREATE_EXPERIMENT, "POST", EDITOR, body={"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(model)}]}))
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", ADMIN, body=body))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [{"provider": "openai", "model": "m", "secretId": "sec-1"}, {"endpointName": "shared-endpoint"}, {"provider": "gateway", "model": "shared-endpoint"}],
+)
+def test_a_schedule_on_its_own_credential_is_allowed_when_configured(server_credentials_admin_only, model):
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}))
+
+
+def test_a_schedule_the_parser_reads_as_server_credentials_is_refused(server_credentials_admin_only, monkeypatch):
+    """The envelope names a secret, but the parser MLflow runs reads none: the parser's reading counts too."""
+    from types import SimpleNamespace
+
+    from mlflow_oidc_auth.validators import _detection_schedule
+
+    parsed = SimpleNamespace(paused=False, model=SimpleNamespace(endpoint_name="", provider="openai", secret_id="", to_model_uri=lambda: "openai:/m"))
+    monkeypatch.setattr(_detection_schedule, "_mlflow_schedule_parser", lambda: lambda raw: parsed)
+    body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule({"provider": "openai", "model": "m", "secretId": "sec-1"})}
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))
+
+
+def test_mlflows_invoke_handler_reads_only_the_snake_case_credential_keys():
+    """The credential check reads ``secret_id`` / ``endpoint_name`` / ``provider`` from the JSON
+    body because that is all MLflow reads; another spelling or source must fail here first."""
+    import inspect
+    import re
+
+    from mlflow.server import handlers
+
+    source = inspect.getsource(inspect.unwrap(handlers._invoke_issue_detection_handler))
+    assert set(re.findall(r'request_json\.get\("([A-Za-z_]+)"\)', source)) >= {"secret_id", "endpoint_name", "provider"}
+    for spelling in ("secretId", "endpointName", "request.args", "request.form", "request.values"):
+        assert spelling not in source, spelling
