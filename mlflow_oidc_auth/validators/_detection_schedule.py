@@ -44,6 +44,47 @@ def can_use_secret_id(secret_id: str, username: str) -> bool:
     return bool(secret_name) and can_use_gateway_secret(secret_name, username)
 
 
+def _required_credential_variables(env_var_config: object) -> set:
+    """The environment variables a secret must supply itself for MLflow's provider table entry.
+
+    The API key of a key-based provider, or every variable of one authenticated by a set of them
+    (Bedrock's optional session token aside).
+    """
+    if isinstance(env_var_config, dict):
+        if "api_key" in env_var_config:
+            return {env_var_config["api_key"]}
+        return {name for key, name in env_var_config.items() if key != "aws_session_token"}
+    return {env_var_config} if isinstance(env_var_config, str) else set()
+
+
+def secret_supplies_provider_credentials(provider: object, secret_id: object) -> bool:
+    """Whether the secret ``secret_id`` itself carries ``provider``'s credentials, as MLflow reads it.
+
+    MLflow turns a named secret into environment variables for the job
+    (``mlflow.genai.discovery.job._fetch_provider_credentials``) and starts the job with the server's
+    own environment underneath them. A variable the secret does not supply is therefore taken from
+    the server: a secret carrying only a base URL, say, runs with the server's API key, sent to that
+    URL. So a named secret must supply every credential variable itself. This reads the secret with
+    MLflow's own function; an unknown provider, a secret that cannot be read, or an MLflow that no
+    longer has the function denies.
+    """
+    if not isinstance(provider, str) or not provider.strip() or not isinstance(secret_id, str) or not secret_id:
+        return False
+    try:
+        from mlflow.genai.discovery.job import _fetch_provider_credentials
+        from mlflow.server.handlers import _get_tracking_store
+        from mlflow.utils.providers import _CORE_PROVIDER_ENV_VARS
+
+        name = provider.strip().lower()
+        required = _required_credential_variables(_CORE_PROVIDER_ENV_VARS.get(name))
+        if not required:
+            return False
+        supplied = _fetch_provider_credentials(_get_tracking_store(), name, secret_id)
+    except Exception:
+        return False
+    return isinstance(supplied, dict) and all(supplied.get(variable) for variable in required)
+
+
 def can_use_endpoint_name(name: str, username: str) -> bool:
     """USE on the endpoint MLflow calls for ``name``, and on ``name`` as given.
 
@@ -94,6 +135,9 @@ def _stored_model_permitted(model: object, username: str) -> bool:
     if _usable_text(fields["secretId"]) and not can_use_secret_id(fields["secretId"], username):
         return False
     provider, model_name = _usable_text(fields["provider"]), _usable_text(fields["model"])
+    if _usable_text(fields["secretId"]) and provider and not is_gateway_provider(provider):
+        if not secret_supplies_provider_credentials(provider, fields["secretId"]):
+            return False
     if provider and model_name and not _model_uri_permitted(f"{provider.lower()}:/{model_name}", username):
         return False
     return True
@@ -145,6 +189,8 @@ def detection_schedules_permitted(raw_values: Iterable[object], username: str) -
         if model is None:
             continue
         if model.secret_id and not can_use_secret_id(model.secret_id, username):
+            return False
+        if model.secret_id and not model.endpoint_name and not secret_supplies_provider_credentials(model.provider, model.secret_id):
             return False
         if not _model_uri_permitted(model.to_model_uri(), username):
             return False

@@ -14,8 +14,8 @@ from __future__ import annotations
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
-from mlflow_oidc_auth.utils import all_source_values, get_request_param_values
-from mlflow_oidc_auth.validators._detection_schedule import can_use_endpoint_name, can_use_secret_id
+from mlflow_oidc_auth.utils import all_source_values, get_request_param_values, request_body_dict
+from mlflow_oidc_auth.validators._detection_schedule import can_use_endpoint_name, can_use_secret_id, secret_supplies_provider_credentials
 from mlflow_oidc_auth.validators._experiment_scope import names_only_caller, permission_on_all_experiments, trace_ids_permission, values_mlflow_also_reads
 from mlflow_oidc_auth.validators.run import _permission_for_run
 
@@ -64,10 +64,18 @@ def _job_request_permission(username: str) -> Permission:
 
 
 def validate_can_invoke_issue_detection(username: str) -> bool:
-    """UPDATE on the experiment, READ on every trace, USE on any named secret or endpoint."""
+    """UPDATE on the experiment, READ on every trace, USE on any named secret or endpoint.
+
+    A named secret must also carry the provider's credentials itself (see
+    ``secret_supplies_provider_credentials``), or the job would mix in the server's own.
+    """
     if not _job_request_permission(username).can_update:
         return False
     if not all(can_use_secret_id(secret_id, username) for secret_id in all_source_values("secret_id")):
+        return False
+    # MLflow reads the body: a secret it would load must carry the provider's credentials itself.
+    body = request_body_dict()
+    if isinstance(body, dict) and body.get("secret_id") and not secret_supplies_provider_credentials(body.get("provider"), body.get("secret_id")):
         return False
     return all(can_use_endpoint_name(name, username) for name in all_source_values("endpoint_name"))
 
