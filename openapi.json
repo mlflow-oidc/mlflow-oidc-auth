@@ -1412,6 +1412,287 @@
         "title": "HealthStatusResponse",
         "type": "object"
       },
+      "IssueDetectionScheduleEntry": {
+        "description": "One experiment's stored issue detection schedule and what the guard knows about it.",
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded writer of the schedule",
+            "title": "Author"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "experiment_name": {
+            "title": "Experiment Name",
+            "type": "string"
+          },
+          "guard_paused_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the guard last paused this schedule",
+            "title": "Guard Paused At"
+          },
+          "guard_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the guard last paused it",
+            "title": "Guard Reason"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IssueDetectionScheduleModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "readable": {
+            "description": "Whether MLflow's scheduler reads this value as a schedule",
+            "title": "Readable",
+            "type": "boolean"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "uses_server_credentials": {
+            "description": "Runs on the MLflow server's own provider credentials",
+            "title": "Uses Server Credentials",
+            "type": "boolean"
+          },
+          "violation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the guard would pause this running schedule now, if it would",
+            "title": "Violation"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "experiment_name",
+          "readable",
+          "paused",
+          "uses_server_credentials"
+        ],
+        "title": "IssueDetectionScheduleEntry",
+        "type": "object"
+      },
+      "IssueDetectionScheduleListResponse": {
+        "properties": {
+          "guard_interval_seconds": {
+            "title": "Guard Interval Seconds",
+            "type": "integer"
+          },
+          "guard_running": {
+            "description": "Whether this server process runs the background check",
+            "title": "Guard Running",
+            "type": "boolean"
+          },
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDetectionScheduleEntry"
+            },
+            "title": "Schedules",
+            "type": "array"
+          },
+          "server_credentials_admin_only": {
+            "title": "Server Credentials Admin Only",
+            "type": "boolean"
+          },
+          "supported": {
+            "description": "Whether this MLflow has recurring issue detection",
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "supported",
+          "guard_running",
+          "guard_interval_seconds",
+          "server_credentials_admin_only",
+          "schedules"
+        ],
+        "title": "IssueDetectionScheduleListResponse",
+        "type": "object"
+      },
+      "IssueDetectionScheduleModel": {
+        "description": "The model a stored schedule names, as stored.",
+        "properties": {
+          "endpoint_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AI Gateway endpoint the schedule runs through",
+            "title": "Endpoint Name"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model of a direct model selection",
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider of a direct model selection",
+            "title": "Provider"
+          },
+          "secret_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Gateway secret a direct selection runs with",
+            "title": "Secret Id"
+          },
+          "secret_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Name of that secret, when it still resolves",
+            "title": "Secret Name"
+          }
+        },
+        "title": "IssueDetectionScheduleModel",
+        "type": "object"
+      },
+      "IssueDetectionSchedulePaused": {
+        "properties": {
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "reason"
+        ],
+        "title": "IssueDetectionSchedulePaused",
+        "type": "object"
+      },
+      "IssueDetectionScheduleSweepResponse": {
+        "properties": {
+          "checked": {
+            "description": "Running schedules checked",
+            "title": "Checked",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Experiments whose schedule could not be checked or paused",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "paused": {
+            "items": {
+              "$ref": "#/components/schemas/IssueDetectionSchedulePaused"
+            },
+            "title": "Paused",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked",
+          "paused",
+          "failed"
+        ],
+        "title": "IssueDetectionScheduleSweepResponse",
+        "type": "object"
+      },
       "McpServerListItem": {
         "description": "An MCP server of the request's workspace.",
         "properties": {
@@ -18145,6 +18426,56 @@
         "summary": "Delete one of a user's access tokens",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/3.0/mlflow/issue-detection-schedules": {
+      "get": {
+        "description": "Every stored schedule on an active experiment, in every workspace, with its recorded writer.",
+        "operationId": "list_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetectionScheduleListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - administrators only"
+          }
+        },
+        "summary": "List issue detection schedules",
+        "tags": [
+          "issue detection schedules"
+        ]
+      }
+    },
+    "/api/3.0/mlflow/issue-detection-schedules/check": {
+      "post": {
+        "description": "Run the schedule guard's check once, now, and pause every schedule that may not keep running.",
+        "operationId": "check_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueDetectionScheduleSweepResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden - administrators only"
+          }
+        },
+        "summary": "Check issue detection schedules now",
+        "tags": [
+          "issue detection schedules"
         ]
       }
     },

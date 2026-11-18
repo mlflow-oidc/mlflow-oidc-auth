@@ -38,6 +38,7 @@ from mlflow_oidc_auth.routers.skill_permissions import (
     skill_permissions_router,
     user_skill_permissions_router,
 )
+from mlflow_oidc_auth.routers.issue_detection_schedules import issue_detection_schedules_router
 from mlflow_oidc_auth.routers.mcp_server_permissions import (
     group_mcp_server_permissions_router,
     mcp_server_permissions_router,
@@ -70,6 +71,7 @@ __all__ = [
     "gateway_secret_permissions_router",
     "gateway_model_definition_permissions_router",
     "health_check_router",
+    "issue_detection_schedules_router",
     "mcp_server_permissions_router",
     "user_mcp_server_permissions_router",
     "group_mcp_server_permissions_router",
@@ -218,6 +220,7 @@ def get_all_routers() -> List[APIRouter]:
         gateway_secret_permissions_router,
         gateway_model_definition_permissions_router,
         health_check_router,
+        issue_detection_schedules_router,
         trash_router,
         ui_router,
         user_permissions_router,

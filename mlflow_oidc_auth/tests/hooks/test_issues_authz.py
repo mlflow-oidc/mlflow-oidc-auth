@@ -466,3 +466,63 @@ def test_reading_a_secret_first_keeps_mlflows_job_map_whole():
     done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, env={**os.environ, "MLFLOW_DISABLE_AGENT_HINT": "1"})
     assert done.returncode == 0, done.stderr[-2000:]
     assert done.stdout.strip().endswith("invoke_issue_detection_job")
+
+
+# --- ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY ---------------------------------------------
+
+
+@pytest.fixture
+def server_credentials_admin_only(monkeypatch):
+    from mlflow_oidc_auth.config import config
+
+    monkeypatch.setattr(config, "ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY", True)
+
+
+def test_invoke_on_server_credentials_is_admin_only_when_configured(server_credentials_admin_only):
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"])))
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="", endpoint_name="")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-1")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], endpoint_name="shared-endpoint")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", ADMIN, body=_detection(VICTIM, ["tr-victim"])))
+
+
+def test_invoke_on_server_credentials_reads_the_body_mlflow_reads(server_credentials_admin_only):
+    """MLflow decides from the JSON body alone: a secret or endpoint in the query string does not count."""
+    body = _detection(VICTIM, ["tr-victim"])
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body, query={"secret_id": "sec-1"}))
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=body, query={"endpoint_name": "shared-endpoint"}))
+
+
+def test_invoke_on_server_credentials_is_open_by_default():
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"])))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [None, {"provider": "openai", "model": "m"}, {"provider": "openai", "model": "m", "secretId": ""}, "not-an-object"],
+)
+def test_a_schedule_on_server_credentials_is_admin_only_when_configured(server_credentials_admin_only, model):
+    body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))
+    assert denied(hook(CREATE_EXPERIMENT, "POST", EDITOR, body={"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(model)}]}))
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", ADMIN, body=body))
+
+
+@pytest.mark.parametrize(
+    "model",
+    [{"provider": "openai", "model": "m", "secretId": "sec-1"}, {"endpointName": "shared-endpoint"}, {"provider": "gateway", "model": "shared-endpoint"}],
+)
+def test_a_schedule_on_its_own_credential_is_allowed_when_configured(server_credentials_admin_only, model):
+    assert allowed(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}))
+
+
+def test_a_schedule_the_parser_reads_as_server_credentials_is_refused(server_credentials_admin_only, monkeypatch):
+    """The envelope names a secret, but the parser MLflow runs reads none: the parser's reading counts too."""
+    from types import SimpleNamespace
+
+    from mlflow_oidc_auth.validators import _detection_schedule
+
+    parsed = SimpleNamespace(paused=False, model=SimpleNamespace(endpoint_name="", provider="openai", secret_id="", to_model_uri=lambda: "openai:/m"))
+    monkeypatch.setattr(_detection_schedule, "_mlflow_schedule_parser", lambda: lambda raw: parsed)
+    body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule({"provider": "openai", "model": "m", "secretId": "sec-1"})}
+    assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))

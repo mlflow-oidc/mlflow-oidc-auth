@@ -26,6 +26,7 @@ from typing import Any
 
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.utils import effective_scorer_permission, get_run_experiment_id
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint
@@ -118,6 +119,12 @@ def _check_issue_detection(params: dict[str, Any], username: str) -> None:
     _update_on_traces(params.get("trace_ids"), username)
     _update_on_run(params.get("run_id"), username)
     _gateway_model(params.get("model"), username)
+    if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY:
+        # A job submitted here gets no credential of its own: any model but a gateway endpoint
+        # (and no model, which is MLflow's default) runs on the server's provider credentials.
+        model = params.get("model")
+        parsed = split_model_uri(model) if isinstance(model, str) else None
+        _require(parsed is not None and is_gateway_provider(parsed[0]))
 
 
 def _check_scheduled_issue_detection(params: dict[str, Any], username: str) -> None:

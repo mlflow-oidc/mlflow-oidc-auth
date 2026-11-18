@@ -451,13 +451,48 @@ run or dataset that cannot be resolved is refused.
 A parameter the job function does not declare, or a value of the wrong type, is refused.
 
 **Recurring issue detection (MLflow 3.18+).** A schedule saved in the `mlflow.issueDetection.schedule`
-experiment tag is checked when it is written: USE on the endpoint or secret it names. MLflow's
-scheduler then runs it on the server with no user identity, so revoking that USE afterwards does
-not stop a schedule already saved; delete the tag (`DeleteExperimentTag`, EDIT on the experiment)
-to stop it. A schedule that names no endpoint or secret runs on the server's default detection
-model or the provider credentials in the server's environment, as `issues/invoke` without one does.
-Rewriting a schedule (to pause it or change its cadence) needs USE on its model again; anyone with
-EDIT can delete it.
+experiment tag is checked when it is written: USE on the endpoint or secret it names. Rewriting a
+schedule (to pause it or change its cadence) needs USE on its model again; anyone with EDIT can
+delete it.
+
+MLflow's scheduler then runs the schedule on the server with no user identity. So the plugin records
+who wrote each schedule, and the *schedule guard* re-checks every running schedule against that
+writer, as if they were writing it again now. It pauses the schedule (MLflow's own `paused` flag,
+so its settings are kept) when:
+
+- no writer was recorded for it, which includes every schedule saved before this check existed;
+- its model is not the one its recorded writer saved;
+- the writer was deleted or deactivated;
+- the writer can no longer edit the experiment, or use the endpoint or secret it names;
+- it names a provider secret that does not itself carry that provider's credentials;
+- it runs on the server's own credentials, the writer is not an administrator, and
+  `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY` is on.
+
+An administrator's schedule is kept running unless the administrator was deleted or deactivated.
+The guard runs in each server process every `ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS`
+(default 300), soon after a permission change made in that process (at most once a minute), and
+on demand. Each pass is idempotent, so running it on every replica is safe. If MLflow's schedule
+parser cannot be loaded (its internals moved), every schedule is checked as stored, which pauses
+them rather than leaving them unchecked. A revoke can therefore leave a
+schedule running for at most one interval. Resuming a paused schedule is an ordinary write: whoever
+resumes it needs USE on its model and becomes its recorded writer.
+
+Administrators see every schedule, its recorded writer and the guard's verdict under **Detection
+schedules** in the admin UI, and can run the check there
+(`GET`/`POST /api/3.0/mlflow/issue-detection-schedules[/check]`, administrators only).
+
+A schedule that names no endpoint or secret runs on MLflow's default detection model, using the
+provider credentials in the server's environment. So does a provider model with no secret, and
+`issues/invoke` without one. With `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY=true`, only
+administrators may do that: for `issues/invoke`, for an `invoke_issue_detection` job (which must
+then name a `gateway:/` model), and for a schedule. Everyone else must name an endpoint or secret
+they have USE on. The setting does not cover scorers, evaluation or prompt optimization, which can
+also run judges on the server's credentials.
+
+Endpoint calls made by MLflow's job workers go back through this server, authenticated as
+`MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` from the server's environment. They are
+therefore authorized as that account, not as the schedule's writer. Do not make that account an
+administrator; grant it USE only on the endpoints jobs are meant to call.
 
 The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
 experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).

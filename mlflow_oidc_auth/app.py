@@ -100,9 +100,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "OIDC authentication will not be available until configuration is corrected."
         )
 
+    # MLflow 3.18 recurring issue detection: re-check stored schedules against their writers.
+    from mlflow_oidc_auth.issue_detection_guard import start_guard, stop_guard
+
+    try:
+        if start_guard():
+            logger.info("Issue detection schedule guard started")
+    except Exception:
+        logger.warning("Issue detection schedule guard could not start", exc_info=True)
+
     yield  # App runs here
 
     # Shutdown: Cleanup if needed
+    stop_guard()
     logger.info("Shutting down MLflow OIDC Auth Plugin...")
 
 

@@ -347,3 +347,11 @@ export type WorkspaceMemberCounts = {
   users: number;
   groups: number;
 };
+
+/** A stored MLflow 3.18 issue detection schedule, as the schedule guard sees it. */
+export type IssueDetectionSchedule =
+  components["schemas"]["IssueDetectionScheduleEntry"];
+export type IssueDetectionScheduleList =
+  components["schemas"]["IssueDetectionScheduleListResponse"];
+export type IssueDetectionScheduleCheck =
+  components["schemas"]["IssueDetectionScheduleSweepResponse"];

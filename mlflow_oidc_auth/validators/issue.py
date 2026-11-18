@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from mlflow.server.handlers import _get_tracking_store
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission
 from mlflow_oidc_auth.utils import all_source_values, get_request_param_values, request_body_dict
 from mlflow_oidc_auth.validators._detection_schedule import can_use_endpoint_name, can_use_secret_id, secret_supplies_provider_credentials
@@ -63,13 +64,29 @@ def _job_request_permission(username: str) -> Permission:
     return experiment_permission
 
 
+def _names_own_credentials() -> bool:
+    """Whether the ``issues/invoke`` body names an endpoint or a secret, as MLflow reads it.
+
+    MLflow runs the job on the server's own provider credentials exactly when the JSON body it
+    validates has neither ``endpoint_name`` nor ``secret_id``, so the decision reads that body and
+    nothing else.
+    """
+    body = request_body_dict()
+    return isinstance(body, dict) and bool(body.get("endpoint_name") or body.get("secret_id"))
+
+
 def validate_can_invoke_issue_detection(username: str) -> bool:
     """UPDATE on the experiment, READ on every trace, USE on any named secret or endpoint.
 
     A named secret must also carry the provider's credentials itself (see
     ``secret_supplies_provider_credentials``), or the job would mix in the server's own.
+
+    With ``ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY`` on, a request naming neither a secret
+    nor an endpoint (so MLflow would use the server's own provider credentials) is refused too.
     """
     if not _job_request_permission(username).can_update:
+        return False
+    if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY and not _names_own_credentials():
         return False
     if not all(can_use_secret_id(secret_id, username) for secret_id in all_source_values("secret_id")):
         return False

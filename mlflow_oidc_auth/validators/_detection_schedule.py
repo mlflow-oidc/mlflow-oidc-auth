@@ -13,6 +13,7 @@ import json
 from collections.abc import Callable, Iterable
 from typing import Any, Optional
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.utils.permissions import can_use_gateway_endpoint, can_use_gateway_secret
 from mlflow_oidc_auth.validators._model_uri import gateway_endpoint_for_name, is_gateway_provider, split_model_uri
 
@@ -145,6 +146,49 @@ def _stored_model_permitted(model: object, username: str) -> bool:
     return True
 
 
+def _raw_model_uses_server_credentials(model: object) -> bool:
+    """Whether a stored model reference, read as stored, leaves MLflow on its own credentials."""
+    if not isinstance(model, dict):
+        # No model (or one MLflow cannot read): the job runs MLflow's default model.
+        return True
+    if _usable_text(model.get("endpointName")):
+        return False
+    if is_gateway_provider(_usable_text(model.get("provider")).lower()):
+        return False
+    return not _usable_text(model.get("secretId"))
+
+
+def schedule_uses_server_credentials(raw: object) -> bool:
+    """Whether MLflow would run the schedule ``raw`` on the server's own provider credentials.
+
+    That is a schedule naming no model (MLflow then uses its default model), or a provider model
+    with no stored secret: MLflow's scheduler passes the job no credential of its own, so the
+    provider call uses whatever key the server's environment holds. A gateway endpoint, or a
+    provider model with a secret, does not. Read both as stored and as MLflow's parser reads the
+    value, and true when either reading leaves the server's credentials in use; a value that cannot
+    be read at all counts as using them.
+    """
+    try:
+        envelope = json.loads(str(raw))
+    except (ValueError, RecursionError):
+        return True
+    if not isinstance(envelope, dict) or _raw_model_uses_server_credentials(envelope.get("model")):
+        return True
+    try:
+        parse_detection_schedule = _mlflow_schedule_parser()
+        schedule = parse_detection_schedule(str(raw)) if parse_detection_schedule is not None else None
+    except Exception:
+        return True
+    if schedule is None:
+        return False
+    model = schedule.model
+    if model is None:
+        return True
+    if model.endpoint_name or is_gateway_provider(model.provider.lower()):
+        return False
+    return not model.secret_id
+
+
 def detection_schedules_permitted(raw_values: Iterable[object], username: str) -> bool:
     """USE on every gateway endpoint or secret the detection schedules in ``raw_values`` name.
 
@@ -160,8 +204,13 @@ def detection_schedules_permitted(raw_values: Iterable[object], username: str) -
     scheduler, as MLflow's own parser reads them, so what the scheduler will run is authorized
     whatever the parser makes of the envelope.
 
+    With ``ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY`` on, a schedule that would run on the
+    server's own provider credentials (see ``schedule_uses_server_credentials``) is refused
+    too. Validators run for non-administrators only.
+
     The check is made when the tag is written. The scheduler runs a stored schedule with no
-    identity, so revoking the writer's USE afterwards does not stop it; deleting the tag does.
+    identity, so ``mlflow_oidc_auth.issue_detection_guard`` re-checks stored schedules against
+    their recorded writer and pauses one the writer could no longer write.
 
     Parameters:
         raw_values: The values the request would store under the schedule tag.
@@ -180,6 +229,8 @@ def detection_schedules_permitted(raw_values: Iterable[object], username: str) -
         except (ValueError, RecursionError):
             return False
         if not isinstance(envelope, dict) or not _stored_model_permitted(envelope.get("model"), username):
+            return False
+        if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY and schedule_uses_server_credentials(raw):
             return False
         if parse_detection_schedule is None:
             continue

@@ -9,15 +9,17 @@ describe("sidebar-data", () => {
     expect(data.map((item) => item.label)).toContain("MCP Servers");
     expect(data.map((item) => item.label)).toContain("Skills");
     expect(data.map((item) => item.label)).not.toContain("Trash");
+    expect(data.map((item) => item.label)).not.toContain("Detection schedules");
   });
 
   it("returns extra links for admin", () => {
     const data = getSidebarData(true, false, false);
-    // 8 base + Trash + Webhooks + SCIM = 11
-    expect(data).toHaveLength(11);
+    // 8 base + Trash + Webhooks + SCIM + Detection schedules = 12
+    expect(data).toHaveLength(12);
     expect(data.map((item) => item.label)).toContain("Trash");
     expect(data.map((item) => item.label)).toContain("Webhooks");
     expect(data.map((item) => item.label)).toContain("SCIM");
+    expect(data.map((item) => item.label)).toContain("Detection schedules");
   });
 
   it("returns AI Gateway links when enabled", () => {
@@ -38,8 +40,8 @@ describe("sidebar-data", () => {
 
   it("returns all links when everything enabled", () => {
     const data = getSidebarData(true, true, true);
-    // 8 base + 3 AI + 1 workspace + 3 admin + Workspace rules = 16
-    expect(data).toHaveLength(16);
+    // 8 base + 3 AI + 1 workspace + 4 admin + Workspace rules = 17
+    expect(data).toHaveLength(17);
     expect(data.map((item) => item.label)).toContain("AI Endpoints");
     expect(data.map((item) => item.label)).toContain("Workspaces");
     expect(data.map((item) => item.label)).toContain("Trash");

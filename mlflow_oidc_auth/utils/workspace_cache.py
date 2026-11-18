@@ -36,6 +36,13 @@ _WORKSPACE_CACHE_DEFAULT_TTL = 300
 _PERMISSION_CACHE_DEFAULT_TTL = 30
 
 
+def _notify_schedule_guard() -> None:
+    """A workspace grant changed: let the issue detection schedule guard re-check soon."""
+    from mlflow_oidc_auth.issue_detection_guard import permissions_changed
+
+    permissions_changed()
+
+
 def _make_cache_key(username: str, workspace: str) -> str:
     """Build a collision-free ``username:workspace`` cache key.
 
@@ -143,6 +150,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
 
     Called by workspace permission router after successful CUD operations.
     """
+    _notify_schedule_guard()
     key = _make_cache_key(username, workspace)
     with _GUARD.invalidating():
         for cache in _caches():
@@ -162,6 +170,7 @@ def invalidate_user_workspace_entries(username: str) -> None:
     membership on every sign-in, so a full flush here would wipe the cache fleet-wide
     on each login.
     """
+    _notify_schedule_guard()
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # Nothing is ever cached with workspaces off, so skip the work entirely —
         # otherwise every login pays a Redis keyspace SCAN for no benefit. Mirrors
@@ -181,6 +190,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
     query. Previously these changes invalidated nothing and relied on TTL expiry
     (decision D-15), which left revoked access working for up to the cache TTL.
     """
+    _notify_schedule_guard()
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # Nothing is cached with workspaces off — skip, and in particular skip the
         # get_group_users lookup, which would otherwise be a wasted query per mutation.
@@ -220,6 +230,7 @@ def flush_workspace_cache() -> None:
     Called by workspace regex permission router after any CUD operation.
     Full flush is necessary because regex changes can affect any user+workspace combo.
     """
+    _notify_schedule_guard()
     with _GUARD.invalidating():
         for cache in _caches():
             cache.clear()

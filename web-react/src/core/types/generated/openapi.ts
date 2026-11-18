@@ -2588,6 +2588,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/3.0/mlflow/issue-detection-schedules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List issue detection schedules
+         * @description Every stored schedule on an active experiment, in every workspace, with its recorded writer.
+         */
+        get: operations["list_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/3.0/mlflow/issue-detection-schedules/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check issue detection schedules now
+         * @description Run the schedule guard's check once, now, and pause every schedule that may not keep running.
+         */
+        post: operations["check_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/3.0/mlflow/permissions/scorers/{experiment_id}": {
         parameters: {
             query?: never;
@@ -4654,6 +4694,127 @@ export interface components {
         HealthStatusResponse: {
             /** Status */
             status: string;
+        };
+        /**
+         * IssueDetectionScheduleEntry
+         * @description One experiment's stored issue detection schedule and what the guard knows about it.
+         */
+        IssueDetectionScheduleEntry: {
+            /**
+             * Author
+             * @description Recorded writer of the schedule
+             */
+            author?: string | null;
+            /** Experiment Id */
+            experiment_id: string;
+            /** Experiment Name */
+            experiment_name: string;
+            /**
+             * Guard Paused At
+             * @description When the guard last paused this schedule
+             */
+            guard_paused_at?: string | null;
+            /**
+             * Guard Reason
+             * @description Why the guard last paused it
+             */
+            guard_reason?: string | null;
+            model?: components["schemas"]["IssueDetectionScheduleModel"] | null;
+            /** Paused */
+            paused: boolean;
+            /**
+             * Readable
+             * @description Whether MLflow's scheduler reads this value as a schedule
+             */
+            readable: boolean;
+            /** Recorded At */
+            recorded_at?: string | null;
+            /**
+             * Uses Server Credentials
+             * @description Runs on the MLflow server's own provider credentials
+             */
+            uses_server_credentials: boolean;
+            /**
+             * Violation
+             * @description Why the guard would pause this running schedule now, if it would
+             */
+            violation?: string | null;
+            /** Workspace */
+            workspace?: string | null;
+        };
+        /** IssueDetectionScheduleListResponse */
+        IssueDetectionScheduleListResponse: {
+            /** Guard Interval Seconds */
+            guard_interval_seconds: number;
+            /**
+             * Guard Running
+             * @description Whether this server process runs the background check
+             */
+            guard_running: boolean;
+            /** Schedules */
+            schedules: components["schemas"]["IssueDetectionScheduleEntry"][];
+            /** Server Credentials Admin Only */
+            server_credentials_admin_only: boolean;
+            /**
+             * Supported
+             * @description Whether this MLflow has recurring issue detection
+             */
+            supported: boolean;
+        };
+        /**
+         * IssueDetectionScheduleModel
+         * @description The model a stored schedule names, as stored.
+         */
+        IssueDetectionScheduleModel: {
+            /**
+             * Endpoint Name
+             * @description AI Gateway endpoint the schedule runs through
+             */
+            endpoint_name?: string | null;
+            /**
+             * Model
+             * @description Model of a direct model selection
+             */
+            model?: string | null;
+            /**
+             * Provider
+             * @description Provider of a direct model selection
+             */
+            provider?: string | null;
+            /**
+             * Secret Id
+             * @description Gateway secret a direct selection runs with
+             */
+            secret_id?: string | null;
+            /**
+             * Secret Name
+             * @description Name of that secret, when it still resolves
+             */
+            secret_name?: string | null;
+        };
+        /** IssueDetectionSchedulePaused */
+        IssueDetectionSchedulePaused: {
+            /** Experiment Id */
+            experiment_id: string;
+            /** Reason */
+            reason: string;
+            /** Workspace */
+            workspace?: string | null;
+        };
+        /** IssueDetectionScheduleSweepResponse */
+        IssueDetectionScheduleSweepResponse: {
+            /**
+             * Checked
+             * @description Running schedules checked
+             */
+            checked: number;
+            /**
+             * Failed
+             * @description Experiments whose schedule could not be checked or paused
+             */
+            failed: string[];
+            /** Paused */
+            paused: components["schemas"]["IssueDetectionSchedulePaused"][];
         };
         /**
          * McpServerListItem
@@ -16611,6 +16772,60 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDetectionScheduleListResponse"];
+                };
+            };
+            /** @description Forbidden - administrators only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    check_issue_detection_schedules_api_3_0_mlflow_issue_detection_schedules_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDetectionScheduleSweepResponse"];
+                };
+            };
+            /** @description Forbidden - administrators only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

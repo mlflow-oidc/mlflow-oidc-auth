@@ -141,6 +141,18 @@ def test_issue_detection_denies_a_malformed_model(model):
     assert not can_submit_job(_issues(experiment_id=VICTIM), OUTSIDER)
 
 
+def test_issue_detection_on_server_credentials_is_admin_only_when_configured(monkeypatch):
+    """A job submitted here gets no credential of its own: with the setting on, only a gateway endpoint is the caller's own."""
+    from mlflow_oidc_auth.config import config
+
+    monkeypatch.setattr(config, "ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY", True)
+    assert not can_submit_job(_issues(), OUTSIDER)
+    assert not can_submit_job(_issues(model=None), OUTSIDER)
+    assert not can_submit_job(_job("invoke_issue_detection", experiment_id=OWN, trace_ids=["t-own"], categories=["c"], run_id="r-own"), OUTSIDER)
+    assert can_submit_job(_issues(model="gateway:/open-endpoint"), OUTSIDER)
+    assert not can_submit_job(_issues(model="gateway:/hidden-endpoint"), OUTSIDER)
+
+
 # --- genai evaluate ----------------------------------------------------------------------
 
 
