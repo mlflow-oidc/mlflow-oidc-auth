@@ -75,8 +75,10 @@ A resource id can reach MLflow in the URL path, the query string, or the request
 The plugin reads the id from the same place MLflow will: on a protobuf API route that is
 the path parameter if there is one, otherwise the query string for a `GET` that has one
 and the JSON body for every other request (the query string is ignored on `POST`,
-`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only,
-and `gateway-proxy` uses the query string on `GET` and the body otherwise.
+`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only.
+It authorizes every `run_id` and `run_uuid` value there: MLflow 3.18 writes into `run_id`
+(falling back to `run_uuid`), and earlier versions into `run_uuid`. `gateway-proxy` uses the
+query string on `GET` and the body otherwise.
 
 Every other value the request carries for that field — in any source, under either the
 `snake_case` or the `camelCase` spelling — is authorized as well. If a request names two
@@ -256,7 +258,7 @@ Artifact routes outside the proxy:
 | Route | Requires |
 |-------|----------|
 | `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
-| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on every run the query string names under `run_id` or `run_uuid` |
 | `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
 | `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
 | `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`); a request naming neither is refused |
