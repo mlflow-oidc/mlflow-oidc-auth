@@ -118,6 +118,17 @@ export function usePermissionsManagement({
                   editingItem.name,
                   resourceId,
                 );
+        } else if (resourceType === "skills") {
+          url =
+            editingItem.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSION(
+                  editingItem.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -222,6 +233,17 @@ export function usePermissionsManagement({
                   item.name,
                   resourceId,
                 );
+        } else if (resourceType === "skills") {
+          url =
+            item.kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSION(
+                  item.name,
+                  resourceId,
+                )
+              : DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSION(
+                  item.name,
+                  resourceId,
+                );
         }
 
         await request(url, {
@@ -316,6 +338,11 @@ export function usePermissionsManagement({
                   name,
                   resourceId,
                 );
+        } else if (resourceType === "skills") {
+          url =
+            kind === "group"
+              ? DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSION(name, resourceId)
+              : DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSION(name, resourceId);
         }
 
         await request(url, {

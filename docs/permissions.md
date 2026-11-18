@@ -35,6 +35,7 @@ The permission system covers these MLflow resource types:
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
 | MCP Servers | Per server name (`<namespace>/<slug>`) | MLflow 3.15+ MCP server registry. User and group grants only (no regex). See [MCP Server Registry](#mcp-server-registry) |
+| Skills | Per skill key (`<name>` or `@<organization>/<name>`) | MLflow 3.18+ skill registry. User and group grants only (no regex). See [Skill Registry](#skill-registry) |
 | Workspaces | Per workspace name | Only when `MLFLOW_ENABLE_WORKSPACES=true`. See [Workspaces](workspaces) |
 
 ## Permission Sources
@@ -190,6 +191,7 @@ When a user creates a resource, the plugin automatically grants them `MANAGE` pe
 - `CreateGatewaySecret` → MANAGE on the new secret
 - `CreateGatewayModelDefinition` → MANAGE on the new model definition
 - `POST /api/3.0/mlflow/mcp-servers` (and a version created on a server that did not exist yet) → MANAGE on the new MCP server, once MLflow returned success
+- `POST /api/3.0/mlflow/skills`, and a version or bulk registration that creates a skill → MANAGE on the new skill, once MLflow returned success
 - `CreateWorkspace` → MANAGE workspace permission (when workspaces enabled)
 
 ## Search Result Filtering
@@ -205,6 +207,7 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
 - `GET /api/3.0/mlflow/mcp-servers` and `GET /api/3.0/mlflow/mcp-servers/endpoints` — remove MCP servers (and their access endpoints) the user cannot read; see [MCP Server Registry](#mcp-server-registry)
+- `GET /api/3.0/mlflow/skills` — returns only skills the user can read. MLflow is handed that scope before it paginates, so pages and page tokens are exact; see [Skill Registry](#skill-registry)
 - `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
 - Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
@@ -471,6 +474,7 @@ When resources are deleted or renamed, associated permissions are automatically 
 | Rename registered model | All permission records are updated to the new name |
 | Rename gateway endpoint | All endpoint permission records are updated to the new name |
 | Delete MCP server | All user and group permissions for that server (in the request's workspace) are deleted — also when an admin deletes it |
+| Delete skill | All user and group permissions for that skill (in the request's workspace) are deleted — also when an admin deletes it |
 | Delete workspace | All workspace permissions are deleted, cache is flushed |
 
 With workspaces enabled, deleting or renaming a registered model, prompt or gateway resource changes
@@ -583,6 +587,93 @@ MCP server permissions are managed through:
 | `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/mcp-servers/<name>` | A user's grant (`{"permission": "READ"}`) |
 | `GET /api/2.0/mlflow/permissions/groups/<group>/mcp-servers` | A group's grants |
 | `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/mcp-servers/<name>` | A group's grant |
+
+## Skill Registry
+
+MLflow 3.18 added a skill registry, served from FastAPI under `/api/3.0/mlflow/skills` and
+`/ajax-api/3.0/mlflow/skills` (behind `--static-prefix` when one is set). On an older MLflow the
+routes do not exist. MLflow keeps skills unique per workspace, organization and name; a permission
+names a skill by its **key**: `<name>`, or `@<organization>/<name>`. An organization name grants
+nothing by itself — there is no grant for "every skill of an organization".
+
+| Request | Requires |
+|---|---|
+| `POST skills` (create) | create rights, see below; the creator is granted `MANAGE` once MLflow returns success |
+| `GET skills` (search) | authentication; the results contain only skills the caller can `READ` |
+| `GET skills/<skill>` and every `GET` under it (versions, aliases) | `READ` on the skill |
+| `PATCH skills/<skill>`, `POST` on its tags, aliases and version tags, `DELETE skills/<skill>/tags/<key>`, `PATCH` of a version's status to `draft`, `active` or `deprecated` | `EDIT` on the skill |
+| `POST skills/<skill>/versions`, `POST skills/bulk-register` | `EDIT` on each skill named; for a skill that does not exist yet create rights — MLflow creates it — and the creator is granted `MANAGE`. A bulk registration is refused as a whole if any one of its skills is refused |
+| `DELETE skills/<skill>`, `DELETE` of a version, a version tag or an alias, `PATCH` of a version's status to `deleted` | `MANAGE` on the skill |
+
+`<skill>` is `<name>` or `@<organization>/<name>`. This is the mapping MLflow's own auth plugin uses.
+
+**Resolution.** A user's permission on a skill is their own grant, then their groups' grants (the
+most permissive wins), in `PERMISSION_SOURCE_ORDER`. There are no regex sources for skills. With no
+grant on the skill:
+
+- workspaces enabled — the user's permission on the workspace MLflow serves the request from (the
+  one it names, else the default workspace); a user with none is denied;
+- workspaces disabled — `DEFAULT_MLFLOW_PERMISSION`, as for registered models and prompts.
+
+A grant on a skill applies whether or not the grantee is a member of its workspace: sharing one
+skill with a non-member is what a resource grant is for. `NO_PERMISSIONS` on a skill shuts a
+workspace member out of it.
+
+**Creating a skill.**
+
+- workspaces enabled — `MANAGE` on the workspace, subject to
+  `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`: the same
+  threshold as creating experiments, models, gateway resources and MCP servers;
+- workspaces disabled — any authenticated user, unless `RESTRICT_RESOURCE_CREATION` is set. That
+  setting admits creations through pattern grants, which skills do not have, so with it set only
+  administrators create skills.
+
+A grant can only be written on a skill that exists (the permission API answers `404` otherwise),
+so the only grants a new skill's key can already hold are leftovers of a deleted skill of the same
+name whose cleanup failed. One that does not let the caller edit (`READ`, `NO_PERMISSIONS`)
+refuses the creation: creating the skill must not turn it into `MANAGE`. Every other leftover is
+removed when the skill is created — by anyone, administrators included — so the new skill never
+inherits an old one's grants and a non-admin creator starts as its only grantee.
+
+**Search.** MLflow's search takes the set of skills the caller may read and applies it before
+paginating, so a page holds `max_results` readable skills and a page token says nothing about
+hidden ones. The response is held item by item to the same set again before it is returned.
+
+**Skill content.** Uploaded skill content is stored by MLflow's server under
+`skills/[@<organization>/]<name>/…` of the artifact store, and `mlflow.genai.pull` reads it through
+the artifact proxy. Reading or listing those paths needs `READ` on the skill, which must exist.
+Inside one upload directory (`skills/<skill>/<token>/…`) only content a current version of the
+skill records is served: what a deleted version or skill left behind — MLflow reclaims it
+best-effort — stays unreadable even to someone who holds `READ` on a skill of that name now.
+Only the workspace-relative spelling is recognized; `workspaces/<ws>/skills/…` is refused.
+Nothing but an administrator writes or deletes there through the proxy — MLflow's server stores and
+reclaims skill content itself when a version is registered or deleted. A skill whose source is an
+external location (git, OCI, a ZIP URL) is fetched by the client with the user's own credentials
+for that location; this plugin only governs the registry entry.
+
+**Deleting a skill** deletes its user and group grants in the request's workspace, so a skill later
+created under the same name starts with none. The cleanup runs after MLflow has deleted the skill;
+if the name was taken again in between, only the new creator's own grant is kept.
+
+Skill permissions are managed through:
+
+- **Admin UI**: *Skills* in the sidebar, and the *Skills* tab on users, groups and service accounts
+- **REST API** (all in the request's workspace):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/2.0/mlflow/permissions/skills` | Skills of the request's workspace the caller can manage (all for an admin) |
+| `GET /api/2.0/mlflow/permissions/skills/<skill>/users` · `…/groups` | Who holds a grant on a skill |
+| `GET /api/2.0/mlflow/permissions/users/<username>/skills` | A user's effective permissions |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/skills/<skill>` | A user's grant (`{"permission": "READ"}`); `POST` and `PATCH` need the skill to exist |
+| `GET /api/2.0/mlflow/permissions/groups/<group>/skills` | A group's grants |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/skills/<skill>` | A group's grant; `POST` and `PATCH` need the skill to exist |
+
+Errors on the registry routes come back as MLflow itself returns them (`{"error_code", "message"}`
+with MLflow's status code), which MLflow's skill clients parse.
+
+MLflow marks the skill registry as experimental: its routes may change in a minor release. A route
+this plugin does not recognise is refused to everyone but administrators until it is mapped.
 
 ## GraphQL Authorization
 

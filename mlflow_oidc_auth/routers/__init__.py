@@ -33,6 +33,11 @@ from mlflow_oidc_auth.routers.gateway_model_definition_permissions import (
     gateway_model_definition_permissions_router,
 )
 from mlflow_oidc_auth.routers.health import health_check_router
+from mlflow_oidc_auth.routers.skill_permissions import (
+    group_skill_permissions_router,
+    skill_permissions_router,
+    user_skill_permissions_router,
+)
 from mlflow_oidc_auth.routers.mcp_server_permissions import (
     group_mcp_server_permissions_router,
     mcp_server_permissions_router,
@@ -68,6 +73,9 @@ __all__ = [
     "mcp_server_permissions_router",
     "user_mcp_server_permissions_router",
     "group_mcp_server_permissions_router",
+    "skill_permissions_router",
+    "user_skill_permissions_router",
+    "group_skill_permissions_router",
     "trash_router",
     "ui_router",
     "user_permissions_router",
@@ -194,6 +202,10 @@ def get_all_routers() -> List[APIRouter]:
         mcp_server_permissions_router,
         user_mcp_server_permissions_router,
         group_mcp_server_permissions_router,
+        # Likewise: a skill key in an organization is ``@<organization>/<name>``.
+        skill_permissions_router,
+        user_skill_permissions_router,
+        group_skill_permissions_router,
         group_permissions_router,
         prompt_permissions_router,
         registered_model_permissions_router,

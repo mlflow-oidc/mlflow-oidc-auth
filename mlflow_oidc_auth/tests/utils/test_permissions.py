@@ -420,11 +420,11 @@ class TestPermissions(unittest.TestCase):
         store.list_group_experiment_regex_permissions_for_groups_ids.assert_called_with([1])
 
     def test_build_sources_config(self):
-        """Every resource type has user and group sources; all but MCP servers have pattern sources."""
+        """Every resource type has user and group sources; all but MCP servers and skills have pattern sources."""
         for resource_type, spec in PERMISSION_REGISTRY.items():
             self.assertIsNotNone(spec.user, resource_type)
             self.assertIsNotNone(spec.group, resource_type)
-            has_patterns = resource_type != "mcp_server"
+            has_patterns = resource_type not in ("mcp_server", "skill")
             self.assertEqual(spec.regex is not None, has_patterns, resource_type)
             self.assertEqual(spec.group_regex is not None, has_patterns, resource_type)
 
@@ -447,9 +447,10 @@ class TestPermissions(unittest.TestCase):
 class TestResolvePermission(unittest.TestCase):
     """Tests for resolve_permission() and PERMISSION_REGISTRY."""
 
-    def test_registry_has_eight_entries(self) -> None:
-        """PERMISSION_REGISTRY should contain exactly 8 resource types."""
-        self.assertEqual(len(PERMISSION_REGISTRY), 8)
+    def test_registry_has_nine_entries(self) -> None:
+        """PERMISSION_REGISTRY should contain exactly 9 resource types."""
+        self.assertEqual(len(PERMISSION_REGISTRY), 9)
+        self.assertIn("skill", PERMISSION_REGISTRY)
         self.assertIn("mcp_server", PERMISSION_REGISTRY)
         self.assertIn("experiment", PERMISSION_REGISTRY)
         self.assertIn("registered_model", PERMISSION_REGISTRY)

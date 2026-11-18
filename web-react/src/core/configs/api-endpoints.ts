@@ -13,6 +13,9 @@ export const STATIC_API_ENDPOINTS = {
   // MCP server registry
   ALL_MCP_SERVERS: "/api/2.0/mlflow/permissions/mcp-servers",
 
+  // Skill registry
+  ALL_SKILLS: "/api/2.0/mlflow/permissions/skills",
+
   // Workspace management
   ALL_WORKSPACES: "/api/3.0/mlflow/workspaces",
   // Workspace group rules (admin only)
@@ -238,6 +241,20 @@ export const DYNAMIC_API_ENDPOINTS = {
     `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers`,
   GROUP_MCP_SERVER_PERMISSION: (groupName: string, name: string) =>
     `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/mcp-servers/${encodeURIComponent(name)}`,
+
+  // Skill permissions (no pattern permissions exist for skills). `name` is the skill key.
+  SKILL_USER_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/skills/${encodeURIComponent(String(name))}/users`,
+  SKILL_GROUP_PERMISSIONS: (name: string) =>
+    `/api/2.0/mlflow/permissions/skills/${encodeURIComponent(String(name))}/groups`,
+  USER_SKILL_PERMISSIONS: (userName: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/skills`,
+  USER_SKILL_PERMISSION: (userName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/users/${encodeURIComponent(userName)}/skills/${encodeURIComponent(name)}`,
+  GROUP_SKILL_PERMISSIONS: (groupName: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/skills`,
+  GROUP_SKILL_PERMISSION: (groupName: string, name: string) =>
+    `/api/2.0/mlflow/permissions/groups/${encodeURIComponent(groupName)}/skills/${encodeURIComponent(name)}`,
 
   // Workspace CRUD
   WORKSPACE_DETAIL: (workspace: string) =>

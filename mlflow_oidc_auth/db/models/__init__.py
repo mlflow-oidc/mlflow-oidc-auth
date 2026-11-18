@@ -23,6 +23,7 @@ from mlflow_oidc_auth.db.models.gateway_secret import (
     SqlGatewaySecretRegexPermission,
 )
 from mlflow_oidc_auth.db.models.mcp_server import SqlMCPServerGroupPermission, SqlMCPServerPermission
+from mlflow_oidc_auth.db.models.skill import SqlSkillGroupPermission, SqlSkillPermission
 from mlflow_oidc_auth.db.models.identity import SqlAuthSession, SqlAuthState, SqlUserIdentity
 from mlflow_oidc_auth.db.models.scim import SqlScimActivity, SqlScimToken
 from mlflow_oidc_auth.db.models.saml import SqlSamlAssertion
@@ -85,6 +86,8 @@ __all__ = [
     "SqlGatewaySecretGroupRegexPermission",
     "SqlMCPServerPermission",
     "SqlMCPServerGroupPermission",
+    "SqlSkillPermission",
+    "SqlSkillGroupPermission",
     "SqlWorkspacePermission",
     "SqlWorkspaceGroupPermission",
     "SqlWorkspaceRegexPermission",

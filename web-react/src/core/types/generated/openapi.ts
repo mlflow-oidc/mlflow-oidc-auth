@@ -1040,6 +1040,46 @@ export interface paths {
         patch: operations["update_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__patch"];
         trace?: never;
     };
+    "/api/2.0/mlflow/permissions/groups/{group_name}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a group's skill grants
+         * @description The group's grants in the request's workspace: all of them for an admin, otherwise those on skills the caller can MANAGE.
+         */
+        get: operations["get_group_skill_permissions_api_2_0_mlflow_permissions_groups__group_name__skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/groups/{group_name}/skills/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a group's grant on a skill */
+        get: operations["get_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__get"];
+        put?: never;
+        /** Grant a group a permission on a skill */
+        post: operations["create_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__post"];
+        /** Revoke a group's grant on a skill */
+        delete: operations["delete_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__delete"];
+        options?: never;
+        head?: never;
+        /** Change a group's grant on a skill */
+        patch: operations["update_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__patch"];
+        trace?: never;
+    };
     "/api/2.0/mlflow/permissions/groups/{group_name}/users": {
         parameters: {
             query?: never;
@@ -1226,6 +1266,60 @@ export interface paths {
          * @description Retrieves a list of users who have permissions for the specified registered model.
          */
         get: operations["get_registered_model_users_api_2_0_mlflow_permissions_registered_models__name__users_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List skills the caller may manage
+         * @description Skills of the request's workspace: all of them for an admin, otherwise those the caller can MANAGE.
+         */
+        get: operations["list_skills_api_2_0_mlflow_permissions_skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/skills/{name}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List groups with a grant on a skill */
+        get: operations["get_skill_groups_api_2_0_mlflow_permissions_skills__name__groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/skills/{name}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List users with a grant on a skill */
+        get: operations["get_skill_users_api_2_0_mlflow_permissions_skills__name__users_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2000,6 +2094,46 @@ export interface paths {
          * @description Updates the permission for a user on a specific scorer.
          */
         patch: operations["update_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__patch"];
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/users/{username}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a user's skill permissions
+         * @description Effective permissions of a user on the skills of the request's workspace.
+         */
+        get: operations["get_user_skill_permissions_api_2_0_mlflow_permissions_users__username__skills_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/2.0/mlflow/permissions/users/{username}/skills/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a user's grant on a skill */
+        get: operations["get_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__get"];
+        put?: never;
+        /** Grant a user a permission on a skill */
+        post: operations["create_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__post"];
+        /** Revoke a user's grant on a skill */
+        delete: operations["delete_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__delete"];
+        options?: never;
+        head?: never;
+        /** Change a user's grant on a skill */
+        patch: operations["update_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__patch"];
         trace?: never;
     };
     "/api/2.0/mlflow/scim/activity": {
@@ -5245,6 +5379,36 @@ export interface components {
             service_account_source: string;
             /** Username */
             username: string;
+        };
+        /**
+         * SkillListItem
+         * @description A skill of the request's workspace.
+         */
+        SkillListItem: {
+            /** Description */
+            description: string | null;
+            /** Latest Version */
+            latest_version: number | null;
+            /**
+             * Name
+             * @description Skill key: <name> or @<organization>/<name>
+             */
+            name: string;
+            /**
+             * Organization
+             * @description Organization, empty for none
+             * @default
+             */
+            organization: string;
+            /**
+             * Skill Name
+             * @description Skill name within the organization
+             */
+            skill_name: string;
+            /** Status */
+            status: string | null;
+            /** Workspace */
+            workspace: string | null;
         };
         /**
          * StartupResponse
@@ -10358,6 +10522,252 @@ export interface operations {
             };
         };
     };
+    get_group_skill_permissions_api_2_0_mlflow_permissions_groups__group_name__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group */
+                group_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupNamedPermissionItem"][];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group */
+                group_name: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupNamedPermissionItem"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group to grant */
+                group_name: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayPermission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupNamedPermissionItem"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group */
+                group_name: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusMessageResponse"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_group_skill_permission_api_2_0_mlflow_permissions_groups__group_name__skills__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The group */
+                group_name: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayPermission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusMessageResponse"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_group_users_api_2_0_mlflow_permissions_groups__group_name__users_get: {
         parameters: {
             query?: never;
@@ -10790,6 +11200,148 @@ export interface operations {
             header?: never;
             path: {
                 /** @description Registered model or prompt name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPermission"][];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skills_api_2_0_mlflow_permissions_skills_get: {
+        parameters: {
+            query?: {
+                /** @description Page size (1..500). Omit for the full list. */
+                limit?: number | null;
+                /** @description Items to skip before the page. Ignored without limit. */
+                offset?: number;
+                /** @description Case-insensitive substring match on the item's name. */
+                search?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillListItem"][];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_groups_api_2_0_mlflow_permissions_skills__name__groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupPermissionEntry"][];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_users_api_2_0_mlflow_permissions_skills__name__users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Skill key: <name> or @<organization>/<name> */
                 name: string;
             };
             cookie?: never;
@@ -14477,6 +15029,252 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ScorerPermission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusMessageResponse"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_skill_permissions_api_2_0_mlflow_permissions_users__username__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user */
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedPermissionSummary"][];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user */
+                username: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedPermissionSummary"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user to grant */
+                username: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayPermission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedPermissionSummary"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user */
+                username: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusMessageResponse"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_skill_permission_api_2_0_mlflow_permissions_users__username__skills__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The user */
+                username: string;
+                /** @description Skill key: <name> or @<organization>/<name> */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayPermission"];
             };
         };
         responses: {

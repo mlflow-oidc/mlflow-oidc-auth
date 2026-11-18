@@ -696,6 +696,7 @@ class UserRepository:
                 SqlRegisteredModelRegexPermission,
                 SqlScorerPermission,
                 SqlScorerRegexPermission,
+                SqlSkillPermission,
                 SqlAuthSession,
                 SqlUserGroup,
                 SqlUserIdentity,
@@ -744,6 +745,9 @@ class UserRepository:
 
             # MCP server permissions
             session.query(SqlMCPServerPermission).filter(SqlMCPServerPermission.user_id == user_id).delete(synchronize_session=False)
+
+            # Skill permissions
+            session.query(SqlSkillPermission).filter(SqlSkillPermission.user_id == user_id).delete(synchronize_session=False)
 
             # Workspace permissions
             session.query(SqlWorkspacePermission).filter(SqlWorkspacePermission.user_id == user_id).delete(synchronize_session=False)
