@@ -5,6 +5,11 @@ export type RuntimeConfig = {
   authenticated: boolean;
   gen_ai_gateway_enabled: boolean;
   workspaces_enabled: boolean;
+  /**
+   * RESTRICT_USER_AND_GROUP_LISTING: non-admins list only themselves, their groups and the
+   * members of workspaces they manage, so grant dialogs take a typed name. Absent means off.
+   */
+  restrict_user_and_group_listing?: boolean;
 };
 
 let cachedConfig: RuntimeConfig | null = null;

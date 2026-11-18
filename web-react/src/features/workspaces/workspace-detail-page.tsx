@@ -24,7 +24,7 @@ import WorkspaceMembersSection from "./components/workspace-members-section";
 import { BulkAssignModal } from "./components/bulk-assign-modal";
 
 export default function WorkspaceDetailPage() {
-  const { workspaces_enabled } = useRuntimeConfig();
+  const { workspaces_enabled, restrict_user_and_group_listing: restrictListing = false } = useRuntimeConfig();
   const { workspaceName } = useParams<{ workspaceName: string }>();
   const { showToast } = useToast();
   const { currentUser } = useUser();
@@ -141,6 +141,15 @@ export default function WorkspaceDetailPage() {
     }
   };
 
+  // With the lists restricted, only managers may list a workspace's members: the server answers
+  // a reader with 403, which is shown as a notice rather than an error.
+  const membersHidden = (error: Error | null) => restrictListing && !isAdmin && (error?.message.startsWith("HTTP 403") ?? false);
+  const membersHiddenNotice = (
+    <p className="text-sm text-text-primary dark:text-text-primary-dark mb-4">
+      Only managers of this workspace can see its members.
+    </p>
+  );
+
   const userMembers = workspaceUsers.map((wu) => ({
     name: wu.username,
     permission: wu.permission,
@@ -159,14 +168,16 @@ export default function WorkspaceDetailPage() {
           <Button
             variant="secondary"
             onClick={() => setIsAddUserModalOpen(true)}
-            title="Add user permission"
+            disabled={!restrictListing && availableUsers.length === 0}
+            title={!restrictListing && availableUsers.length === 0 ? "All users already have permissions" : "Add user permission"}
           >
             + Add User
           </Button>
           <Button
             variant="secondary"
             onClick={() => setIsAddAccountModalOpen(true)}
-            title="Add service account permission"
+            disabled={!restrictListing && availableAccounts.length === 0}
+            title={!restrictListing && availableAccounts.length === 0 ? "All service accounts already have permissions" : "Add service account permission"}
           >
             + Add Service Account
           </Button>
@@ -178,6 +189,9 @@ export default function WorkspaceDetailPage() {
         </div>
       )}
 
+      {membersHidden(usersError) ? (
+        membersHiddenNotice
+      ) : (
       <WorkspaceMembersSection
         title="Users"
         members={userMembers}
@@ -189,6 +203,7 @@ export default function WorkspaceDetailPage() {
         nameLabel="Username"
         canManage={canManage}
       />
+      )}
 
       {/* Group section action buttons */}
       {canManage && (
@@ -196,7 +211,8 @@ export default function WorkspaceDetailPage() {
           <Button
             variant="secondary"
             onClick={() => setIsAddGroupModalOpen(true)}
-            title="Add group permission"
+            disabled={!restrictListing && availableGroups.length === 0}
+            title={!restrictListing && availableGroups.length === 0 ? "All groups already have permissions" : "Add group permission"}
           >
             + Add Group
           </Button>
@@ -208,6 +224,9 @@ export default function WorkspaceDetailPage() {
         </div>
       )}
 
+      {membersHidden(groupsError) ? (
+        membersHiddenNotice
+      ) : (
       <WorkspaceMembersSection
         title="Groups"
         members={groupMembers}
@@ -219,6 +238,7 @@ export default function WorkspaceDetailPage() {
         nameLabel="Group Name"
         canManage={canManage}
       />
+      )}
 
       {/* Grant permission modals — same pattern as EntityPermissionsManager */}
       {isAddUserModalOpen && (
@@ -237,7 +257,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant user permissions for workspace ${workspaceName}`}
           label="User"
           options={availableUsers}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type="experiments"
           isLoading={isSaving}
         />
@@ -259,7 +279,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant service account permissions for workspace ${workspaceName}`}
           label="Service Account"
           options={availableAccounts}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type="experiments"
           isLoading={isSaving}
         />
@@ -281,7 +301,7 @@ export default function WorkspaceDetailPage() {
           title={`Grant group permissions for workspace ${workspaceName}`}
           label="Group"
           options={availableGroups}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type="experiments"
           isLoading={isSaving}
         />

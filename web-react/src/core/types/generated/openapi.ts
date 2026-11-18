@@ -5669,6 +5669,8 @@ export interface components {
             gen_ai_gateway_enabled: boolean;
             /** Provider */
             provider: string;
+            /** Restrict User And Group Listing */
+            restrict_user_and_group_listing: boolean;
             /** Uipath */
             uiPath: string;
             /** Workspaces Enabled */

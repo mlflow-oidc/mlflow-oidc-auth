@@ -3417,6 +3417,10 @@
             "title": "Provider",
             "type": "string"
           },
+          "restrict_user_and_group_listing": {
+            "title": "Restrict User And Group Listing",
+            "type": "boolean"
+          },
           "uiPath": {
             "title": "Uipath",
             "type": "string"
@@ -3432,7 +3436,8 @@
           "provider",
           "authenticated",
           "gen_ai_gateway_enabled",
-          "workspaces_enabled"
+          "workspaces_enabled",
+          "restrict_user_and_group_listing"
         ],
         "title": "UiRuntimeConfig",
         "type": "object"

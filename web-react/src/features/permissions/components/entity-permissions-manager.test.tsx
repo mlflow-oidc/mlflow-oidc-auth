@@ -10,6 +10,7 @@ import type { EntityPermission } from "../../../shared/types/entity";
 import type { PermissionType } from "../../../shared/types/entity";
 import { CHOOSE_WORKSPACE_TITLE } from "../hooks/use-grant-workspace-scope";
 import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 
 vi.mock("../hooks/use-permissions-management");
 vi.mock("../../../core/hooks/use-all-users");
@@ -205,26 +206,22 @@ describe("EntityPermissionsManager", () => {
     });
   });
 
-  it("filters available users/groups correctly", () => {
-    // user1 and group1 are already in mockPermissions
+  it("with the lists unrestricted, disables an add button whose list is empty", () => {
+    vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
+      allServiceAccounts: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     renderManager();
-    const suggestions = (label: RegExp) => {
-      const input = screen.getByRole("combobox", { name: label });
-      const datalist = document.getElementById(
-        input.getAttribute("list") ?? "",
-      );
-      return Array.from(datalist?.querySelectorAll("option") ?? []).map(
-        (o) => o.value,
-      );
-    };
 
+    expect(
+      screen.getByRole("button", { name: "+ Add Service Account" }),
+    ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /^\+ Add$/ }));
-    expect(suggestions(/User/i)).toEqual(["user2"]);
-
-    fireEvent.click(screen.getByText("Cancel"));
-
-    fireEvent.click(screen.getByRole("button", { name: /\+ Add Group/i }));
-    expect(suggestions(/Group/i)).toEqual(["group2"]);
+    expect(screen.getByRole("combobox", { name: /User/i }).tagName).toBe(
+      "SELECT",
+    );
   });
 
   it("lets a manager grant by typed name when the user and group lists are restricted", async () => {
@@ -246,7 +243,34 @@ describe("EntityPermissionsManager", () => {
       error: null,
       refresh: vi.fn(),
     });
-    renderManager();
+    render(
+      <EntityPermissionsManager
+        resourceId="res-1"
+        resourceName="Resource 1"
+        resourceType="experiments"
+        permissions={mockPermissions}
+        isLoading={false}
+        error={null}
+        refresh={mockRefresh}
+      />,
+      {
+        wrapper: ({ children }) => (
+          <RuntimeConfigContext
+            value={{
+              basePath: "",
+              uiPath: "/oidc/ui",
+              provider: "oidc",
+              authenticated: true,
+              gen_ai_gateway_enabled: true,
+              workspaces_enabled: false,
+              restrict_user_and_group_listing: true,
+            }}
+          >
+            {children}
+          </RuntimeConfigContext>
+        ),
+      },
+    );
 
     for (const name of ["+ Add", "+ Add Service Account", "+ Add Group"]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();

@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
 from mlflow_oidc_auth.audit import emit_audit_event
-from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import check_admin_permission, require_interactive_login
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
@@ -40,6 +39,7 @@ from mlflow_oidc_auth.repository.user_token import DEFAULT_TOKEN_NAME, MAX_TOKEN
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user
 from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.directory_visibility import listing_restricted, visible_usernames
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageParams, PageQuery, paginate_with_headers
 
 from ._errors import has_error_code, mlflow_error_status
@@ -370,7 +370,8 @@ async def list_users(
     """
     List users in the system.
 
-    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, non-admins see only their own username.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, a non-admin sees only itself and the members of
+    the workspaces it manages (see :mod:`mlflow_oidc_auth.utils.directory_visibility`).
 
     Parameters:
     -----------
@@ -400,8 +401,9 @@ async def list_users(
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
-        if config.RESTRICT_USER_AND_GROUP_LISTING and not is_admin:
-            users = [user for user in users if user == username]
+        if listing_restricted(is_admin):
+            visible = visible_usernames(username)
+            users = [user for user in users if user in visible]
         users, headers = paginate_with_headers(users, key=lambda u: u, params=page)
 
         return JSONResponse(content=users, headers=headers)

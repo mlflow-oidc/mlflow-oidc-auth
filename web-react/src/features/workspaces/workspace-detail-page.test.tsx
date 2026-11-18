@@ -17,7 +17,7 @@ vi.mock("react-router", () => ({
 }));
 
 const mockUseRuntimeConfig: Mock<
-  () => { workspaces_enabled: boolean }
+  () => { workspaces_enabled: boolean; restrict_user_and_group_listing?: boolean }
 > = vi.fn();
 
 vi.mock("../../shared/context/use-runtime-config", () => ({
@@ -475,6 +475,7 @@ describe("WorkspaceDetailPage", () => {
     mockAllUsers = ["admin"];
     mockAllAccounts = [];
     mockAllGroups = [];
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true, restrict_user_and_group_listing: true });
     mockUseWorkspaceUsers.mockReturnValue({
       workspaceUsers: [{ workspace: "test-workspace", username: "admin", permission: "MANAGE" as PermissionLevel }],
       isLoading: false,
@@ -493,5 +494,37 @@ describe("WorkspaceDetailPage", () => {
       fireEvent.click(screen.getByText(button));
       expect(screen.getByTestId(`grant-modal-${label}`)).toHaveAttribute("data-allow-custom-value", "true");
     }
+  });
+
+  it("with the lists unrestricted, offers only listed names and disables an add button whose list is empty", () => {
+    mockAllAccounts = [];
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.getByText("+ Add Service Account")).toBeDisabled();
+    fireEvent.click(screen.getByText("+ Add User"));
+    expect(screen.getByTestId("grant-modal-User")).toHaveAttribute("data-allow-custom-value", "false");
+  });
+
+  it("tells a non-manager that members are hidden when the server refuses the member lists", () => {
+    mockIsAdmin = false;
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true, restrict_user_and_group_listing: true });
+    const refused = { workspaceUsers: [], isLoading: false, error: new Error("HTTP 403: MANAGE permission required"), refresh: vi.fn() };
+    mockUseWorkspaceUsers.mockReturnValue(refused);
+    mockUseWorkspaceGroups.mockReturnValue({ ...refused, workspaceGroups: [] });
+
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.getAllByText("Only managers of this workspace can see its members.")).toHaveLength(2);
+    expect(screen.queryByText("+ Add User")).toBeNull();
+  });
+
+  it("still reports other errors as errors when the lists are restricted", () => {
+    mockIsAdmin = false;
+    mockUseRuntimeConfig.mockReturnValue({ workspaces_enabled: true, restrict_user_and_group_listing: true });
+    mockUseWorkspaceUsers.mockReturnValue({ workspaceUsers: [], isLoading: false, error: new Error("HTTP 500: boom"), refresh: vi.fn() });
+
+    render(<WorkspaceDetailPage />);
+
+    expect(screen.queryByText("Only managers of this workspace can see its members.")).toBeNull();
   });
 });

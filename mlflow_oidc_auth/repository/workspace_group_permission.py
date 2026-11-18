@@ -171,6 +171,16 @@ class WorkspaceGroupPermissionRepository:
             perms = session.query(SqlWorkspaceGroupPermission).filter(SqlWorkspaceGroupPermission.workspace == workspace).all()
             return [p.to_mlflow_entity() for p in perms]
 
+    def list_workspaces(self) -> list[str]:
+        """List the workspaces that hold at least one of these permissions.
+
+        Returns:
+            The distinct workspace names, sorted.
+        """
+        with self.ManagedSessionMaker() as session:
+            rows = session.query(SqlWorkspaceGroupPermission.workspace).distinct().order_by(SqlWorkspaceGroupPermission.workspace).all()
+            return [row[0] for row in rows]
+
     def delete_all_for_workspace(self, workspace: str) -> int:
         """Delete all group permissions for a workspace.
 

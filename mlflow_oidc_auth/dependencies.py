@@ -478,6 +478,33 @@ async def check_workspace_read_permission(
     return username
 
 
+async def check_workspace_member_list_permission(
+    workspace: str = Path(..., description="The workspace name"),
+    request: Request = None,
+) -> str:
+    """Verify the caller may list a workspace's members.
+
+    READ on the workspace is enough by default. With ``RESTRICT_USER_AND_GROUP_LISTING`` on, the
+    member lists name users and groups the caller could otherwise not see, so they need MANAGE,
+    the same level the "who has access" lists of every other resource need.
+
+    Parameters:
+        workspace: The workspace name.
+        request: The incoming request.
+
+    Returns:
+        The username of the authenticated user.
+
+    Raises:
+        HTTPException: 403 when the caller lacks the required permission.
+    """
+    from mlflow_oidc_auth.config import config
+
+    if config.RESTRICT_USER_AND_GROUP_LISTING:
+        return await check_workspace_manage_permission(workspace=workspace, request=request)
+    return await check_workspace_read_permission(workspace=workspace, request=request)
+
+
 # ---------------------------------------------------------------------------------------------
 # SCIM (#321)
 # ---------------------------------------------------------------------------------------------

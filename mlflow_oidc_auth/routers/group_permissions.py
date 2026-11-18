@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.audit import emit_audit_event
-from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.dependencies import (
     check_admin_permission,
     check_experiment_manage_permission,
@@ -56,6 +55,7 @@ from mlflow_oidc_auth.utils import (
     get_username,
 )
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_MESSAGE, is_reserved_group_name, validate_group_name_chars
+from mlflow_oidc_auth.utils.directory_visibility import listing_restricted, visible_group_names
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
@@ -195,7 +195,8 @@ async def list_groups(
     """
     List all groups in the system.
 
-    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, non-admins see only groups they belong to.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, a non-admin sees only its own groups and the
+    groups granted in the workspaces it manages (see :mod:`mlflow_oidc_auth.utils.directory_visibility`).
 
     Parameters:
     -----------
@@ -218,8 +219,10 @@ async def list_groups(
     try:
         from mlflow_oidc_auth.store import store
 
-        restricted = config.RESTRICT_USER_AND_GROUP_LISTING and not is_admin
-        visible_groups = store.get_groups_for_user(username) if restricted else store.get_groups()
+        visible_groups = store.get_groups()
+        if listing_restricted(is_admin):
+            visible = visible_group_names(username)
+            visible_groups = [group for group in visible_groups if group in visible]
         groups, headers = paginate_with_headers(visible_groups, key=lambda g: g, params=page)
         if headers:
             return JSONResponse(content=list(groups), headers=headers)

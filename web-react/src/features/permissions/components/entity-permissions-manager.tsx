@@ -19,7 +19,8 @@ import { GrantPermissionModal } from "./grant-permission-modal";
 import { GrantWorkspaceNotice } from "./grant-workspace-notice";
 import { grantControlTitle } from "../hooks/use-grant-workspace-scope";
 import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
-import { useState } from "react";
+import { use, useState } from "react";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 
 interface EntityPermissionsManagerProps {
   resourceId: string;
@@ -56,6 +57,10 @@ export function EntityPermissionsManager({
   });
 
   const scope = useGrantWorkspaceScope(resourceType);
+  // With the lists restricted the pickers may not include the grantee, so a typed name is
+  // accepted and an empty list does not mean there is no one left to grant.
+  const restrictListing =
+    use(RuntimeConfigContext)?.restrict_user_and_group_listing ?? false;
   const { allUsers } = useAllUsers();
   const { allServiceAccounts } = useAllServiceAccounts();
   const { allGroups } = useAllGroups();
@@ -139,24 +144,48 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddUserModalOpen(true)}
-              disabled={!scope.canChange}
-              title={grantControlTitle(scope, "Add user permission")}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableUsers.length === 0)
+              }
+              title={grantControlTitle(
+                scope,
+                !restrictListing && availableUsers.length === 0
+                  ? "All users already have permissions"
+                  : "Add user permission",
+              )}
             >
               + Add
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddAccountModalOpen(true)}
-              disabled={!scope.canChange}
-              title={grantControlTitle(scope, "Add service account permission")}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableAccounts.length === 0)
+              }
+              title={grantControlTitle(
+                scope,
+                !restrictListing && availableAccounts.length === 0
+                  ? "All service accounts already have permissions"
+                  : "Add service account permission",
+              )}
             >
               + Add Service Account
             </Button>
             <Button
               variant="secondary"
               onClick={() => setIsAddGroupModalOpen(true)}
-              disabled={!scope.canChange}
-              title={grantControlTitle(scope, "Add group permission")}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableGroups.length === 0)
+              }
+              title={grantControlTitle(
+                scope,
+                !restrictListing && availableGroups.length === 0
+                  ? "All groups already have permissions"
+                  : "Add group permission",
+              )}
             >
               + Add Group
             </Button>
@@ -204,7 +233,7 @@ export function EntityPermissionsManager({
           title={`Grant user permissions for ${resourceName}`}
           label="User"
           options={availableUsers}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />
@@ -221,7 +250,7 @@ export function EntityPermissionsManager({
           title={`Grant service account permissions for ${resourceName}`}
           label="Service account"
           options={availableAccounts}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />
@@ -242,7 +271,7 @@ export function EntityPermissionsManager({
           title={`Grant group permissions for ${resourceName}`}
           label="Group"
           options={availableGroups}
-          allowCustomValue
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />

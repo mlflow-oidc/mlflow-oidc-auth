@@ -1451,6 +1451,10 @@ class SqlAlchemyStore:
         """List all group permissions in a workspace."""
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
 
+    def list_workspaces_with_grants(self) -> list[str]:
+        """List every workspace that holds a user or group permission, sorted."""
+        return sorted(set(self.workspace_permission_repo.list_workspaces()) | set(self.workspace_group_permission_repo.list_workspaces()))
+
     def wipe_workspace_permissions(self, workspace: str) -> int:
         """Delete every permission recorded for a workspace.
 
