@@ -7,6 +7,7 @@ trace's experiment, and for issue detection USE on a named gateway secret or end
 Driven through the real hook and permission store (see ``authz_harness``).
 """
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -46,8 +47,22 @@ class _FakeTrackingStore(BaseFakeTrackingStore):
     def get_trace_info(self, trace_id):
         return SimpleNamespace(experiment_id=EXPERIMENT_OF[trace_id], trace_id=trace_id) if trace_id in EXPERIMENT_OF else _missing("Trace", trace_id)
 
+    # Secret values are placeholders, never credentials. "sec-base-only" lacks the provider's API key.
+    SECRETS = {
+        "sec-1": ("shared-key", {"api_key": "placeholder-value"}, {}),
+        "sec-base-only": ("base-only", {}, {"api_base": "https://example.invalid/v1"}),
+    }
+
     def get_secret_info(self, secret_id=None, **_):
-        return SimpleNamespace(secret_name="shared-key") if secret_id == "sec-1" else _missing("Secret", secret_id)
+        if secret_id not in self.SECRETS:
+            _missing("Secret", secret_id)
+        name, _value, auth_config = self.SECRETS[secret_id]
+        return SimpleNamespace(secret_name=name, auth_config=auth_config)
+
+    def _get_decrypted_secret(self, secret_id):
+        if secret_id not in self.SECRETS:
+            _missing("Secret", secret_id)
+        return dict(self.SECRETS[secret_id][1])
 
 
 @pytest.fixture(autouse=True)
@@ -385,3 +400,75 @@ def test_a_create_body_naming_the_schedule_tag_that_cannot_be_read_denies(shared
     body = {"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(None)}]}
     assert denied(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body=body))
     assert allowed(hook(CREATE_EXPERIMENT, "POST", OUTSIDER, body={"name": "mine", "tags": [{"key": "note", "value": "v"}]}))
+
+
+# --- a named secret must carry the provider's credentials itself ------------------------------
+
+
+def test_issue_detection_refuses_a_secret_without_the_providers_key():
+    """A named secret must carry the provider's API key itself."""
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-base-only")))
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-1")))
+
+
+@pytest.mark.parametrize("provider, expected", [("openai", True), ("OpenAI", True), ("anthropic", True), ("bedrock", False), ("no-such-provider", False)])
+def test_issue_detection_reads_the_secret_as_the_provider_mlflow_loads_it_for(provider, expected):
+    body = {**_detection(VICTIM, ["tr-victim"], secret_id="sec-1"), "provider": provider}
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=body)) is expected
+
+
+def test_issue_detection_does_not_read_a_secret_an_endpoint_makes_unused():
+    """MLflow runs on the named endpoint, so only USE on the secret and endpoint is checked."""
+    body = _detection(VICTIM, ["tr-victim"], secret_id="sec-base-only", endpoint_name="shared-endpoint")
+    assert allowed(hook(ISSUE_INVOKE, "POST", EDITOR, body=body))
+
+
+def test_issue_detection_refuses_a_secret_mlflow_cannot_read(monkeypatch):
+    def unreadable(self, secret_id):
+        raise RuntimeError("cannot decrypt")
+
+    monkeypatch.setattr(_FakeTrackingStore, "_get_decrypted_secret", unreadable)
+    assert denied(hook(ISSUE_INVOKE, "POST", EDITOR, body=_detection(VICTIM, ["tr-victim"], secret_id="sec-1")))
+
+
+def test_a_schedule_refuses_a_secret_without_the_providers_key(shared_gateway_denied):
+    for model in ({"provider": "openai", "model": "m", "secretId": "sec-base-only"}, {"provider": "bedrock", "model": "m", "secretId": "sec-1"}):
+        body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule(model)}
+        assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))
+        assert denied(hook(CREATE_EXPERIMENT, "POST", EDITOR, body={"name": "mine", "tags": [{"key": SCHEDULE_TAG, "value": _schedule(model)}]}))
+    assert allowed(
+        hook(
+            SET_EXPERIMENT_TAG,
+            "POST",
+            EDITOR,
+            body={"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule({"provider": "openai", "model": "m", "secretId": "sec-1"})},
+        )
+    )
+
+
+def test_the_required_credential_variables_follow_mlflows_provider_table():
+    from mlflow_oidc_auth.validators._detection_schedule import _required_credential_variables
+
+    assert _required_credential_variables({"api_key": "OPENAI_API_KEY", "api_base": "OPENAI_API_BASE"}) == {"OPENAI_API_KEY"}
+    assert _required_credential_variables("ANTHROPIC_API_KEY") == {"ANTHROPIC_API_KEY"}
+    assert _required_credential_variables(
+        {"aws_access_key_id": "AWS_ACCESS_KEY_ID", "aws_secret_access_key": "AWS_SECRET_ACCESS_KEY", "aws_session_token": "AWS_SESSION_TOKEN"}
+    ) == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}
+    assert _required_credential_variables(None) == set()
+
+
+def test_reading_a_secret_first_keeps_mlflows_job_map_whole():
+    """The check must not be the first import of MLflow's job module: in a fresh process that
+    drops issue detection from MLflow's job-name map, and every detection job is then refused."""
+    import subprocess
+    import sys
+
+    script = (
+        "from mlflow_oidc_auth.validators._detection_schedule import secret_supplies_provider_credentials\n"
+        "secret_supplies_provider_credentials('openai', 'no-such-secret')\n"
+        "from mlflow.server.jobs.utils import get_job_fn_fullname\n"
+        "print(get_job_fn_fullname('invoke_issue_detection'))\n"
+    )
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, env={**os.environ, "MLFLOW_DISABLE_AGENT_HINT": "1"})
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip().endswith("invoke_issue_detection_job")
