@@ -6,34 +6,55 @@ see elsewhere: itself, the groups it belongs to, and the members of the workspac
 is off, see everyone.
 """
 
+from fastapi import Request
+from mlflow.exceptions import MlflowException
+
 from mlflow_oidc_auth.config import config
+from mlflow_oidc_auth.utils.request_helpers_fastapi import get_is_admin
 from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
 
-def listing_restricted(is_admin: bool) -> bool:
+async def listing_restricted(request: Request) -> bool:
     """Whether the caller's user and group listings are restricted.
 
+    The caller's admin flag is looked up only when the setting is on, so a default deployment
+    pays nothing for it.
+
     Parameters:
-        is_admin: Whether the caller is a global admin.
+        request: The incoming request.
 
     Returns:
         True when ``RESTRICT_USER_AND_GROUP_LISTING`` is on and the caller is not an admin.
     """
-    return bool(config.RESTRICT_USER_AND_GROUP_LISTING) and not is_admin
+    if not config.RESTRICT_USER_AND_GROUP_LISTING:
+        return False
+    return not await get_is_admin(request=request)
 
 
 def _managed_workspaces(username: str) -> list[str]:
-    """The workspaces holding grants on which ``username`` has MANAGE (empty without workspaces).
+    """The workspaces ``username`` has MANAGE on, among those it is granted directly or through a group.
 
-    A workspace with no grant has no members to show, so only those holding one are checked.
-    The lookup fails closed: a workspace whose permission cannot be resolved is left out.
+    Only those workspaces are checked, so the cost follows the caller's own grants rather than
+    the deployment's size. MANAGE that comes only from a regex grant is not looked for: the
+    caller then types the names. Every lookup fails closed: a workspace whose permission cannot
+    be resolved is left out, as is everything when the caller's own grants cannot be read.
+
+    Parameters:
+        username: The caller.
+
+    Returns:
+        The managed workspace names; empty when workspaces are disabled.
     """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return []
     from mlflow_oidc_auth.store import store
 
+    try:
+        candidates = store.list_workspaces_granted_to_user(username)
+    except MlflowException:
+        return []
     managed = []
-    for workspace in store.list_workspaces_with_grants():
+    for workspace in candidates:
         permission = get_workspace_permission_cached(username, workspace)
         if permission is not None and permission.can_manage:
             managed.append(workspace)

@@ -8,7 +8,7 @@ experiment, model, and prompt permissions at the group level. The grant routes
 
 from typing import Any, Callable, Dict, List, Tuple, Union
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
@@ -189,9 +189,7 @@ def _group_pattern(model, prompt: bool = False):
     response_model=GroupListResponse,
     tags=["groups"],
 )
-async def list_groups(
-    username: str = Depends(get_username), page: PageQuery = NO_PAGE, is_admin: bool = Depends(get_is_admin)
-) -> Union[GroupListResponse, JSONResponse]:
+async def list_groups(request: Request, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> Union[GroupListResponse, JSONResponse]:
     """
     List all groups in the system.
 
@@ -200,6 +198,8 @@ async def list_groups(
 
     Parameters:
     -----------
+    request : Request
+        The FastAPI request object.
     username : str
         The authenticated username (injected by dependency).
     page : PageParams
@@ -220,7 +220,7 @@ async def list_groups(
         from mlflow_oidc_auth.store import store
 
         visible_groups = store.get_groups()
-        if listing_restricted(is_admin):
+        if await listing_restricted(request):
             visible = visible_group_names(username)
             visible_groups = [group for group in visible_groups if group in visible]
         groups, headers = paginate_with_headers(visible_groups, key=lambda g: g, params=page)

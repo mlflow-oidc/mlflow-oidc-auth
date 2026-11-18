@@ -743,7 +743,8 @@ dialogs use to offer names. Deployments that host several tenants on one server 
 
 - itself, and the groups it belongs to;
 - with workspaces enabled, the users, service accounts and groups granted on the workspaces it
-  holds `MANAGE` on.
+  holds `MANAGE` on through a grant of its own or of one of its groups. (`MANAGE` that comes
+  only from a regex grant is not looked for; type those names.)
 
 Admins always see everyone. The setting affects `GET /api/2.0/mlflow/users` (with and without
 `?service=true`), `GET /api/2.0/mlflow/permissions/groups` and the Users and Groups pages; `X-Total-Count`
@@ -765,6 +766,13 @@ suggestions. Grants still need `MANAGE` on the resource and fail for a name that
   name that exists succeeds (and gives that principal access) or reports a duplicate. So a user
   who can grant on anything, which is every user, can confirm a guessed name, one guess per
   request; it cannot list names. Every grant is recorded in the audit log.
+- **A review queue named after a user.** Creating or renaming a custom review queue to a
+  registered username or service account name is refused, naming that user, so it too confirms
+  a guessed name, one guess per request.
+- **Members of your own workspaces, when everyone manages them.** With
+  `OIDC_WORKSPACE_DEFAULT_PERMISSION=MANAGE`, every user a token places in a workspace is
+  granted `MANAGE` on it at sign-in, and so is listed that workspace's members. Nobody sees
+  another tenant's members this way.
 - **Names MLflow records.** Run `user_id`, the `mlflow.user` tag and similar fields are shown on the
   resources a caller can read, as MLflow shows them (see [Search Result Filtering](#search-result-filtering)).
 

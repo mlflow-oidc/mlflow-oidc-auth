@@ -16,11 +16,12 @@ from mlflow_oidc_auth.permissions import MANAGE, READ
 from mlflow_oidc_auth.routers.group_permissions import group_permissions_router
 from mlflow_oidc_auth.routers.users import users_router
 from mlflow_oidc_auth.sqlalchemy_store import SqlAlchemyStore
-from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils import get_username
 
 CALLER = "caller@example.com"
 #: Workspace grants seeded below: the caller manages "ws-managed" and only reads "ws-read".
-WORKSPACE_PERMISSIONS = {"ws-managed": MANAGE, "ws-read": READ}
+#: "ws-group" is managed through a group grant only.
+WORKSPACE_PERMISSIONS = {"ws-managed": MANAGE, "ws-read": READ, "ws-group": MANAGE}
 
 
 @pytest.fixture
@@ -31,8 +32,15 @@ def store(tmp_path):
         db.create_user(username, username)
     for account in ("svc-managed", "svc-read"):
         db.create_user(account, account, is_service_account=True)
-    db.populate_groups(["own-group", "team-managed", "team-read", "unrelated"])
+    db.populate_groups(["own-group", "team-managed", "team-read", "unrelated", "managers", "team-group"])
     db.add_user_to_group(CALLER, "own-group")
+    db.add_user_to_group(CALLER, "managers")
+    db.create_user("dave@example.com", "dave@example.com")
+    db.create_workspace_group_permission("ws-group", "managers", "MANAGE")
+    db.create_workspace_permission("ws-group", "dave@example.com", "READ")
+    db.create_workspace_group_permission("ws-group", "team-group", "READ")
+    # A workspace the caller holds no grant in: never looked up, whatever it holds.
+    db.create_workspace_permission("ws-other", "carol@example.com", "MANAGE")
     db.create_workspace_permission("ws-managed", CALLER, "MANAGE")
     db.create_workspace_permission("ws-managed", "alice@example.com", "READ")
     db.create_workspace_permission("ws-managed", "svc-managed", "EDIT")
@@ -58,8 +66,11 @@ def _get(router, path: str, is_admin: bool, **params):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_username] = lambda: CALLER
-    app.dependency_overrides[get_is_admin] = lambda: is_admin
-    with TestClient(app) as client:
+
+    async def _is_admin(request=None):
+        return is_admin
+
+    with patch("mlflow_oidc_auth.utils.directory_visibility.get_is_admin", _is_admin), TestClient(app) as client:
         return client.get(path, params=params)
 
 
@@ -75,9 +86,9 @@ def _groups(is_admin: bool = False, **params) -> list[str]:
     return response.json()
 
 
-EVERY_USER = sorted([CALLER, "alice@example.com", "bob@example.com", "carol@example.com"])
+EVERY_USER = sorted([CALLER, "alice@example.com", "bob@example.com", "carol@example.com", "dave@example.com"])
 EVERY_ACCOUNT = ["svc-managed", "svc-read"]
-EVERY_GROUP = ["own-group", "team-managed", "team-read", "unrelated"]
+EVERY_GROUP = sorted(["own-group", "team-managed", "team-read", "unrelated", "managers", "team-group"])
 
 
 class TestSettingOff:
@@ -90,6 +101,16 @@ class TestSettingOff:
         assert sorted(_users(is_admin, service="true")) == EVERY_ACCOUNT
         assert sorted(_groups(is_admin)) == EVERY_GROUP
         workspaces.assert_not_called()
+
+    def test_the_admin_flag_is_not_looked_up(self, store, monkeypatch):
+        """A default deployment pays no extra query per list call."""
+        monkeypatch.setattr(config, "RESTRICT_USER_AND_GROUP_LISTING", False)
+        app = FastAPI()
+        app.include_router(users_router)
+        app.dependency_overrides[get_username] = lambda: CALLER
+        with patch("mlflow_oidc_auth.utils.directory_visibility.get_is_admin") as is_admin, TestClient(app) as client:
+            assert client.get("/api/2.0/mlflow/users").status_code == 200
+        is_admin.assert_not_called()
 
 
 class TestSettingOn:
@@ -106,26 +127,27 @@ class TestSettingOn:
         monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", False)
         assert _users() == [CALLER]
         assert _users(service="true") == []
-        assert _groups() == ["own-group"]
+        assert sorted(_groups()) == ["managers", "own-group"]
 
     def test_a_workspace_manager_also_sees_that_workspace_s_members(self, store, workspaces):
-        """Members of a workspace the caller only reads stay hidden: bob, svc-read, team-read."""
-        assert sorted(_users()) == sorted([CALLER, "alice@example.com"])
+        """Members of a workspace the caller only reads, or holds no grant in, stay hidden: bob, carol, svc-read, team-read."""
+        assert sorted(_users()) == sorted([CALLER, "alice@example.com", "dave@example.com"])
         assert _users(service="true") == ["svc-managed"]
-        assert sorted(_groups()) == ["own-group", "team-managed"]
+        assert sorted(_groups()) == ["managers", "own-group", "team-group", "team-managed"]
+        assert sorted(call.args[1] for call in workspaces.call_args_list) == sorted(["ws-group", "ws-managed", "ws-read"] * 3)
 
     def test_an_unresolvable_workspace_permission_hides_its_members(self, store, workspaces):
         workspaces.side_effect = lambda username, workspace: None
         assert _users() == [CALLER]
-        assert _groups() == ["own-group"]
+        assert sorted(_groups()) == ["managers", "own-group"]
 
     def test_totals_count_only_what_the_caller_sees(self, store, workspaces):
         response = _get(users_router, "/api/2.0/mlflow/users", False, limit=1)
         assert response.status_code == 200
         assert len(response.json()) == 1
-        assert response.headers["X-Total-Count"] == "2"
+        assert response.headers["X-Total-Count"] == "3"
         response = _get(group_permissions_router, "/api/2.0/mlflow/permissions/groups", False, limit=1)
-        assert response.headers["X-Total-Count"] == "2"
+        assert response.headers["X-Total-Count"] == "4"
 
 
 class TestWorkspaceMemberLists:
@@ -185,6 +207,14 @@ def test_the_workspace_member_lists_use_the_member_list_check():
         assert [dependency.call for dependency in route.dependant.dependencies if dependency.call is check_workspace_member_list_permission]
 
 
-def test_store_lists_each_workspace_with_grants_once(store):
-    store.create_workspace_group_permission("ws-groups-only", "unrelated", "READ")
-    assert store.list_workspaces_with_grants() == ["ws-groups-only", "ws-managed", "ws-read"]
+def test_store_lists_the_workspaces_granted_to_a_user_directly_or_through_a_group(store):
+    assert store.list_workspaces_granted_to_user(CALLER) == ["ws-group", "ws-managed", "ws-read"]
+    assert store.list_workspaces_granted_to_user("carol@example.com") == ["ws-other"]
+    assert store.list_workspaces_granted_to_user("svc-read") == ["ws-read"]
+
+
+def test_an_unknown_caller_manages_nothing(store, workspaces, monkeypatch):
+    from mlflow_oidc_auth.utils.directory_visibility import visible_usernames
+
+    assert visible_usernames("ghost@example.com") == {"ghost@example.com"}
+    workspaces.assert_not_called()

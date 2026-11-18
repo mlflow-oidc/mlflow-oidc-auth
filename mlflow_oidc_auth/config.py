@@ -75,8 +75,9 @@ class AppConfig:
         # When enabled, a user needs EDIT+ (via name regex / group-regex, with a workspace
         # fallback) to create. Off by default, matching upstream MLflow (anyone can create).
         self.RESTRICT_RESOURCE_CREATION = config_manager.get_bool("RESTRICT_RESOURCE_CREATION", default=False)
-        # Opt-in: non-admins list only themselves and their own groups, so tenants sharing
-        # one server cannot enumerate each other's users.
+        # Opt-in: non-admins list only themselves, their groups and the members of the workspaces
+        # they manage, so tenants sharing one server cannot list each other's users and groups
+        # (docs/permissions.md#restricting-user-and-group-listing).
         self.RESTRICT_USER_AND_GROUP_LISTING = config_manager.get_bool("RESTRICT_USER_AND_GROUP_LISTING", default=False)
         self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
 

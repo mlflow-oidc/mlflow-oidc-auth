@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
@@ -364,9 +364,7 @@ async def delete_my_token(token_id: int, current_username: str = Depends(get_use
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
-async def list_users(
-    service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE, is_admin: bool = Depends(get_is_admin)
-) -> JSONResponse:
+async def list_users(request: Request, service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List users in the system.
 
@@ -401,7 +399,7 @@ async def list_users(
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
-        if listing_restricted(is_admin):
+        if await listing_restricted(request):
             visible = visible_usernames(username)
             users = [user for user in users if user in visible]
         users, headers = paginate_with_headers(users, key=lambda u: u, params=page)

@@ -1451,9 +1451,26 @@ class SqlAlchemyStore:
         """List all group permissions in a workspace."""
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
 
-    def list_workspaces_with_grants(self) -> list[str]:
-        """List every workspace that holds a user or group permission, sorted."""
-        return sorted(set(self.workspace_permission_repo.list_workspaces()) | set(self.workspace_group_permission_repo.list_workspaces()))
+    def list_workspaces_granted_to_user(self, username: str) -> list[str]:
+        """List the workspaces where a user holds a permission directly or through a group.
+
+        Parameters:
+            username: The user.
+
+        Returns:
+            The distinct workspace names, sorted.
+
+        Raises:
+            MlflowException: If the user does not exist.
+        """
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user_id = get_user(session, username).id
+        workspaces = {p.workspace for p in self.workspace_permission_repo.list_for_user(user_id)}
+        for group_id in self.get_groups_ids_for_user(username):
+            workspaces.update(p.workspace for p in self.workspace_group_permission_repo.list_for_group(group_id))
+        return sorted(workspaces)
 
     def wipe_workspace_permissions(self, workspace: str) -> int:
         """Delete every permission recorded for a workspace.
