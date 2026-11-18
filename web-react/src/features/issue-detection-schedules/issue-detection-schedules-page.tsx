@@ -60,6 +60,16 @@ function StatusBadge({ schedule }: { schedule: IssueDetectionSchedule }) {
       </span>
     );
   }
+  if (schedule.violation === "check_failed") {
+    return (
+      <span
+        className={`${base} bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700`}
+        title={reasonLabel(schedule.violation)}
+      >
+        Check failed
+      </span>
+    );
+  }
   if (schedule.violation) {
     return (
       <span

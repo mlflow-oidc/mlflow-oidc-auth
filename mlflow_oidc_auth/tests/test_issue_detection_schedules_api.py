@@ -154,7 +154,15 @@ def test_a_check_that_errors_is_listed_as_failed_not_raised(admin, store, tracki
     def unavailable(username):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(store, "get_user", unavailable)
+    real_profile = store.get_user_profile
+
+    def profile(username):
+        # The caller's own lookup (authentication) still works; the writer's fails.
+        if username == ALICE:
+            return unavailable(username)
+        return real_profile(username)
+
+    monkeypatch.setattr(store, "get_user_profile", profile)
     response = admin.get(SCHEDULES)
 
     assert response.status_code == 200

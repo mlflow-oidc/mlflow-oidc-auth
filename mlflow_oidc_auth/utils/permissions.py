@@ -35,6 +35,8 @@ from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
 from mlflow_oidc_auth.store import store
 
+from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
 logger = get_logger()
 
 # ---------------------------------------------------------------------------
@@ -145,7 +147,7 @@ def invalidate_permission_cache(resource_type: str, resource_id: str, username: 
     if workspace is None:
         workspace = _get_cache_workspace()
     cache.delete(_make_cache_key(resource_type, resource_id, username, workspace, **qualifiers))
-    _notify_schedule_guard()
+    notify_schedule_guard()
 
 
 def flush_permission_cache() -> None:
@@ -162,18 +164,7 @@ def flush_permission_cache() -> None:
     cache = _get_permission_cache()
     cache.clear()
     logger.debug("Permission cache fully flushed")
-    _notify_schedule_guard()
-
-
-def _notify_schedule_guard() -> None:
-    """A grant, membership or user changed: let the issue detection schedule guard re-check soon."""
-    # Best effort, and never in the way of the invalidation it follows or precedes.
-    try:
-        from mlflow_oidc_auth.issue_detection_guard import permissions_changed
-
-        permissions_changed()
-    except Exception:
-        logger.debug("Could not notify the issue detection schedule guard", exc_info=True)
+    notify_schedule_guard()
 
 
 # Resource type constants. Defined with the resolver (utils/grant_context.py) and re-exported here.

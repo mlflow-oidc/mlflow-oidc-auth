@@ -233,6 +233,55 @@ def test_a_transient_failure_while_checking_is_retried_not_paused(tracking, monk
     assert guard.sweep().failed == []
 
 
+def test_a_secret_store_outage_is_retried_not_paused(tracking, monkeypatch):
+    """The checks deny on errors for requests; for the guard an uncertain answer raises instead."""
+    _store(tracking, OWN, _schedule({"provider": "openai", "model": "m", "secretId": "sec-1"}), author=EDITOR)
+
+    def unavailable(self, secret_id=None, **_):
+        raise RuntimeError("secret store unavailable")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(_TrackingStore, "get_secret_info", unavailable)
+        result = guard.sweep()
+    assert result.paused == [] and result.failed == [OWN] and not _paused(tracking, OWN)
+
+
+def test_a_deleted_secret_still_pauses(tracking, monkeypatch):
+    _store(tracking, OWN, _schedule({"provider": "openai", "model": "m", "secretId": "sec-gone"}), author=EDITOR)
+    assert [p["reason"] for p in guard.sweep().paused] == [guard.REASON_NO_MODEL_USE]
+
+
+def test_writer_records_of_purged_experiments_are_pruned(tracking, permission_store):
+    guard.record_author("purged", None, EDITOR, _schedule({"endpointName": "open-endpoint"}))
+    _store(tracking, OWN, _schedule({"endpointName": "open-endpoint"}), author=OUTSIDER)
+    tracking.tags["soft"] = {}
+    guard.record_author("soft", None, EDITOR, _schedule({"endpointName": "open-endpoint"}))
+
+    guard.sweep()
+
+    assert permission_store.get_detection_schedule_author("purged") is None
+    assert permission_store.get_detection_schedule_author("soft") is not None
+    assert permission_store.get_detection_schedule_author(OWN) is not None
+
+
+def test_a_pause_that_replaced_a_concurrent_write_says_so(tracking, permission_store, monkeypatch):
+    from mlflow_oidc_auth import audit
+
+    events = []
+    monkeypatch.setattr(audit, "emit_audit_event", lambda *a, **k: events.append(k))
+    value = _schedule({"endpointName": "shared-endpoint"})
+    _store(tracking, OWN, value, author=OUTSIDER)
+    real_set = tracking.set_experiment_tag
+
+    def write_racing(experiment_id, tag):
+        guard.record_author(experiment_id, None, EDITOR, _schedule({"endpointName": "open-endpoint"}))
+        real_set(experiment_id, tag)
+
+    monkeypatch.setattr(tracking, "set_experiment_tag", write_racing)
+    assert guard._pause(OWN, None, value, guard.REASON_NO_MODEL_USE)
+    assert events[-1]["detail"]["replaced_concurrent_write"] is True
+
+
 def test_a_user_lookup_error_is_not_read_as_a_deleted_writer(tracking, permission_store, monkeypatch):
     _store(tracking, OWN, _schedule({"endpointName": "open-endpoint"}), author=OUTSIDER)
 
@@ -240,7 +289,7 @@ def test_a_user_lookup_error_is_not_read_as_a_deleted_writer(tracking, permissio
         raise RuntimeError("database unavailable")
 
     with monkeypatch.context() as patched:
-        patched.setattr(permission_store, "get_user", unavailable)
+        patched.setattr(permission_store, "get_user_profile", unavailable)
         result = guard.sweep()
     assert result.paused == [] and result.failed == [OWN]
 
@@ -495,6 +544,25 @@ def test_a_permission_change_wakes_the_guard_only_when_schedules_exist(monkeypat
     assert background._wake.is_set()
 
 
+def test_recording_a_schedule_re_arms_the_permission_trigger(tracking):
+    guard._guard._schedules_seen = False
+    try:
+        guard.record_author(OWN, None, EDITOR, _schedule({"endpointName": "open-endpoint"}))
+        assert guard._guard._schedules_seen is True
+    finally:
+        guard._guard._schedules_seen = True
+
+
+def test_deactivating_or_demoting_a_user_asks_for_a_pass(permission_store, monkeypatch):
+    asked = []
+    monkeypatch.setattr(guard._guard, "trigger", lambda: asked.append(1))
+    permission_store.update_user(EDITOR, active=False)
+    assert asked
+    asked.clear()
+    permission_store.update_user(EDITOR, active=True)
+    assert not asked
+
+
 def test_a_restart_never_revives_a_thread_still_finishing_a_pass(monkeypatch):
     release = threading.Event()
     entered = threading.Event()
@@ -530,7 +598,7 @@ def test_a_restart_never_revives_a_thread_still_finishing_a_pass(monkeypatch):
 def test_a_failing_guard_import_never_blocks_cache_invalidation(monkeypatch):
     import builtins
 
-    from mlflow_oidc_auth.utils import permissions, workspace_cache
+    from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
 
     real_import = builtins.__import__
 
@@ -540,8 +608,7 @@ def test_a_failing_guard_import_never_blocks_cache_invalidation(monkeypatch):
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", failing)
-    permissions._notify_schedule_guard()
-    workspace_cache._notify_schedule_guard()
+    notify_schedule_guard()  # never raises
 
 
 def test_a_permission_change_asks_for_a_pass(monkeypatch):

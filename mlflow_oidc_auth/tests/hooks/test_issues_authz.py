@@ -512,7 +512,6 @@ def test_reading_a_secret_first_keeps_mlflows_job_map_whole(tmp_path):
     assert done.stdout.strip().endswith("invoke_issue_detection_job")
 
 
-<<<<<<< HEAD
 # --- ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY ---------------------------------------------
 
 
@@ -571,7 +570,8 @@ def test_a_schedule_the_parser_reads_as_server_credentials_is_refused(server_cre
     monkeypatch.setattr(_detection_schedule, "_mlflow_schedule_parser", lambda: lambda raw: parsed)
     body = {"experiment_id": VICTIM, "key": SCHEDULE_TAG, "value": _schedule({"provider": "openai", "model": "m", "secretId": "sec-1"})}
     assert denied(hook(SET_EXPERIMENT_TAG, "POST", EDITOR, body=body))
-=======
+
+
 def test_mlflows_invoke_handler_reads_only_the_snake_case_credential_keys():
     """The credential check reads ``secret_id`` / ``endpoint_name`` / ``provider`` from the JSON
     body because that is all MLflow reads; another spelling or source must fail here first."""
@@ -584,4 +584,3 @@ def test_mlflows_invoke_handler_reads_only_the_snake_case_credential_keys():
     assert set(re.findall(r'request_json\.get\("([A-Za-z_]+)"\)', source)) >= {"secret_id", "endpoint_name", "provider"}
     for spelling in ("secretId", "endpointName", "request.args", "request.form", "request.values"):
         assert spelling not in source, spelling
->>>>>>> origin/fix/secret-provider-credentials

@@ -494,7 +494,7 @@ class SqlAlchemyStore:
         Raises:
             MlflowException: If the user does not exist.
         """
-        return self.user_repo.update(
+        updated = self.user_repo.update(
             username=username,
             is_admin=is_admin,
             is_service_account=is_service_account,
@@ -504,6 +504,12 @@ class SqlAlchemyStore:
             admin_override=admin_override,
             revoke_tokens=revoke_tokens,
         )
+        if active is False or is_admin is False:
+            # A deactivated or demoted writer's schedules may have to stop.
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
+        return updated
 
     def delete_user(self, username: str, *, written_by: Optional[str] = None, admin_override: bool = False, actor: Optional[str] = None):
         """Hard-delete a user through the ownership guard (#360). See :meth:`UserRepository.delete`."""
@@ -1829,6 +1835,10 @@ class SqlAlchemyStore:
         if revoke_credential:
             kwargs["revoke_tokens"] = True
         self.user_repo.update(username, **kwargs)
+        if active is False:
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
         return self.get_user_detail(username)
 
     def delete_user_with_hook(

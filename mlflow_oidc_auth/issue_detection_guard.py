@@ -50,6 +50,7 @@ from mlflow_oidc_auth.validators._detection_schedule import (
     DETECTION_SCHEDULE_TAG,
     _mlflow_schedule_parser,
     detection_schedules_permitted,
+    raise_uncertain_errors,
     schedule_uses_server_credentials,
 )
 
@@ -121,6 +122,8 @@ def record_author(experiment_id: str, workspace: Optional[str], username: str, r
     from mlflow_oidc_auth.store import store
 
     store.record_detection_schedule_author(str(experiment_id), workspace, username, model_fingerprint(raw))
+    # A schedule exists again: permission changes must wake the guard even after a quiet pass.
+    _guard.schedules_recorded()
 
 
 def forget_author(experiment_id: str) -> None:
@@ -273,7 +276,7 @@ def violation(experiment_id: str, workspace: Optional[str], raw: str, record: An
     if record.model_fingerprint != model_fingerprint(raw):
         return REASON_MODEL_CHANGED
     try:
-        user = store.get_user(record.author)
+        user = store.get_user_profile(record.author)
     except MlflowException as e:
         if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             return REASON_AUTHOR_DELETED
@@ -283,7 +286,7 @@ def violation(experiment_id: str, workspace: Optional[str], raw: str, record: An
     if user.is_admin:
         return None
     request_workspace = workspace if config.MLFLOW_ENABLE_WORKSPACES else None
-    with _in_workspace(workspace), _as_user(record.author, False, request_workspace):
+    with _in_workspace(workspace), _as_user(record.author, False, request_workspace), raise_uncertain_errors():
         if not effective_experiment_permission(experiment_id, record.author).permission.can_update:
             return REASON_NO_EXPERIMENT_UPDATE
         if config.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY and schedule_uses_server_credentials(raw):
@@ -308,6 +311,7 @@ def _pause(experiment_id: str, workspace: Optional[str], raw: str, reason: str) 
     from mlflow_oidc_auth.store import store
 
     tracking_store = _tracking_store()
+    before = store.get_detection_schedule_author(experiment_id)
     with _in_workspace(workspace):
         current = tracking_store.get_experiment(experiment_id).tags.get(DETECTION_SCHEDULE_TAG)
         if current != raw:
@@ -320,19 +324,54 @@ def _pause(experiment_id: str, workspace: Optional[str], raw: str, reason: str) 
         envelope = json.loads(raw)
         envelope["paused"] = True
         tracking_store.set_experiment_tag(experiment_id, ExperimentTag(DETECTION_SCHEDULE_TAG, json.dumps(envelope)))
+    after = store.get_detection_schedule_author(experiment_id)
+    # A write recorded while this pause was being made was replaced by it (no compare-and-set
+    # in MLflow's store): say so, so the writer is told to save it again rather than losing it.
+    replaced = getattr(before, "recorded_at", None) != getattr(after, "recorded_at", None)
     store.mark_detection_schedule_guard_paused(experiment_id, workspace, reason)
     logger.warning("Paused the issue detection schedule of experiment %s (%s)", experiment_id, reason)
+    if replaced:
+        logger.warning("Pausing experiment %s's issue detection schedule replaced a concurrent write; it must be saved again", experiment_id)
     try:
         emit_audit_event(
             "issue_detection_schedule.paused",
             "system:issue-detection-schedule-guard",
             resource_type="experiment",
             resource_id=experiment_id,
-            detail={"workspace": workspace, "reason": reason},
+            detail={"workspace": workspace, "reason": reason, "replaced_concurrent_write": replaced},
         )
     except Exception:
         logger.debug("Audit event for a paused issue detection schedule could not be emitted", exc_info=True)
     return True
+
+
+def _prune_records(listed: set) -> None:
+    """Drop writer records of experiments that no longer exist (purged by ``mlflow gc``, say).
+
+    A record whose experiment is merely not listed (soft-deleted, or its tag removed some other
+    way) is kept: a restored experiment's schedule is then still credited correctly. Best effort.
+    """
+    from mlflow.exceptions import MlflowException
+
+    from mlflow_oidc_auth.store import store
+
+    try:
+        records = store.list_detection_schedule_authors()
+    except Exception:
+        logger.debug("Could not list issue detection schedule writers to prune", exc_info=True)
+        return
+    tracking_store = _tracking_store()
+    for record in records:
+        if record.experiment_id in listed:
+            continue
+        try:
+            with _in_workspace(record.workspace):
+                tracking_store.get_experiment(record.experiment_id)
+        except MlflowException as e:
+            if e.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                store.delete_detection_schedule_author(record.experiment_id)
+        except Exception:
+            logger.debug("Could not check experiment %s while pruning", record.experiment_id, exc_info=True)
 
 
 def sweep() -> SweepResult:
@@ -340,7 +379,9 @@ def sweep() -> SweepResult:
     result = SweepResult()
     if not scheduler_available():
         return result
-    for state in list_schedules():
+    states = list_schedules()
+    _prune_records({state.experiment_id for state in states})
+    for state in states:
         if not state.readable or state.paused:
             continue
         result.checked += 1
@@ -401,6 +442,9 @@ class _Guard:
         # still picks up schedules written since.
         if self.running and self._schedules_seen:
             self._wake.set()
+
+    def schedules_recorded(self) -> None:
+        self._schedules_seen = True
 
     def _run(self, stop: threading.Event, wake: threading.Event) -> None:
         while not stop.is_set():

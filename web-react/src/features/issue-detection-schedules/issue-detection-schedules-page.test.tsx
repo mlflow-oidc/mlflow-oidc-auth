@@ -183,6 +183,15 @@ describe("IssueDetectionSchedulesPage", () => {
     );
   });
 
+  it("shows a failed check as such, not as a coming pause", () => {
+    mockUseSchedules.mockReturnValue(
+      hookResult({ schedules: [{ ...base, violation: "check_failed" }] }),
+    );
+    renderPage();
+    expect(screen.getByText("Check failed")).toBeInTheDocument();
+    expect(screen.queryByText("Will be paused")).not.toBeInTheDocument();
+  });
+
   it("labels every reason the server can give", () => {
     for (const reason of [
       "unknown_author",
@@ -192,6 +201,7 @@ describe("IssueDetectionSchedulesPage", () => {
       "author_cannot_update_experiment",
       "author_cannot_use_model",
       "server_credentials_admin_only",
+      "check_failed",
     ]) {
       expect(reasonLabel(reason)).not.toBe(reason);
     }

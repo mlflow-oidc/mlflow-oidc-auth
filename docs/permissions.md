@@ -473,7 +473,10 @@ The guard runs in each server process every `ISSUE_DETECTION_SCHEDULE_GUARD_INTE
 (default 300), soon after a permission change made in that process (at most once a minute), and
 on demand. Each pass is idempotent, so running it on every replica is safe. If MLflow's schedule
 parser cannot be loaded (its internals moved), every schedule is checked as stored, which pauses
-them rather than leaving them unchecked. A revoke can therefore leave a
+them rather than leaving them unchecked. A check that errors without an answer (the database or
+secret store briefly unavailable) is retried on the next pass rather than pausing the schedule; the
+admin page shows it as **Check failed**. A pause made while its writer was saving the schedule
+replaces that save; the audit event says so, and the schedule must be saved again. A revoke can therefore leave a
 schedule running for at most one interval. Resuming a paused schedule is an ordinary write: whoever
 resumes it needs USE on its model and becomes its recorded writer.
 

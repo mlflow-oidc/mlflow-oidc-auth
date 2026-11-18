@@ -11,7 +11,9 @@ import importlib
 import importlib.util
 import json
 from collections.abc import Callable, Iterable
-from typing import Any, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Iterator, Optional
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -39,8 +41,42 @@ def _mlflow_schedule_parser() -> Optional[Callable[..., Any]]:
     return importlib.import_module(_SCHEDULE_MODULE).parse_detection_schedule
 
 
+#: Set by the schedule guard: an error that is not a definite answer (not "no such secret", not
+#: "unknown provider") raises instead of denying, so a transient fault is retried rather than
+#: pausing a healthy schedule. Requests keep denying on every error.
+_RAISE_UNCERTAIN: ContextVar[bool] = ContextVar("detection_schedule_raise_uncertain", default=False)
+
+_DEFINITE_ERRORS = ("RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE")
+
+
+@contextmanager
+def raise_uncertain_errors() -> Iterator[None]:
+    """Within this block, a check that cannot decide raises rather than denying."""
+    token = _RAISE_UNCERTAIN.set(True)
+    try:
+        yield
+    finally:
+        _RAISE_UNCERTAIN.reset(token)
+
+
+def _is_definite(error: Exception) -> bool:
+    from mlflow.exceptions import MlflowException
+
+    return isinstance(error, MlflowException) and error.error_code in _DEFINITE_ERRORS
+
+
 def can_use_secret_id(secret_id: str, username: str) -> bool:
     """USE on the gateway secret ``secret_id`` names; an id that resolves to no secret denies."""
+    if _RAISE_UNCERTAIN.get():
+        from mlflow.server.handlers import _get_tracking_store
+
+        try:
+            secret_name = _get_tracking_store().get_secret_info(secret_id=str(secret_id)).secret_name
+        except Exception as e:
+            if _is_definite(e):
+                return False
+            raise
+        return bool(secret_name) and can_use_gateway_secret(secret_name, username)
     # validators.gateway imports validators.experiment (through _referenced), which imports this module.
     from mlflow_oidc_auth.validators.gateway import _resolve_secret_name_from_id
 
@@ -112,6 +148,8 @@ def _secret_supplies_provider_credentials(provider: str, secret_id: str) -> bool
             return False
         supplied = _fetch_provider_credentials(_get_tracking_store(), name, secret_id)
     except Exception as e:
+        if _RAISE_UNCERTAIN.get() and not _is_definite(e):
+            raise
         # Never the secret's values: only that it could not be read, and why in type.
         logger.warning("Could not read gateway secret %s for provider %s (%s); denying", secret_id, provider, type(e).__name__)
         return False
