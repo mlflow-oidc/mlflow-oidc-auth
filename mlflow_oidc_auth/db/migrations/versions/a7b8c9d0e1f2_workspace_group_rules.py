@@ -65,8 +65,10 @@ def downgrade() -> None:
         logger.warning("workspace_group_rules downgrade: removed %d grant(s) created by rules", removed)
 
     with op.batch_alter_table("workspace_group_permissions") as batch_op:
-        batch_op.drop_index("ix_workspace_group_permissions_rule_id")
+        # The foreign key goes before its index: MySQL refuses to drop an index a foreign key
+        # still needs (error 1553).
         batch_op.drop_constraint("fk_workspace_group_permissions_rule_id", type_="foreignkey")
+        batch_op.drop_index("ix_workspace_group_permissions_rule_id")
         batch_op.drop_column("rule_id")
 
     op.drop_table("workspace_group_rules")

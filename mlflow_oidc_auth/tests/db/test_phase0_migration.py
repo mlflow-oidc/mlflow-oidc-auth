@@ -4,12 +4,12 @@ The migration itself is mechanical; what these tests defend are the two backfill
 later issues depend on, and the head invariant that motivated putting all of Phase 0 in one
 revision.
 
-**Postgres and MySQL.** Every test here runs against SQLite, and against PostgreSQL too when
-``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped otherwise, so the default suite stays
-dependency-free). CI sets it — a migration verified on one backend is verified on one backend.
-The upgrade-path tests at the end also run against MySQL when ``MLFLOW_OIDC_TEST_MYSQL_URI`` is
-set, because this revision broke there (#494): ``groups`` is a reserved word in MySQL 8, and
-MySQL commits each DDL statement on its own, so a failure part-way left the revision half-applied.
+**Postgres and MySQL.** Every test here runs against SQLite, and against PostgreSQL and MySQL too
+when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and ``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise,
+so the default suite stays dependency-free). CI sets both — a migration verified on one backend is
+verified on one backend. MySQL is where this revision broke (#494): ``groups`` is a reserved word
+in MySQL 8 (raw SQL here names it through ``sql()``), and MySQL commits each DDL statement on its
+own, so a failure part-way left the revision half-applied.
 
 Run locally with, for example::
 
@@ -25,7 +25,7 @@ import pytest
 from alembic import op
 from alembic.command import downgrade, upgrade
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import TextClause, create_engine, inspect, text
 from sqlalchemy.sql.dml import Update
 
 from mlflow_oidc_auth.db.utils import _get_alembic_config
@@ -41,18 +41,32 @@ def _sqlite_uri(tmp_path) -> str:
     return f"sqlite:///{tmp_path / 'auth.db'}"
 
 
-@pytest.fixture(params=["sqlite", "postgres"])
+@pytest.fixture(params=["sqlite", "postgres", "mysql"])
 def db_uri(request, tmp_path):
-    """A database URI per backend. Postgres cases skip unless a server is configured.
+    """A database URI per backend. Postgres and MySQL cases skip unless a server is configured.
 
-    Shared by the other migration test modules. MySQL is not in it: only the upgrade path of this
-    revision is verified there (``upgrade_engine`` below), not every revision's downgrade.
+    Shared by the other migration test modules, so every revision's upgrade and downgrade is
+    verified on all three.
     """
     if request.param == "sqlite":
         return _sqlite_uri(tmp_path)
+    if request.param == "mysql":
+        if not MYSQL_URI:
+            pytest.skip("MLFLOW_OIDC_TEST_MYSQL_URI is not set")
+        return MYSQL_URI
     if not POSTGRES_URI:
         pytest.skip("MLFLOW_OIDC_TEST_POSTGRES_URI is not set")
     return POSTGRES_URI
+
+
+def sql(bind, statement: str) -> TextClause:
+    """``text(statement)`` with ``{groups}`` replaced by the ``groups`` table, quoted for the bind's dialect.
+
+    ``groups`` is a reserved word in MySQL 8 (#494), so raw SQL that names the table must quote it,
+    and each backend quotes differently. ``bind`` is a connection or a session.
+    """
+    dialect = bind.dialect if hasattr(bind, "dialect") else bind.get_bind().dialect
+    return text(statement.replace("{groups}", dialect.identifier_preparer.quote("groups")))
 
 
 def _clean_engine(db_uri):
@@ -80,22 +94,6 @@ def _clean_engine(db_uri):
 @pytest.fixture
 def engine(db_uri):
     yield from _clean_engine(db_uri)
-
-
-@pytest.fixture(params=["sqlite", "postgres", "mysql"])
-def upgrade_engine(request, tmp_path):
-    """An engine per backend, MySQL included, for the upgrade-path tests of this revision (#494)."""
-    if request.param == "mysql":
-        if not MYSQL_URI:
-            pytest.skip("MLFLOW_OIDC_TEST_MYSQL_URI is not set")
-        uri = MYSQL_URI
-    elif request.param == "postgres":
-        if not POSTGRES_URI:
-            pytest.skip("MLFLOW_OIDC_TEST_POSTGRES_URI is not set")
-        uri = POSTGRES_URI
-    else:
-        uri = _sqlite_uri(tmp_path)
-    yield from _clean_engine(uri)
 
 
 def _alembic_config(engine):
@@ -414,9 +412,8 @@ class TestResumeAfterPartialRun:
 
         monkeypatch.setattr(op, name, wrapper)
 
-    def test_upgrade_over_existing_data(self, upgrade_engine):
+    def test_upgrade_over_existing_data(self, engine):
         """The #494 path itself: an existing database with users and groups, upgraded to head."""
-        engine = upgrade_engine
         _upgrade(engine, PREVIOUS_REVISION)
         _seed_legacy_data(engine)
 
@@ -428,8 +425,7 @@ class TestResumeAfterPartialRun:
             assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
             assert conn.execute(text(f"SELECT count(*) FROM {groups} WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
 
-    def test_upgrade_finishes_after_a_failed_backfill(self, upgrade_engine, monkeypatch):
-        engine = upgrade_engine
+    def test_upgrade_finishes_after_a_failed_backfill(self, engine, monkeypatch):
         _upgrade(engine, PREVIOUS_REVISION)
         _seed_legacy_data(engine)
         with monkeypatch.context() as patched:
@@ -446,9 +442,8 @@ class TestResumeAfterPartialRun:
             assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
             assert conn.execute(text(f"SELECT count(*) FROM {groups} WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
 
-    def test_replay_finishes_a_partial_backfill_without_duplicating_it(self, upgrade_engine):
+    def test_replay_finishes_a_partial_backfill_without_duplicating_it(self, engine):
         """The worst case of a partial run: every object exists and part of the backfill landed."""
-        engine = upgrade_engine
         _upgrade(engine, PREVIOUS_REVISION)
         _seed_legacy_data(engine)
         _upgrade(engine, PHASE0_REVISION)
@@ -468,9 +463,8 @@ class TestResumeAfterPartialRun:
             assert conn.execute(text("SELECT count(*) FROM users WHERE created_at IS NULL OR updated_at IS NULL")).scalar() == 0
             assert conn.execute(text("SELECT created_at FROM users WHERE username = 'alice@example.com'")).scalar() == alice_created
 
-    def test_replay_refuses_an_index_of_a_different_shape(self, upgrade_engine):
+    def test_replay_refuses_an_index_of_a_different_shape(self, engine):
         """An existing object is trusted by name only when its shape matches: never record a wrong schema as applied."""
-        engine = upgrade_engine
         _upgrade(engine, PREVIOUS_REVISION)
         with engine.begin() as conn:
             # A non-unique index under the name this revision gives its unique one.
@@ -494,8 +488,7 @@ class TestResumeAfterPartialRun:
         ],
         ids=["identity-without-unique-subject", "nullable-active"],
     )
-    def test_replay_refuses_a_hand_repaired_schema_that_is_weaker(self, upgrade_engine, repair):
-        engine = upgrade_engine
+    def test_replay_refuses_a_hand_repaired_schema_that_is_weaker(self, engine, repair):
         _upgrade(engine, PREVIOUS_REVISION)
         with engine.begin() as conn:
             conn.execute(text(repair))
@@ -506,9 +499,8 @@ class TestResumeAfterPartialRun:
         with engine.connect() as conn:
             assert conn.execute(text(f"SELECT version_num FROM {_version_table()}")).scalar() == PREVIOUS_REVISION
 
-    def test_phase0_round_trip(self, upgrade_engine):
+    def test_phase0_round_trip(self, engine):
         """This revision's own downgrade, on every backend (#494 made MySQL one of them)."""
-        engine = upgrade_engine
         _upgrade(engine, PREVIOUS_REVISION)
         _seed_legacy_data(engine)
         _upgrade(engine, PHASE0_REVISION)
@@ -524,8 +516,7 @@ class TestResumeAfterPartialRun:
         with engine.connect() as conn:
             assert conn.execute(text("SELECT count(*) FROM user_identities")).scalar() == 3
 
-    def test_downgrade_finishes_after_an_interrupted_run(self, upgrade_engine, monkeypatch):
-        engine = upgrade_engine
+    def test_downgrade_finishes_after_an_interrupted_run(self, engine, monkeypatch):
         _upgrade(engine, PREVIOUS_REVISION)
         _seed_legacy_data(engine)
         _upgrade(engine, PHASE0_REVISION)
