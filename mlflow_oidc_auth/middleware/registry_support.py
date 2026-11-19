@@ -35,9 +35,11 @@ def bridged_auth_context(auth_context: Any) -> Iterator[None]:
 def can_create_in_request_workspace(username: str) -> bool:
     """Whether ``username`` may create a registry resource in the workspace MLflow serves the request from.
 
-    Only meaningful with workspaces enabled. ``MANAGE`` on that workspace — the one the request
-    names, else MLflow's default — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and
-    ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``. Shared by the registries MLflow serves from FastAPI.
+    Only meaningful with workspaces enabled. ``OIDC_WORKSPACE_CREATION_PERMISSION`` (``MANAGE`` by
+    default, or ``EDIT``) on that workspace — the one the request names, else MLflow's default —
+    subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``:
+    the same threshold as creating experiments, models and gateway resources. Shared by the
+    registries MLflow serves from FastAPI (MCP servers and skills).
 
     Parameters:
         username: The caller.
@@ -59,8 +61,10 @@ def can_create_in_request_workspace(username: str) -> bool:
         return False
     if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
         return False
+    from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
+
     permission = get_workspace_permission_cached(username, effective)
-    return permission is not None and permission.can_manage
+    return meets_workspace_creation_threshold(permission, config.OIDC_WORKSPACE_CREATION_PERMISSION)
 
 
 async def buffer_body(response: Response) -> bytes:

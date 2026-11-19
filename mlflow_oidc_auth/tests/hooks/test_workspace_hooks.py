@@ -782,7 +782,16 @@ class TestWorkspaceCreationGating:
                                 assert resp is not None
                                 assert resp.status_code == 403
 
-    @pytest.mark.parametrize("path", ["/api/2.0/mlflow/experiments/create", "/api/2.0/mlflow/registered-models/create"])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/2.0/mlflow/experiments/create",
+            "/api/2.0/mlflow/registered-models/create",
+            "/api/3.0/mlflow/gateway/endpoints/create",
+            "/api/3.0/mlflow/gateway/secrets/create",
+            "/api/3.0/mlflow/gateway/model-definitions/create",
+        ],
+    )
     @pytest.mark.parametrize(
         "granted,threshold,allowed",
         [
@@ -823,7 +832,7 @@ class TestWorkspaceCreationGating:
                             ):
                                 resp = before_request_hook()
                                 if allowed:
-                                    assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
+                                    assert resp is None
                                 else:
                                     assert resp is not None
                                     assert resp.status_code == 403

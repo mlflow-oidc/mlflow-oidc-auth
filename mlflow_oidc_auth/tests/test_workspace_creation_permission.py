@@ -39,3 +39,43 @@ class TestConfig:
     def test_unrecognised_values_fail_closed_to_manage(self, value):
         with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": value}):
             assert AppConfig().OIDC_WORKSPACE_CREATION_PERMISSION == "MANAGE"
+
+
+class TestStartupWarning:
+    def test_edit_warns_that_every_edit_grant_creates(self):
+        env = {"OIDC_WORKSPACE_CREATION_PERMISSION": "EDIT", "MLFLOW_ENABLE_WORKSPACES": "true"}
+        with patch.dict(os.environ, env), patch("mlflow_oidc_auth.config.logger") as logger:
+            AppConfig()
+        messages = " ".join(str(call.args[0]) for call in logger.warning.call_args_list)
+        assert "OIDC_WORKSPACE_CREATION_PERMISSION=EDIT" in messages
+        assert "WORKSPACE_RULES_MAX_PERMISSION" in messages
+
+    def test_manage_does_not_warn(self):
+        with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": "MANAGE"}), patch("mlflow_oidc_auth.config.logger") as logger:
+            AppConfig()
+        assert not any("OIDC_WORKSPACE_CREATION_PERMISSION" in str(call.args[0]) for call in logger.warning.call_args_list)
+
+    def test_edit_does_not_warn_without_workspaces(self):
+        """The setting is inert with workspaces off, so there is nothing to warn about."""
+        env = {"OIDC_WORKSPACE_CREATION_PERMISSION": "EDIT", "MLFLOW_ENABLE_WORKSPACES": "false"}
+        with patch.dict(os.environ, env), patch("mlflow_oidc_auth.config.logger") as logger:
+            AppConfig()
+        assert not any("OIDC_WORKSPACE_CREATION_PERMISSION=EDIT" in str(call.args[0]) for call in logger.warning.call_args_list)
+
+
+class TestGateUsesTheNormalisedValue:
+    @pytest.mark.parametrize("raw,edit_allowed", [("EDIT", True), (" edit ", True), ("READ", False), ("EDITOR", False), ("", False)])
+    def test_a_configured_value_reaches_the_registry_gate_normalised(self, raw, edit_allowed):
+        """The real config feeds the real gate: only EDIT, however spelled, admits an EDIT grant."""
+        from mlflow_oidc_auth.middleware import registry_support
+
+        with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": raw}):
+            real = AppConfig()
+        with (
+            patch.object(registry_support, "config", real),
+            patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value="team-ws"),
+            patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=EDIT),
+        ):
+            real.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = False
+            real.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = False
+            assert registry_support.can_create_in_request_workspace("bob") is edit_allowed

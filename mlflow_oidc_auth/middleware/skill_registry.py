@@ -230,9 +230,10 @@ def resolve_skill_route(path: str, method: str) -> Optional[SkillRoute]:
 def can_create_skill(username: str) -> bool:
     """Whether ``username`` may create a skill in the request's workspace.
 
-    With workspaces enabled: ``MANAGE`` on the workspace MLflow serves the request from, subject to
-    ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION`` — the
-    same threshold as creating experiments, models, gateway resources and MCP servers.
+    With workspaces enabled: ``OIDC_WORKSPACE_CREATION_PERMISSION`` (``MANAGE`` by default) on the
+    workspace MLflow serves the request from, subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT``
+    and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION`` — the same threshold as creating experiments,
+    models, gateway resources and MCP servers.
 
     With workspaces disabled: any authenticated user, as for registered models and prompts — unless
     ``RESTRICT_RESOURCE_CREATION`` is set. That flag admits creations through pattern grants, which
