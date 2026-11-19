@@ -668,3 +668,15 @@ class TestAuthorizationWorkspaceFromEnvironment:
 
         assert alone.kind == "fallback"
         assert during.kind == "workspace-deny"
+
+    def test_flask_request_keeps_the_workspace_it_was_decided_in(self):
+        """The cache key, the decision and the creation checks of one request see one workspace."""
+        from flask import Flask
+
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
+
+        with Flask(__name__).test_request_context("/api/2.0/mlflow/experiments/get"):
+            assert self._while_another_request_holds("ws-x", get_authorization_workspace) == "ws-x"
+            assert get_authorization_workspace() == "ws-x"
+        with Flask(__name__).test_request_context("/api/2.0/mlflow/experiments/get"):
+            assert get_authorization_workspace() is None

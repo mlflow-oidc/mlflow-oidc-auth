@@ -28,6 +28,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
@@ -56,9 +57,11 @@ def _get_permission_cache() -> CacheBackend:
     """
     global _permission_cache
     if _permission_cache is None:
-        ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        # Validated once in config.py (positive int, default 10000).
-        _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        with CACHE_INIT_LOCK:
+            if _permission_cache is None:
+                ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
+                # Validated once in config.py (positive int, default 10000).
+                _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
     return _permission_cache
 
 

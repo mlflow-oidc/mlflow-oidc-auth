@@ -46,6 +46,7 @@ from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -491,7 +492,9 @@ def _get_section_cache() -> CacheBackend:
     """
     global _section_cache
     if _section_cache is None:
-        _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
+        with CACHE_INIT_LOCK:
+            if _section_cache is None:
+                _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
     return _section_cache
 
 

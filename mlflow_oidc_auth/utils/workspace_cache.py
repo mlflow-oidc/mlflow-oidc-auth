@@ -20,6 +20,7 @@ through another. A lookup that hit an error is never cached in either.
 from typing import Any
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -56,10 +57,12 @@ def _get_cache() -> CacheBackend:
     """Get or create the workspace grant cache (lazy init). It never holds a denial."""
     global _cache
     if _cache is None:
-        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
-        ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
-        # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
-        _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
+        with CACHE_INIT_LOCK:
+            if _cache is None:
+                maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+                ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
+                # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
+                _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
     return _cache
 
 
@@ -80,8 +83,10 @@ def _get_denial_cache() -> CacheBackend:
     """
     global _denial_cache
     if _denial_cache is None:
-        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
-        _denial_cache = get_cache_backend("workspace_denials", maxsize=maxsize, ttl=_denial_ttl())
+        with CACHE_INIT_LOCK:
+            if _denial_cache is None:
+                maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+                _denial_cache = get_cache_backend("workspace_denials", maxsize=maxsize, ttl=_denial_ttl())
     return _denial_cache
 
 

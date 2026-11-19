@@ -135,11 +135,27 @@ def get_authorization_workspace() -> str | None:
     Header-only callers keep :func:`get_request_workspace`: the scope of a new regex pattern, where
     None means every workspace, and the rule that a creation must name its workspace.
 
+    Inside a Flask request it is worked out once and kept on ``flask.g``, so the permission cache
+    key, the decision and the creation checks of one request all use the same workspace even if
+    the variable changes while the request runs.
+
     Returns:
         The workspace name, or None for a request that names none and is not served from the
         variable, when workspaces are disabled, or without an authentication context.
     """
-    return get_request_workspace() or _environment_served_workspace()
+    from flask import g, has_request_context
+
+    if not has_request_context():
+        return get_request_workspace() or _environment_served_workspace()
+    cached = g.get(_AUTHORIZATION_WORKSPACE_KEY, _UNSET)
+    if cached is _UNSET:
+        cached = get_request_workspace() or _environment_served_workspace()
+        setattr(g, _AUTHORIZATION_WORKSPACE_KEY, cached)
+    return cached
+
+
+_AUTHORIZATION_WORKSPACE_KEY = "_mlflow_oidc_authorization_workspace"
+_UNSET = object()
 
 
 def _environment_served_workspace() -> str | None:
