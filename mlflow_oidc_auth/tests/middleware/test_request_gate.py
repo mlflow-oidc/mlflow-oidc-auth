@@ -8,7 +8,6 @@ FastAPI-native, may be decided or served while it is set.
 import ast
 import asyncio
 import pathlib
-import re
 import threading
 import time
 
@@ -488,6 +487,26 @@ class TestGate:
         gate.leave_shared()
         assert await gate.acquire_alone(0.1) is True
         gate.release_alone()
+
+    @pytest.mark.asyncio
+    async def test_a_timed_out_alone_registers_no_wait_it_will_not_await(self):
+        gate = RequestGate()
+        registrations = []
+        original = gate._wait_for_change_locked
+
+        def counting():
+            registrations.append(1)
+            return original()
+
+        gate._wait_for_change_locked = counting
+        await gate.enter_shared()
+        assert await gate.acquire_alone(0) is False
+        assert registrations == []
+        assert await gate.acquire_alone(0.05) is False
+        await asyncio.sleep(0)
+        assert gate._waiters == []
+        assert gate._alone_waiting == 0
+        gate.leave_shared()
 
     @pytest.mark.asyncio
     async def test_shared_waits_while_alone_runs(self):

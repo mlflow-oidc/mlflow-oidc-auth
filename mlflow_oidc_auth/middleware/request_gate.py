@@ -125,10 +125,11 @@ class RequestGate:
                     if not self._alone and not self._shared:
                         self._alone = True
                         return True
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    # Registered only when it will be awaited, so a timed-out caller leaves no waiter behind.
                     change = self._wait_for_change_locked()
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return False
                 try:
                     await asyncio.wait_for(change, remaining)
                 except TimeoutError:
