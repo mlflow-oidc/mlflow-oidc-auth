@@ -734,8 +734,8 @@ class TestRegister:
         assert len(api.alice.get(f"{API}/reviewer/versions", headers=A).json()["skill_versions"]) == 1
         assert _names(api.admin.get(API, headers=A)) == [("", "reviewer")]
 
-    def test_bulk_register_reads_the_registry_once(self, api, store, reviewer, registry, monkeypatch):
-        """Which targets exist is one registry query, however many the batch names."""
+    def test_bulk_register_reads_the_registry_once_to_authorize_and_once_to_grant(self, api, store, reviewer, registry, monkeypatch):
+        """Which targets exist is one registry query, and who created the new ones another, however many the batch names."""
         calls = []
         original = type(registry).search_skills
 
@@ -743,12 +743,51 @@ class TestRegister:
             calls.append(kwargs.get("include_skill_identities"))
             return original(self, *args, **kwargs)
 
+        def no_single_lookups(self, *args, **kwargs):
+            raise AssertionError("a created skill was looked up on its own")
+
         monkeypatch.setattr(type(registry), "search_skills", counting)
         body = {"skills": [{"name": name, **REMOTE} for name in ("reviewer", "one", "two", "three")]}
+        assert api.alice.post(f"{API}/bulk-register", json=body, headers=A).status_code == 200
+
+        assert calls[0] == [("", "one"), ("", "reviewer"), ("", "three"), ("", "two")]
+        assert sorted(calls[1]) == [("", "one"), ("", "three"), ("", "two")]
+        assert len(calls) == 2
+        assert _grants(store) == [(ALICE, key, "team-a", "MANAGE") for key in ("one", "reviewer", "three", "two")]
+        monkeypatch.setattr(type(registry), "get_skill", no_single_lookups)
+        assert api.alice.post(f"{API}/bulk-register", json={"skills": [{"name": "four", **REMOTE}]}, headers=A).status_code == 200
+
+    def test_bulk_register_grants_in_one_write(self, api, store, members, monkeypatch):
+        calls = []
+        original = type(store).reset_skill_permissions
+
+        def recording(self, names, username=None):
+            calls.append((list(names), username))
+            return original(self, names, username)
+
+        monkeypatch.setattr(type(store), "reset_skill_permissions", recording)
+        body = {"organization": "acme", "skills": [{"name": name, **REMOTE} for name in ("one", "two", "three")]}
 
         assert api.alice.post(f"{API}/bulk-register", json=body, headers=A).status_code == 200
-        assert calls == [[("", "one"), ("", "reviewer"), ("", "three"), ("", "two")]]
-        assert _grants(store) == [(ALICE, key, "team-a", "MANAGE") for key in ("one", "reviewer", "three", "two")]
+        assert calls == [(["@acme/one", "@acme/three", "@acme/two"], ALICE)]
+
+    def test_a_failed_batch_grant_still_grants_the_others_and_clears_every_leftover(self, api, store, members, monkeypatch):
+        """A failed batch rolls back whole, leftovers included: each key is retried, and a key that
+        still fails is wiped, so no leftover reaches a new skill."""
+        _seed(store, ("user", CAROL, "@acme/one", "MANAGE"), ("user", CAROL, "@acme/two", "MANAGE"), ("group", "team", "@acme/two", "EDIT"))
+        original = type(store).reset_skill_permissions
+
+        def failing_for_two(self, names, username=None):
+            if "@acme/two" in names:
+                raise RuntimeError("write failed")
+            return original(self, names, username)
+
+        monkeypatch.setattr(type(store), "reset_skill_permissions", failing_for_two)
+        body = {"organization": "acme", "skills": [{"name": name, **REMOTE} for name in ("one", "two")]}
+
+        assert api.alice.post(f"{API}/bulk-register", json=body, headers=A).status_code == 200
+        assert _grants(store) == [(ALICE, "@acme/one", "team-a", "MANAGE")]
+        assert store.list_group_skill_permissions("team") == []
 
     @pytest.mark.parametrize("body", [{}, {"skills": []}, {"skills": "reviewer"}, {"skills": [{"name": "Bad Name"}]}, {"skills": [7]}, []])
     def test_a_bulk_body_naming_no_storable_skills_is_refused(self, api, members, body):
@@ -814,6 +853,29 @@ class TestDelete:
 
         assert api.alice.delete(f"{API}/reviewer", headers=A).status_code == 200
         assert _grants(store) == []
+
+    def test_the_creator_keeps_the_grant_they_hold_now(self, api, store, reviewer, monkeypatch):
+        """The creator's row is never deleted and rewritten: a permission changed in between is the one kept."""
+        self._share(api)
+        monkeypatch.setattr(skill_registry, "_recreated_skill_creator", lambda organization, name: CAROL)
+
+        assert api.alice.delete(f"{API}/reviewer", headers=A).status_code == 200
+
+        assert _grants(store) == [(CAROL, "reviewer", "team-a", "READ")]
+        assert store.list_group_skill_permissions("team") == []
+
+    def test_a_cascade_that_fails_part_way_keeps_the_creators_grant(self, api, store, reviewer, monkeypatch):
+        """One transaction: a failure deletes nothing, so the creator of the skill stored again keeps their grant."""
+        self._share(api)
+        monkeypatch.setattr(skill_registry, "_recreated_skill_creator", lambda organization, name: ALICE)
+
+        def failing(session, name):
+            raise RuntimeError("write failed")
+
+        monkeypatch.setattr(store.skill_group_repo, "_wipe_in", failing)
+
+        assert api.alice.delete(f"{API}/reviewer", headers=A).status_code == 200
+        assert (ALICE, "reviewer", "team-a", "MANAGE") in _grants(store)
 
     def test_a_refused_delete_keeps_the_grants(self, api, store, reviewer):
         self._share(api)
