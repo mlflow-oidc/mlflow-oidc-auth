@@ -28,6 +28,7 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
+from mlflow_oidc_auth.middleware.request_gate import RequestGateMiddleware
 from mlflow_oidc_auth.middleware.route_path import static_prefix_conflicts
 from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
@@ -251,7 +252,7 @@ def add_middleware_stack(oidc_app: FastAPI) -> None:
     # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
     #
     #   Request → ProxyHeaders → Session → WorkspaceContext → Auth
-    #             → PermissionMiddleware → route handler
+    #             → RequestGate → PermissionMiddleware → route handler
     #
     # ProxyHeaders MUST be OUTERMOST so the forwarded prefix it records in
     # scope["root_path"] is known before AuthMiddleware and PermissionMiddleware
@@ -262,8 +263,14 @@ def add_middleware_stack(oidc_app: FastAPI) -> None:
     # AuthMiddleware has set request.state.username / is_admin.
     #
     # Session must wrap Auth, which reads request.session.
+    #
+    # RequestGate sits inside Auth, which tells it whether the caller is an admin, and
+    # outside PermissionMiddleware, so an admin's demo generation runs alone from the
+    # permission decision of every other request to its last response byte, for Flask and
+    # FastAPI-native routes alike (middleware/request_gate.py, issue #482).
     # ---------------------------------------------------------------------------
     add_fastapi_permission_middleware(oidc_app)
+    oidc_app.add_middleware(RequestGateMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
     oidc_app.add_middleware(
