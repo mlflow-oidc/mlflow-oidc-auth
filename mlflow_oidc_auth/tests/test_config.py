@@ -236,6 +236,15 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(len(config1.SECRET_KEY), 32)
         self.assertEqual(len(config2.SECRET_KEY), 32)
 
+    def test_post_logout_redirect_setting(self):
+        """OIDC_POST_LOGOUT_REDIRECT defaults to true and parses like the other booleans."""
+        env = {k: v for k, v in os.environ.items() if k != "OIDC_POST_LOGOUT_REDIRECT"}
+        with patch.dict(os.environ, env, clear=True):
+            self.assertTrue(AppConfig().OIDC_POST_LOGOUT_REDIRECT)
+        for raw, expected in [("true", True), ("1", True), ("false", False), ("0", False), ("no", False), ("garbage", False)]:
+            with patch.dict(os.environ, {"OIDC_POST_LOGOUT_REDIRECT": raw}):
+                self.assertEqual(AppConfig().OIDC_POST_LOGOUT_REDIRECT, expected, raw)
+
     def test_boolean_environment_variables_edge_cases(self):
         """Test edge cases for boolean environment variable parsing."""
         # Test with whitespace - note: get_bool_env_variable doesn't strip whitespace

@@ -8,7 +8,7 @@ import asyncio
 import time
 from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode, urlparse
 
 from joserfc.errors import BadSignatureError
@@ -876,7 +876,9 @@ async def _named_provider_end_session_url(request: Request, provider_id: str, to
     end_session_endpoint = metadata.get("end_session_endpoint")
     if not isinstance(end_session_endpoint, str) or not end_session_endpoint:
         return None
-    logout_params = {"post_logout_redirect_uri": _build_ui_url(request, "/auth")}
+    logout_params: Dict[str, str] = {}
+    if config.OIDC_POST_LOGOUT_REDIRECT:
+        logout_params["post_logout_redirect_uri"] = _build_ui_url(request, "/auth")
     client_id = getattr(client, "client_id", None)
     if isinstance(client_id, str) and client_id:
         logout_params["client_id"] = client_id
@@ -975,11 +977,12 @@ async def logout(request: Request):
                 # parameters: id_token_hint" unless either id_token_hint or client_id is
                 # present. The session is already cleared, so client_id is the reliable
                 # choice here.
-                post_logout_redirect = _build_ui_url(request, "/auth")
-                logout_params = {
-                    "post_logout_redirect_uri": post_logout_redirect,
-                    "client_id": config.OIDC_CLIENT_ID,
-                }
+                # With OIDC_POST_LOGOUT_REDIRECT=false the redirect URI is omitted (RP-Initiated
+                # Logout 1.0 makes it optional) for providers that cannot register one.
+                logout_params: Dict[str, str] = {}
+                if config.OIDC_POST_LOGOUT_REDIRECT:
+                    logout_params["post_logout_redirect_uri"] = _build_ui_url(request, "/auth")
+                logout_params["client_id"] = config.OIDC_CLIENT_ID
                 if session_tokens is not None and session_tokens.id_token:
                     # Held on the (now revoked) session row since #367, so it can be offered.
                     logout_params["id_token_hint"] = session_tokens.id_token

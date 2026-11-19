@@ -1485,6 +1485,54 @@ class TestLogoutAtNamedOidcProvider:
         assert query["client_id"] == ["legacy-client"]
 
 
+class TestOptionalPostLogoutRedirect:
+    """OIDC_POST_LOGOUT_REDIRECT=false drops post_logout_redirect_uri only; the session is cleared either way."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("setting, expect_redirect", [(None, True), (True, True), (False, False)])
+    async def test_default_provider(self, mock_request_with_session, mock_oauth, monkeypatch, setting, expect_redirect):
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        monkeypatch.setattr(auth_module.config, "OIDC_CLIENT_ID", "legacy-client")
+        if setting is not None:
+            monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", setting)
+        fake_store = _LogoutStore(SessionTokens(provider_id=None, id_token="idt-legacy"), provider_id=None)
+
+        request, result = await _do_logout(mock_request_with_session, fake_store, default_client=mock_oauth.oidc)
+
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        assert result.headers["location"].startswith("https://provider.com/logout?")
+        query = _query(result)
+        assert ("post_logout_redirect_uri" in query) is expect_redirect
+        if expect_redirect:
+            assert query["post_logout_redirect_uri"][0].endswith("/oidc/ui/auth")
+        assert query["client_id"] == ["legacy-client"]
+        assert query["id_token_hint"] == ["idt-legacy"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("setting, expect_redirect", [(True, True), (False, False)])
+    async def test_named_provider(self, mock_request_with_session, monkeypatch, setting, expect_redirect):
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", setting)
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="okta", id_token="idt-okta"), provider_id="okta")
+
+        request, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert fake_store.revoked == ["sid"]
+        assert len(request.session) == 0
+        assert result.headers["location"].startswith("https://okta/logout?")
+        query = _query(result)
+        assert ("post_logout_redirect_uri" in query) is expect_redirect
+        assert query["client_id"] == ["okta-client"]
+        assert query["id_token_hint"] == ["idt-okta"]
+
+
 class TestAuthStatusReportsTheSessionsProvider:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
