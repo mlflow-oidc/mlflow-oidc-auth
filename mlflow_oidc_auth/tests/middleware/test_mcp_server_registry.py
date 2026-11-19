@@ -359,6 +359,23 @@ class TestCreate:
         assert response.status_code == 403
         assert registry.servers == {}
 
+    def test_edit_on_the_workspace_creates_when_the_creation_threshold_is_edit(self, api, store, members, registry, monkeypatch):
+        """OIDC_WORKSPACE_CREATION_PERMISSION=EDIT lowers the gate; the creator still gets MANAGE."""
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+        store.update_workspace_permission("team-a", BOB, "EDIT")
+        _clear_cache()
+
+        response = api.bob.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200, response.text
+        assert _grants(store) == [(BOB, SERVER, "team-a", "MANAGE")]
+
+    def test_read_on_the_workspace_cannot_create_when_the_creation_threshold_is_edit(self, api, store, members, registry, monkeypatch):
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+
+        response = api.bob.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 403
+        assert registry.servers == {}
+
     def test_read_on_the_workspace_cannot_create(self, api, store, members, registry):
         response = api.bob.post(API, json={"name": SERVER}, headers=ws("team-a"))
 

@@ -197,11 +197,20 @@ Result: Access denied (NO_PERMISSIONS)
 
 ### Creation vs Update Behavior
 
-With workspaces enabled, creation is intentionally stricter than update:
+With workspaces enabled, creation is intentionally stricter than update by default:
 
 - `CreateExperiment` requires workspace `MANAGE`
 - `CreateRegisteredModel` requires workspace `MANAGE`
 - Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
+
+#### Letting `EDIT` members create
+
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT` lowers the creation gate to workspace `EDIT` for every
+workspace-gated create (experiments, registered models, gateway resources and MCP servers). Members
+can then create resources, and receive `MANAGE` on what they create, without the workspace-level
+rights `MANAGE` carries: they cannot update or delete the workspace or grant workspace access.
+Deleting resources they did not create still needs `MANAGE` on those resources, for example
+through a resource or regex grant. The default, `MANAGE`, keeps the stricter behaviour.
 
 #### Hardening creation for clients that send no workspace context
 
@@ -216,7 +225,8 @@ backward compatibility. Two opt-in settings tighten it:
   that omit the header — it cannot be bypassed by dropping the header.
 
 Admins bypass both guards. Enabling both gives the strictest posture: every non-admin create must name
-a non-default workspace on which the user holds `MANAGE`.
+a non-default workspace on which the user holds `MANAGE` (or `EDIT`, with
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`).
 
 This means the following setup allows users to edit existing resources but not create new ones:
 
@@ -237,7 +247,7 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 | Context | Enforcement |
 |---------|-------------|
 | **Workspace API** | `GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`, `CreateWorkspace`, `ListWorkspaces` are gated by workspace permission checks |
-| **Resource creation** | `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` on the target workspace |
+| **Resource creation** | `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` on the target workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`) |
 | **Search/list filtering** | `SearchExperiments`, `SearchRegisteredModels`, `SearchLoggedModels`, `ListWorkspaces` are filtered to readable workspaces |
 | **Permission management** | Workspace permission CRUD endpoints require `MANAGE` on the workspace |
 | **Trash** | Deleted experiments and runs are filtered by workspace. Restore and hard-delete are workspace-scoped |
@@ -254,7 +264,7 @@ for every route).
   `DEFAULT_MLFLOW_PERMISSION`). **Searching** a workspace's registry needs `READ` on that workspace,
   and lists only the servers the caller can read; a server shared with a non-member is reached by
   name.
-- **Creating** a server needs `MANAGE` on the workspace; the creator is granted `MANAGE` on it.
+- **Creating** a server needs `MANAGE` on the workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`); the creator is granted `MANAGE` on it.
 - **Changing, deleting or sharing** a server needs `EDIT` (changes) or `MANAGE` (deletes and grants)
   on it — and someone must hold `MANAGE` on the server: one nobody manages, such as every server
   registered before this release, stays admin-only for changes until an administrator grants
@@ -285,7 +295,8 @@ OIDC_WORKSPACE_DETECTION_PLUGIN=mypackage.workspace_detector
 OIDC_WORKSPACE_DEFAULT_PERMISSION=READ
 ```
 
-If you set `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, newly auto-assigned users can modify existing resources in that workspace but cannot create new experiments or registered models until granted workspace `MANAGE`.
+If you set `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, newly auto-assigned users can modify existing resources in that workspace but cannot create new experiments or registered models until granted workspace `MANAGE`, unless
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT` is set.
 
 ## Workspace Permission Cache
 

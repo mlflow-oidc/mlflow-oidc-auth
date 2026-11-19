@@ -106,6 +106,23 @@ def compare_permissions(permission1: str, permission2: str) -> bool:
 _CAPABILITIES = ("can_read", "can_use", "can_update", "can_delete", "can_manage")
 
 
+def meets_workspace_creation_threshold(permission: Permission | None, threshold: str) -> bool:
+    """Whether a workspace permission may create resources under ``OIDC_WORKSPACE_CREATION_PERMISSION``.
+
+    ``EDIT`` admits any workspace grant that can update; anything else, including an unrecognised
+    value, requires ``MANAGE``. A threshold that is not exactly ``EDIT`` therefore never lowers the gate.
+
+    Parameters:
+        permission: The caller's resolved workspace permission, or ``None`` when there is none.
+        threshold: The configured creation threshold (``EDIT`` or ``MANAGE``).
+    """
+    if permission is None:
+        return False
+    if threshold == EDIT.name:
+        return permission.can_update
+    return permission.can_manage
+
+
 def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
     """The capabilities held on EVERY one of ``permissions``, as a real permission level.
 

@@ -1111,9 +1111,13 @@ def before_request_hook():
             logger.warning(f"Denying {request.method} {request.path} for {username}: creation in the '{DEFAULT_WORKSPACE_NAME}' workspace is disabled")
             return responses.make_forbidden_response()
         if workspace is not None:
+            from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
+
             ws_perm = get_workspace_permission_cached(username, workspace)
-            if ws_perm is None or not ws_perm.can_manage:
-                logger.warning(f"Denying {request.method} {request.path} for {username}: MANAGE required on workspace '{workspace}'")
+            threshold = config.OIDC_WORKSPACE_CREATION_PERMISSION
+            if not meets_workspace_creation_threshold(ws_perm, threshold):
+                required = "EDIT" if threshold == "EDIT" else "MANAGE"
+                logger.warning(f"Denying {request.method} {request.path} for {username}: {required} required on workspace '{workspace}'")
                 return responses.make_forbidden_response()
     # authorization
     if validator:

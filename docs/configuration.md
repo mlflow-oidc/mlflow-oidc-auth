@@ -203,6 +203,7 @@ These settings only apply when `MLFLOW_ENABLE_WORKSPACES=true`.
 | `OIDC_WORKSPACE_DETECTION_PLUGIN` | String | None | Python module path for a custom workspace detection plugin. Used to extract workspace assignments from the OIDC token |
 | `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` | Boolean | `false` | Reject workspace-gated create requests when no workspace context is present |
 | `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` | Boolean | `false` | Reject non-admin workspace-gated create requests that resolve to the `default` workspace, including requests that send no workspace context |
+| `OIDC_WORKSPACE_CREATION_PERMISSION` | String | `MANAGE` | Workspace permission required for workspace-gated creates (experiments, registered models, gateway resources, MCP servers): `MANAGE` or `EDIT`. An unrecognised value is treated as `MANAGE` |
 | `WORKSPACE_CACHE_MAX_SIZE` | Integer | `1024` | Maximum number of entries in the workspace permission cache. Grants and denials are kept in two separate caches of this size, so denials can never evict a grant |
 | `WORKSPACE_CACHE_TTL_SECONDS` | Integer | `300` | Time-to-live (seconds) for cached workspace grants. Cached denials expire after the smaller of this and `PERMISSION_CACHE_TTL_SECONDS` |
 | `WORKSPACE_RULES_MAX_PERMISSION` | String | `EDIT` | Highest permission a [workspace group rule](workspaces#group-rules) may grant: `READ`, `USE`, `EDIT` or `MANAGE`. `MANAGE` logs a startup warning; an unrecognised value is treated as `READ`. Grants held by a rule above it are removed at startup |
