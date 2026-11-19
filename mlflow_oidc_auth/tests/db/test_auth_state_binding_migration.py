@@ -1,7 +1,7 @@
 """``auth_state.binding_hash`` migration (issue #374): single head, round trip, existing rows untouched.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixture as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixture as the Phase 0 migration tests.
 """
 
 from alembic.script import ScriptDirectory

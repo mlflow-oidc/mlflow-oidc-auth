@@ -32,6 +32,10 @@ const McpServersPage = React.lazy(
 const McpServersPermissionPage = React.lazy(
   () => import("./features/mcp-servers/mcp-servers-permission-page"),
 );
+const SkillsPage = React.lazy(() => import("./features/skills/skills-page"));
+const SkillsPermissionPage = React.lazy(
+  () => import("./features/skills/skills-permission-page"),
+);
 const ExperimentsPage = React.lazy(
   () => import("./features/experiments/experiments-page"),
 );
@@ -65,6 +69,10 @@ const WorkspaceDetailPage = React.lazy(
 );
 const WorkspaceRulesPage = React.lazy(
   () => import("./features/workspace-rules/workspace-rules-page"),
+);
+const IssueDetectionSchedulesPage = React.lazy(
+  () =>
+    import("./features/issue-detection-schedules/issue-detection-schedules-page"),
 );
 
 const TrashPage = React.lazy(() => import("./features/trash/trash-page"));
@@ -127,6 +135,22 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <McpServersPermissionPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/skills"
+        element={
+          <ProtectedLayoutRoute>
+            <SkillsPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/skills/:name"
+        element={
+          <ProtectedLayoutRoute>
+            <SkillsPermissionPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -227,6 +251,14 @@ export default function App() {
         }
       />
       <Route
+        path="/groups/:groupName/skills"
+        element={
+          <ProtectedLayoutRoute>
+            <GroupPermissionsPage type="skills" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/groups/:groupName/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -323,6 +355,14 @@ export default function App() {
         }
       />
       <Route
+        path="/service-accounts/:username/skills"
+        element={
+          <ProtectedLayoutRoute>
+            <ServiceAccountPermissionPage type="skills" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
         path="/service-accounts/:username/ai-endpoints"
         element={
           <ProtectedLayoutRoute>
@@ -376,6 +416,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute isAdminRequired={true}>
             <WorkspaceRulesPage />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/issue-detection-schedules"
+        element={
+          <ProtectedLayoutRoute isAdminRequired={true}>
+            <IssueDetectionSchedulesPage />
           </ProtectedLayoutRoute>
         }
       />
@@ -433,6 +481,14 @@ export default function App() {
         element={
           <ProtectedLayoutRoute>
             <UserPermissionsPage type="mcp-servers" />
+          </ProtectedLayoutRoute>
+        }
+      />
+      <Route
+        path="/users/:username/skills"
+        element={
+          <ProtectedLayoutRoute>
+            <UserPermissionsPage type="skills" />
           </ProtectedLayoutRoute>
         }
       />

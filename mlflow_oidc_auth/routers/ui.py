@@ -72,6 +72,7 @@ async def serve_spa_config(
             "authenticated": authenticated,
             "gen_ai_gateway_enabled": config.OIDC_GEN_AI_GATEWAY_ENABLED,
             "workspaces_enabled": config.MLFLOW_ENABLE_WORKSPACES,
+            "restrict_user_and_group_listing": config.RESTRICT_USER_AND_GROUP_LISTING,
         }
     )
 

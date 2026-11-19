@@ -33,6 +33,12 @@ from mlflow_oidc_auth.routers.gateway_model_definition_permissions import (
     gateway_model_definition_permissions_router,
 )
 from mlflow_oidc_auth.routers.health import health_check_router
+from mlflow_oidc_auth.routers.skill_permissions import (
+    group_skill_permissions_router,
+    skill_permissions_router,
+    user_skill_permissions_router,
+)
+from mlflow_oidc_auth.routers.issue_detection_schedules import issue_detection_schedules_router
 from mlflow_oidc_auth.routers.mcp_server_permissions import (
     group_mcp_server_permissions_router,
     mcp_server_permissions_router,
@@ -65,9 +71,13 @@ __all__ = [
     "gateway_secret_permissions_router",
     "gateway_model_definition_permissions_router",
     "health_check_router",
+    "issue_detection_schedules_router",
     "mcp_server_permissions_router",
     "user_mcp_server_permissions_router",
     "group_mcp_server_permissions_router",
+    "skill_permissions_router",
+    "user_skill_permissions_router",
+    "group_skill_permissions_router",
     "trash_router",
     "ui_router",
     "user_permissions_router",
@@ -107,6 +117,12 @@ _COPIED_ROUTE_FIELDS = (
     "openapi_extra",
     "generate_unique_id_function",
     "strict_content_type",
+    # FastAPI 0.164+: a per-route request body limit. A twin without it would accept bodies
+    # the "/api" original refuses.
+    "max_body_size",
+    # FastAPI 0.165+: per-route limits on form fields, files and part size. A twin without them
+    # would parse forms the "/api" original refuses.
+    "form_limits",
 )
 
 # Suffix appended to a twin's route name so ``url_path_for()`` stays unambiguous.
@@ -194,6 +210,10 @@ def get_all_routers() -> List[APIRouter]:
         mcp_server_permissions_router,
         user_mcp_server_permissions_router,
         group_mcp_server_permissions_router,
+        # Likewise: a skill key in an organization is ``@<organization>/<name>``.
+        skill_permissions_router,
+        user_skill_permissions_router,
+        group_skill_permissions_router,
         group_permissions_router,
         prompt_permissions_router,
         registered_model_permissions_router,
@@ -206,6 +226,7 @@ def get_all_routers() -> List[APIRouter]:
         gateway_secret_permissions_router,
         gateway_model_definition_permissions_router,
         health_check_router,
+        issue_detection_schedules_router,
         trash_router,
         ui_router,
         user_permissions_router,

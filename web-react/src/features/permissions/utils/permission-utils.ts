@@ -37,6 +37,21 @@ export const getPermissionUrl = ({
       : DYNAMIC_API_ENDPOINTS.GROUP_MCP_SERVER_PERMISSIONS(entityName);
   }
 
+  if (type === "skills") {
+    // Skills have user and group grants only; there is no pattern API.
+    if (isPattern) {
+      throw new Error("Pattern permissions are not supported for skills");
+    }
+    if (identifier) {
+      return entityKind === "user"
+        ? DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSION(entityName, identifier)
+        : DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSION(entityName, identifier);
+    }
+    return entityKind === "user"
+      ? DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSIONS(entityName)
+      : DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSIONS(entityName);
+  }
+
   if (isPattern) {
     if (identifier) {
       // Single pattern permission (GET, PATCH, DELETE)

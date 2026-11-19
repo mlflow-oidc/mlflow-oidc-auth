@@ -1,7 +1,7 @@
 """Workspace-scoped resource grants migration: the column, the widened constraints, and a downgrade that never refuses.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixtures as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixtures as the Phase 0 migration tests.
 """
 
 import pytest
@@ -16,6 +16,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     _upgrade,
     db_uri,
     engine,
+    sql,
 )
 
 PREVIOUS_REVISION = "a7b8c9d0e1f2"
@@ -40,9 +41,9 @@ def _seed(engine) -> None:
             text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) VALUES ('u', 'u', :f, :f, :t, 'manual')"),
             {"f": False, "t": True},
         )
-        conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('g', 'manual')"))
+        conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('g', 'manual')"))
         for table, (resource, principal) in TABLES.items():
-            source = "users" if principal == "user_id" else "groups"
+            source = conn.dialect.identifier_preparer.quote("users" if principal == "user_id" else "groups")
             conn.execute(text(f"INSERT INTO {table} ({resource}, {principal}, permission) SELECT 'churn', id, 'EDIT' FROM {source}"))
 
 

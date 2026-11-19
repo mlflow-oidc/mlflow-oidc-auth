@@ -46,6 +46,7 @@ from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -68,6 +69,7 @@ GATEWAY_ENDPOINT = permission_kinds.GATEWAY_ENDPOINT.name
 GATEWAY_SECRET = permission_kinds.GATEWAY_VAULT.name
 GATEWAY_MODEL_DEFINITION = permission_kinds.GATEWAY_MODEL_DEFINITION.name
 MCP_SERVER = permission_kinds.MCP_SERVER.name
+SKILL = permission_kinds.SKILL.name
 
 #: Every source name ``PERMISSION_SOURCE_ORDER`` may hold. A resource type without one of them
 #: (MCP servers have no pattern sources) skips it silently; only an unknown name is a misconfiguration.
@@ -324,6 +326,18 @@ _TYPE_SPECS: Dict[str, TypeSpec] = {
         user_one=lambda s, r, n, u: s.get_mcp_server_permission(r, u).permission,
         group_one=lambda s, r, n, u: s.get_user_mcp_server_group_permission(r, u).permission,
     ),
+    # Skills have no pattern grants either. The resource id is the skill key (utils/skill_key.py).
+    SKILL: TypeSpec(
+        kind=permission_kinds.SKILL,
+        label="skill name",
+        user=lambda s, u: s.list_user_grants(SKILL, u),
+        group=lambda s, u: s.list_user_groups_grants(SKILL, u),
+        regex=None,
+        group_regex=None,
+        key=lambda p: p.name,
+        user_one=lambda s, r, n, u: s.get_skill_permission(r, u).permission,
+        group_one=lambda s, r, n, u: s.get_user_skill_group_permission(r, u).permission,
+    ),
 }
 
 #: Every resource kind ``permission_kinds`` resolves per resource, and how its grants are read. A
@@ -478,7 +492,9 @@ def _get_section_cache() -> CacheBackend:
     """
     global _section_cache
     if _section_cache is None:
-        _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
+        with CACHE_INIT_LOCK:
+            if _section_cache is None:
+                _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
     return _section_cache
 
 
@@ -543,12 +559,16 @@ def _grant_scope() -> Tuple[str, str]:
 
 
 def _request_workspace() -> str | None:
-    """The workspace the request names, None for a header-less request or with workspaces off."""
+    """The workspace the request names, None for a header-less request or with workspaces off.
+
+    A header-less request that MLflow serves from ``MLFLOW_WORKSPACE`` gets that workspace, see
+    :func:`mlflow_oidc_auth.bridge.user.get_authorization_workspace`.
+    """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
 
-    return get_request_workspace()
+    return get_authorization_workspace()
 
 
 class GrantContext:

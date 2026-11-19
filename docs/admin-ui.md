@@ -24,6 +24,7 @@ The sidebar organizes features into sections:
 | Models | `/models` | List registered models with permission summaries |
 | Prompts | `/prompts` | List prompts with permission summaries |
 | MCP Servers | `/mcp-servers` | List the MCP servers of the selected workspace you can manage (all for an admin) and manage their user and group permissions. MLflow 3.15+; see [MCP Server Registry](permissions#mcp-server-registry) |
+| Skills | `/skills` | List the skills of the selected workspace you can manage (all for an admin) and manage their user and group permissions. MLflow 3.18+; see [Skill Registry](permissions#skill-registry) |
 
 ### AI Gateway
 
@@ -39,8 +40,8 @@ These pages appear when `OIDC_GEN_AI_GATEWAY_ENABLED=true` (default):
 
 | Page | Path | Description |
 |------|------|-------------|
-| Users | `/users` | List all users. Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
-| Groups | `/groups` | List all groups. Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source, and can create a group by name up front (see below) |
+| Users | `/users` | List all users (with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing), non-admins see only themselves and the members of workspaces they manage). Click a user to view/edit their experiment, model, prompt, and gateway permissions. Admins see lifecycle state and can deactivate/reactivate (see [User and group lifecycle](#user-and-group-lifecycle)) |
+| Groups | `/groups` | List all groups (with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing), non-admins see only their own groups and those granted on workspaces they manage). Click a group to view/edit permissions for experiments, models, prompts, and gateways. Admins see member count and directory source, and can create a group by name up front (see below) |
 | Service Accounts | `/service-accounts` | Manage service accounts and their permissions |
 
 ### Workspaces
@@ -89,6 +90,7 @@ When you click a user or group, you see their permissions across all resource ty
 - **Prompts**: Direct and regex pattern permissions
 - **AI Gateway Endpoints/Secrets/Models**: Direct and regex pattern permissions
 - **MCP Servers**: Direct permissions only (there are no regex patterns for MCP servers)
+- **Skills**: Direct permissions only (there are no regex patterns for skills)
 
 Regex pattern permissions are managed separately from direct permissions, with priority ordering.
 

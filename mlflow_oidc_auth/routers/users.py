@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from mlflow.exceptions import MlflowException
 
@@ -39,6 +39,7 @@ from mlflow_oidc_auth.repository.user_token import DEFAULT_TOKEN_NAME, MAX_TOKEN
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.user import create_user
 from mlflow_oidc_auth.utils import get_is_admin, get_username
+from mlflow_oidc_auth.utils.directory_visibility import listing_restricted, visible_usernames
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageParams, PageQuery, paginate_with_headers
 
 from ._errors import has_error_code, mlflow_error_status
@@ -363,11 +364,12 @@ async def delete_my_token(token_id: int, current_username: str = Depends(get_use
     summary="List users",
     description="Retrieves a list of users in the system.",
 )
-async def list_users(service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
+async def list_users(request: Request, service: bool = False, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> JSONResponse:
     """
     List users in the system.
 
-    This endpoint returns all users in the system. Any authenticated user can access this endpoint.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, a non-admin sees only itself and the members of
+    the workspaces it manages (see :mod:`mlflow_oidc_auth.utils.directory_visibility`).
 
     Parameters:
     -----------
@@ -397,6 +399,9 @@ async def list_users(service: bool = False, username: str = Depends(get_username
         # Use lightweight query that only fetches usernames,
         # avoiding eager loading of all permission relationships per user.
         users = store.list_usernames(is_service_account=service)
+        if await listing_restricted(request):
+            visible = visible_usernames(username)
+            users = [user for user in users if user in visible]
         users, headers = paginate_with_headers(users, key=lambda u: u, params=page)
 
         return JSONResponse(content=users, headers=headers)

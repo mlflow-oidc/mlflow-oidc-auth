@@ -5,15 +5,116 @@ This middleware passes FastAPI authentication information to Flask via WSGI envi
 It acts as a bridge between FastAPI's authentication middleware and Flask's WSGI application.
 """
 
-from asgiref.wsgi import WsgiToAsgi as WSGIMiddleware
+from concurrent.futures import ThreadPoolExecutor
+
+from asgiref.sync import sync_to_async
+from asgiref.wsgi import WsgiToAsgi, WsgiToAsgiInstance
 
 from starlette.types import Receive, Scope, Send
 import asyncio
+from types import TracebackType
 
+from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.middleware.request_gate import is_probe
 
 logger = get_logger()
+
+#: asgiref's own ``run_wsgi_app``, without its ``@sync_to_async`` (see ``_ThreadPoolWsgiToAsgiInstance``).
+_RUN_WSGI_APP = WsgiToAsgiInstance.__dict__["run_wsgi_app"].func
+
+#: Runs the Flask requests of this process: ``WSGI_THREADS`` threads (default 4). Its threads start
+#: on first use, so a server that forks its workers after importing the app still gets one pool each.
+_WSGI_EXECUTOR = ThreadPoolExecutor(max_workers=config.WSGI_THREADS, thread_name_prefix="mlflow-oidc-wsgi")
+
+
+class _ThreadPoolWsgiToAsgiInstance(WsgiToAsgiInstance):
+    """asgiref's per-request WSGI adapter, with the WSGI call on a bounded thread pool.
+
+    asgiref decorates ``WsgiToAsgiInstance.run_wsgi_app`` with a bare ``@sync_to_async``, which is
+    ``thread_sensitive=True``. Outside Django nothing sets a thread-sensitive context, so every call
+    in the process runs on ``SyncToAsync.single_thread_executor``: one thread for all Flask requests
+    of a uvicorn worker. A long request then delays every other request of that worker, for its
+    whole run and for as long as its response takes to drain to a slow client.
+
+    ``thread_sensitive=False`` runs each request on ``_WSGI_EXECUTOR`` instead. Not on the event
+    loop's default executor, which has ``min(32, CPUs + 4)`` threads: every request in flight holds
+    its response in memory, and CPU-bound requests do not finish sooner in parallel under the GIL.
+    With 8 large searches at once, the default executor doubled a worker's memory and made the
+    slowest search 2.5 times longer, for no more searches served; 4 threads kept writes passing the
+    searches and bounded both (issue #482).
+
+    Admin demo generation runs alone among the requests of the process; the gate that does it is
+    ASGI middleware (``middleware/request_gate.py``), so requests wait for it on the event loop and
+    hold no thread of this pool meanwhile.
+    """
+
+    run_wsgi_app = sync_to_async(_RUN_WSGI_APP, thread_sensitive=False, executor=_WSGI_EXECUTOR)
+
+
+#: Runs the Flask requests to ``request_gate.GATE_FREE_PATHS`` (``/health``, ``/version``, see ``request_gate.is_probe``), so a liveness probe
+#: still answers when clients that stop reading their responses hold every thread of ``_WSGI_EXECUTOR``.
+_GATE_FREE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mlflow-oidc-wsgi-probe")
+
+
+class _GateFreeWsgiToAsgiInstance(WsgiToAsgiInstance):
+    """asgiref's per-request WSGI adapter for the gate-free paths, on their own pool."""
+
+    run_wsgi_app = sync_to_async(_RUN_WSGI_APP, thread_sensitive=False, executor=_GATE_FREE_EXECUTOR)
+
+
+class WSGIMiddleware(WsgiToAsgi):
+    """``asgiref.wsgi.WsgiToAsgi`` that runs the WSGI application on a thread pool.
+
+    See ``_ThreadPoolWsgiToAsgiInstance`` for why the stock adapter is not used.
+    """
+
+    async def __call__(self, scope, receive, send):
+        instance = _GateFreeWsgiToAsgiInstance if scope.get("type") == "http" and is_probe(scope) else _ThreadPoolWsgiToAsgiInstance
+        await instance(self.wsgi_application, self.duplicate_header_limit)(scope, receive, send)
+
+
+#: A non-HEAD ``200`` response declaring more than this many bytes is sent without ``Content-Length``,
+#: so Uvicorn sends it chunked. Proxies that cap non-streamed responses then stream it through
+#: instead of failing it (Cloud Run refuses non-streamed HTTP/1 responses over 32 MiB). MLflow pages
+#: its reads by item count, not size, so any read can get there: a run search page, a whole trace, an
+#: artifact. Smaller responses, the bulk of the traffic, keep their exact length.
+STREAMED_RESPONSE_THRESHOLD_BYTES = 16 << 20
+
+
+def _declared_length(value: str) -> int:
+    """The byte count a ``Content-Length`` value declares.
+
+    Parameters:
+        value: The header value. Only ASCII digits are a length (RFC 9110), so ``+1``, ``1_000`` or ``1e9`` are not.
+
+    Returns:
+        The declared length, or -1 when ``value`` is not one.
+    """
+    value = value.strip()
+    return int(value) if value.isascii() and value.isdigit() else -1
+
+
+def _without_large_content_length(method: str, status: str, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """``headers`` with ``Content-Length`` removed when it declares a large ``200`` body.
+
+    HEAD keeps its length: it reports the size of the GET body, which a client may rely on. Any other
+    status (a ``206`` range reply above all) keeps its framing, as does a length that is not a number.
+
+    Parameters:
+        method: The request method (WSGI ``REQUEST_METHOD``).
+        status: The WSGI status line, e.g. ``"200 OK"``.
+        headers: The response headers as Flask passes them to ``start_response``.
+
+    Returns:
+        The headers to send, a new list when one is removed.
+    """
+    if method == "HEAD" or status.split(" ", 1)[0] != "200":
+        return headers
+    if not any(name.lower() == "content-length" and _declared_length(value) > STREAMED_RESPONSE_THRESHOLD_BYTES for name, value in headers):
+        return headers
+    return [(name, value) for name, value in headers if name.lower() != "content-length"]
 
 
 class AuthInjectingWSGIApp:
@@ -40,8 +141,16 @@ class AuthInjectingWSGIApp:
             # Inject AuthContext as a single object — bridge functions read from this
             environ[AUTH_CONTEXT_KEY] = auth_context
 
-        # Call the Flask app with enhanced environ
-        return self.flask_app(environ, start_response)
+        def start_response_with_framing(
+            status: str,
+            headers: list[tuple[str, str]],
+            exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
+        ) -> object:
+            # Flask's response hooks have run, so this is the final length of the filtered body.
+            headers = _without_large_content_length(environ.get("REQUEST_METHOD", ""), status, headers)
+            return start_response(status, headers, exc_info)
+
+        return self.flask_app(environ, start_response_with_framing)
 
 
 class AuthAwareWSGIMiddleware:
@@ -62,8 +171,8 @@ class AuthAwareWSGIMiddleware:
             # Create auth-injecting wrapper for this request
             auth_injecting_app = AuthInjectingWSGIApp(self.flask_app, scope)
 
-            # Use asgiref's WsgiToAsgi adapter to handle ASGI-to-WSGI conversion.
-            # This avoids depending on Starlette's deprecated WSGI adapter.
+            # asgiref's WsgiToAsgi adapter (on a thread pool, see WSGIMiddleware) handles the
+            # ASGI-to-WSGI conversion. This avoids depending on Starlette's deprecated WSGI adapter.
             wsgi_adapter = WSGIMiddleware(auth_injecting_app)
             await wsgi_adapter(scope, receive, send)
         else:

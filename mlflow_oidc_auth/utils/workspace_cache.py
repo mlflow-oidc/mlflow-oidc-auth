@@ -20,11 +20,14 @@ through another. A lookup that hit an error is never cached in either.
 from typing import Any
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils.grant_context import resolve_workspace_permission, sanitize_log_value
+
+from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
 
 logger = get_logger()
 
@@ -54,10 +57,12 @@ def _get_cache() -> CacheBackend:
     """Get or create the workspace grant cache (lazy init). It never holds a denial."""
     global _cache
     if _cache is None:
-        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
-        ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
-        # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
-        _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
+        with CACHE_INIT_LOCK:
+            if _cache is None:
+                maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+                ttl = getattr(config, "WORKSPACE_CACHE_TTL_SECONDS", _WORKSPACE_CACHE_DEFAULT_TTL)
+                # "_v2": keys became percent-encoded in #456, so new replicas never read old-format keys.
+                _cache = get_cache_backend("workspace_v2", maxsize=maxsize, ttl=ttl)
     return _cache
 
 
@@ -78,8 +83,10 @@ def _get_denial_cache() -> CacheBackend:
     """
     global _denial_cache
     if _denial_cache is None:
-        maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
-        _denial_cache = get_cache_backend("workspace_denials", maxsize=maxsize, ttl=_denial_ttl())
+        with CACHE_INIT_LOCK:
+            if _denial_cache is None:
+                maxsize = getattr(config, "WORKSPACE_CACHE_MAX_SIZE", _WORKSPACE_CACHE_DEFAULT_MAX_SIZE)
+                _denial_cache = get_cache_backend("workspace_denials", maxsize=maxsize, ttl=_denial_ttl())
     return _denial_cache
 
 
@@ -143,6 +150,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
 
     Called by workspace permission router after successful CUD operations.
     """
+    notify_schedule_guard()
     key = _make_cache_key(username, workspace)
     with _GUARD.invalidating():
         for cache in _caches():
@@ -181,6 +189,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
     query. Previously these changes invalidated nothing and relied on TTL expiry
     (decision D-15), which left revoked access working for up to the cache TTL.
     """
+    notify_schedule_guard()
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # Nothing is cached with workspaces off — skip, and in particular skip the
         # get_group_users lookup, which would otherwise be a wasted query per mutation.
@@ -220,6 +229,7 @@ def flush_workspace_cache() -> None:
     Called by workspace regex permission router after any CUD operation.
     Full flush is necessary because regex changes can affect any user+workspace combo.
     """
+    notify_schedule_guard()
     with _GUARD.invalidating():
         for cache in _caches():
             cache.clear()

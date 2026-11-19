@@ -15,6 +15,7 @@ const SECTIONS: Record<string, string> = {
   models: "Models",
   prompts: "Prompts",
   scim: "SCIM",
+  skills: "Skills",
   "service-accounts": "Service accounts",
   trash: "Trash",
   user: "My account",
@@ -43,6 +44,7 @@ const PERMISSION_TABS: Record<string, string> = {
   "ai-secrets": "AI secrets",
   "ai-models": "AI models",
   "mcp-servers": "MCP servers",
+  skills: "Skills",
 };
 
 function decodeSegment(segment: string): string {

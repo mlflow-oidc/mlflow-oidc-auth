@@ -8,6 +8,8 @@ Registering only the latter left UI endpoints such as
 import inspect
 from typing import Optional
 
+import pytest
+
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -195,7 +197,38 @@ class TestAliasFidelity:
         }
         signature_fields = set(inspect.signature(APIRouter.add_api_route).parameters)
 
-        assert signature_fields - mount_fields == set(_COPIED_ROUTE_FIELDS)
+        # The copied list may name options newer than the installed FastAPI (they are skipped
+        # when absent); every option the installed one has must be in exactly one bucket.
+        assert signature_fields - mount_fields == set(_COPIED_ROUTE_FIELDS) & signature_fields
+
+    def test_preserves_the_body_size_limit(self):
+        """A twin must refuse what its original refuses (FastAPI 0.164+)."""
+        if "max_body_size" not in inspect.signature(APIRouter.add_api_route).parameters:
+            pytest.skip("this FastAPI has no per-route body size limit")
+        router = APIRouter(prefix="/api/2.0/mlflow/users")
+
+        @router.post("/", max_body_size=1024)
+        async def create():  # pragma: no cover
+            return {}
+
+        (route,) = ajax_alias_router(router).routes
+        assert route.max_body_size == 1024
+
+    def test_preserves_the_form_limits(self):
+        """A twin must parse no more form than its original allows (FastAPI 0.165+)."""
+        if "form_limits" not in inspect.signature(APIRouter.add_api_route).parameters:
+            pytest.skip("this FastAPI has no per-route form limits")
+        router = APIRouter(prefix="/api/2.0/mlflow/users")
+        limits = {"max_fields": 3, "max_files": 0, "max_part_size": 1024}
+
+        @router.post("/", form_limits=limits)
+        async def create():  # pragma: no cover
+            return {}
+
+        (original,) = router.routes
+        (route,) = ajax_alias_router(router).routes
+        assert route.form_limits == limits
+        assert route.form_limits is not original.form_limits, "the twin gets its own copy"
 
 
 class TestAppRegistration:

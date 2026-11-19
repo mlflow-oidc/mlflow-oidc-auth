@@ -120,6 +120,7 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | `DEFAULT_MLFLOW_PERMISSION` | String | `NO_PERMISSIONS` | Default permission level when no explicit permission is found (deny by default since v7.6.0; it was `MANAGE` before). Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
 | `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is `EDIT` or `MANAGE`. It works with the default `NO_PERMISSIONS` and with `READ` or `USE`, since none of those can create; or use workspaces. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
+| `RESTRICT_USER_AND_GROUP_LISTING` | Boolean | `false` | When enabled, a non-admin is listed only itself, its groups and the members of the workspaces it manages, the workspace member lists need `MANAGE` instead of `READ`, and grant dialogs take a typed name. Admins always see everyone. It hides the directory, not every name: see [Restricting user and group listing](permissions#restricting-user-and-group-listing) for what stays visible |
 
 ### Database
 
@@ -152,6 +153,15 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | `OIDC_GEN_AI_GATEWAY_ENABLED` | Boolean | `true` | Enable AI Gateway permission management in the admin UI and API. Disable if you don't use MLflow AI Gateway |
 | `MLFLOW_ENABLE_WORKSPACES` | Boolean | `false` | Enable workspace (multi-tenant) support. See [Workspaces](workspaces) |
 | `ENABLE_API_DOCS` | Boolean | `false` | Enable OpenAPI documentation at `/openapi.json`, Swagger UI at `/docs`, and ReDoc at `/redoc` |
+
+### Request handling
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `WSGI_THREADS` | Integer | `4` | Threads per server process (uvicorn worker) that run MLflow's Flask requests. A long request, such as a large `runs/search` or a response that a slow client reads, then holds only its own thread, and other requests of the process go on. Each request in flight holds its response in memory, and Python runs one thread's code at a time, so a higher value adds memory and makes CPU-heavy requests slower each, without serving more of them. Must be a positive integer; another value logs a warning and uses `4`. Each running request can hold a database connection to the plugin's database and one to MLflow's tracking database. SQLAlchemy's default pool, 5 connections plus 10 overflow, covers about 10 threads; above that, raise `OIDC_DB_POOL_SIZE` and MLflow's `MLFLOW_SQLALCHEMYSTORE_POOL_SIZE` with it. A client that stops reading a response keeps its thread until the connection closes, as Uvicorn has no send timeout: with as many such connections as threads, the process's other Flask requests wait. A proxy that buffers responses (such as nginx with `proxy_buffering on`, its default) reads them for such a client, up to its buffer limit (for nginx, `proxy_max_temp_file_size`, 1 GiB by default). With workspaces enabled, an admin's demo data generation runs alone, because MLflow sets `MLFLOW_WORKSPACE` for the whole process while it runs: it waits up to 10 seconds for the other requests to finish, Flask and FastAPI-native alike (a streamed response counts until its last byte), new ones waiting meanwhile without holding a thread (`/health`, `/version` and static assets such as `/static-files/` and the admin UI still answer), and answers `503` if they have not. Any authenticated client that stops reading a large response can make it wait out those 10 seconds |
+| `OIDC_DB_POOL_SIZE` | Integer | SQLAlchemy default (`5`) | Connections kept open per server process to the plugin's database. `0` uses the default. SQLite ignores it |
+| `OIDC_DB_POOL_MAX_OVERFLOW` | Integer | SQLAlchemy default (`10`) | Extra connections per server process beyond `OIDC_DB_POOL_SIZE` at peak. `0` uses the default. SQLite ignores it |
+| `OIDC_DB_POOL_RECYCLE_SECONDS` | Integer | SQLAlchemy default (never) | Replace a pooled connection to the plugin's database after this many seconds, for databases or proxies that close idle connections. `0` uses the default |
 
 ### Caching
 
@@ -222,6 +232,13 @@ token. See [SCIM Provisioning](scim).
 | `SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS` | Integer | `86400` | Provisioning counts as healthy while a SCIM request succeeded within this many seconds |
 | `ORPHAN_FALLBACK_PRINCIPAL` | String | None | Username that receives `MANAGE` on resources a hard-deleted user was the last manager of. When unset, orphans are only reported as `resource.orphaned` audit events |
 | `USER_RETENTION_DAYS` | Integer | `0` | Reserved for a future purge of deactivated users. `0` means never; nothing reads it yet |
+
+### Issue detection (MLflow 3.18+)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS` | Integer | `300` | How often each server process re-checks stored issue detection schedules against their recorded writer, pausing any the writer could no longer write (minimum 30). A pass also runs soon after a permission change, at most once a minute. `0` turns the background check off: schedules are then checked only when written and when an administrator runs the check from the admin UI. See [Recurring issue detection](permissions.md#job-api). |
+| `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY` | Boolean | `false` | When `true`, only administrators may run issue detection on the MLflow server's own provider credentials, whether one-off (`issues/invoke`), as a job, or on a schedule. Everyone else must name a gateway endpoint or secret they have USE on. Recommended for multi-tenant servers whose environment holds provider API keys. |
 
 ### Logging
 

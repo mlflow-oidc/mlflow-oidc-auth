@@ -18,10 +18,19 @@ def _regex(pattern, permission, priority=1):
     return SimpleNamespace(regex=pattern, permission=permission, priority=priority, id=next(_regex_ids))
 
 
+@pytest.fixture
+def create_request():
+    """A CreateExperiment request: the validator reads its body (the tags) like MLflow does."""
+    from mlflow.server import app
+
+    with app.test_request_context("/api/2.0/mlflow/experiments/create", method="POST", json={"name": "new-experiment"}):
+        yield
+
+
 class TestCreateValidatorsAreNoOpWhenDisabled:
     """With RESTRICT_RESOURCE_CREATION off, creation validators must allow everyone (upstream default)."""
 
-    def test_experiment_allowed_when_flag_off(self):
+    def test_experiment_allowed_when_flag_off(self, create_request):
         from mlflow_oidc_auth.validators.experiment import validate_can_create_experiment
 
         with patch("mlflow_oidc_auth.validators.experiment.config") as cfg:
@@ -44,7 +53,7 @@ class TestCreateValidatorsWhenEnabled:
     """With the flag on, creation requires EDIT+ on the new resource name."""
 
     @pytest.mark.parametrize("perm,expected", [(EDIT, True), (MANAGE, True), (READ, False), (NO_PERMISSIONS, False)])
-    def test_experiment_requires_edit(self, perm, expected):
+    def test_experiment_requires_edit(self, perm, expected, create_request):
         from mlflow_oidc_auth.validators.experiment import validate_can_create_experiment
 
         with patch("mlflow_oidc_auth.validators.experiment.config") as cfg:
@@ -195,7 +204,7 @@ class TestDefaultPermissionActuallyGatesCreation:
         unprefixed = self._drive("exp", **kw)
         assert unprefixed.permission == NO_PERMISSIONS and unprefixed.permission.can_update is False
 
-    def test_validator_denies_creation_end_to_end_with_no_permissions_default(self):
+    def test_validator_denies_creation_end_to_end_with_no_permissions_default(self, create_request):
         """Full path: flag on + NO_PERMISSIONS default + no rule -> validate_can_create_experiment False."""
         from mlflow_oidc_auth.utils import permissions as perms
         from mlflow_oidc_auth.validators.experiment import validate_can_create_experiment
@@ -260,7 +269,7 @@ class TestUserAssignedRegexGrantsCreation:
         assert allowed.kind == "regex" and allowed.permission == EDIT and allowed.permission.can_update is True
         assert denied.kind == "fallback" and denied.permission == NO_PERMISSIONS and denied.permission.can_update is False
 
-    def test_validator_allows_creation_for_user_regex_match_end_to_end(self):
+    def test_validator_allows_creation_for_user_regex_match_end_to_end(self, create_request):
         """Full path with the flag on: a user whose regex matches the new name may create it."""
         from mlflow_oidc_auth.validators.experiment import validate_can_create_experiment
 

@@ -67,3 +67,5 @@ class UiRuntimeConfig(ResponseModel):
     authenticated: bool
     gen_ai_gateway_enabled: bool
     workspaces_enabled: bool
+    #: Non-admins see only themselves, their groups and the members of workspaces they manage.
+    restrict_user_and_group_listing: bool

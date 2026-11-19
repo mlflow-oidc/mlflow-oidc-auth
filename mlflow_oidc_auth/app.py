@@ -5,6 +5,7 @@ This module provides a FastAPI application factory that can be used as an altern
 to the default MLflow server when OIDC authentication is required.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -16,7 +17,7 @@ from starlette.middleware.sessions import (
 )
 
 from mlflow_oidc_auth.config import config
-from mlflow_oidc_auth.exceptions import register_exception_handlers
+from mlflow_oidc_auth.exceptions import register_exception_handlers, register_skill_registry_exception_handlers
 from mlflow_oidc_auth.graphql import install_mlflow_graphql_authorization_middleware
 from mlflow_oidc_auth.hooks import after_request_hook, before_request_hook
 from mlflow_oidc_auth.logger import get_logger
@@ -27,6 +28,7 @@ from mlflow_oidc_auth.middleware import (
     WorkspaceContextMiddleware,
     add_fastapi_permission_middleware,
 )
+from mlflow_oidc_auth.middleware.request_gate import RequestGateMiddleware
 from mlflow_oidc_auth.middleware.route_path import static_prefix_conflicts
 from mlflow_oidc_auth.oauth import ensure_all_clients_registered
 from mlflow_oidc_auth.routers import ajax_alias_router, get_all_routers
@@ -100,9 +102,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "OIDC authentication will not be available until configuration is corrected."
         )
 
+    # MLflow 3.18 recurring issue detection: re-check stored schedules against their writers.
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import start_guard
+
+        if start_guard():
+            logger.info("Issue detection schedule guard started")
+    except Exception:
+        logger.warning("Issue detection schedule guard could not start", exc_info=True)
+
     yield  # App runs here
 
     # Shutdown: Cleanup if needed
+    try:
+        from mlflow_oidc_auth.issue_detection_guard import stop_guard
+
+        # The join waits for a pass in flight; keep it off the event loop.
+        await asyncio.to_thread(stop_guard)
+    except Exception:
+        logger.warning("Issue detection schedule guard could not stop", exc_info=True)
     logger.info("Shutting down MLflow OIDC Auth Plugin...")
 
 
@@ -208,6 +226,19 @@ def _include_mlflow_fastapi_routers(oidc_app: FastAPI) -> None:
     except ImportError:
         logger.debug("mlflow.server.mcp_server_api not available — MCP registry endpoints disabled")
 
+    # Skill registry (MLflow 3.18+): /api/3.0/mlflow/skills/* and the /ajax-api twin, mounted as
+    # MLflow mounts them (each already carries its static prefix). Authorized by
+    # middleware/skill_registry.py through fastapi_permission_middleware; never include this
+    # router without that validator.
+    try:
+        from mlflow.server.skill_registry_api import get_skill_registry_api_route_prefixes, skill_registry_router
+
+        for route_prefix in get_skill_registry_api_route_prefixes():
+            oidc_app.include_router(skill_registry_router, prefix=route_prefix)
+        logger.info("Included MLflow skill registry router (/api/3.0/mlflow/skills)")
+    except ImportError:
+        logger.debug("mlflow.server.skill_registry_api not available — skill registry endpoints disabled")
+
 
 def add_middleware_stack(oidc_app: FastAPI) -> None:
     """Install the plugin's middleware on ``oidc_app`` in its required order.
@@ -221,7 +252,7 @@ def add_middleware_stack(oidc_app: FastAPI) -> None:
     # Middleware ordering (Starlette executes LAST-added as OUTERMOST):
     #
     #   Request → ProxyHeaders → Session → WorkspaceContext → Auth
-    #             → PermissionMiddleware → route handler
+    #             → RequestGate → PermissionMiddleware → route handler
     #
     # ProxyHeaders MUST be OUTERMOST so the forwarded prefix it records in
     # scope["root_path"] is known before AuthMiddleware and PermissionMiddleware
@@ -232,8 +263,14 @@ def add_middleware_stack(oidc_app: FastAPI) -> None:
     # AuthMiddleware has set request.state.username / is_admin.
     #
     # Session must wrap Auth, which reads request.session.
+    #
+    # RequestGate sits inside Auth, which tells it whether the caller is an admin, and
+    # outside PermissionMiddleware, so an admin's demo generation runs alone from the
+    # permission decision of every other request to its last response byte, for Flask and
+    # FastAPI-native routes alike (middleware/request_gate.py, issue #482).
     # ---------------------------------------------------------------------------
     add_fastapi_permission_middleware(oidc_app)
+    oidc_app.add_middleware(RequestGateMiddleware)
     oidc_app.add_middleware(AuthMiddleware)
     oidc_app.add_middleware(WorkspaceContextMiddleware)
     oidc_app.add_middleware(
@@ -263,6 +300,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_exception_handlers(oidc_app)
+    register_skill_registry_exception_handlers(oidc_app)
 
     conflicts = static_prefix_conflicts()
     if conflicts:

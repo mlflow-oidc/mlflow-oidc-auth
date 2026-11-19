@@ -10,6 +10,8 @@ from mlflow.utils.uri import validate_path_is_safe
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS, Permission, get_permission, intersect_permissions
+from mlflow_oidc_auth.utils.request_helpers import request_body_dict
+from mlflow_oidc_auth.validators._detection_schedule import DETECTION_SCHEDULE_TAG, detection_schedule_values_in_tags, detection_schedules_permitted
 from mlflow_oidc_auth.utils import (
     all_source_values,
     effective_experiment_permission,
@@ -255,6 +257,110 @@ def _get_experiment_id_from_view_args():
     return None
 
 
+def _requested_artifact_path() -> Optional[str]:
+    """The artifact path a non-LIST proxy request names (its ``artifact_path`` view argument)."""
+    view_args = request.view_args
+    return view_args.get("artifact_path") if view_args else None
+
+
+def _skill_key_from_artifact_path(artifact_path: Optional[str]) -> Optional[str]:
+    """The key of the skill whose uploaded content ``artifact_path`` lies in, or None.
+
+    MLflow's skill registry (3.18+) stores uploaded skill content under
+    ``skills/[@<organization>/]<name>/<token>/...`` of the request's workspace, and its client pulls
+    a skill by reading those paths through the artifact proxy. Only a path that MLflow's own
+    ``parse_skill_upload_path`` resolves to one skill, that ``validate_path_is_safe`` accepts, and
+    whose first normalized segment is the upload root, counts. Every other spelling — the root
+    itself, an organization directory, ``workspaces/<ws>/skills/...``, ``.`` or ``..`` segments —
+    names no skill here and is left to the experiment rules, which deny it.
+    """
+    if not artifact_path or not isinstance(artifact_path, str):
+        return None
+    try:
+        from mlflow.store.tracking.skill_registry.artifact_paths import SKILL_UPLOAD_ROOT, parse_skill_upload_path
+    except ImportError:
+        return None
+    try:
+        validate_path_is_safe(artifact_path)
+    except Exception:
+        return None
+    segments = _artifact_path_segments(artifact_path)
+    if not segments or segments[0] != SKILL_UPLOAD_ROOT:
+        return None
+    identity = parse_skill_upload_path(artifact_path)
+    if identity is None:
+        return None
+    from mlflow_oidc_auth.utils.skill_key import format_skill_key
+
+    return format_skill_key(identity.organization, identity.name)
+
+
+def _skill_upload_token(artifact_path: str, organization: str, name: str) -> Optional[str]:
+    """The upload directory (``<token>``) of ``skills/[@<organization>/]<name>/<token>/...``, or None above it."""
+    segments = _artifact_path_segments(artifact_path)
+    depth = 3 if organization else 2
+    return segments[depth] if len(segments) > depth else None
+
+
+def _live_upload_tokens(organization: str, name: str) -> set[str]:
+    """The upload directories the skill's versions record as their content.
+
+    Only a version whose MLflow source lies in the skill's own upload tree counts. Reads every page
+    of the skill's versions.
+    """
+    from mlflow_oidc_auth.utils.skill_key import format_skill_key
+
+    prefix = "skills/" + format_skill_key(organization, name) + "/"
+    tokens: set[str] = set()
+    page_token = None
+    while True:
+        page = _get_tracking_store().search_skill_versions(name=name, organization=organization, max_results=1000, page_token=page_token)
+        for version in page:
+            artifact_path = getattr(getattr(version, "source", None), "artifact_path", None)
+            if not isinstance(artifact_path, str):
+                continue
+            artifact_path = artifact_path.removeprefix("mlflow-artifacts:").strip("/")
+            if artifact_path.startswith(prefix):
+                tokens.add(artifact_path[len(prefix) :].split("/", 1)[0])
+        page_token = getattr(page, "token", None)
+        if not page_token:
+            return tokens
+
+
+def _can_read_skill_content(skill_key: str, username: str, artifact_path: Optional[str] = None) -> bool:
+    """READ on an existing skill of the request's workspace, and only on content a version of it records.
+
+    A skill that does not exist is denied. A path inside one upload directory
+    (``skills/<key>/<token>/...``) is readable only while a version of the skill records that
+    directory: content a deleted skill or version left behind — MLflow reclaims it best-effort — is
+    never handed to whoever holds READ on a skill of the same name now. A path above the upload
+    directories (listing ``skills/<key>``) needs READ alone; it shows directory names, not content.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_read_skill
+    from mlflow_oidc_auth.utils.skill_key import parse_skill_key
+
+    try:
+        organization, name = parse_skill_key(skill_key)
+        _get_tracking_store().get_skill(name=name, organization=organization)
+    except Exception:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the artifact path names no existing skill")
+        return False
+    if not can_read_skill(skill_key, username):
+        return False
+    token = _skill_upload_token(artifact_path, organization, name) if artifact_path else None
+    if token is None:
+        return True
+    try:
+        live = _live_upload_tokens(organization, name)
+    except Exception:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: the skill's versions could not be read")
+        return False
+    if token not in live:
+        logger.warning(f"Denying artifact-proxy {request.method} {request.path}: no version of the skill records this content")
+        return False
+    return True
+
+
 def _get_permission_from_experiment_id_artifact_proxy(username: str) -> Permission:
     """The caller's permission on the experiment an artifact-proxy request names.
 
@@ -335,6 +441,13 @@ def _can_list_artifacts(username: str) -> bool:
                 continue
             logger.warning(f"Denying artifact list for {username}: a root path is named alongside an experiment path")
             return False
+        skill_key = _skill_key_from_artifact_path(path)
+        if skill_key is not None:
+            # A skill's uploaded content: READ on the skill, as for pulling it.
+            if not _can_read_skill_content(skill_key, username, path):
+                logger.warning(f"Denying artifact list for {username}: the requested path names no readable skill")
+                return False
+            continue
         experiment_id = _experiment_id_from_artifact_path(path)
         if not _artifact_experiment_permission(experiment_id, username).can_read:
             logger.warning(f"Denying artifact list for {username}: the requested path names no readable experiment")
@@ -365,6 +478,12 @@ def validate_can_manage_experiment(username: str) -> bool:
 def validate_can_read_experiment_artifact_proxy(username: str) -> bool:
     if _is_artifact_list_request():
         return _can_list_artifacts(username)
+    # Skill content is read-only through the proxy: MLflow's server writes and reclaims it itself,
+    # so the update and delete validators below never treat a skill path as anything but unknown.
+    artifact_path = _requested_artifact_path()
+    skill_key = _skill_key_from_artifact_path(artifact_path)
+    if skill_key is not None:
+        return _can_read_skill_content(skill_key, username, artifact_path)
     return _get_permission_from_experiment_id_artifact_proxy(username).can_read
 
 
@@ -398,14 +517,48 @@ def validate_can_update_experiment_from_experiment_id(username: str) -> bool:
     return all(effective_experiment_permission(e, username).permission.can_update for e in get_request_param_values("experiment_id"))
 
 
-def validate_can_create_experiment(username: str) -> bool:
-    """Authorize CreateExperiment when RESTRICT_RESOURCE_CREATION is enabled.
+def _create_experiment_schedules_permitted(username: str) -> bool:
+    """USE on the models of any detection schedule a CreateExperiment request tags the experiment with.
 
-    No-op (allow) unless the flag is set. When set, the user needs EDIT+ for the
+    The tags are read from the body as MLflow parses it. A body that names the schedule tag but
+    that could not be read that way denies, rather than counting as carrying no schedule.
+    """
+    values = detection_schedule_values_in_tags(request_body_dict().get("tags"))
+    if not values:
+        try:
+            raw = request.get_data(cache=True, as_text=True)
+        except Exception:
+            return False
+        if DETECTION_SCHEDULE_TAG in raw:
+            return False
+    return detection_schedules_permitted(values, username)
+
+
+def validate_can_set_experiment_tag(username: str) -> bool:
+    """UPDATE on the experiment; for the issue-detection schedule tag, USE on the model it names.
+
+    See :func:`mlflow_oidc_auth.validators._detection_schedule.detection_schedules_permitted`. Every key and value
+    in every request source is considered, so a second copy cannot hide the one MLflow stores.
+    """
+    if not validate_can_update_experiment(username):
+        return False
+    if DETECTION_SCHEDULE_TAG not in {str(key) for key in all_source_values("key")}:
+        return True
+    return detection_schedules_permitted(all_source_values("value"), username)
+
+
+def validate_can_create_experiment(username: str) -> bool:
+    """Authorize CreateExperiment.
+
+    An initial issue-detection schedule tag needs USE on the model it names (see
+    :func:`validate_can_set_experiment_tag`). Otherwise a no-op (allow) unless
+    RESTRICT_RESOURCE_CREATION is set. When set, the user needs EDIT+ for the
     new experiment name, resolved from name regex / group-regex with a workspace
     fallback. This composes with the workspace creation gate in before_request_hook:
     both must pass, so enabling workspaces never grants more than either check alone.
     """
+    if not _create_experiment_schedules_permitted(username):
+        return False
     if not config.RESTRICT_RESOURCE_CREATION:
         return True
     return all(effective_new_experiment_permission(name, username).permission.can_update for name in get_request_param_values("name"))

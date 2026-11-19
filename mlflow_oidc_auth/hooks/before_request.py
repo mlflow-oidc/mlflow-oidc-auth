@@ -206,6 +206,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_read_logged_model,
     validate_can_read_registered_model,
     validate_can_read_run,
+    validate_can_set_experiment_tag,
     validate_can_update_experiment,
     validate_can_update_experiment_artifact_proxy,
     validate_can_update_logged_model,
@@ -272,6 +273,7 @@ from mlflow_oidc_auth.validators import (
     validate_can_search_issues,
     validate_can_invoke_issue_detection,
     validate_can_invoke_genai_evaluate,
+    validate_can_sync_issue_detection_schedule,
     validate_can_read_label_schema,
     validate_can_manage_label_schema,
     validate_can_create_review_queue,
@@ -364,7 +366,7 @@ BEFORE_REQUEST_HANDLERS = {
     DeleteExperiment: validate_can_delete_experiment,
     RestoreExperiment: validate_can_delete_experiment,
     UpdateExperiment: validate_can_update_experiment,
-    SetExperimentTag: validate_can_update_experiment,
+    SetExperimentTag: validate_can_set_experiment_tag,
     DeleteExperimentTag: validate_can_update_experiment,
     # Routes for runs
     CreateRun: validate_can_update_experiment,
@@ -716,6 +718,9 @@ for _suffix, _method, _validator in (
     # are read, so UPDATE on the experiment and READ on every trace's experiment.
     ("mlflow/issues/invoke", "POST", validate_can_invoke_issue_detection),
     ("mlflow/genai/evaluate/invoke", "POST", validate_can_invoke_genai_evaluate),
+    # Recomputes an experiment's issue-detection schedule state and writes it back as experiment
+    # tags (MLflow 3.18): UPDATE on the experiment.
+    ("mlflow/issues/schedule/state", "POST", validate_can_sync_issue_detection_schedule),
     # Reading and cancelling those jobs goes through the job's experiment.
     ("mlflow/jobs/<job_id>", "GET", validate_can_read_job),
     ("mlflow/jobs/cancel/<job_id>", "PATCH", validate_can_cancel_job),
@@ -1092,19 +1097,22 @@ def before_request_hook():
     if config.MLFLOW_ENABLE_WORKSPACES and _is_workspace_gated_creation(request.path, request.method):
         from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
-        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace, get_request_workspace
         from mlflow_oidc_auth.utils.workspace_cache import (
             get_workspace_permission_cached,
         )
 
-        # AuthMiddleware already normalized this the way MLflow does, so an empty or
-        # whitespace-only header arrives as None rather than "".
-        workspace = get_request_workspace()
+        # AuthMiddleware already normalized the header the way MLflow does, so an empty or
+        # whitespace-only header arrives as None rather than "". The header alone decides
+        # whether the request named its workspace; the workspace it creates in also covers a
+        # header-less request that MLflow serves from MLFLOW_WORKSPACE (issue #482).
+        named_workspace = get_request_workspace()
+        workspace = get_authorization_workspace()
         # When no workspace context is supplied, MLflow resolves the request to the
         # default workspace, so the guards must treat it as such rather than skip.
         effective_workspace = workspace or DEFAULT_WORKSPACE_NAME
 
-        if workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
+        if named_workspace is None and config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT:
             logger.warning(f"Denying {request.method} {request.path} for {username}: workspace context is required for creation")
             return responses.make_forbidden_response()
         if effective_workspace == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
