@@ -318,6 +318,7 @@ def mock_config():
     config_mock.OIDC_GROUP_NAME_PATTERN = []
     config_mock.OIDC_GEN_AI_GATEWAY_ENABLED = False
     config_mock.MLFLOW_ENABLE_WORKSPACES = False
+    config_mock.RESTRICT_USER_AND_GROUP_LISTING = False
 
     # A real registry, not a MagicMock: since #316 the callback looks the provider up here and
     # then uses its id and issuer. A mock would hand those paths a MagicMock where a string is

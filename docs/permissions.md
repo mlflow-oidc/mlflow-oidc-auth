@@ -735,6 +735,49 @@ Key points:
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 - Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
 
+## Restricting user and group listing
+
+By default any signed-in user can list every user, service account and group, which the grant
+dialogs use to offer names. Deployments that host several tenants on one server can set
+`RESTRICT_USER_AND_GROUP_LISTING=true` so that a non-admin is listed only principals it can already see:
+
+- itself, and the groups it belongs to;
+- with workspaces enabled, the users, service accounts and groups granted on the workspaces it
+  holds `MANAGE` on through a grant of its own or of one of its groups. (`MANAGE` that comes
+  only from a regex grant is not looked for; type those names.)
+
+Admins always see everyone. The setting affects `GET /api/2.0/mlflow/users` (with and without
+`?service=true`), `GET /api/2.0/mlflow/permissions/groups` and the Users and Groups pages; `X-Total-Count`
+counts only what the caller sees. It also raises the workspace member lists
+(`GET /api/3.0/mlflow/permissions/workspaces/{workspace}/users` and `/groups`) from `READ` to
+`MANAGE`: a reader of a workspace no longer sees who else is in it.
+
+**Sharing.** With the setting on, the grant dialogs take a typed name, with the listed names as
+suggestions. Grants still need `MANAGE` on the resource and fail for a name that does not exist.
+
+**What it does not hide.** The setting hides the directory, not every name:
+
+- **Who has access to what you manage.** The "who has access" lists of an experiment, model,
+  prompt, scorer, gateway resource, MCP server, skill or workspace name every principal granted
+  on it, and need `MANAGE` on it. Any user holds `MANAGE` on what it creates.
+- **Grants on your resources by name.** `GET /api/2.0/mlflow/permissions/users/{username}/…` and the
+  group equivalents show that principal's grants on the resources the caller manages.
+- **Whether a typed name exists.** A grant to a name that does not exist fails with 404, one to a
+  name that exists succeeds (and gives that principal access) or reports a duplicate. So a user
+  who can grant on anything, which is every user, can confirm a guessed name, one guess per
+  request; it cannot list names. Every grant is recorded in the audit log.
+- **A review queue named after a user.** Creating or renaming a custom review queue to a
+  registered username or service account name is refused, naming that user, so it too confirms
+  a guessed name, one guess per request.
+- **Members of your own workspaces, when everyone manages them.** With
+  `OIDC_WORKSPACE_DEFAULT_PERMISSION=MANAGE`, every user a token places in a workspace is
+  granted `MANAGE` on it at sign-in, and so is listed that workspace's members. Nobody sees
+  another tenant's members this way.
+- **Names MLflow records.** Run `user_id`, the `mlflow.user` tag and similar fields are shown on the
+  resources a caller can read, as MLflow shows them (see [Search Result Filtering](#search-result-filtering)).
+
+Setting it off restores the full lists and the `READ`-level workspace member lists.
+
 ## De-provisioning
 
 Deactivating a user — through SCIM (`PATCH active:false`) or the admin API

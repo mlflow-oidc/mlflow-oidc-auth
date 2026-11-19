@@ -8,7 +8,7 @@ experiment, model, and prompt permissions at the group level. The grant routes
 
 from typing import Any, Callable, Dict, List, Tuple, Union
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import JSONResponse
 from mlflow.server.handlers import _get_tracking_store
 
@@ -55,6 +55,7 @@ from mlflow_oidc_auth.utils import (
     get_username,
 )
 from mlflow_oidc_auth.utils.group_name import GROUP_NAME_RESERVED_MESSAGE, is_reserved_group_name, validate_group_name_chars
+from mlflow_oidc_auth.utils.directory_visibility import listing_restricted, visible_group_names
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 from mlflow_oidc_auth.utils.grant_workspace import pattern_workspace_of
 
@@ -188,14 +189,17 @@ def _group_pattern(model, prompt: bool = False):
     response_model=GroupListResponse,
     tags=["groups"],
 )
-async def list_groups(username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> Union[GroupListResponse, JSONResponse]:
+async def list_groups(request: Request, username: str = Depends(get_username), page: PageQuery = NO_PAGE) -> Union[GroupListResponse, JSONResponse]:
     """
     List all groups in the system.
 
-    This endpoint returns all groups in the system. Any authenticated user can access this endpoint.
+    With ``RESTRICT_USER_AND_GROUP_LISTING`` enabled, a non-admin sees only its own groups and the
+    groups granted in the workspaces it manages (see :mod:`mlflow_oidc_auth.utils.directory_visibility`).
 
     Parameters:
     -----------
+    request : Request
+        The FastAPI request object.
     username : str
         The authenticated username (injected by dependency).
     page : PageParams
@@ -215,7 +219,11 @@ async def list_groups(username: str = Depends(get_username), page: PageQuery = N
     try:
         from mlflow_oidc_auth.store import store
 
-        groups, headers = paginate_with_headers(store.get_groups(), key=lambda g: g, params=page)
+        visible_groups = store.get_groups()
+        if await listing_restricted(request):
+            visible = visible_group_names(username)
+            visible_groups = [group for group in visible_groups if group in visible]
+        groups, headers = paginate_with_headers(visible_groups, key=lambda g: g, params=page)
         if headers:
             return JSONResponse(content=list(groups), headers=headers)
         return GroupListResponse(root=groups)

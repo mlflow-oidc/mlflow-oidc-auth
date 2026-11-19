@@ -577,11 +577,11 @@ Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace READ | List user permissions |
+| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace READ (MANAGE with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing)) | List user permissions |
 | POST | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace MANAGE | Create user permission |
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users/{username}` | Workspace MANAGE | Update user permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users/{username}` | Workspace MANAGE | Delete user permission |
-| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace READ | List group permissions |
+| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace READ (MANAGE with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing)) | List group permissions |
 | POST | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace MANAGE | Create group permission |
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Update group permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Delete group permission |
