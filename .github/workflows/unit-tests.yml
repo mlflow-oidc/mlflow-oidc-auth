@@ -132,6 +132,34 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The declared floor (requires-python >= 3.11, #471): code using 3.12+ syntax or stdlib would pass
+  # the 3.14 shards and then fail to import for a user on 3.11. Lighter than the shards: every module
+  # is byte-compiled, then the non-hooks suite runs in one process. No Postgres service, so the
+  # migration tests that need one skip here; the 3.14 shards run them.
+  #
+  # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code); holds no secrets
+  # and only the workflow's read-only token (contents: read); changes no state beyond its own runner.
+  python-311:
+    name: Python 3.11 (floor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Byte-compile every module
+        run: |
+          python -c "import compileall, sys; sys.exit(0 if compileall.compile_dir('mlflow_oidc_auth', quiet=1) else 1)"
+      - name: Run tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install tox
+          tox -e py311 -- --ignore=mlflow_oidc_auth/tests/hooks
+
   # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code); holds no secrets
   # and only the workflow's read-only token; changes no state beyond its own runner. The MySQL
   # credentials below are throwaway values for a container local to this runner.
@@ -177,7 +205,7 @@ jobs:
   unit-tests:
     name: Run Unit testing
     runs-on: ubuntu-latest
-    needs: [frontend, python, mysql-migrations]
+    needs: [frontend, python, python-311, mysql-migrations]
     if: always()
     steps:
       - name: Checkout
@@ -199,7 +227,8 @@ jobs:
         env:
           FRONTEND: ${{ needs.frontend.result }}
           PYTHON: ${{ needs.python.result }}
+          PYTHON_311: ${{ needs.python-311.result }}
           MYSQL_MIGRATIONS: ${{ needs.mysql-migrations.result }}
         run: |
-          echo "frontend: ${FRONTEND}, python shards: ${PYTHON}, mysql migrations: ${MYSQL_MIGRATIONS}"
-          [ "${FRONTEND}" = success ] && [ "${PYTHON}" = success ] && [ "${MYSQL_MIGRATIONS}" = success ]
+          echo "frontend: ${FRONTEND}, python shards: ${PYTHON}, python 3.11: ${PYTHON_311}, mysql migrations: ${MYSQL_MIGRATIONS}"
+          [ "${FRONTEND}" = success ] && [ "${PYTHON}" = success ] && [ "${PYTHON_311}" = success ] && [ "${MYSQL_MIGRATIONS}" = success ]
