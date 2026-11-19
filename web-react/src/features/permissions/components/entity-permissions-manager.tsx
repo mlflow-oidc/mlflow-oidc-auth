@@ -19,7 +19,8 @@ import { GrantPermissionModal } from "./grant-permission-modal";
 import { GrantWorkspaceNotice } from "./grant-workspace-notice";
 import { grantControlTitle } from "../hooks/use-grant-workspace-scope";
 import { useGrantWorkspaceScope } from "../hooks/use-grant-workspace-scope";
-import { useState } from "react";
+import { use, useState } from "react";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 
 interface EntityPermissionsManagerProps {
   resourceId: string;
@@ -56,6 +57,10 @@ export function EntityPermissionsManager({
   });
 
   const scope = useGrantWorkspaceScope(resourceType);
+  // With the lists restricted the pickers may not include the grantee, so a typed name is
+  // accepted and an empty list does not mean there is no one left to grant.
+  const restrictListing =
+    use(RuntimeConfigContext)?.restrict_user_and_group_listing ?? false;
   const { allUsers } = useAllUsers();
   const { allServiceAccounts } = useAllServiceAccounts();
   const { allGroups } = useAllGroups();
@@ -139,10 +144,13 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddUserModalOpen(true)}
-              disabled={!scope.canChange || availableUsers.length === 0}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableUsers.length === 0)
+              }
               title={grantControlTitle(
                 scope,
-                availableUsers.length === 0
+                !restrictListing && availableUsers.length === 0
                   ? "All users already have permissions"
                   : "Add user permission",
               )}
@@ -152,10 +160,13 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddAccountModalOpen(true)}
-              disabled={!scope.canChange || availableAccounts.length === 0}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableAccounts.length === 0)
+              }
               title={grantControlTitle(
                 scope,
-                availableAccounts.length === 0
+                !restrictListing && availableAccounts.length === 0
                   ? "All service accounts already have permissions"
                   : "Add service account permission",
               )}
@@ -165,10 +176,13 @@ export function EntityPermissionsManager({
             <Button
               variant="secondary"
               onClick={() => setIsAddGroupModalOpen(true)}
-              disabled={!scope.canChange || availableGroups.length === 0}
+              disabled={
+                !scope.canChange ||
+                (!restrictListing && availableGroups.length === 0)
+              }
               title={grantControlTitle(
                 scope,
-                availableGroups.length === 0
+                !restrictListing && availableGroups.length === 0
                   ? "All groups already have permissions"
                   : "Add group permission",
               )}
@@ -219,6 +233,7 @@ export function EntityPermissionsManager({
           title={`Grant user permissions for ${resourceName}`}
           label="User"
           options={availableUsers}
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />
@@ -235,6 +250,7 @@ export function EntityPermissionsManager({
           title={`Grant service account permissions for ${resourceName}`}
           label="Service account"
           options={availableAccounts}
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />
@@ -255,6 +271,7 @@ export function EntityPermissionsManager({
           title={`Grant group permissions for ${resourceName}`}
           label="Group"
           options={availableGroups}
+          allowCustomValue={restrictListing}
           type={resourceType}
           isLoading={isSaving}
         />

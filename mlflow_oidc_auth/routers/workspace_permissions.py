@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Path, Response
 from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import (
     check_workspace_manage_permission,
-    check_workspace_read_permission,
+    check_workspace_member_list_permission,
 )
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.workspace import (
@@ -79,7 +79,7 @@ def _workspace_group_route(method: str, **kwargs: Any) -> Callable[[Callable[...
 )
 async def list_workspace_users(
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_read_permission),
+    _: str = Depends(check_workspace_member_list_permission),
 ) -> List[WorkspaceUserPermissionResponse]:
     """List all users with permissions in the specified workspace."""
     perms = store.list_workspace_permissions(workspace)
@@ -100,7 +100,7 @@ async def list_workspace_users(
 )
 async def list_workspace_groups(
     workspace: str = Path(..., description="The workspace name"),
-    _: str = Depends(check_workspace_read_permission),
+    _: str = Depends(check_workspace_member_list_permission),
 ) -> List[WorkspaceGroupPermissionResponse]:
     """List all groups with permissions in the specified workspace."""
     perms = store.list_workspace_group_permissions(workspace)

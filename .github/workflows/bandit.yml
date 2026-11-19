@@ -1,21 +1,87 @@
 name: bandit
 on:
-  pull_request_target:
+  pull_request:
     types:
       - opened
-      - edited
+      - reopened
       - synchronize
     paths:
       - mlflow_oidc_auth/**
+      - scripts/**
+      - .github/workflows/bandit.yml
+  push:
+    branches:
+      - main
+    paths:
+      - mlflow_oidc_auth/**
+      - scripts/**
+      - .github/workflows/bandit.yml
+
+# A newer push to the same PR supersedes the running scan. Runs on main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
+  # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code, which bandit only
+  # reads and never executes). Holds no secrets. Its token can write code-scanning results only on
+  # a push to main or a PR from this repository: GitHub hands a fork PR a read-only token, and the
+  # upload step is skipped for one. It changes no other state.
+  #
+  # It used to run on pull_request_target through PyCQA/bandit-action, which checks out the base
+  # branch on that event (so it never scanned the PR) and pins Python 3.9, which current runner
+  # images no longer provide. Dependabot PRs get a read-only token too, so they skip the upload.
   main:
     name: Run bandit
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
     steps:
-      - uses: PyCQA/bandit-action@v1.0.1
+      - name: Checkout
+        uses: actions/checkout@v7
         with:
-          severity: high
-          confidence: high
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.14
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install "bandit[sarif]==1.9.4"
+      # One scan: SARIF for code scanning, and the gate reads the same results. Bandit reads a
+      # `.bandit` file from the tree it scans, which on a PR is the PR's own; an explicit empty
+      # ini keeps a PR from switching tests off for itself.
+      - name: Scan
+        run: |
+          printf '[bandit]\n' > "$RUNNER_TEMP/bandit.ini"
+          bandit -r . --ini "$RUNNER_TEMP/bandit.ini" --severity-level high --confidence-level high --format sarif --output bandit.sarif --exit-zero
+      - name: Upload results to code scanning
+        if: >-
+          always() && github.actor != 'dependabot[bot]' &&
+          (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        # Reporting, not the gate: an upload that fails must not hide or replace the scan's verdict.
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+      # The gate: any high-severity, high-confidence finding (or a scan that produced no results
+      # file) fails the check, and each finding is printed for readers without code scanning.
+      - name: Fail on findings
+        run: |
+          python - <<'EOF'
+          import json
+          import sys
+
+          results = [r for run in json.load(open("bandit.sarif"))["runs"] for r in run.get("results", [])]
+          for r in results:
+              loc = r["locations"][0]["physicalLocation"]
+              print(f"::error file={loc['artifactLocation']['uri']},line={loc['region']['startLine']}::{r['ruleId']}: {r['message']['text']}")
+          print(f"{len(results)} high-severity, high-confidence finding(s)")
+          sys.exit(1 if results else 0)
+          EOF

@@ -243,6 +243,13 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 | **Trash** | Deleted experiments and runs are filtered by workspace. Restore and hard-delete are workspace-scoped |
 | **Webhooks** | Webhook CRUD operations are scoped to the active workspace |
 
+### Skill registry
+
+MLflow (3.18+) keeps a skill registry per workspace, and each skill has its own user and group
+grants, recorded in the skill's workspace (see [Permissions → Skill Registry](permissions#skill-registry)).
+Without a grant on a skill, the caller's permission on the workspace decides; creating a skill needs
+`MANAGE` on the workspace. Deleting a workspace removes the grants on its skills.
+
 ### MCP server registry
 
 MLflow keeps an MCP server registry per workspace, and each server has its own user and group
@@ -570,11 +577,11 @@ Workspace lifecycle is handled by MLflow's native workspace API. The auth plugin
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace READ | List user permissions |
+| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace READ (MANAGE with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing)) | List user permissions |
 | POST | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users` | Workspace MANAGE | Create user permission |
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users/{username}` | Workspace MANAGE | Update user permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/{workspace}/users/{username}` | Workspace MANAGE | Delete user permission |
-| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace READ | List group permissions |
+| GET | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace READ (MANAGE with [`RESTRICT_USER_AND_GROUP_LISTING`](permissions#restricting-user-and-group-listing)) | List group permissions |
 | POST | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups` | Workspace MANAGE | Create group permission |
 | PATCH | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Update group permission |
 | DELETE | `/api/3.0/mlflow/permissions/workspaces/{workspace}/groups/{group_name}` | Workspace MANAGE | Delete group permission |

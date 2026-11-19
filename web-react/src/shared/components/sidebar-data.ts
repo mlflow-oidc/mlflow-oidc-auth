@@ -15,6 +15,8 @@ import {
   faPlug,
   faSitemap,
   faServer,
+  faWandMagicSparkles,
+  faCalendarCheck,
 } from "@fortawesome/free-solid-svg-icons";
 
 export const getSidebarData = (
@@ -60,6 +62,13 @@ export const getSidebarData = (
       href: "/mcp-servers",
       isInternalLink: true,
       icon: faServer,
+    },
+    // MLflow's skill registry (MLflow 3.18+).
+    {
+      label: "Skills",
+      href: "/skills",
+      isInternalLink: true,
+      icon: faWandMagicSparkles,
     },
   ];
 
@@ -115,6 +124,12 @@ export const getSidebarData = (
         href: "/scim",
         isInternalLink: true,
         icon: faPlug,
+      },
+      {
+        label: "Detection schedules",
+        href: "/issue-detection-schedules",
+        isInternalLink: true,
+        icon: faCalendarCheck,
       },
     ];
 

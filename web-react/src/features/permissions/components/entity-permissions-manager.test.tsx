@@ -10,6 +10,7 @@ import type { EntityPermission } from "../../../shared/types/entity";
 import type { PermissionType } from "../../../shared/types/entity";
 import { CHOOSE_WORKSPACE_TITLE } from "../hooks/use-grant-workspace-scope";
 import { workspaceScopeWrapper } from "../../../tests/workspace-scope-wrapper";
+import { RuntimeConfigContext } from "../../../shared/context/use-runtime-config";
 
 vi.mock("../hooks/use-permissions-management");
 vi.mock("../../../core/hooks/use-all-users");
@@ -205,33 +206,89 @@ describe("EntityPermissionsManager", () => {
     });
   });
 
-  it("filters available users/groups correctly", () => {
-    // user1 and group1 are already in mockPermissions
+  it("with the lists unrestricted, disables an add button whose list is empty", () => {
+    vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
+      allServiceAccounts: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
     renderManager();
 
-    // Open user grant modal
+    expect(
+      screen.getByRole("button", { name: "+ Add Service Account" }),
+    ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /^\+ Add$/ }));
-    const userOptions = screen.getAllByRole("option");
-    // Options should be: "Select user...", "user2"
-    expect(userOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "user2",
+    expect(screen.getByRole("combobox", { name: /User/i }).tagName).toBe(
+      "SELECT",
     );
-    expect(
-      userOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("user1");
+  });
 
-    // Close modal (mocking doesn't really close it here, but we can just check groups)
-    fireEvent.click(screen.getByText("Cancel"));
-
-    // Open group grant modal
-    fireEvent.click(screen.getByRole("button", { name: /\+ Add Group/i }));
-    const groupOptions = screen.getAllByRole("option");
-    expect(groupOptions.map((o) => (o as HTMLOptionElement).value)).toContain(
-      "group2",
+  it("lets a manager grant by typed name when the user and group lists are restricted", async () => {
+    vi.spyOn(useAllUsersModule, "useAllUsers").mockReturnValue({
+      allUsers: ["user1"],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.spyOn(useAllAccountsModule, "useAllServiceAccounts").mockReturnValue({
+      allServiceAccounts: [],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    vi.spyOn(useAllGroupsModule, "useAllGroups").mockReturnValue({
+      allGroups: ["group1"],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    render(
+      <EntityPermissionsManager
+        resourceId="res-1"
+        resourceName="Resource 1"
+        resourceType="experiments"
+        permissions={mockPermissions}
+        isLoading={false}
+        error={null}
+        refresh={mockRefresh}
+      />,
+      {
+        wrapper: ({ children }) => (
+          <RuntimeConfigContext
+            value={{
+              basePath: "",
+              uiPath: "/oidc/ui",
+              provider: "oidc",
+              authenticated: true,
+              gen_ai_gateway_enabled: true,
+              workspaces_enabled: false,
+              restrict_user_and_group_listing: true,
+            }}
+          >
+            {children}
+          </RuntimeConfigContext>
+        ),
+      },
     );
-    expect(
-      groupOptions.map((o) => (o as HTMLOptionElement).value),
-    ).not.toContain("group1");
+
+    for (const name of ["+ Add", "+ Add Service Account", "+ Add Group"]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Group" }));
+    fireEvent.change(screen.getByRole("combobox", { name: /Group/i }), {
+      target: { value: "other-team" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockHandleGrantPermission).toHaveBeenCalledWith(
+        "other-team",
+        "READ",
+        "group",
+      );
+    });
   });
 
   describe("workspace scope", () => {

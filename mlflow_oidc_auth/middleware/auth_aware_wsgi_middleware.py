@@ -12,6 +12,7 @@ from asgiref.wsgi import WsgiToAsgi, WsgiToAsgiInstance
 
 from starlette.types import Receive, Scope, Send
 import asyncio
+from types import TracebackType
 
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AUTH_CONTEXT_KEY, AuthContext
@@ -54,6 +55,48 @@ class WSGIMiddleware(WsgiToAsgi):
         await _ThreadPoolWsgiToAsgiInstance(self.wsgi_application, self.duplicate_header_limit)(scope, receive, send)
 
 
+#: A non-HEAD ``200`` response declaring more than this many bytes is sent without ``Content-Length``,
+#: so Uvicorn sends it chunked. Proxies that cap non-streamed responses then stream it through
+#: instead of failing it (Cloud Run refuses non-streamed HTTP/1 responses over 32 MiB). MLflow pages
+#: its reads by item count, not size, so any read can get there: a run search page, a whole trace, an
+#: artifact. Smaller responses, the bulk of the traffic, keep their exact length.
+STREAMED_RESPONSE_THRESHOLD_BYTES = 16 << 20
+
+
+def _declared_length(value: str) -> int:
+    """The byte count a ``Content-Length`` value declares.
+
+    Parameters:
+        value: The header value. Only ASCII digits are a length (RFC 9110), so ``+1``, ``1_000`` or ``1e9`` are not.
+
+    Returns:
+        The declared length, or -1 when ``value`` is not one.
+    """
+    value = value.strip()
+    return int(value) if value.isascii() and value.isdigit() else -1
+
+
+def _without_large_content_length(method: str, status: str, headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """``headers`` with ``Content-Length`` removed when it declares a large ``200`` body.
+
+    HEAD keeps its length: it reports the size of the GET body, which a client may rely on. Any other
+    status (a ``206`` range reply above all) keeps its framing, as does a length that is not a number.
+
+    Parameters:
+        method: The request method (WSGI ``REQUEST_METHOD``).
+        status: The WSGI status line, e.g. ``"200 OK"``.
+        headers: The response headers as Flask passes them to ``start_response``.
+
+    Returns:
+        The headers to send, a new list when one is removed.
+    """
+    if method == "HEAD" or status.split(" ", 1)[0] != "200":
+        return headers
+    if not any(name.lower() == "content-length" and _declared_length(value) > STREAMED_RESPONSE_THRESHOLD_BYTES for name, value in headers):
+        return headers
+    return [(name, value) for name, value in headers if name.lower() != "content-length"]
+
+
 class AuthInjectingWSGIApp:
     """
     WSGI app wrapper that injects FastAPI authentication info into environ.
@@ -78,8 +121,16 @@ class AuthInjectingWSGIApp:
             # Inject AuthContext as a single object — bridge functions read from this
             environ[AUTH_CONTEXT_KEY] = auth_context
 
-        # Call the Flask app with enhanced environ
-        return self.flask_app(environ, start_response)
+        def start_response_with_framing(
+            status: str,
+            headers: list[tuple[str, str]],
+            exc_info: tuple[type[BaseException], BaseException, TracebackType | None] | None = None,
+        ) -> object:
+            # Flask's response hooks have run, so this is the final length of the filtered body.
+            headers = _without_large_content_length(environ.get("REQUEST_METHOD", ""), status, headers)
+            return start_response(status, headers, exc_info)
+
+        return self.flask_app(environ, start_response_with_framing)
 
 
 class AuthAwareWSGIMiddleware:

@@ -196,6 +196,7 @@ def test_permission_registry_keys_equal_the_registry_kinds():
         "gateway_secret",
         "gateway_model_definition",
         "mcp_server",
+        "skill",
     }
 
 
@@ -211,18 +212,21 @@ def test_orphan_report_walks_the_table_owning_kinds_in_mains_order():
         "gateway_model_definition",
         "gateway_secret",
         "mcp_server",
+        "skill",
         "workspace",
     ]
     by_type = {spec.name: spec for spec in specs}
     assert by_type["experiment"].regex_key_index is None
     assert by_type["scorer"].key_columns == ("experiment_id", "scorer_name") and by_type["scorer"].regex_key_index == 1
     assert by_type["mcp_server"].user_regex_model is None and by_type["mcp_server"].group_regex_model is None
+    assert by_type["skill"].user_regex_model is None and by_type["skill"].group_regex_model is None
     assert {t for t, spec in by_type.items() if spec.workspace_scoped} == {
         "registered_model",
         "gateway_endpoint",
         "gateway_model_definition",
         "gateway_secret",
         "mcp_server",
+        "skill",
     }
 
 
@@ -241,6 +245,8 @@ def test_workspace_scoped_grant_tables_are_the_hand_maintained_list_in_order():
         (db_models.SqlGatewayModelDefinitionGroupPermission, "model_definition_id", "group_id", "gateway_model_definition"),
         (db_models.SqlMCPServerPermission, "name", "user_id", "mcp_server"),
         (db_models.SqlMCPServerGroupPermission, "name", "group_id", "mcp_server"),
+        (db_models.SqlSkillPermission, "name", "user_id", "skill"),
+        (db_models.SqlSkillGroupPermission, "name", "group_id", "skill"),
     )
     for model, *_ in workspace_scoped_grant_tables():
         assert hasattr(model, "workspace")
@@ -298,7 +304,7 @@ def test_workspace_cascade_deletes_from_the_registry_tables(tmp_path):
                     session.add(model(regex=".*", priority=0, permission="READ", workspace="ws", **owner))
                     expected += 1
 
-        assert s.wipe_workspace_permissions("ws") == expected == 2 + 10 + 12
+        assert s.wipe_workspace_permissions("ws") == expected == 2 + 12 + 12
     finally:
         s.engine.dispose()
 

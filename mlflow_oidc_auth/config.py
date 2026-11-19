@@ -75,6 +75,10 @@ class AppConfig:
         # When enabled, a user needs EDIT+ (via name regex / group-regex, with a workspace
         # fallback) to create. Off by default, matching upstream MLflow (anyone can create).
         self.RESTRICT_RESOURCE_CREATION = config_manager.get_bool("RESTRICT_RESOURCE_CREATION", default=False)
+        # Opt-in: non-admins list only themselves, their groups and the members of the workspaces
+        # they manage, so tenants sharing one server cannot list each other's users and groups
+        # (docs/permissions.md#restricting-user-and-group-listing).
+        self.RESTRICT_USER_AND_GROUP_LISTING = config_manager.get_bool("RESTRICT_USER_AND_GROUP_LISTING", default=False)
         self.PERMISSION_SOURCE_ORDER = config_manager.get_list("PERMISSION_SOURCE_ORDER", default=["user", "group", "regex", "group-regex"])
 
         # Security settings (secrets - may come from Secrets Manager/Key Vault)
@@ -300,6 +304,15 @@ class AppConfig:
         self.SCIM_ACTIVITY_RETENTION_DAYS = config_manager.get_int("SCIM_ACTIVITY_RETENTION_DAYS", default=30)
         # Provisioning counts as healthy while a SCIM request succeeded within this many seconds.
         self.SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS = config_manager.get_int("SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS", default=86400)
+        # MLflow 3.18 recurring issue detection. The guard re-checks every stored schedule this
+        # often (and shortly after any permission change) and pauses one whose recorded writer
+        # could no longer write it. 0 turns the background check off; schedules are then checked
+        # only when written and when an administrator runs the check from the admin UI.
+        self.ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS = config_manager.get_int("ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS", default=300)
+        # When true, only administrators may run issue detection on the MLflow server's own
+        # provider credentials (its environment): everyone else must name a gateway endpoint or a
+        # gateway secret they have USE on, for a one-off run, a job, or a recurring schedule.
+        self.ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY = config_manager.get_bool("ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY", default=False)
         # When set, resources a hard-deleted user was the last MANAGE holder of are granted MANAGE
         # to this username before the delete cascades. Unset means orphans are only reported.
         self.ORPHAN_FALLBACK_PRINCIPAL = config_manager.get("ORPHAN_FALLBACK_PRINCIPAL")

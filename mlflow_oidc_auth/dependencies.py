@@ -337,6 +337,37 @@ async def check_mcp_server_manage_permission(
     return current_username
 
 
+async def check_skill_manage_permission(
+    name: str = Path(..., description="Skill key: <name> or @<organization>/<name>"),
+    current_username: str = Depends(get_username),
+    is_admin: bool = Depends(get_is_admin),
+) -> str:
+    """Check that the current user may manage the grants on a skill of the request's workspace.
+
+    Admins, and users whose permission on the skill resolves to MANAGE (a grant of their own or a
+    group's, else their permission on the request's workspace), may proceed. The key is validated
+    first, for admins too: a grant under a key no skill can have would never be reached again.
+
+    Returns:
+        The current username.
+
+    Raises:
+        HTTPException: 400 for a key that names no possible skill; 403 when the user cannot
+            manage the skill.
+    """
+    from mlflow_oidc_auth.utils.permissions import can_manage_skill
+    from mlflow_oidc_auth.utils.skill_key import parse_skill_key
+
+    try:
+        parse_skill_key(name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid skill name")
+    if not is_admin and not can_manage_skill(name, current_username):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to manage skill {name}")
+
+    return current_username
+
+
 async def check_scorer_manage_permission(
     request: Request,
     current_username: str = Depends(get_username),
@@ -445,6 +476,33 @@ async def check_workspace_read_permission(
         )
 
     return username
+
+
+async def check_workspace_member_list_permission(
+    workspace: str = Path(..., description="The workspace name"),
+    request: Request = None,
+) -> str:
+    """Verify the caller may list a workspace's members.
+
+    READ on the workspace is enough by default. With ``RESTRICT_USER_AND_GROUP_LISTING`` on, the
+    member lists name users and groups the caller could otherwise not see, so they need MANAGE,
+    the same level the "who has access" lists of every other resource need.
+
+    Parameters:
+        workspace: The workspace name.
+        request: The incoming request.
+
+    Returns:
+        The username of the authenticated user.
+
+    Raises:
+        HTTPException: 403 when the caller lacks the required permission.
+    """
+    from mlflow_oidc_auth.config import config
+
+    if config.RESTRICT_USER_AND_GROUP_LISTING:
+        return await check_workspace_manage_permission(workspace=workspace, request=request)
+    return await check_workspace_read_permission(workspace=workspace, request=request)
 
 
 # ---------------------------------------------------------------------------------------------

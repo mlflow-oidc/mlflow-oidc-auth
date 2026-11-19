@@ -25,6 +25,9 @@ import * as useAllGatewayModels from "../../../core/hooks/use-all-gateway-models
 import * as useUserMcpServerPermissions from "../../../core/hooks/use-user-mcp-server-permissions";
 import * as useGroupMcpServerPermissions from "../../../core/hooks/use-group-mcp-server-permissions";
 import * as useAllMcpServers from "../../../core/hooks/use-all-mcp-servers";
+import * as useUserSkillPermissions from "../../../core/hooks/use-user-skill-permissions";
+import * as useGroupSkillPermissions from "../../../core/hooks/use-group-skill-permissions";
+import * as useAllSkills from "../../../core/hooks/use-all-skills";
 import type {
   PermissionType,
   ExperimentPermission,
@@ -70,6 +73,9 @@ vi.mock("../../../core/hooks/use-all-gateway-models");
 vi.mock("../../../core/hooks/use-user-mcp-server-permissions");
 vi.mock("../../../core/hooks/use-group-mcp-server-permissions");
 vi.mock("../../../core/hooks/use-all-mcp-servers");
+vi.mock("../../../core/hooks/use-user-skill-permissions");
+vi.mock("../../../core/hooks/use-group-skill-permissions");
+vi.mock("../../../core/hooks/use-all-skills");
 
 describe("NormalPermissionsView", () => {
   const mockShowToast = vi.fn();
@@ -285,6 +291,31 @@ describe("NormalPermissionsView", () => {
       error: null,
       refresh: vi.fn(),
     });
+
+    vi.spyOn(
+      useUserSkillPermissions,
+      "useUserSkillPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+    vi.spyOn(
+      useGroupSkillPermissions,
+      "useGroupSkillPermissions",
+    ).mockReturnValue({
+      permissions: mockExpPermissions,
+      isLoading: false,
+      error: null,
+      refresh: mockRefresh,
+    });
+    vi.spyOn(useAllSkills, "useAllSkills").mockReturnValue({
+      allSkills: [{ name: "@acme/new", skill_name: "new" }],
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
   });
 
   const types: PermissionType[] = [
@@ -295,6 +326,7 @@ describe("NormalPermissionsView", () => {
     "ai-secrets",
     "ai-models",
     "mcp-servers",
+    "skills",
   ];
 
   types.forEach((type) => {
@@ -307,6 +339,7 @@ describe("NormalPermissionsView", () => {
         if (t === "ai-secrets") return "New Secret";
         if (t === "ai-models") return "New AI Model";
         if (t === "mcp-servers") return "com.example/new";
+        if (t === "skills") return "@acme/new";
         throw new Error(`Unknown type in getExpectedValue: ${t}`);
       };
 
@@ -344,7 +377,9 @@ describe("NormalPermissionsView", () => {
                     ? /Add AI model/i
                     : type === "mcp-servers"
                       ? /Add MCP server/i
-                      : /Add AI endpoint/i;
+                      : type === "skills"
+                        ? /Add skill/i
+                        : /Add AI endpoint/i;
         fireEvent.click(screen.getByText(addText));
 
         const labelText =
@@ -360,7 +395,9 @@ describe("NormalPermissionsView", () => {
                     ? /AI Model/i
                     : type === "mcp-servers"
                       ? /MCP Server/i
-                      : /AI Endpoint/i;
+                      : type === "skills"
+                        ? /Skill/i
+                        : /AI Endpoint/i;
         const select = screen.getByLabelText(labelText);
         fireEvent.change(select, { target: { value: getExpectedValue(type) } });
 

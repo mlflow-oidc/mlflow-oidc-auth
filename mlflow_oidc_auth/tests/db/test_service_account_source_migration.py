@@ -1,6 +1,7 @@
 """Service account sign-in source migration: every existing service account becomes internal.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped otherwise).
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise).
 """
 
 from sqlalchemy import inspect, text

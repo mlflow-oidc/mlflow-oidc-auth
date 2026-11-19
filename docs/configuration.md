@@ -120,6 +120,7 @@ Both settings apply to browser login (OIDC and SAML) and to bearer auto-provisio
 | `DEFAULT_MLFLOW_PERMISSION` | String | `NO_PERMISSIONS` | Default permission level when no explicit permission is found (deny by default since v7.6.0; it was `MANAGE` before). Options: `READ`, `USE`, `EDIT`, `MANAGE`, `NO_PERMISSIONS`. See [Permissions](permissions) |
 | `PERMISSION_SOURCE_ORDER` | String | `user,group,regex,group-regex` | Comma-separated order for evaluating permission sources. The first source with a matching permission wins. See [Permissions](permissions#permission-source-order) |
 | `RESTRICT_RESOURCE_CREATION` | Boolean | `false` | When enabled, require EDIT+ permission (via name regex / group-regex, with a workspace fallback) to create experiments and registered models. **Note:** ineffective on its own if `DEFAULT_MLFLOW_PERMISSION` is `EDIT` or `MANAGE`. It works with the default `NO_PERMISSIONS` and with `READ` or `USE`, since none of those can create; or use workspaces. Off by default, matching upstream MLflow. See [Resource Creation Authorization](permissions#resource-creation-authorization) |
+| `RESTRICT_USER_AND_GROUP_LISTING` | Boolean | `false` | When enabled, a non-admin is listed only itself, its groups and the members of the workspaces it manages, the workspace member lists need `MANAGE` instead of `READ`, and grant dialogs take a typed name. Admins always see everyone. It hides the directory, not every name: see [Restricting user and group listing](permissions#restricting-user-and-group-listing) for what stays visible |
 
 ### Database
 
@@ -230,6 +231,13 @@ token. See [SCIM Provisioning](scim).
 | `SCIM_ACTIVITY_HEALTHY_WINDOW_SECONDS` | Integer | `86400` | Provisioning counts as healthy while a SCIM request succeeded within this many seconds |
 | `ORPHAN_FALLBACK_PRINCIPAL` | String | None | Username that receives `MANAGE` on resources a hard-deleted user was the last manager of. When unset, orphans are only reported as `resource.orphaned` audit events |
 | `USER_RETENTION_DAYS` | Integer | `0` | Reserved for a future purge of deactivated users. `0` means never; nothing reads it yet |
+
+### Issue detection (MLflow 3.18+)
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS` | Integer | `300` | How often each server process re-checks stored issue detection schedules against their recorded writer, pausing any the writer could no longer write (minimum 30). A pass also runs soon after a permission change, at most once a minute. `0` turns the background check off: schedules are then checked only when written and when an administrator runs the check from the admin UI. See [Recurring issue detection](permissions.md#job-api). |
+| `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY` | Boolean | `false` | When `true`, only administrators may run issue detection on the MLflow server's own provider credentials, whether one-off (`issues/invoke`), as a job, or on a schedule. Everyone else must name a gateway endpoint or secret they have USE on. Recommended for multi-tenant servers whose environment holds provider API keys. |
 
 ### Logging
 

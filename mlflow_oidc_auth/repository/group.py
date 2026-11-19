@@ -828,6 +828,7 @@ class GroupRepository:
             SqlRegisteredModelGroupRegexPermission,
             SqlScorerGroupPermission,
             SqlScorerGroupRegexPermission,
+            SqlSkillGroupPermission,
             SqlWorkspaceGroupPermission,
             SqlWorkspaceGroupRegexPermission,
         )
@@ -872,6 +873,7 @@ class GroupRepository:
                     SqlGatewaySecretGroupPermission,
                     SqlGatewaySecretGroupRegexPermission,
                     SqlMCPServerGroupPermission,
+                    SqlSkillGroupPermission,
                     SqlWorkspaceGroupPermission,
                     SqlWorkspaceGroupRegexPermission,
                 ):

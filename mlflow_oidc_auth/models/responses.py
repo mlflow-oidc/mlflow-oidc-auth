@@ -196,6 +196,18 @@ class McpServerListItem(ResponseModel):
     workspace: Optional[str] = None
 
 
+class SkillListItem(ResponseModel):
+    """A skill of the request's workspace."""
+
+    name: str = Field(..., description="Skill key: <name> or @<organization>/<name>")
+    organization: str = Field("", description="Organization, empty for none")
+    skill_name: str = Field(..., description="Skill name within the organization")
+    description: Optional[str] = None
+    status: Optional[str] = None
+    latest_version: Optional[int] = None
+    workspace: Optional[str] = None
+
+
 class GroupDetail(ResponseModel):
     """A group with its external id and member count (``GET /permissions/groups/details``)."""
 

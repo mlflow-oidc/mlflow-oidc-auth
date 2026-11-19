@@ -90,6 +90,10 @@ from mlflow_oidc_auth.repository.gateway_model_definition_group_regex_permission
     GatewayModelDefinitionPermissionGroupRegexRepository,
 )
 
+from mlflow_oidc_auth.repository.skill_permissions import (
+    SkillGroupPermissionRepository,
+    SkillPermissionRepository,
+)
 from mlflow_oidc_auth.repository.mcp_server_permissions import (
     MCPServerGroupPermissionRepository,
     MCPServerPermissionRepository,
@@ -148,6 +152,8 @@ __all__ = [
     "GatewayModelDefinitionPermissionGroupRegexRepository",
     "MCPServerPermissionRepository",
     "MCPServerGroupPermissionRepository",
+    "SkillPermissionRepository",
+    "SkillGroupPermissionRepository",
     "WorkspacePermissionRepository",
     "WorkspaceGroupPermissionRepository",
     "WorkspaceRegexPermissionRepository",

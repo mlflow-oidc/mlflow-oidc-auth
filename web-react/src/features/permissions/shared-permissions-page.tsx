@@ -72,10 +72,11 @@ export const SharedPermissionsPage = ({
         ]
       : []),
     { id: "mcp-servers", label: "MCP\u00A0Servers" },
+    { id: "skills", label: "Skills" },
     ...(canManageTokens ? [{ id: "tokens", label: "Tokens" }] : []),
   ];
 
-  // MCP servers have user and group grants only: no regex mode there.
+  // MCP servers and skills have user and group grants only: no regex mode there.
   const showRegex =
     isRegexMode && type !== "tokens" && supportsRegexPermissions(type);
 

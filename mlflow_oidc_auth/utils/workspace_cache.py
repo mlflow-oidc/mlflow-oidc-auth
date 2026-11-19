@@ -26,6 +26,8 @@ from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.permissions import Permission
 from mlflow_oidc_auth.utils.grant_context import resolve_workspace_permission, sanitize_log_value
 
+from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
 logger = get_logger()
 
 _cache: CacheBackend | None = None
@@ -143,6 +145,7 @@ def invalidate_workspace_permission(username: str, workspace: str) -> None:
 
     Called by workspace permission router after successful CUD operations.
     """
+    notify_schedule_guard()
     key = _make_cache_key(username, workspace)
     with _GUARD.invalidating():
         for cache in _caches():
@@ -181,6 +184,7 @@ def invalidate_group_workspace_permission(group_name: str, workspace: str) -> No
     query. Previously these changes invalidated nothing and relied on TTL expiry
     (decision D-15), which left revoked access working for up to the cache TTL.
     """
+    notify_schedule_guard()
     if not config.MLFLOW_ENABLE_WORKSPACES:
         # Nothing is cached with workspaces off — skip, and in particular skip the
         # get_group_users lookup, which would otherwise be a wasted query per mutation.
@@ -220,6 +224,7 @@ def flush_workspace_cache() -> None:
     Called by workspace regex permission router after any CUD operation.
     Full flush is necessary because regex changes can affect any user+workspace combo.
     """
+    notify_schedule_guard()
     with _GUARD.invalidating():
         for cache in _caches():
             cache.clear()

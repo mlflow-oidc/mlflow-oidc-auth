@@ -40,6 +40,8 @@ from mlflow_oidc_auth.db.models import (
     SqlScorerGroupRegexPermission,
     SqlScorerPermission,
     SqlScorerRegexPermission,
+    SqlSkillGroupPermission,
+    SqlSkillPermission,
     SqlWorkspaceGroupPermission,
     SqlWorkspaceGroupRegexPermission,
     SqlWorkspacePermission,
@@ -239,6 +241,8 @@ GATEWAY_VAULT = GrantKind(
 )
 # MCP servers have user and group grants only — no pattern tables.
 MCP_SERVER = GrantKind("mcp_server", SqlMCPServerPermission, SqlMCPServerGroupPermission, ("name",), workspace_scoped=True)
+# Skills (MLflow's skill registry) likewise. ``name`` is the skill key: ``<name>`` or ``@<organization>/<name>``.
+SKILL = GrantKind("skill", SqlSkillPermission, SqlSkillGroupPermission, ("name",), workspace_scoped=True)
 WORKSPACE = GrantKind(
     "workspace",
     SqlWorkspacePermission,
@@ -259,6 +263,7 @@ GRANT_KINDS: Tuple[GrantKind, ...] = (
     GATEWAY_MODEL_DEFINITION,
     GATEWAY_VAULT,
     MCP_SERVER,
+    SKILL,
     WORKSPACE,
 )
 
@@ -273,6 +278,7 @@ _WORKSPACE_TABLE_ORDER: Tuple[GrantKind, ...] = (
     GATEWAY_VAULT,
     GATEWAY_MODEL_DEFINITION,
     MCP_SERVER,
+    SKILL,
 )
 
 

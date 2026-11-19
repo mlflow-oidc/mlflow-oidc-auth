@@ -1,7 +1,7 @@
 """Workspace group rules migration (issue #418): the rules table, ``rule_id`` on group grants, and a downgrade that never refuses.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixture as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixture as the Phase 0 migration tests.
 """
 
 from datetime import datetime
@@ -18,6 +18,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     _upgrade,
     db_uri,
     engine,
+    sql,
 )
 
 PREVIOUS_REVISION = "f6a7b8c9d0e1"
@@ -27,17 +28,19 @@ RULES_REVISION = "a7b8c9d0e1f2"
 def _seed_grants(engine) -> None:
     """Manual workspace group grants as they exist at the previous revision."""
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('team-acme', 'manual'), ('team-beta', 'manual')"))
+        conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('team-acme', 'manual'), ('team-beta', 'manual')"))
         conn.execute(
-            text(
+            sql(
+                conn,
                 "INSERT INTO workspace_group_permissions (workspace, group_id, permission) "
-                "SELECT 'acme', id, 'EDIT' FROM groups WHERE group_name = 'team-acme'"
+                "SELECT 'acme', id, 'EDIT' FROM {groups} WHERE group_name = 'team-acme'",
             )
         )
         conn.execute(
-            text(
+            sql(
+                conn,
                 "INSERT INTO workspace_group_permissions (workspace, group_id, permission) "
-                "SELECT 'beta', id, 'READ' FROM groups WHERE group_name = 'team-beta'"
+                "SELECT 'beta', id, 'READ' FROM {groups} WHERE group_name = 'team-beta'",
             )
         )
 
@@ -57,7 +60,7 @@ def _insert_rule(conn, name: str = "tenants") -> int:
 def _grants(engine) -> dict:
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT p.workspace, g.group_name, p.permission, p.rule_id FROM workspace_group_permissions p JOIN groups g ON g.id = p.group_id")
+            sql(conn, "SELECT p.workspace, g.group_name, p.permission, p.rule_id FROM workspace_group_permissions p JOIN {groups} g ON g.id = p.group_id")
         )
         return {(r.workspace, r.group_name): (r.permission, r.rule_id) for r in rows}
 
@@ -112,11 +115,12 @@ class TestDowngrade:
         _upgrade(engine, RULES_REVISION)
         with engine.begin() as conn:
             rule_id = _insert_rule(conn)
-            conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('team-gamma', 'scim')"))
+            conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('team-gamma', 'scim')"))
             conn.execute(
-                text(
+                sql(
+                    conn,
                     "INSERT INTO workspace_group_permissions (workspace, group_id, permission, rule_id) "
-                    "SELECT 'gamma', id, 'EDIT', :r FROM groups WHERE group_name = 'team-gamma'"
+                    "SELECT 'gamma', id, 'EDIT', :r FROM {groups} WHERE group_name = 'team-gamma'",
                 ),
                 {"r": rule_id},
             )
@@ -127,7 +131,9 @@ class TestDowngrade:
         assert "workspace_group_rules" not in inspector.get_table_names()
         assert "rule_id" not in {c["name"] for c in inspector.get_columns("workspace_group_permissions")}
         with engine.connect() as conn:
-            rows = conn.execute(text("SELECT p.workspace, g.group_name, p.permission FROM workspace_group_permissions p JOIN groups g ON g.id = p.group_id"))
+            rows = conn.execute(
+                sql(conn, "SELECT p.workspace, g.group_name, p.permission FROM workspace_group_permissions p JOIN {groups} g ON g.id = p.group_id")
+            )
             assert {(r.workspace, r.group_name): r.permission for r in rows} == {("acme", "team-acme"): "EDIT", ("beta", "team-beta"): "READ"}
 
     def test_round_trip(self, engine):
