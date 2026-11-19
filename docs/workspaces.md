@@ -131,7 +131,7 @@ Workspace permissions use the same levels as resource permissions: `READ`, `USE`
 | `READ` | View the workspace and its resources in search/list results |
 | `USE` | Use resources within the workspace |
 | `EDIT` | Modify resources within the workspace |
-| `MANAGE` | Full control: create experiments/models, manage workspace permissions |
+| `MANAGE` | Full control: create experiments/models (`EDIT` is enough with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`), manage workspace permissions |
 | `NO_PERMISSIONS` | Explicit denial — workspace is hidden from all results |
 
 ### No Implicit Access
@@ -206,11 +206,22 @@ With workspaces enabled, creation is intentionally stricter than update by defau
 #### Letting `EDIT` members create
 
 `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT` lowers the creation gate to workspace `EDIT` for every
-workspace-gated create (experiments, registered models, gateway resources and MCP servers). Members
-can then create resources, and receive `MANAGE` on what they create, without the workspace-level
-rights `MANAGE` carries: they cannot update or delete the workspace or grant workspace access.
-Deleting resources they did not create still needs `MANAGE` on those resources, for example
-through a resource or regex grant. The default, `MANAGE`, keeps the stricter behaviour.
+workspace-gated create (experiments, registered models, gateway resources, MCP servers and skills).
+Members can then create resources, and receive `MANAGE` on what they create, without the
+workspace-level rights `MANAGE` carries: they cannot update or delete the workspace or grant
+workspace access. Deleting resources they did not create still needs `MANAGE` on those resources,
+for example through a resource or regex grant. The default, `MANAGE`, keeps the stricter behaviour.
+
+With `EDIT`, **every** workspace `EDIT` grant becomes a right to create — including the `EDIT` a
+[group rule](#group-rules) gives (rules may grant up to `EDIT` by default, to anyone whose identity
+provider group matches) and the `EDIT` that `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT` gives every
+auto-assigned user. `MANAGE` on what they create also lets them share it with users outside the
+workspace. The server logs a warning at startup when the setting is `EDIT` and workspaces are enabled.
+
+The threshold applies to the workspace a create names. A Flask create (experiments, models, gateway
+resources) that sends no `X-MLFLOW-WORKSPACE` header is still let through for backward
+compatibility, as described below, while the MCP server and skill registries judge such a request
+against the `default` workspace; set the two settings below to treat both alike.
 
 #### Hardening creation for clients that send no workspace context
 
@@ -258,7 +269,8 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 MLflow (3.18+) keeps a skill registry per workspace, and each skill has its own user and group
 grants, recorded in the skill's workspace (see [Permissions → Skill Registry](permissions#skill-registry)).
 Without a grant on a skill, the caller's permission on the workspace decides; creating a skill needs
-`MANAGE` on the workspace. Deleting a workspace removes the grants on its skills.
+`MANAGE` on the workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`). Deleting a
+workspace removes the grants on its skills.
 
 ### MCP server registry
 
@@ -368,7 +380,8 @@ With this rule, the group `team-acme-ds` gets `EDIT` on the workspace `acme`, an
   by hand.
 
 Whoever can create a group whose name matches a rule gets the rule's permission — in your identity
-provider, that may be more people than you think. Keep patterns narrow (anchor the workspace part to
+provider, that may be more people than you think. With `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`, a
+rule's `EDIT` also lets them create resources there. Keep patterns narrow (anchor the workspace part to
 the names you expect, e.g. `(?P<ws>acme|globex)`), and prefer a low permission. Patterns run on
 every login that creates a group; avoid nested quantifiers such as `(a+)+`, which can take very long
 on a long group name.

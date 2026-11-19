@@ -277,8 +277,8 @@ class AppConfig:
         self.OIDC_WORKSPACE_DEFAULT_PERMISSION = config_manager.get("OIDC_WORKSPACE_DEFAULT_PERMISSION", "NO_PERMISSIONS")
         self.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = config_manager.get_bool("OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT", default=False)
         self.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = config_manager.get_bool("OIDC_WORKSPACE_DENY_DEFAULT_CREATION", default=False)
-        # The workspace permission needed to create experiments, models, gateway resources and MCP
-        # servers in a workspace: MANAGE (default) or EDIT. Normalised by
+        # The workspace permission needed to create experiments, models, gateway resources, MCP
+        # servers and skills in a workspace: MANAGE (default) or EDIT. Normalised by
         # _resolve_workspace_creation_permission below.
         self.OIDC_WORKSPACE_CREATION_PERMISSION = config_manager.get("OIDC_WORKSPACE_CREATION_PERMISSION", "MANAGE")
 
@@ -549,6 +549,12 @@ class AppConfig:
             logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE; treating the unrecognised value as MANAGE.")
             value = "MANAGE"
         self.OIDC_WORKSPACE_CREATION_PERMISSION = value
+        if value == "EDIT" and self.MLFLOW_ENABLE_WORKSPACES:
+            logger.warning(
+                "OIDC_WORKSPACE_CREATION_PERMISSION=EDIT: every workspace EDIT grant also creates resources, and the creator "
+                "holds MANAGE on each, which can share it beyond the workspace. That includes EDIT given by workspace group "
+                "rules (WORKSPACE_RULES_MAX_PERMISSION, EDIT by default) and by OIDC_WORKSPACE_DEFAULT_PERMISSION."
+            )
 
     def _warn_if_group_name_unusable(self) -> None:
         """Warn at startup when OIDC_GROUP_NAME or OIDC_ADMIN_GROUP_NAME is unusable.

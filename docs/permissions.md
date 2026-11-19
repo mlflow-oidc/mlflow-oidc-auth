@@ -662,7 +662,8 @@ workspace member out of it.
 
 **Creating a skill.**
 
-- workspaces enabled — `MANAGE` on the workspace, subject to
+- workspaces enabled — `MANAGE` on the workspace (`EDIT` with
+  `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`), subject to
   `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`: the same
   threshold as creating experiments, models, gateway resources and MCP servers;
 - workspaces disabled — any authenticated user, unless `RESTRICT_RESOURCE_CREATION` is set. That
@@ -732,7 +733,7 @@ For workspace-specific permission behavior, see [Workspaces](workspaces).
 Key points:
 - Workspace permissions serve a dual role: workspace access control **and** resource-level fallback
 - When workspaces are enabled, `DEFAULT_MLFLOW_PERMISSION` is not used as a resource fallback — workspace permissions take that role
-- With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
+- With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`, unless `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 - Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
 
