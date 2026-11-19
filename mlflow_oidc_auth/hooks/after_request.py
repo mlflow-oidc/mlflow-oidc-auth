@@ -973,9 +973,9 @@ def _filter_list_artifact_root(resp: Response) -> None:
     if workspaces_enabled:
         from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
-        from mlflow_oidc_auth.bridge.user import get_request_workspace
+        from mlflow_oidc_auth.bridge.user import get_authorization_workspace
 
-        request_workspace = get_request_workspace() or DEFAULT_WORKSPACE_NAME
+        request_workspace = get_authorization_workspace() or DEFAULT_WORKSPACE_NAME
         allowed_workspaces = {workspace or request_workspace for workspace in roots}
 
     # One batched store lookup for every candidate, not one per listed directory.

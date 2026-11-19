@@ -543,12 +543,16 @@ def _grant_scope() -> Tuple[str, str]:
 
 
 def _request_workspace() -> str | None:
-    """The workspace the request names, None for a header-less request or with workspaces off."""
+    """The workspace the request names, None for a header-less request or with workspaces off.
+
+    A header-less request that MLflow serves from ``MLFLOW_WORKSPACE`` gets that workspace, see
+    :func:`mlflow_oidc_auth.bridge.user.get_authorization_workspace`.
+    """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
 
-    return get_request_workspace()
+    return get_authorization_workspace()
 
 
 class GrantContext:

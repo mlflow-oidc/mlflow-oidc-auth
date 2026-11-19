@@ -351,3 +351,172 @@ class TestAuthAwareWSGIMiddleware:
         assert captured_environ["mlflow_oidc_auth"].username == "integration@example.com"
         assert captured_environ["mlflow_oidc_auth"].is_admin is True
         assert captured_environ["mlflow_oidc_auth"].workspace == "test-ws"
+
+
+class TestWSGIBridgeConcurrency:
+    """The bridge must not run all Flask requests of a process on one thread."""
+
+    @staticmethod
+    def _scope(path):
+        return {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "root_path": "",
+            "query_string": b"",
+            "headers": [],
+            "server": ("testserver", 80),
+            "client": ("testclient", 1234),
+        }
+
+    @staticmethod
+    async def _call(middleware, path):
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        await middleware(TestWSGIBridgeConcurrency._scope(path), receive, send)
+        return sent
+
+    async def test_slow_request_does_not_block_another(self):
+        """A request that blocks its thread must not delay a second request on the same middleware.
+
+        asgiref's stock WsgiToAsgi runs every call on one shared thread, so the fast request
+        below would wait for the slow one to finish.
+        """
+        import asyncio
+        import threading
+
+        slow_started = threading.Event()
+        release_slow = threading.Event()
+
+        def app(environ, start_response):
+            if environ["PATH_INFO"] == "/slow":
+                slow_started.set()
+                release_slow.wait(timeout=10)
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [environ["PATH_INFO"].encode()]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+        slow = asyncio.create_task(self._call(middleware, "/slow"))
+        fast = None
+        try:
+            assert await asyncio.to_thread(slow_started.wait, 5)
+            fast = asyncio.create_task(self._call(middleware, "/fast"))
+            # Wait without cancelling: a cancelled call can stay queued on asgiref's shared thread.
+            done, _ = await asyncio.wait({fast}, timeout=5)
+            fast_finished_first = fast in done
+        finally:
+            release_slow.set()
+        slow_sent, fast_sent = await asyncio.gather(slow, fast)
+        assert fast_finished_first, "the fast request waited for the slow one: the bridge ran them one at a time"
+        assert fast_sent[0]["status"] == 200
+        assert b"".join(m.get("body", b"") for m in fast_sent if m["type"] == "http.response.body") == b"/fast"
+        assert slow_sent[0]["status"] == 200
+
+    async def test_auth_context_reaches_each_concurrent_request(self):
+        """Concurrent requests each see their own AuthContext, never another request's."""
+        import asyncio
+
+        seen = {}
+
+        def app(environ, start_response):
+            ctx = environ.get("mlflow_oidc_auth")
+            seen[environ["PATH_INFO"]] = ctx.username if ctx else None
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+
+        async def call_as(user):
+            scope = self._scope(f"/{user}")
+            scope["mlflow_oidc_auth"] = AuthContext(username=f"{user}@example.com", is_admin=False)
+
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(message):
+                pass
+
+            await middleware(scope, receive, send)
+
+        users = [f"user{i}" for i in range(20)]
+        await asyncio.gather(*(call_as(u) for u in users))
+        assert seen == {f"/{u}": f"{u}@example.com" for u in users}
+
+    def test_pool_size_follows_wsgi_threads(self):
+        """The Flask requests run on a pool of WSGI_THREADS threads, not on the event loop's default executor."""
+        from mlflow_oidc_auth.config import config
+        from mlflow_oidc_auth.middleware import auth_aware_wsgi_middleware as bridge
+
+        assert bridge._WSGI_EXECUTOR._max_workers == config.WSGI_THREADS
+
+    async def test_pool_caps_concurrent_requests(self):
+        """No more Flask requests run at once than WSGI_THREADS; the next one waits for a free thread."""
+        import asyncio
+        import threading
+
+        from mlflow_oidc_auth.config import config
+
+        size = config.WSGI_THREADS
+        lock = threading.Lock()
+        running, peak = [0], [0]
+        pool_full, release = threading.Event(), threading.Event()
+
+        def app(environ, start_response):
+            with lock:
+                running[0] += 1
+                peak[0] = max(peak[0], running[0])
+                if running[0] == size:
+                    pool_full.set()
+            release.wait(timeout=10)
+            with lock:
+                running[0] -= 1
+            start_response("200 OK", [("Content-Type", "text/plain")])
+            return [b"ok"]
+
+        middleware = AuthAwareWSGIMiddleware(app)
+        calls = [asyncio.create_task(self._call(middleware, f"/r{i}")) for i in range(size + 1)]
+        try:
+            filled = await asyncio.to_thread(pool_full.wait, 5)
+            await asyncio.sleep(0.2)
+            peak_while_full = peak[0]
+        finally:
+            # Let every request finish before any assertion fails: a request left running would
+            # wait forever on the closed event loop to send its response.
+            release.set()
+            results = await asyncio.gather(*calls)
+        assert filled, "the pool never ran WSGI_THREADS requests at once"
+        assert peak_while_full == size, "one request more than WSGI_THREADS ran while every pool thread was busy"
+        assert all(sent[0]["status"] == 200 for sent in results)
+
+
+class TestWSGIThreadsSetting:
+    """WSGI_THREADS sizes the thread pool that runs the Flask requests (issue #482)."""
+
+    def test_default_is_four(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.delenv("WSGI_THREADS", raising=False)
+        assert AppConfig().WSGI_THREADS == 4
+
+    def test_env_value_is_read(self, monkeypatch):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.setenv("WSGI_THREADS", "2")
+        assert AppConfig().WSGI_THREADS == 2
+
+    @pytest.mark.parametrize("bad", ["0", "-1", "many"])
+    def test_invalid_value_uses_the_default(self, monkeypatch, bad):
+        from mlflow_oidc_auth.config import AppConfig
+
+        monkeypatch.setenv("WSGI_THREADS", bad)
+        assert AppConfig().WSGI_THREADS == 4
