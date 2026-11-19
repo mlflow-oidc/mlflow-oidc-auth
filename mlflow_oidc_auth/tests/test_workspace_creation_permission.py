@@ -54,10 +54,13 @@ class TestConfig:
         with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": value}):
             assert AppConfig().OIDC_WORKSPACE_CREATION_PERMISSION == "MANAGE"
 
-    def test_the_warning_names_the_rejected_value(self):
+    def test_the_warning_never_echoes_the_rejected_value(self):
+        """Configuration can come from a secret provider: a mistaken value is never logged."""
         with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": "edtt"}), patch("mlflow_oidc_auth.config.logger") as logger:
             AppConfig()
-        assert any("edtt" in str(call.args[1:]) for call in logger.warning.call_args_list)
+        calls = [call for call in logger.warning.call_args_list if "OIDC_WORKSPACE_CREATION_PERMISSION" in str(call.args[0])]
+        assert calls
+        assert not any("edtt" in str(call) for call in calls)
 
 
 class TestStartupWarning:

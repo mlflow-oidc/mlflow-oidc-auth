@@ -547,7 +547,9 @@ class AppConfig:
         raw = str(self.OIDC_WORKSPACE_CREATION_PERMISSION or "")
         value = raw.strip().upper()
         if value not in ("EDIT", "MANAGE"):
-            logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE, not %r; treating it as MANAGE.", raw[:64])
+            # The value is not echoed: configuration can come from a secret provider, and a value set
+            # by mistake may be one.
+            logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE (got %d characters, not shown); treating it as MANAGE.", len(raw))
             value = "MANAGE"
         self.OIDC_WORKSPACE_CREATION_PERMISSION = value
         if value == "EDIT" and self.MLFLOW_ENABLE_WORKSPACES:
