@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from mlflow_oidc_auth.config import AppConfig
-from mlflow_oidc_auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE, meets_workspace_creation_threshold
+from mlflow_oidc_auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE, meets_workspace_creation_threshold, workspace_creation_requirement
 
 
 class TestThreshold:
@@ -18,10 +18,24 @@ class TestThreshold:
     def test_edit_threshold_admits_edit_and_manage(self, permission, allowed):
         assert meets_workspace_creation_threshold(permission, "EDIT") is allowed
 
-    @pytest.mark.parametrize("threshold", ["READ", "edit", "", None, object()])
-    def test_anything_but_exactly_edit_requires_manage(self, threshold):
+    @pytest.mark.parametrize("threshold", ["READ", "USE", "NO_PERMISSIONS", "EDITOR", "", None, object()])
+    def test_anything_but_edit_requires_manage(self, threshold):
+        assert workspace_creation_requirement(threshold) is MANAGE
         assert meets_workspace_creation_threshold(EDIT, threshold) is False
+        assert meets_workspace_creation_threshold(NO_PERMISSIONS, threshold) is False
         assert meets_workspace_creation_threshold(MANAGE, threshold) is True
+
+    @pytest.mark.parametrize("threshold", ["EDIT", "edit", " Edit "])
+    def test_edit_in_any_spelling_is_the_same_rule_as_the_config(self, threshold):
+        """The helper and the config agree: what the config normalises to EDIT, the helper reads as EDIT."""
+        assert workspace_creation_requirement(threshold) is EDIT
+        assert meets_workspace_creation_threshold(EDIT, threshold) is True
+        assert meets_workspace_creation_threshold(USE, threshold) is False
+
+    def test_no_permissions_never_meets_a_threshold_despite_its_priority(self):
+        assert NO_PERMISSIONS.priority > MANAGE.priority
+        for threshold in ("EDIT", "MANAGE"):
+            assert meets_workspace_creation_threshold(NO_PERMISSIONS, threshold) is False
 
 
 class TestConfig:
@@ -39,6 +53,11 @@ class TestConfig:
     def test_unrecognised_values_fail_closed_to_manage(self, value):
         with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": value}):
             assert AppConfig().OIDC_WORKSPACE_CREATION_PERMISSION == "MANAGE"
+
+    def test_the_warning_names_the_rejected_value(self):
+        with patch.dict(os.environ, {"OIDC_WORKSPACE_CREATION_PERMISSION": "edtt"}), patch("mlflow_oidc_auth.config.logger") as logger:
+            AppConfig()
+        assert any("edtt" in str(call.args[1:]) for call in logger.warning.call_args_list)
 
 
 class TestStartupWarning:

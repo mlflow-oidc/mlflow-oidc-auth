@@ -361,6 +361,12 @@ class TestCreate:
         assert api.bob.post(f"{API}/@acme/linter/versions", json=REMOTE, headers=A).status_code == 200
         assert _grants(store) == [(BOB, "@acme/linter", "team-a", "MANAGE"), (BOB, "reviewer", "team-a", "MANAGE")]
 
+    def test_manage_on_the_workspace_still_creates_when_the_creation_threshold_is_edit(self, api, store, members, monkeypatch):
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+
+        assert api.alice.post(API, json={"name": "reviewer"}, headers=A).status_code == 200
+        assert _grants(store) == [(ALICE, "reviewer", "team-a", "MANAGE")]
+
     @pytest.mark.parametrize("permission", ["READ", "USE"])
     def test_less_than_edit_cannot_create_when_the_creation_threshold_is_edit(self, api, store, members, monkeypatch, permission):
         monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")

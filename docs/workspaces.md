@@ -199,8 +199,8 @@ Result: Access denied (NO_PERMISSIONS)
 
 With workspaces enabled, creation is intentionally stricter than update by default:
 
-- `CreateExperiment` requires workspace `MANAGE`
-- `CreateRegisteredModel` requires workspace `MANAGE`
+- `CreateExperiment` requires workspace `MANAGE` (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
+- `CreateRegisteredModel` requires workspace `MANAGE` (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
 - Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
 
 #### Letting `EDIT` members create
@@ -239,7 +239,9 @@ Admins bypass both guards. Enabling both gives the strictest posture: every non-
 a non-default workspace on which the user holds `MANAGE` (or `EDIT`, with
 `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`).
 
-This means the following setup allows users to edit existing resources but not create new ones:
+This means the following setup allows users to edit existing resources but not create new ones in
+the workspaces they are assigned to (with the default `OIDC_WORKSPACE_CREATION_PERMISSION=MANAGE`;
+with `EDIT` they create there too):
 
 ```bash
 MLFLOW_ENABLE_WORKSPACES=true

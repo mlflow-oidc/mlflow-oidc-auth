@@ -544,9 +544,10 @@ class AppConfig:
         carries (update or delete the workspace, grant access onward). An unrecognised value is
         treated as MANAGE: a typo in a creation threshold must not lower it.
         """
-        value = str(self.OIDC_WORKSPACE_CREATION_PERMISSION or "").strip().upper()
+        raw = str(self.OIDC_WORKSPACE_CREATION_PERMISSION or "")
+        value = raw.strip().upper()
         if value not in ("EDIT", "MANAGE"):
-            logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE; treating the unrecognised value as MANAGE.")
+            logger.warning("OIDC_WORKSPACE_CREATION_PERMISSION must be EDIT or MANAGE, not %r; treating it as MANAGE.", raw[:64])
             value = "MANAGE"
         self.OIDC_WORKSPACE_CREATION_PERMISSION = value
         if value == "EDIT" and self.MLFLOW_ENABLE_WORKSPACES:

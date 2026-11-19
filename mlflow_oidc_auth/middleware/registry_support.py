@@ -16,6 +16,7 @@ from starlette.responses import Response
 from mlflow_oidc_auth.bridge.user import clear_auth_context, set_auth_context
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import AuthContext
+from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
 
 
 @contextmanager
@@ -61,8 +62,6 @@ def can_create_in_request_workspace(username: str) -> bool:
         return False
     if effective == DEFAULT_WORKSPACE_NAME and config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION:
         return False
-    from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
-
     permission = get_workspace_permission_cached(username, effective)
     return meets_workspace_creation_threshold(permission, config.OIDC_WORKSPACE_CREATION_PERMISSION)
 

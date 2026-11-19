@@ -369,6 +369,13 @@ class TestCreate:
         assert response.status_code == 200, response.text
         assert _grants(store) == [(BOB, SERVER, "team-a", "MANAGE")]
 
+    def test_manage_on_the_workspace_still_creates_when_the_creation_threshold_is_edit(self, api, store, members, registry, monkeypatch):
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+
+        response = api.alice.post(API, json={"name": SERVER}, headers=ws("team-a"))
+        assert response.status_code == 200, response.text
+        assert _grants(store) == [(ALICE, SERVER, "team-a", "MANAGE")]
+
     def test_read_on_the_workspace_cannot_create_when_the_creation_threshold_is_edit(self, api, store, members, registry, monkeypatch):
         monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
 

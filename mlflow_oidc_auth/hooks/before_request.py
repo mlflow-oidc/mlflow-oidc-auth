@@ -188,6 +188,7 @@ from mlflow_oidc_auth.hooks.dual_spelling_guard import find_dual_spelling_collis
 from mlflow_oidc_auth.hooks.http_method import authorization_method
 from mlflow_oidc_auth.hooks.route_policy import is_filtered_in_after_request, is_legitimately_open, strip_static_prefix
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold, workspace_creation_requirement
 from mlflow_oidc_auth.validators.review import enforce_review_queue_name_not_username
 from mlflow_oidc_auth.validators import (
     validate_can_create_experiment,
@@ -1119,12 +1120,10 @@ def before_request_hook():
             logger.warning(f"Denying {request.method} {request.path} for {username}: creation in the '{DEFAULT_WORKSPACE_NAME}' workspace is disabled")
             return responses.make_forbidden_response()
         if workspace is not None:
-            from mlflow_oidc_auth.permissions import meets_workspace_creation_threshold
-
             ws_perm = get_workspace_permission_cached(username, workspace)
             threshold = config.OIDC_WORKSPACE_CREATION_PERMISSION
             if not meets_workspace_creation_threshold(ws_perm, threshold):
-                required = "EDIT" if threshold == "EDIT" else "MANAGE"
+                required = workspace_creation_requirement(threshold).name
                 logger.warning(f"Denying {request.method} {request.path} for {username}: {required} required on workspace '{workspace}'")
                 return responses.make_forbidden_response()
     # authorization

@@ -799,7 +799,16 @@ class TestWorkspaceCreationGating:
             ("MANAGE", "EDIT", True),
             ("READ", "EDIT", False),
             ("USE", "EDIT", False),
+            ("NO_PERMISSIONS", "EDIT", False),
+            (None, "EDIT", False),
+            ("MANAGE", "MANAGE", True),
             ("EDIT", "MANAGE", False),
+            ("NO_PERMISSIONS", "MANAGE", False),
+            (None, "MANAGE", False),
+            # A value that bypassed config normalisation still never lowers the gate.
+            ("EDIT", "READ", False),
+            ("MANAGE", "READ", True),
+            ("EDIT", None, False),
         ],
     )
     def test_before_request_hook_creation_threshold(self, path, granted, threshold, allowed):
@@ -824,7 +833,7 @@ class TestWorkspaceCreationGating:
                     ):
                         with patch(
                             "mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached",
-                            return_value=get_permission(granted),
+                            return_value=get_permission(granted) if granted else None,
                         ):
                             with patch(
                                 "mlflow_oidc_auth.hooks.before_request._find_validator",
@@ -836,6 +845,27 @@ class TestWorkspaceCreationGating:
                                 else:
                                     assert resp is not None
                                     assert resp.status_code == 403
+
+    def test_before_request_hook_creation_threshold_does_not_reach_non_create_routes(self):
+        """The threshold gates creation only: an update with workspace READ is left to its validator."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+        from mlflow_oidc_auth.permissions import READ
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/2.0/mlflow/experiments/update", method="POST"):
+            with (
+                patch("mlflow_oidc_auth.hooks.before_request._get_auth_context", return_value=("testuser", False)),
+                patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config,
+                patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value="team-ws"),
+                patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=READ) as lookup,
+                patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
+            ):
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = False
+                mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = False
+                mock_config.OIDC_WORKSPACE_CREATION_PERMISSION = "MANAGE"
+                assert before_request_hook() is None
+                lookup.assert_not_called()
 
     def test_before_request_hook_workspaces_disabled_no_creation_check(self):
         """before_request_hook skips creation gating when workspaces disabled."""
