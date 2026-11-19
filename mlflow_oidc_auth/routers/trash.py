@@ -20,6 +20,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.trash import (
+    PermissionSweepResponse,
     TRASH_CLEANUP_ERROR_RESPONSES,
     TRASH_ERROR_RESPONSES,
     DeletedExperimentListResponse,
@@ -28,6 +29,8 @@ from mlflow_oidc_auth.models.trash import (
     RestoredRunResponse,
     TrashCleanupResponse,
 )
+from mlflow_oidc_auth.orphans import experiments_definitively_missing
+from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
@@ -50,6 +53,7 @@ RUNS = "/runs"
 CLEANUP = "/cleanup"
 RESTORE_EXPERIMENT = f"{EXPERIMENTS}/{{experiment_id}}/restore"
 RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
+PERMISSIONS_SWEEP = "/permissions/sweep"
 
 
 @trash_router.get(
@@ -455,6 +459,7 @@ async def permanently_delete_all_trashed_entities(
 
         # Delete experiments
         deleted_experiments = []
+        failed_permission_cleanups: List[dict] = []
 
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
@@ -490,6 +495,23 @@ async def permanently_delete_all_trashed_entities(
                 except Exception as e:
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
+                    continue
+
+                # The experiment is gone for good: its grants name nothing now. A failure here must not
+                # undo or hide the successful delete, so it is reported separately and the sweep
+                # endpoint can finish the job later.
+                try:
+                    removed = store.delete_permissions_for_experiments([experiment_id])
+                    emit_audit_event(
+                        "trash.permissions_cleanup",
+                        admin_username,
+                        resource_type="experiment_permission",
+                        resource_id=experiment_id,
+                        detail={"removed_rows": removed},
+                    )
+                except Exception:
+                    logger.exception("Could not remove the permission rows of permanently deleted experiment %s", experiment_id)
+                    failed_permission_cleanups.append({"experiment_id": experiment_id, "error": "Failed to remove permission rows"})
 
         # Prepare response
         response_data = {
@@ -504,6 +526,9 @@ async def permanently_delete_all_trashed_entities(
 
         if failed_experiments:
             response_data["failed_experiments"] = failed_experiments
+
+        if failed_permission_cleanups:
+            response_data["failed_permission_cleanups"] = failed_permission_cleanups
 
         logger.info(f"Admin user '{admin_username}' completed cleanup: " f"{len(deleted_runs)} runs, {len(deleted_experiments)} experiments deleted")
 
@@ -526,6 +551,61 @@ async def permanently_delete_all_trashed_entities(
     except Exception:
         logger.exception("Error in cleanup operation for admin %s", admin_username)
         return JSONResponse(status_code=500, content={"error": "Cleanup operation failed"})
+
+
+@trash_router.post(
+    PERMISSIONS_SWEEP,
+    response_model=PermissionSweepResponse,
+    responses=TRASH_CLEANUP_ERROR_RESPONSES,
+    summary="Remove permission rows of experiments that no longer exist",
+    description=(
+        "Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after "
+        "`mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace "
+        "reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. "
+        "A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true."
+    ),
+)
+def sweep_orphaned_experiment_permissions(
+    admin_username: str = Depends(check_admin_permission),
+    dry_run: bool = Query(True, description="Only report what would be removed (default). Pass false to delete."),
+) -> JSONResponse:
+    """Remove grant rows that name experiments the tracking store no longer has.
+
+    Parameters:
+        admin_username: The authenticated admin username (injected by dependency).
+        dry_run: When true (the default) nothing is deleted.
+
+    Returns:
+        A ``PermissionSweepResponse`` body; a 500 ``{"error": ...}`` when the grant rows cannot be
+        listed or deleted.
+    """
+    try:
+        granted_ids = store.list_experiment_ids_with_grants()
+        missing_set, unresolved_set = experiments_definitively_missing(granted_ids)
+        missing, unresolved = sorted(missing_set), sorted(unresolved_set)
+        removed = 0
+        if missing and not dry_run:
+            removed = store.delete_permissions_for_experiments(missing)
+    except Exception:
+        logger.exception("Error sweeping orphaned experiment permissions for admin %s", admin_username)
+        return JSONResponse(status_code=500, content={"error": "Permission sweep failed"})
+
+    logger.info(f"Admin user '{admin_username}' swept experiment permissions (dry_run={dry_run}): {len(missing)} missing experiments, {removed} rows removed")
+    emit_audit_event(
+        "trash.permissions_sweep",
+        admin_username,
+        resource_type="experiment_permission",
+        detail={"dry_run": dry_run, "missing_experiments": missing, "removed_rows": removed},
+    )
+    return JSONResponse(
+        content={
+            "dry_run": dry_run,
+            "checked_experiments": len(granted_ids),
+            "missing_experiments": missing,
+            "unresolved_experiments": unresolved,
+            "removed_rows": removed,
+        }
+    )
 
 
 @trash_router.post(

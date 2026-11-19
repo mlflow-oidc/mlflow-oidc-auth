@@ -3321,6 +3321,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oidc/trash/permissions/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove permission rows of experiments that no longer exist
+         * @description Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true.
+         */
+        post: operations["sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oidc/trash/runs": {
         parameters: {
             query?: never;
@@ -4883,6 +4903,29 @@ export interface components {
             permission: string;
         };
         /**
+         * PermissionSweepResponse
+         * @description ``POST /oidc/trash/permissions/sweep``.
+         *
+         *     Attributes:
+         *         dry_run: True when nothing was deleted.
+         *         checked_experiments: Distinct experiment ids that some grant row names.
+         *         missing_experiments: Ids the tracking store definitively does not have (in any workspace).
+         *         unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+         *         removed_rows: Grant rows deleted (always 0 for a dry run).
+         */
+        PermissionSweepResponse: {
+            /** Checked Experiments */
+            checked_experiments: number;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Missing Experiments */
+            missing_experiments: string[];
+            /** Removed Rows */
+            removed_rows: number;
+            /** Unresolved Experiments */
+            unresolved_experiments: string[];
+        };
+        /**
          * PromptPermission
          * @description Model for creating or updating a prompt permission.
          *
@@ -5641,6 +5684,8 @@ export interface components {
             deleted_runs: string[];
             /** Failed Experiments */
             failed_experiments?: components["schemas"]["FailedExperiment"][] | null;
+            /** Failed Permission Cleanups */
+            failed_permission_cleanups?: components["schemas"]["FailedExperiment"][] | null;
             /** Failed Runs */
             failed_runs?: components["schemas"]["FailedRun"][] | null;
             /** Total Deleted Experiments */
@@ -18590,6 +18635,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post: {
+        parameters: {
+            query?: {
+                /** @description Only report what would be removed (default). Pass false to delete. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionSweepResponse"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashErrorResponse"];
+                };
+            };
+            /** @description Forbidden - Insufficient permissions */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Resource not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Cleanup failed; after a failed lookup of candidates nothing was deleted */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashErrorResponse"];
                 };
             };
         };

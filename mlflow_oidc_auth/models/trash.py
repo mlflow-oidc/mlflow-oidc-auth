@@ -74,7 +74,7 @@ class TrashCleanupResponse(ResponseModel):
     ``deleted_*`` is gone.
     """
 
-    __absent_fields__ = frozenset({"failed_runs", "failed_experiments"})
+    __absent_fields__ = frozenset({"failed_runs", "failed_experiments", "failed_permission_cleanups"})
 
     deleted_runs: List[str]
     deleted_experiments: List[str]
@@ -82,6 +82,9 @@ class TrashCleanupResponse(ResponseModel):
     total_deleted_experiments: int
     failed_runs: Optional[List[FailedRun]] = None
     failed_experiments: Optional[List[FailedExperiment]] = None
+    #: Experiments that were deleted (they are in ``deleted_experiments``) but whose permission rows
+    #: could not be removed; ``POST /oidc/trash/permissions/sweep`` removes them later.
+    failed_permission_cleanups: Optional[List[FailedExperiment]] = None
 
 
 class RestoredExperiment(ResponseModel):
@@ -113,6 +116,24 @@ class RestoredRunResponse(ResponseModel):
     """``POST /oidc/trash/runs/{run_id}/restore``."""
 
     run: RestoredRun
+
+
+class PermissionSweepResponse(ResponseModel):
+    """``POST /oidc/trash/permissions/sweep``.
+
+    Attributes:
+        dry_run: True when nothing was deleted.
+        checked_experiments: Distinct experiment ids that some grant row names.
+        missing_experiments: Ids the tracking store definitively does not have (in any workspace).
+        unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+        removed_rows: Grant rows deleted (always 0 for a dry run).
+    """
+
+    dry_run: bool
+    checked_experiments: int
+    missing_experiments: List[str]
+    unresolved_experiments: List[str]
+    removed_rows: int
 
 
 #: The 400/404 bodies every trash endpoint can return, for ``responses=``.

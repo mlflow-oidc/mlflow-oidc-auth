@@ -286,6 +286,58 @@ def _experiment_locations(experiment_ids: List[str]) -> Dict[str, Tuple[str, str
     return names
 
 
+def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str], Set[str]]:
+    """Split ``experiment_ids`` into those the tracking store definitively lacks and those it could not settle.
+
+    Stricter than :func:`_experiment_locations`, which treats every failure as "unresolved": an id is
+    *missing* only when every workspace answered ``RESOURCE_DOES_NOT_EXIST`` for it. Any other error, an
+    unavailable tracking store or an unlistable workspace set makes it *unresolved*. A caller that
+    deletes on this result must delete only the missing ids - never on uncertainty. A trashed
+    (soft-deleted) experiment still exists, so it is in neither set; neither is any other id that exists.
+
+    Parameters:
+        experiment_ids: Experiment ids to check.
+
+    Returns:
+        ``(missing, unresolved)``.
+    """
+    from mlflow.exceptions import MlflowException
+    from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
+
+    workspaces = _lookup_workspaces()
+    if not workspaces:
+        return set(), set(experiment_ids)
+    try:
+        from mlflow.server.handlers import _get_tracking_store
+
+        tracking_store = _get_tracking_store()
+    except Exception:
+        logger.warning("Orphan sweep: tracking store unavailable; nothing is reported missing")
+        return set(), set(experiment_ids)
+    missing: Set[str] = set()
+    unresolved: Set[str] = set()
+    for experiment_id in experiment_ids:
+        outcome = "missing"
+        for workspace in workspaces:
+            try:
+                with _in_workspace(workspace):
+                    tracking_store.get_experiment(experiment_id)
+                outcome = "exists"
+                break
+            except MlflowException as exc:
+                if exc.error_code != ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+                    outcome = "unresolved"
+                    break
+            except Exception:
+                outcome = "unresolved"
+                break
+        if outcome == "missing":
+            missing.add(experiment_id)
+        elif outcome == "unresolved":
+            unresolved.add(experiment_id)
+    return missing, unresolved
+
+
 def _prompt_kinds(names: List[str]) -> Dict[str, Set[bool]]:
     """``{name: {is_prompt, ...}}`` from the model registry, across workspaces. Unresolved names are left out.
 

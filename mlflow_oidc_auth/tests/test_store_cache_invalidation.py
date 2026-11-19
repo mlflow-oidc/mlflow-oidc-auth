@@ -221,6 +221,13 @@ class TestCacheInvalidationWiring:
         mock_flush.assert_called_once()
 
 
+class TestExperimentBulkDelete:
+    @patch(FLUSH_PATCH_PATH)
+    def test_delete_permissions_for_experiments_flushes_cache(self, mock_flush, mock_store):
+        mock_store.delete_permissions_for_experiments(["1"])
+        mock_flush.assert_called_once()
+
+
 class TestCacheNotInvalidatedForReadOps:
     """Verify that read-only methods do NOT flush the permission cache."""
 
@@ -334,6 +341,7 @@ class TestComprehensiveCUDCoverage:
             "update_scorer_permission": ("exp1", "scorer1", "user1", "MANAGE"),
             "delete_scorer_permission": ("exp1", "scorer1", "user1"),
             "delete_scorer_permissions_for_scorer": ("exp1", "scorer1"),
+            "delete_permissions_for_experiments": (["exp1"],),
             "create_group_scorer_permission": ("group1", "exp1", "scorer1", "READ"),
             "update_group_scorer_permission": ("group1", "exp1", "scorer1", "MANAGE"),
             "delete_group_scorer_permission": ("group1", "exp1", "scorer1"),

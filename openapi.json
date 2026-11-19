@@ -1837,6 +1837,46 @@
         "title": "NamedPermissionSummary",
         "type": "object"
       },
+      "PermissionSweepResponse": {
+        "description": "``POST /oidc/trash/permissions/sweep``.\n\nAttributes:\n    dry_run: True when nothing was deleted.\n    checked_experiments: Distinct experiment ids that some grant row names.\n    missing_experiments: Ids the tracking store definitively does not have (in any workspace).\n    unresolved_experiments: Ids whose existence could not be established; their rows are kept.\n    removed_rows: Grant rows deleted (always 0 for a dry run).",
+        "properties": {
+          "checked_experiments": {
+            "title": "Checked Experiments",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "missing_experiments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Experiments",
+            "type": "array"
+          },
+          "removed_rows": {
+            "title": "Removed Rows",
+            "type": "integer"
+          },
+          "unresolved_experiments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved Experiments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "checked_experiments",
+          "missing_experiments",
+          "unresolved_experiments",
+          "removed_rows"
+        ],
+        "title": "PermissionSweepResponse",
+        "type": "object"
+      },
       "PromptPermission": {
         "description": "Model for creating or updating a prompt permission.\n\nParameters:\n-----------\npermission : str\n    The permission level to grant (e.g., \"READ\", \"WRITE\", \"MANAGE\").",
         "properties": {
@@ -3351,6 +3391,20 @@
               }
             ],
             "title": "Failed Experiments"
+          },
+          "failed_permission_cleanups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FailedExperiment"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Permission Cleanups"
           },
           "failed_runs": {
             "anyOf": [
@@ -20473,6 +20527,85 @@
           }
         },
         "summary": "Restore a deleted experiment",
+        "tags": [
+          "trash"
+        ]
+      }
+    },
+    "/oidc/trash/permissions/sweep": {
+      "post": {
+        "description": "Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true.",
+        "operationId": "sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post",
+        "parameters": [
+          {
+            "description": "Only report what would be removed (default). Pass false to delete.",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Only report what would be removed (default). Pass false to delete.",
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSweepResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"
+          }
+        },
+        "summary": "Remove permission rows of experiments that no longer exist",
         "tags": [
           "trash"
         ]

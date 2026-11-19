@@ -268,6 +268,57 @@ class SqlAlchemyStore:
             ).delete(synchronize_session=False)
             session.flush()
 
+    def delete_permissions_for_experiments(self, experiment_ids: List[str]) -> int:
+        """Delete every grant row keyed by one of these experiment ids, in one transaction.
+
+        Covers the user and group experiment grants and the user and group scorer grants (a scorer
+        belongs to an experiment). Regex grants are patterns, not ids, and are left alone. One bulk
+        delete per table; either all four tables are cleaned or none is.
+
+        Args:
+            experiment_ids: Ids of experiments that no longer exist.
+
+        Returns:
+            The number of rows deleted.
+        """
+        from mlflow_oidc_auth.db.models import (
+            SqlExperimentGroupPermission,
+            SqlExperimentPermission,
+            SqlScorerGroupPermission,
+            SqlScorerPermission,
+        )
+
+        ids = sorted({str(i) for i in experiment_ids if i})
+        if not ids:
+            return 0
+        deleted = 0
+        with self.ManagedSessionMaker() as session:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start : start + 500]
+                for model in (SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission):
+                    deleted += session.query(model).filter(model.experiment_id.in_(chunk)).delete(synchronize_session=False)
+            session.flush()
+        return deleted
+
+    def list_experiment_ids_with_grants(self) -> List[str]:
+        """The distinct experiment ids that any user/group experiment or scorer grant row names.
+
+        Returns:
+            Sorted experiment ids.
+        """
+        from mlflow_oidc_auth.db.models import (
+            SqlExperimentGroupPermission,
+            SqlExperimentPermission,
+            SqlScorerGroupPermission,
+            SqlScorerPermission,
+        )
+
+        found = set()
+        with self.ManagedSessionMaker() as session:
+            for model in (SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission):
+                found.update(row[0] for row in session.query(model.experiment_id).distinct().all())
+        return sorted(found)
+
     # Scorer permissions (group-scoped)
     def create_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str):
         return self.scorer_group_repo.grant_group_permission(group_name, experiment_id, scorer_name, permission)
@@ -2053,6 +2104,7 @@ _PERMISSION_CUD_METHODS = [
     "update_scorer_permission",
     "delete_scorer_permission",
     "delete_scorer_permissions_for_scorer",
+    "delete_permissions_for_experiments",
     # Scorer permissions (group-scoped)
     "create_group_scorer_permission",
     "update_group_scorer_permission",

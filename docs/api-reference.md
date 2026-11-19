@@ -512,6 +512,7 @@ All trash endpoints require **admin** permissions.
 | GET | `/oidc/trash/experiments` | List deleted experiments |
 | GET | `/oidc/trash/runs` | List deleted runs. Query: `experiment_ids`, `older_than` |
 | POST | `/oidc/trash/cleanup` | Permanently delete trashed items. Query: `older_than`, `run_ids`, `experiment_ids` |
+| POST | `/oidc/trash/permissions/sweep` | Remove grant rows of experiments that no longer exist. Query: `dry_run` (default `true`) |
 | POST | `/oidc/trash/experiments/{experiment_id}/restore` | Restore a deleted experiment |
 | POST | `/oidc/trash/runs/{run_id}/restore` | Restore a deleted run |
 
@@ -559,6 +560,24 @@ trash finds the trashed runs by searching every experiment, and `older_than` is 
 With `older_than`, the age of each run is checked against every trashed run on the server, even
 when only a few runs or experiments are named: MLflow offers no per-experiment or per-run lookup of
 deletion times.
+
+**Permission rows.** When the cleanup permanently deletes an experiment it also deletes that
+experiment's user and group experiment grants and its user and group scorer grants (one bulk delete
+per table, in one transaction, then the permission cache is flushed and an audit event
+`trash.permissions_cleanup` is written). Regex grants are patterns, not ids, and are kept. If the
+grants cannot be removed, the experiment stays deleted (it is in `deleted_experiments`), the call is
+still 200, and the experiment is listed in `failed_permission_cleanups` with the error
+`Failed to remove permission rows`; run the sweep below to finish the job.
+
+**Sweep for purges done outside the plugin.** `mlflow gc` bypasses the plugin and leaves grants
+that name experiments that no longer exist. `POST /oidc/trash/permissions/sweep` (admin only)
+finds those rows and, with `dry_run=false`, deletes them. `dry_run` defaults to `true`: the default
+call only reports `missing_experiments` and deletes nothing (`removed_rows` is 0). An experiment id is
+removed only when **every** workspace answers that it does not exist. Any other answer or error
+(tracking store unreachable, workspaces not listable, a lookup failing) keeps the rows and lists the
+id in `unresolved_experiments`: the sweep never deletes on uncertainty. A trashed (soft-deleted)
+experiment still exists and keeps its grants. The response also carries `checked_experiments`
+(distinct ids named by grant rows) and `dry_run`; a sweep is audited as `trash.permissions_sweep`.
 
 ---
 
