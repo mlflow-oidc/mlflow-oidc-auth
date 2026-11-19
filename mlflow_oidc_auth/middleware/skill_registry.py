@@ -541,63 +541,88 @@ def _filter_search_body(scope: Any, body: bytes, permission_of: Callable[[str], 
     return json.dumps(data).encode()
 
 
-def _grant_creator_manage(key: str, username: str) -> None:
-    """Make ``username`` the one holder of a grant on the skill they just created: MANAGE.
+def _reset_grants(keys: list[str], username: Optional[str]) -> None:
+    """Replace the grants under ``keys`` with ``username``'s MANAGE (none when None): one transaction.
 
-    Any grant already stored under ``key`` in the request's grant workspace predates the skill — a
-    leftover of a deleted skill of that name whose cascade failed, or one written ahead of it — and
-    would hand someone else's permission to the new skill. They are deleted first.
+    Any grant already stored under a just-created skill's key in the request's grant workspace
+    predates the skill — a leftover of a deleted skill of that name whose cascade failed, or one
+    written ahead of it — and would hand someone else's permission to the new skill. A failed batch
+    rolls back whole, leftovers included, so it is retried key by key; a key whose reset still fails
+    is at least wiped, never left holding its leftovers. Never raises.
     """
-    from mlflow.exceptions import MlflowException
-    from mlflow.protos.databricks_pb2 import RESOURCE_ALREADY_EXISTS, ErrorCode
-
-    from mlflow_oidc_auth.permissions import MANAGE as MANAGE_PERMISSION
     from mlflow_oidc_auth.store import store
 
-    store.wipe_skill_permissions(key)
+    if not keys:
+        return
     try:
-        store.create_skill_permission(key, username, MANAGE_PERMISSION.name)
-    except MlflowException as e:
-        if e.error_code != ErrorCode.Name(RESOURCE_ALREADY_EXISTS):
-            raise
-        store.update_skill_permission(key, username, MANAGE_PERMISSION.name)
+        store.reset_skill_permissions(keys, username)
+        return
+    except Exception as e:
+        logger.error("Skill registry: could not grant the creators MANAGE in one batch: %s", type(e).__name__)
+    for key in keys:
+        try:
+            store.reset_skill_permissions([key], username)
+            continue
+        except Exception as e:
+            logger.error("Skill registry: could not grant the creator MANAGE: %s", type(e).__name__)
+        try:
+            store.wipe_skill_permissions(key)
+        except Exception as e:
+            logger.error("Skill registry: could not remove the grants left under a new skill's key: %s", type(e).__name__)
 
 
 def _grant_created_skills(request: Request, username: str, auth_context: Any, grant: bool = True) -> None:
     """Grant the caller MANAGE on the skills MLflow's handler reports it created. Never raises.
 
-    The handler lists them in ``request.state.skill_created_parents``. Each is looked up again: only
-    a skill MLflow recorded this caller as the creator of, in the workspace the grant is written in,
-    is granted — a skill someone else created in between is theirs. With ``grant=False`` (an admin,
-    who is never granted anything) the leftover grants under its key are still removed, so a new
-    skill never inherits the grants of an earlier one of the same name, whoever creates it.
+    The handler lists them in ``request.state.skill_created_parents``. They are looked up again, in
+    one registry query: only a skill MLflow recorded this caller as the creator of, in the workspace
+    the grant is written in, is granted — a skill someone else created in between is theirs. With
+    ``grant=False`` (an admin, who is never granted anything) the leftover grants under its key are
+    still removed, so a new skill never inherits the grants of an earlier one of the same name,
+    whoever creates it. The writes are one transaction for the whole batch.
     """
+    from mlflow.server.handlers import _get_tracking_store
+
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
+    identities = []
     for created in getattr(request.state, "skill_created_parents", None) or ():
         try:
             organization, name = created
             validate_skill_identity(organization, name)
-            from mlflow.server.handlers import _get_tracking_store
-
-            with bridged_auth_context(auth_context):
-                skill = _get_tracking_store().get_skill(name=name, organization=organization)
-                if getattr(skill, "created_by", None) != username:
-                    continue
-                workspace = getattr(skill, "workspace", None)
-                if config.MLFLOW_ENABLE_WORKSPACES and workspace is not None and workspace != current_grant_workspace():
-                    raise ValueError("skill created outside the request's grant workspace")
-                key = format_skill_key(organization, name)
-                if grant:
-                    _grant_creator_manage(key, username)
-                else:
-                    from mlflow_oidc_auth.store import store
-
-                    store.wipe_skill_permissions(key)
         except Exception as e:
-            # The skill exists; failing the response would make the client retry into a conflict.
-            # Without a MANAGE grant it is governed by workspace permissions until someone grants one.
             logger.error("Skill registry: could not grant the creator MANAGE: %s", type(e).__name__)
+            continue
+        identities.append((organization, name))
+    identities = list(dict.fromkeys(identities))
+    if not identities:
+        return
+
+    # The skill exists; failing the response would make the client retry into a conflict. Without a
+    # MANAGE grant it is governed by workspace permissions until someone grants one.
+    keys = []
+    try:
+        with bridged_auth_context(auth_context):
+            found = _get_tracking_store().search_skills(max_results=len(identities), include_skill_identities=identities)
+            grant_workspace = current_grant_workspace() if config.MLFLOW_ENABLE_WORKSPACES else None
+    except Exception as e:
+        logger.error("Skill registry: could not grant the creator MANAGE: %s", type(e).__name__)
+        return
+    wanted = set(identities)
+    for skill in found:
+        identity = (getattr(skill, "organization", "") or "", getattr(skill, "name", None))
+        if identity not in wanted or getattr(skill, "created_by", None) != username:
+            continue
+        workspace = getattr(skill, "workspace", None)
+        if config.MLFLOW_ENABLE_WORKSPACES and workspace is not None and workspace != grant_workspace:
+            logger.error("Skill registry: could not grant the creator MANAGE: skill created outside the request's grant workspace")
+            continue
+        keys.append(format_skill_key(*identity))
+    try:
+        with bridged_auth_context(auth_context):
+            _reset_grants(sorted(keys), username if grant else None)
+    except Exception as e:
+        logger.error("Skill registry: could not grant the creator MANAGE: %s", type(e).__name__)
 
 
 def _recreated_skill_creator(organization: str, name: str) -> Optional[str]:
@@ -622,21 +647,15 @@ def _cascade_delete(route: SkillRoute, auth_context: Any) -> None:
     kept; every other grant is a leftover of the deleted skill and goes, even if the new creator's
     own cleanup failed.
     """
-    from mlflow.exceptions import MlflowException
-
     from mlflow_oidc_auth.store import store
 
     with bridged_auth_context(auth_context):
         creator = _recreated_skill_creator(route.organization, route.name)
-        kept = None
         if creator:
-            try:
-                kept = store.get_skill_permission(route.key, creator).permission
-            except MlflowException:
-                kept = None
-        store.wipe_skill_permissions(route.key)
-        if kept is not None:
-            store.create_skill_permission(route.key, creator, kept)
+            # One transaction that never deletes the creator's row: no failure can cost them it.
+            store.wipe_skill_permissions_except(route.key, creator)
+        else:
+            store.wipe_skill_permissions(route.key)
 
 
 async def finalize_skill_response(path: str, username: str, request: Request, response: Response, auth_context: Any, is_admin: bool = False) -> Response:

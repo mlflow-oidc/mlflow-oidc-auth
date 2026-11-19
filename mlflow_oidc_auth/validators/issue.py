@@ -10,7 +10,6 @@ recurring detection schedule (MLflow 3.18), which an experiment tag carries, mod
 
 from __future__ import annotations
 
-
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.config import config

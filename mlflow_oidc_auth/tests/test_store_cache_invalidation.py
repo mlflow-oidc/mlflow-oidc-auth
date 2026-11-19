@@ -412,6 +412,8 @@ class TestComprehensiveCUDCoverage:
             "update_skill_permission": ("@acme/reviewer", "user1", "MANAGE"),
             "delete_skill_permission": ("@acme/reviewer", "user1"),
             "wipe_skill_permissions": ("@acme/reviewer",),
+            "wipe_skill_permissions_except": ("@acme/reviewer", "user1"),
+            "reset_skill_permissions": (["@acme/reviewer"], "user1"),
             "create_group_skill_permission": ("group1", "@acme/reviewer", "READ"),
             "update_group_skill_permission": ("group1", "@acme/reviewer", "MANAGE"),
             "delete_group_skill_permission": ("group1", "@acme/reviewer"),

@@ -1234,9 +1234,59 @@ class SqlAlchemyStore:
         return self.skill_repo.revoke_permission(name, username)
 
     def wipe_skill_permissions(self, name: str) -> None:
-        """Delete every user and group grant on ``name`` in the request's grant workspace."""
-        self.skill_repo.wipe(name)
-        self.skill_group_repo.wipe(name)
+        """Delete every user and group grant on ``name`` in the request's grant workspace, in one transaction."""
+        self._wipe_name_keyed_permissions((self.skill_repo, self.skill_group_repo), name)
+
+    def wipe_skill_permissions_except(self, name: str, username: str) -> None:
+        """Delete every grant on ``name`` in the request's grant workspace but ``username``'s own, in one transaction.
+
+        The kept row is never deleted, so a failure cannot leave ``username`` without it, and it keeps
+        whatever permission it holds when the transaction runs.
+
+        Parameters:
+            name: The skill key.
+            username: The user whose own grant on ``name`` stays.
+        """
+        from mlflow.exceptions import MlflowException
+
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        model = self.skill_repo.model_class
+        with self.ManagedSessionMaker(read_only=False) as session:
+            try:
+                kept_user_id = get_user(session, username).id
+            except MlflowException:
+                kept_user_id = None
+            query = session.query(model).filter(self.skill_repo._resource_is(name))
+            if kept_user_id is not None:
+                query = query.filter(model.user_id != kept_user_id)
+            for perm in query.all():
+                session.delete(perm)
+            session.flush()
+            self.skill_group_repo._wipe_in(session, name)
+
+    def reset_skill_permissions(self, names: List[str], username: Optional[str] = None) -> None:
+        """Replace every grant on each of ``names`` with ``username``'s MANAGE (none without one), in one transaction.
+
+        For skills just created: any grant already stored under their keys predates them. One
+        transaction for the whole batch, so a bulk registration costs a fixed number of commits and
+        no key is left wiped but ungranted.
+
+        Parameters:
+            names: The skill keys.
+            username: The creator to grant MANAGE, or None to only delete (an admin, granted nothing).
+
+        Raises:
+            MlflowException: The write failed; nothing was changed.
+        """
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        with self.ManagedSessionMaker(read_only=False) as session:
+            for name in dict.fromkeys(names):
+                self.skill_repo._wipe_in(session, name)
+                self.skill_group_repo._wipe_in(session, name)
+                if username is not None:
+                    self.skill_repo._grant_in(session, name, username, MANAGE.name)
 
     # skill_group_repo
     def create_group_skill_permission(self, group_name: str, name: str, permission: str):
@@ -2085,6 +2135,8 @@ _PERMISSION_CUD_METHODS = [
     "update_skill_permission",
     "delete_skill_permission",
     "wipe_skill_permissions",
+    "wipe_skill_permissions_except",
+    "reset_skill_permissions",
     "create_group_skill_permission",
     "update_group_skill_permission",
     "delete_group_skill_permission",
