@@ -441,6 +441,44 @@ class TestWorkspaceCreationGating:
                                 # Should not return 403 — either None or pass through
                                 assert resp is None or (hasattr(resp, "status_code") and resp.status_code != 403)
 
+    def _create_while_environment_holds(self, env_workspace, permission, require_context=False):
+        """A header-less CreateExperiment while MLflow serves header-less requests from ``env_workspace`` (issue #482)."""
+        from mlflow_oidc_auth.hooks.before_request import before_request_hook
+
+        _app = self._make_flask_app()
+        with _app.test_request_context("/api/2.0/mlflow/experiments/create", method="POST"):
+            with (
+                patch("mlflow_oidc_auth.hooks.before_request._get_auth_context", return_value=("testuser", False)),
+                patch("mlflow_oidc_auth.hooks.before_request.config") as mock_config,
+                patch("mlflow_oidc_auth.bridge.user.get_request_workspace", return_value=None),
+                patch("mlflow_oidc_auth.bridge.user._environment_served_workspace", return_value=env_workspace),
+                patch("mlflow_oidc_auth.utils.workspace_cache.get_workspace_permission_cached", return_value=permission) as mock_get_permission,
+                patch("mlflow_oidc_auth.hooks.before_request._find_validator", return_value=None),
+            ):
+                mock_config.MLFLOW_ENABLE_WORKSPACES = True
+                mock_config.OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT = require_context
+                mock_config.OIDC_WORKSPACE_DENY_DEFAULT_CREATION = False
+                return before_request_hook(), mock_get_permission
+
+    def test_header_less_creation_served_from_environment_requires_manage_there(self):
+        """MLflow would create in ws-x, so MANAGE on ws-x is required, as if the header named it."""
+        resp, mock_get_permission = self._create_while_environment_holds("ws-x", None)
+        assert resp is not None and resp.status_code == 403
+        mock_get_permission.assert_called_once_with("testuser", "ws-x")
+
+    def test_header_less_creation_served_from_environment_allowed_with_manage_there(self):
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        resp, _ = self._create_while_environment_holds("ws-x", MANAGE)
+        assert resp is None or resp.status_code != 403
+
+    def test_header_less_creation_served_from_environment_still_needs_the_header_when_required(self):
+        """OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT reads the header alone: the environment does not satisfy it."""
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        resp, _ = self._create_while_environment_holds("ws-x", MANAGE, require_context=True)
+        assert resp is not None and resp.status_code == 403
+
     def test_before_request_hook_allows_experiment_creation_without_workspace_when_strict_disabled(self):
         """Missing workspace context keeps legacy behavior when strict creation context is disabled."""
         from mlflow_oidc_auth.hooks.before_request import before_request_hook

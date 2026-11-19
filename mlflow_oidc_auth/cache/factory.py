@@ -8,10 +8,18 @@ Each call creates a fresh backend instance — callers are expected to hold
 a module-level reference (lazy-initialized) to reuse the same backend.
 """
 
+import threading
+
 from mlflow_oidc_auth.cache.backend import CacheBackend
 from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
+
+#: Held by the lazy getters that create a cache on first use (``if cache is None: cache = ...``),
+#: around a second check. Flask requests run on several threads (``WSGI_THREADS``), so two first
+#: uses can overlap; without it each would build its own backend, and an entry or an invalidation
+#: written to the one that is then dropped would be lost.
+CACHE_INIT_LOCK = threading.RLock()
 
 
 def get_cache_backend(namespace: str, maxsize: int, ttl: int) -> CacheBackend:

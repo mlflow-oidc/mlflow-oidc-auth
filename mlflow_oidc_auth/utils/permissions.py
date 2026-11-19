@@ -28,6 +28,7 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
@@ -56,9 +57,11 @@ def _get_permission_cache() -> CacheBackend:
     """
     global _permission_cache
     if _permission_cache is None:
-        ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        # Validated once in config.py (positive int, default 10000).
-        _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        with CACHE_INIT_LOCK:
+            if _permission_cache is None:
+                ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
+                # Validated once in config.py (positive int, default 10000).
+                _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
     return _permission_cache
 
 
@@ -95,7 +98,7 @@ def _get_cache_workspace() -> str | None:
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
     # None also covers resolution outside a Flask request context, which likewise skips
@@ -103,7 +106,7 @@ def _get_cache_workspace() -> str | None:
     # resources are still read in a workspace there (MLflow's resolved one, see
     # utils/grant_workspace.py), so that workspace is part of the key: a decision for one
     # workspace's "churn" must never be served for another's.
-    return get_request_workspace() or f"{_NO_WORKSPACE_CACHE_MARKER}:{current_grant_workspace()}"
+    return get_authorization_workspace() or f"{_NO_WORKSPACE_CACHE_MARKER}:{current_grant_workspace()}"
 
 
 def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **qualifiers: str) -> str:
@@ -245,13 +248,13 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, resource_
     if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
         return result
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
     return workspace_fallback(
         result,
         enabled=True,
-        request_workspace=get_request_workspace(),
+        request_workspace=get_authorization_workspace(),
         resource_type=resource_type,
         in_request_workspace=lambda: _experiment_in_request_workspace(resource_id),
         workspace_permission=lambda workspace: get_workspace_permission_cached(username, workspace),

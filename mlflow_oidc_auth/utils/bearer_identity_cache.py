@@ -7,6 +7,7 @@ decision never outlives the account or binding it was made about.
 """
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 
@@ -19,7 +20,9 @@ def bearer_identity_cache() -> CacheBackend:
     """The cache, created on first use."""
     global _cache
     if _cache is None:
-        _cache = get_cache_backend("bearer-identity", maxsize=4096, ttl=getattr(config, "PERMISSION_CACHE_TTL_SECONDS", 30))
+        with CACHE_INIT_LOCK:
+            if _cache is None:
+                _cache = get_cache_backend("bearer-identity", maxsize=4096, ttl=getattr(config, "PERMISSION_CACHE_TTL_SECONDS", 30))
     return _cache
 
 

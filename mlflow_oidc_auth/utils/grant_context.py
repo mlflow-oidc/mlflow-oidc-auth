@@ -46,6 +46,7 @@ from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
 
 from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.cache.generation import GenerationGuard, key_part, make_key
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
@@ -491,7 +492,9 @@ def _get_section_cache() -> CacheBackend:
     """
     global _section_cache
     if _section_cache is None:
-        _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
+        with CACHE_INIT_LOCK:
+            if _section_cache is None:
+                _section_cache = get_cache_backend("grant_context_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=permission_cache_ttl())
     return _section_cache
 
 
@@ -556,12 +559,16 @@ def _grant_scope() -> Tuple[str, str]:
 
 
 def _request_workspace() -> str | None:
-    """The workspace the request names, None for a header-less request or with workspaces off."""
+    """The workspace the request names, None for a header-less request or with workspaces off.
+
+    A header-less request that MLflow serves from ``MLFLOW_WORKSPACE`` gets that workspace, see
+    :func:`mlflow_oidc_auth.bridge.user.get_authorization_workspace`.
+    """
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
 
-    return get_request_workspace()
+    return get_authorization_workspace()
 
 
 class GrantContext:
