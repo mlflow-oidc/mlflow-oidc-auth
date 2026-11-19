@@ -66,6 +66,8 @@ from mlflow_oidc_auth.repository import (
     GatewayModelDefinitionPermissionGroupRegexRepository,
     MCPServerGroupPermissionRepository,
     MCPServerPermissionRepository,
+    SkillGroupPermissionRepository,
+    SkillPermissionRepository,
     UserRepository,
     UserTokenRepository,
     UserIdentityRepository,
@@ -136,6 +138,9 @@ class SqlAlchemyStore:
         # MCP server registry permissions (workspace-scoped; no regex sources)
         self.mcp_server_repo = MCPServerPermissionRepository(self.ManagedSessionMaker)
         self.mcp_server_group_repo = MCPServerGroupPermissionRepository(self.ManagedSessionMaker)
+        # Skill registry permissions (workspace-scoped; no regex sources)
+        self.skill_repo = SkillPermissionRepository(self.ManagedSessionMaker)
+        self.skill_group_repo = SkillGroupPermissionRepository(self.ManagedSessionMaker)
 
         # Workspace permissions
         self.workspace_permission_repo = WorkspacePermissionRepository(self.ManagedSessionMaker)
@@ -489,7 +494,7 @@ class SqlAlchemyStore:
         Raises:
             MlflowException: If the user does not exist.
         """
-        return self.user_repo.update(
+        updated = self.user_repo.update(
             username=username,
             is_admin=is_admin,
             is_service_account=is_service_account,
@@ -499,6 +504,12 @@ class SqlAlchemyStore:
             admin_override=admin_override,
             revoke_tokens=revoke_tokens,
         )
+        if active is False or is_admin is False:
+            # A deactivated or demoted writer's schedules may have to stop.
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
+        return updated
 
     def delete_user(self, username: str, *, written_by: Optional[str] = None, admin_override: bool = False, actor: Optional[str] = None):
         """Hard-delete a user through the ownership guard (#360). See :meth:`UserRepository.delete`."""
@@ -555,7 +566,7 @@ class SqlAlchemyStore:
 
         Parameters:
             resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
-                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``, ``skill``.
             username: The user.
 
         Returns:
@@ -572,6 +583,7 @@ class SqlAlchemyStore:
             "gateway_secret": self.gateway_secret_repo,
             "gateway_model_definition": self.gateway_model_definition_repo,
             "mcp_server": self.mcp_server_repo,
+            "skill": self.skill_repo,
         }
         return repos[resource_type].list_permissions_for_user_by_precedence(username)
 
@@ -584,7 +596,7 @@ class SqlAlchemyStore:
 
         Parameters:
             resource_type: One of ``experiment``, ``registered_model``, ``scorer``,
-                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``.
+                ``gateway_endpoint``, ``gateway_secret``, ``gateway_model_definition``, ``mcp_server``, ``skill``.
             username: The user.
 
         Returns:
@@ -601,6 +613,7 @@ class SqlAlchemyStore:
             "gateway_secret": self.gateway_secret_group_repo,
             "gateway_model_definition": self.gateway_model_definition_group_repo,
             "mcp_server": self.mcp_server_group_repo,
+            "skill": self.skill_group_repo,
         }
         return repos[resource_type].list_permissions_for_user_groups(username)
 
@@ -1199,6 +1212,106 @@ class SqlAlchemyStore:
     def delete_group_mcp_server_permission(self, group_name: str, name: str):
         return self.mcp_server_group_repo.revoke_group_permission(group_name, name)
 
+    # skill_repo — grants on MLflow's skill registry, in the request's grant workspace. ``name`` is
+    # the skill key (utils/skill_key.py).
+    def create_skill_permission(self, name: str, username: str, permission: str):
+        return self.skill_repo.grant_permission(name, username, permission)
+
+    def get_skill_permission(self, name: str, username: str):
+        return self.skill_repo.get_permission(name, username)
+
+    def list_skill_permissions(self, username: str):
+        return self.skill_repo.list_permissions_for_user(username)
+
+    def list_skill_users(self, name: str):
+        """``(username, permission, is_service_account)`` for every user grant on ``name``."""
+        return self.skill_repo.list_users_for_resource(name)
+
+    def update_skill_permission(self, name: str, username: str, permission: str):
+        return self.skill_repo.update_permission(name, username, permission)
+
+    def delete_skill_permission(self, name: str, username: str) -> None:
+        return self.skill_repo.revoke_permission(name, username)
+
+    def wipe_skill_permissions(self, name: str) -> None:
+        """Delete every user and group grant on ``name`` in the request's grant workspace, in one transaction."""
+        self._wipe_name_keyed_permissions((self.skill_repo, self.skill_group_repo), name)
+
+    def wipe_skill_permissions_except(self, name: str, username: str) -> None:
+        """Delete every grant on ``name`` in the request's grant workspace but ``username``'s own, in one transaction.
+
+        The kept row is never deleted, so a failure cannot leave ``username`` without it, and it keeps
+        whatever permission it holds when the transaction runs.
+
+        Parameters:
+            name: The skill key.
+            username: The user whose own grant on ``name`` stays.
+        """
+        from mlflow.exceptions import MlflowException
+
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        model = self.skill_repo.model_class
+        with self.ManagedSessionMaker(read_only=False) as session:
+            try:
+                kept_user_id = get_user(session, username).id
+            except MlflowException:
+                kept_user_id = None
+            query = session.query(model).filter(self.skill_repo._resource_is(name))
+            if kept_user_id is not None:
+                query = query.filter(model.user_id != kept_user_id)
+            for perm in query.all():
+                session.delete(perm)
+            session.flush()
+            self.skill_group_repo._wipe_in(session, name)
+
+    def reset_skill_permissions(self, names: List[str], username: Optional[str] = None) -> None:
+        """Replace every grant on each of ``names`` with ``username``'s MANAGE (none without one), in one transaction.
+
+        For skills just created: any grant already stored under their keys predates them. One
+        transaction for the whole batch, so a bulk registration costs a fixed number of commits and
+        no key is left wiped but ungranted.
+
+        Parameters:
+            names: The skill keys.
+            username: The creator to grant MANAGE, or None to only delete (an admin, granted nothing).
+
+        Raises:
+            MlflowException: The write failed; nothing was changed.
+        """
+        from mlflow_oidc_auth.permissions import MANAGE
+
+        with self.ManagedSessionMaker(read_only=False) as session:
+            for name in dict.fromkeys(names):
+                self.skill_repo._wipe_in(session, name)
+                self.skill_group_repo._wipe_in(session, name)
+                if username is not None:
+                    self.skill_repo._grant_in(session, name, username, MANAGE.name)
+
+    # skill_group_repo
+    def create_group_skill_permission(self, group_name: str, name: str, permission: str):
+        return self.skill_group_repo.grant_group_permission(group_name, name, permission)
+
+    def get_group_skill_permission(self, group_name: str, name: str):
+        return self.skill_group_repo.get_group_permission_for_group(name, group_name)
+
+    def list_group_skill_permissions(self, group_name: str):
+        return self.skill_group_repo.list_permissions_for_group(group_name)
+
+    def list_skill_groups(self, name: str):
+        """``(group_name, permission)`` for every group grant on ``name``."""
+        return self.skill_group_repo.list_groups_for_resource(name)
+
+    def get_user_skill_group_permission(self, name: str, username: str):
+        """The most permissive grant any of ``username``'s groups holds on ``name`` (resolution)."""
+        return self.skill_group_repo.get_group_permission_for_user_resource(name, username)
+
+    def update_group_skill_permission(self, group_name: str, name: str, permission: str):
+        return self.skill_group_repo.update_group_permission(group_name, name, permission)
+
+    def delete_group_skill_permission(self, group_name: str, name: str):
+        return self.skill_group_repo.revoke_group_permission(group_name, name)
+
     # gateway_model_definition_repo
     def create_gateway_model_definition_permission(self, gateway_name: str, username: str, permission: str):
         return self.gateway_model_definition_repo.grant_permission(gateway_name, username, permission)
@@ -1388,11 +1501,32 @@ class SqlAlchemyStore:
         """List all group permissions in a workspace."""
         return self.workspace_group_permission_repo.list_for_workspace(workspace)
 
+    def list_workspaces_granted_to_user(self, username: str) -> list[str]:
+        """List the workspaces where a user holds a permission directly or through a group.
+
+        Parameters:
+            username: The user.
+
+        Returns:
+            The distinct workspace names, sorted.
+
+        Raises:
+            MlflowException: If the user does not exist.
+        """
+        from mlflow_oidc_auth.repository.utils import get_user
+
+        with self.ManagedSessionMaker() as session:
+            user_id = get_user(session, username).id
+        workspaces = {p.workspace for p in self.workspace_permission_repo.list_for_user(user_id)}
+        for group_id in self.get_groups_ids_for_user(username):
+            workspaces.update(p.workspace for p in self.workspace_group_permission_repo.list_for_group(group_id))
+        return sorted(workspaces)
+
     def wipe_workspace_permissions(self, workspace: str) -> int:
         """Delete every permission recorded for a workspace.
 
         Used for cascade-delete when a workspace is removed: the user and group workspace grants,
-        and the grants on the workspace's registered models, prompts, gateway resources and MCP servers — which
+        and the grants on the workspace's registered models, prompts, gateway resources, MCP servers and skills — which
         would otherwise come back to life on a same-named resource in a workspace later created
         under the same name.
 
@@ -1585,6 +1719,36 @@ class SqlAlchemyStore:
         """Sweep SCIM activity recorded before ``cutoff``. Returns the count."""
         return self._scim_activity_repo().delete_older_than(cutoff)
 
+    def _issue_detection_schedule_repo(self):
+        """Recorded issue-detection schedule writers, created on first use like the SCIM repositories."""
+        repo = getattr(self, "_issue_detection_schedule_repository", None)
+        if repo is None:
+            from mlflow_oidc_auth.repository.issue_detection_schedule import IssueDetectionScheduleRepository
+
+            repo = IssueDetectionScheduleRepository(self.ManagedSessionMaker)
+            self._issue_detection_schedule_repository = repo
+        return repo
+
+    def record_detection_schedule_author(self, experiment_id: str, workspace: Optional[str], author: str, model_fingerprint: str) -> None:
+        """Credit an experiment's stored detection schedule to its writer."""
+        self._issue_detection_schedule_repo().record_author(experiment_id, workspace, author, model_fingerprint)
+
+    def mark_detection_schedule_guard_paused(self, experiment_id: str, workspace: Optional[str], reason: str) -> None:
+        """Record that the schedule guard paused an experiment's detection schedule, and why."""
+        self._issue_detection_schedule_repo().mark_guard_paused(experiment_id, workspace, reason)
+
+    def get_detection_schedule_author(self, experiment_id: str):
+        """The recorded writer of an experiment's detection schedule, or None."""
+        return self._issue_detection_schedule_repo().get(experiment_id)
+
+    def list_detection_schedule_authors(self):
+        """Every recorded detection schedule writer."""
+        return self._issue_detection_schedule_repo().list()
+
+    def delete_detection_schedule_author(self, experiment_id: str) -> None:
+        """Forget an experiment's recorded schedule writer (its schedule tag was deleted)."""
+        self._issue_detection_schedule_repo().delete(experiment_id)
+
     @staticmethod
     def _user_detail(row) -> dict:
         return {
@@ -1742,6 +1906,10 @@ class SqlAlchemyStore:
         if revoke_credential:
             kwargs["revoke_tokens"] = True
         self.user_repo.update(username, **kwargs)
+        if active is False:
+            from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
+
+            notify_schedule_guard()
         return self.get_user_detail(username)
 
     def delete_user_with_hook(
@@ -1962,6 +2130,16 @@ _PERMISSION_CUD_METHODS = [
     "create_group_mcp_server_permission",
     "update_group_mcp_server_permission",
     "delete_group_mcp_server_permission",
+    # Skill permissions (user- and group-scoped)
+    "create_skill_permission",
+    "update_skill_permission",
+    "delete_skill_permission",
+    "wipe_skill_permissions",
+    "wipe_skill_permissions_except",
+    "reset_skill_permissions",
+    "create_group_skill_permission",
+    "update_group_skill_permission",
+    "delete_group_skill_permission",
     # Group membership (affects group-scoped permission resolution)
     "set_user_groups",
     "add_user_to_group",

@@ -1,7 +1,7 @@
 """User token migration (issue #189): carry-over, column drop, and a downgrade that never refuses.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped
-otherwise) — the same fixture as the Phase 0 migration tests.
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise) — the same fixture as the Phase 0 migration tests.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -18,6 +18,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     _upgrade,
     db_uri,
     engine,
+    sql,
 )
 
 PREVIOUS_REVISION = "d3a4b5c6e7f8"
@@ -58,11 +59,12 @@ def _seed_users(engine) -> dict:
             ),
             {"f": False, "t": True},
         )
-        conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('team', 'manual')"))
+        conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('team', 'manual')"))
         conn.execute(
-            text(
+            sql(
+                conn,
                 "INSERT INTO user_groups (user_id, group_id, managed_by) "
-                "SELECT u.id, g.id, 'manual' FROM users u, groups g WHERE u.username = 'live@example.com' AND g.group_name = 'team'"
+                "SELECT u.id, g.id, 'manual' FROM users u, {groups} g WHERE u.username = 'live@example.com' AND g.group_name = 'team'",
             )
         )
     return rows
@@ -144,7 +146,9 @@ class TestUpgrade:
         _upgrade(engine, TOKENS_REVISION)
 
         expires_at = _as_datetime(_tokens(engine)["forever@example.com"].expires_at)
-        assert before + timedelta(days=364) < expires_at <= _now() + timedelta(days=365)
+        # MySQL's DATETIME rounds fractional seconds to the nearest second, so the stored
+        # expiry can be up to half a second later than the one the migration computed.
+        assert before + timedelta(days=364) < expires_at <= _now() + timedelta(days=365, seconds=1)
 
     def test_expired_and_empty_secrets_are_not_carried_over(self, engine):
         _upgrade(engine, PREVIOUS_REVISION)

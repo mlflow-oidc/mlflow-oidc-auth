@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterator, Optional
 from urllib.parse import quote
 
 from mlflow_oidc_auth.cache.backend import CacheBackend
-from mlflow_oidc_auth.cache.factory import get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK, get_cache_backend
 
 _GENERATION_KEY = "generation"
 
@@ -67,7 +67,9 @@ class GenerationGuard:
 
     def _backend(self) -> CacheBackend:
         if self._cache is None:
-            self._cache = get_cache_backend(self._namespace, maxsize=1, ttl=max(self._ttl(), GENERATION_MIN_TTL))
+            with CACHE_INIT_LOCK:
+                if self._cache is None:
+                    self._cache = get_cache_backend(self._namespace, maxsize=1, ttl=max(self._ttl(), GENERATION_MIN_TTL))
         return self._cache
 
     def reset(self) -> None:

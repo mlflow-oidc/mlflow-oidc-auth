@@ -35,6 +35,7 @@ The permission system covers these MLflow resource types:
 | Gateway Secrets | Per secret name | AI Gateway secrets |
 | Gateway Model Definitions | Per model definition name | AI Gateway model configs |
 | MCP Servers | Per server name (`<namespace>/<slug>`) | MLflow 3.15+ MCP server registry. User and group grants only (no regex). See [MCP Server Registry](#mcp-server-registry) |
+| Skills | Per skill key (`<name>` or `@<organization>/<name>`) | MLflow 3.18+ skill registry. User and group grants only (no regex). See [Skill Registry](#skill-registry) |
 | Workspaces | Per workspace name | Only when `MLFLOW_ENABLE_WORKSPACES=true`. See [Workspaces](workspaces) |
 
 ## Permission Sources
@@ -74,8 +75,10 @@ A resource id can reach MLflow in the URL path, the query string, or the request
 The plugin reads the id from the same place MLflow will: on a protobuf API route that is
 the path parameter if there is one, otherwise the query string for a `GET` that has one
 and the JSON body for every other request (the query string is ignored on `POST`,
-`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only,
-and `gateway-proxy` uses the query string on `GET` and the body otherwise.
+`PATCH` and `DELETE`). `/ajax-api/2.0/mlflow/upload-artifact` uses the query string only.
+It authorizes every `run_id` and `run_uuid` value there: MLflow 3.18 writes into `run_id`
+(falling back to `run_uuid`), and earlier versions into `run_uuid`. `gateway-proxy` uses the
+query string on `GET` and the body otherwise.
 
 Every other value the request carries for that field — in any source, under either the
 `snake_case` or the `camelCase` spelling — is authorized as well. If a request names two
@@ -190,6 +193,7 @@ When a user creates a resource, the plugin automatically grants them `MANAGE` pe
 - `CreateGatewaySecret` → MANAGE on the new secret
 - `CreateGatewayModelDefinition` → MANAGE on the new model definition
 - `POST /api/3.0/mlflow/mcp-servers` (and a version created on a server that did not exist yet) → MANAGE on the new MCP server, once MLflow returned success
+- `POST /api/3.0/mlflow/skills`, and a version or bulk registration that creates a skill → MANAGE on the new skill, once MLflow returned success
 - `CreateWorkspace` → MANAGE workspace permission (when workspaces enabled)
 
 ## Search Result Filtering
@@ -205,6 +209,7 @@ For non-admin users, search and list results are filtered to only include resour
 - `ListGatewayModelDefinitions` — removes unreadable model definitions
 - `ListWorkspaces` — removes workspaces the user has no READ permission for
 - `GET /api/3.0/mlflow/mcp-servers` and `GET /api/3.0/mlflow/mcp-servers/endpoints` — remove MCP servers (and their access endpoints) the user cannot read; see [MCP Server Registry](#mcp-server-registry)
+- `GET /api/3.0/mlflow/skills` — returns only skills the user can read. MLflow is handed that scope before it paginates, so pages and page tokens are exact; see [Skill Registry](#skill-registry)
 - `SearchEvaluationDatasets` — removes datasets linked to any experiment the user cannot read
 - Artifact-root listing (`GET /mlflow-artifacts/artifacts` with no `path`) — keeps only experiments the user can read; see [Artifact Access](#artifact-access)
 
@@ -253,7 +258,7 @@ Artifact routes outside the proxy:
 | Route | Requires |
 |-------|----------|
 | `GET /get-artifact`, `/{api,ajax-api}/2.0/mlflow/artifacts/list` | READ on the run's experiment |
-| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on the run's experiment (`run_uuid` from the query string) |
+| `POST /ajax-api/2.0/mlflow/upload-artifact` | EDIT on every run the query string names under `run_id` or `run_uuid` |
 | `GET /ajax-api/2.0/mlflow/logged-models/<model_id>/artifacts/files` | READ on the logged model's experiment |
 | `GET /{api,ajax-api}/2.0/mlflow/logged-models/<model_id>/artifacts/directories` | READ on the logged model's experiment |
 | `POST /{api,ajax-api}/2.0/mlflow/artifacts/presigned-upload-url` | EDIT on the experiment of the run (`run_id`) or logged model (`model_id`); a request naming neither is refused |
@@ -345,6 +350,8 @@ and as the reviewer of an item.
 | Issues (`3.0/mlflow/issues…`) | `GET issues/<id>`, `issues/search` | READ on the experiment (search must name one) |
 | | `POST issues`, `PATCH issues/<id>` | EDIT on the experiment, plus READ on `source_run_id` if given; `created_by`, if given, must be the caller |
 | `issues/invoke`, `genai/evaluate/invoke` | start an issue-detection or evaluation job | EDIT on the experiment, READ on the experiment of every trace in `trace_ids`; for `issues/invoke`, USE on a named gateway secret (`secret_id`) or endpoint (`endpoint_name`) |
+| `issues/schedule/state` (MLflow 3.18+) | recompute an experiment's issue-detection schedule state and write it back | EDIT on `experiment_id`; naming none is admin only |
+| `experiments/set-experiment-tag`, `experiments/create` with the `mlflow.issueDetection.schedule` tag (MLflow 3.18+) | save a recurring issue-detection schedule, which MLflow's scheduler runs on the model it names | as for any experiment tag or creation, plus USE on the gateway endpoint (`model.endpointName`, or `model.provider` `gateway`) or stored secret (`model.secretId`) the schedule names, as for `issues/invoke`; a value that is not a JSON object is refused |
 | Label schemas (`3.0/mlflow/label-schemas/…`) | `get`, `get-by-name`, `list` | READ on the experiment |
 | | `create`, `update`, `delete` | MANAGE on the experiment |
 | | a schema with no experiment | readable by any authenticated user; writable by admins only |
@@ -437,12 +444,60 @@ run or dataset that cannot be resolved is refused.
 |---|---|
 | `invoke_scorer` | EDIT on `experiment_id` and on the experiment of every trace in `trace_ids`; `username`, if given, must be the caller |
 | `run_online_trace_scorer`, `run_online_session_scorer` | EDIT on `experiment_id` and on every scorer named in `online_scorers` |
-| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is a gateway model (`gateway:/<endpoint>`; leading slashes in the name are ignored, as MLflow ignores them); a malformed `model` is refused |
+| `invoke_issue_detection` | EDIT on `experiment_id`, on the experiment of `run_id` and of every trace in `trace_ids`; USE on the endpoint when `model` is a gateway model (`gateway:/<endpoint>`; leading slashes in the name are ignored, as MLflow ignores them); a malformed `model` is refused. `instructions` (MLflow 3.18+) is free text and names no resource |
+| `scheduled_issue_detection` (MLflow 3.18+) | admin only: MLflow's scheduler submits it from an experiment's stored detection schedule |
 | `invoke_genai_evaluate` | EDIT on the experiment of `run_id`, of every trace in `trace_ids`, and on `experiment_id` if given; `username`, if given, must be the caller |
 | `optimize_prompts` | EDIT on `experiment_id` and on the experiment of `run_id`; EDIT on the prompt in `prompt_uri` (`prompts:/<name>/<version>` or `prompts:/<name>@<alias>`), which the job registers a new version of; READ on every experiment linked to `dataset_id`, if given |
 | any other job function | admin only |
 
 A parameter the job function does not declare, or a value of the wrong type, is refused.
+
+**Recurring issue detection (MLflow 3.18+).** A schedule saved in the `mlflow.issueDetection.schedule`
+experiment tag is checked when it is written: USE on the endpoint or secret it names. Rewriting a
+schedule (to pause it or change its cadence) needs USE on its model again; anyone with EDIT can
+delete it.
+
+MLflow's scheduler then runs the schedule on the server with no user identity. So the plugin records
+who wrote each schedule, and the *schedule guard* re-checks every running schedule against that
+writer, as if they were writing it again now. It pauses the schedule (MLflow's own `paused` flag,
+so its settings are kept) when:
+
+- no writer was recorded for it, which includes every schedule saved before this check existed;
+- its model is not the one its recorded writer saved;
+- the writer was deleted or deactivated;
+- the writer can no longer edit the experiment, or use the endpoint or secret it names;
+- it names a provider secret that does not itself carry that provider's credentials;
+- it runs on the server's own credentials, the writer is not an administrator, and
+  `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY` is on.
+
+An administrator's schedule is kept running unless the administrator was deleted or deactivated.
+The guard runs in each server process every `ISSUE_DETECTION_SCHEDULE_GUARD_INTERVAL_SECONDS`
+(default 300), soon after a permission change made in that process (at most once a minute), and
+on demand. Each pass is idempotent, so running it on every replica is safe. If MLflow's schedule
+parser cannot be loaded (its internals moved), every schedule is checked as stored, which pauses
+them rather than leaving them unchecked. A check that errors without an answer (the database or
+secret store briefly unavailable) is retried on the next pass rather than pausing the schedule; the
+admin page shows it as **Check failed**. A pause made while its writer was saving the schedule
+replaces that save; the audit event says so, and the schedule must be saved again. A revoke can therefore leave a
+schedule running for at most one interval. Resuming a paused schedule is an ordinary write: whoever
+resumes it needs USE on its model and becomes its recorded writer.
+
+Administrators see every schedule, its recorded writer and the guard's verdict under **Detection
+schedules** in the admin UI, and can run the check there
+(`GET`/`POST /api/3.0/mlflow/issue-detection-schedules[/check]`, administrators only).
+
+A schedule that names no endpoint or secret runs on MLflow's default detection model, using the
+provider credentials in the server's environment. So does a provider model with no secret, and
+`issues/invoke` without one. With `ISSUE_DETECTION_SERVER_CREDENTIALS_ADMIN_ONLY=true`, only
+administrators may do that: for `issues/invoke`, for an `invoke_issue_detection` job (which must
+then name a `gateway:/` model), and for a schedule. Everyone else must name an endpoint or secret
+they have USE on. The setting does not cover scorers, evaluation or prompt optimization, which can
+also run judges on the server's credentials.
+
+Endpoint calls made by MLflow's job workers go back through this server, authenticated as
+`MLFLOW_TRACKING_USERNAME`/`MLFLOW_TRACKING_PASSWORD` from the server's environment. They are
+therefore authorized as that account, not as the schedule's writer. Do not make that account an
+administrator; grant it USE only on the endpoints jobs are meant to call.
 
 The UI jobs under `ajax-api/3.0/mlflow/jobs/…` are a separate family, authorized through their
 experiment (see [Experiment-scoped GenAI routes](#experiment-scoped-genai-routes)).
@@ -459,6 +514,7 @@ When resources are deleted or renamed, associated permissions are automatically 
 | Rename registered model | All permission records are updated to the new name |
 | Rename gateway endpoint | All endpoint permission records are updated to the new name |
 | Delete MCP server | All user and group permissions for that server (in the request's workspace) are deleted — also when an admin deletes it |
+| Delete skill | All user and group permissions for that skill (in the request's workspace) are deleted — also when an admin deletes it |
 | Delete workspace | All workspace permissions are deleted, cache is flushed |
 
 With workspaces enabled, deleting or renaming a registered model, prompt or gateway resource changes
@@ -573,6 +629,93 @@ MCP server permissions are managed through:
 | `GET /api/2.0/mlflow/permissions/groups/<group>/mcp-servers` | A group's grants |
 | `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/mcp-servers/<name>` | A group's grant |
 
+## Skill Registry
+
+MLflow 3.18 added a skill registry, served from FastAPI under `/api/3.0/mlflow/skills` and
+`/ajax-api/3.0/mlflow/skills` (behind `--static-prefix` when one is set). On an older MLflow the
+routes do not exist. MLflow keeps skills unique per workspace, organization and name; a permission
+names a skill by its **key**: `<name>`, or `@<organization>/<name>`. An organization name grants
+nothing by itself — there is no grant for "every skill of an organization".
+
+| Request | Requires |
+|---|---|
+| `POST skills` (create) | create rights, see below; the creator is granted `MANAGE` once MLflow returns success |
+| `GET skills` (search) | authentication; the results contain only skills the caller can `READ` |
+| `GET skills/<skill>` and every `GET` under it (versions, aliases) | `READ` on the skill |
+| `PATCH skills/<skill>`, `POST` on its tags, aliases and version tags, `DELETE skills/<skill>/tags/<key>`, `PATCH` of a version's status to `draft`, `active` or `deprecated` | `EDIT` on the skill |
+| `POST skills/<skill>/versions`, `POST skills/bulk-register` | `EDIT` on each skill named; for a skill that does not exist yet create rights — MLflow creates it — and the creator is granted `MANAGE`. A bulk registration is refused as a whole if any one of its skills is refused |
+| `DELETE skills/<skill>`, `DELETE` of a version, a version tag or an alias, `PATCH` of a version's status to `deleted` | `MANAGE` on the skill |
+
+`<skill>` is `<name>` or `@<organization>/<name>`. This is the mapping MLflow's own auth plugin uses.
+
+**Resolution.** A user's permission on a skill is their own grant, then their groups' grants (the
+most permissive wins), in `PERMISSION_SOURCE_ORDER`. There are no regex sources for skills. With no
+grant on the skill:
+
+- workspaces enabled — the user's permission on the workspace MLflow serves the request from (the
+  one it names, else the default workspace); a user with none is denied;
+- workspaces disabled — `DEFAULT_MLFLOW_PERMISSION`, as for registered models and prompts.
+
+A grant on a skill applies whether or not the grantee is a member of its workspace: sharing one
+skill with a non-member is what a resource grant is for. `NO_PERMISSIONS` on a skill shuts a
+workspace member out of it.
+
+**Creating a skill.**
+
+- workspaces enabled — `MANAGE` on the workspace, subject to
+  `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`: the same
+  threshold as creating experiments, models, gateway resources and MCP servers;
+- workspaces disabled — any authenticated user, unless `RESTRICT_RESOURCE_CREATION` is set. That
+  setting admits creations through pattern grants, which skills do not have, so with it set only
+  administrators create skills.
+
+A grant can only be written on a skill that exists (the permission API answers `404` otherwise),
+so the only grants a new skill's key can already hold are leftovers of a deleted skill of the same
+name whose cleanup failed. One that does not let the caller edit (`READ`, `NO_PERMISSIONS`)
+refuses the creation: creating the skill must not turn it into `MANAGE`. Every other leftover is
+removed when the skill is created — by anyone, administrators included — so the new skill never
+inherits an old one's grants and a non-admin creator starts as its only grantee.
+
+**Search.** MLflow's search takes the set of skills the caller may read and applies it before
+paginating, so a page holds `max_results` readable skills and a page token says nothing about
+hidden ones. The response is held item by item to the same set again before it is returned.
+
+**Skill content.** Uploaded skill content is stored by MLflow's server under
+`skills/[@<organization>/]<name>/…` of the artifact store, and `mlflow.genai.pull` reads it through
+the artifact proxy. Reading or listing those paths needs `READ` on the skill, which must exist.
+Inside one upload directory (`skills/<skill>/<token>/…`) only content a current version of the
+skill records is served: what a deleted version or skill left behind — MLflow reclaims it
+best-effort — stays unreadable even to someone who holds `READ` on a skill of that name now.
+Only the workspace-relative spelling is recognized; `workspaces/<ws>/skills/…` is refused.
+Nothing but an administrator writes or deletes there through the proxy — MLflow's server stores and
+reclaims skill content itself when a version is registered or deleted. A skill whose source is an
+external location (git, OCI, a ZIP URL) is fetched by the client with the user's own credentials
+for that location; this plugin only governs the registry entry.
+
+**Deleting a skill** deletes its user and group grants in the request's workspace, so a skill later
+created under the same name starts with none. The cleanup runs after MLflow has deleted the skill;
+if the name was taken again in between, only the new creator's own grant is kept.
+
+Skill permissions are managed through:
+
+- **Admin UI**: *Skills* in the sidebar, and the *Skills* tab on users, groups and service accounts
+- **REST API** (all in the request's workspace):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/2.0/mlflow/permissions/skills` | Skills of the request's workspace the caller can manage (all for an admin) |
+| `GET /api/2.0/mlflow/permissions/skills/<skill>/users` · `…/groups` | Who holds a grant on a skill |
+| `GET /api/2.0/mlflow/permissions/users/<username>/skills` | A user's effective permissions |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/users/<username>/skills/<skill>` | A user's grant (`{"permission": "READ"}`); `POST` and `PATCH` need the skill to exist |
+| `GET /api/2.0/mlflow/permissions/groups/<group>/skills` | A group's grants |
+| `POST`/`GET`/`PATCH`/`DELETE /api/2.0/mlflow/permissions/groups/<group>/skills/<skill>` | A group's grant; `POST` and `PATCH` need the skill to exist |
+
+Errors on the registry routes come back as MLflow itself returns them (`{"error_code", "message"}`
+with MLflow's status code), which MLflow's skill clients parse.
+
+MLflow marks the skill registry as experimental: its routes may change in a minor release. A route
+this plugin does not recognise is refused to everyone but administrators until it is mapped.
+
 ## GraphQL Authorization
 
 The plugin enforces permissions on MLflow's GraphQL API (`/graphql`) through a custom middleware:
@@ -592,6 +735,49 @@ Key points:
 - With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 - Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
+
+## Restricting user and group listing
+
+By default any signed-in user can list every user, service account and group, which the grant
+dialogs use to offer names. Deployments that host several tenants on one server can set
+`RESTRICT_USER_AND_GROUP_LISTING=true` so that a non-admin is listed only principals it can already see:
+
+- itself, and the groups it belongs to;
+- with workspaces enabled, the users, service accounts and groups granted on the workspaces it
+  holds `MANAGE` on through a grant of its own or of one of its groups. (`MANAGE` that comes
+  only from a regex grant is not looked for; type those names.)
+
+Admins always see everyone. The setting affects `GET /api/2.0/mlflow/users` (with and without
+`?service=true`), `GET /api/2.0/mlflow/permissions/groups` and the Users and Groups pages; `X-Total-Count`
+counts only what the caller sees. It also raises the workspace member lists
+(`GET /api/3.0/mlflow/permissions/workspaces/{workspace}/users` and `/groups`) from `READ` to
+`MANAGE`: a reader of a workspace no longer sees who else is in it.
+
+**Sharing.** With the setting on, the grant dialogs take a typed name, with the listed names as
+suggestions. Grants still need `MANAGE` on the resource and fail for a name that does not exist.
+
+**What it does not hide.** The setting hides the directory, not every name:
+
+- **Who has access to what you manage.** The "who has access" lists of an experiment, model,
+  prompt, scorer, gateway resource, MCP server, skill or workspace name every principal granted
+  on it, and need `MANAGE` on it. Any user holds `MANAGE` on what it creates.
+- **Grants on your resources by name.** `GET /api/2.0/mlflow/permissions/users/{username}/…` and the
+  group equivalents show that principal's grants on the resources the caller manages.
+- **Whether a typed name exists.** A grant to a name that does not exist fails with 404, one to a
+  name that exists succeeds (and gives that principal access) or reports a duplicate. So a user
+  who can grant on anything, which is every user, can confirm a guessed name, one guess per
+  request; it cannot list names. Every grant is recorded in the audit log.
+- **A review queue named after a user.** Creating or renaming a custom review queue to a
+  registered username or service account name is refused, naming that user, so it too confirms
+  a guessed name, one guess per request.
+- **Members of your own workspaces, when everyone manages them.** With
+  `OIDC_WORKSPACE_DEFAULT_PERMISSION=MANAGE`, every user a token places in a workspace is
+  granted `MANAGE` on it at sign-in, and so is listed that workspace's members. Nobody sees
+  another tenant's members this way.
+- **Names MLflow records.** Run `user_id`, the `mlflow.user` tag and similar fields are shown on the
+  resources a caller can read, as MLflow shows them (see [Search Result Filtering](#search-result-filtering)).
+
+Setting it off restores the full lists and the `READ`-level workspace member lists.
 
 ## De-provisioning
 

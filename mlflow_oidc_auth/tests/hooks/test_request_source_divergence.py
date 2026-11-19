@@ -387,6 +387,7 @@ OWN, OWN2, VICTIM = "own", "own2", "victim"
 _UNION_SPECS = {
     "validate_can_read_experiment": ("experiment_id", False, {}),
     "validate_can_update_experiment": ("experiment_id", False, {}),
+    "validate_can_set_experiment_tag": ("experiment_id", False, {"key": "note", "value": "v"}),
     "validate_can_delete_experiment": ("experiment_id", False, {}),
     "validate_can_manage_experiment": ("experiment_id", False, {}),
     "validate_can_read_experiment_by_name": ("experiment_name", False, {}),

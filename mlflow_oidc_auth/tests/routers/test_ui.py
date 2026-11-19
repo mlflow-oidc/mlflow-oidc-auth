@@ -64,6 +64,17 @@ class TestServeSPAConfig:
             assert content["uiPath"] == "http://localhost:8000/oidc/ui"
             assert content["provider"] == "Test Provider"
             assert content["authenticated"] is True
+            assert content["restrict_user_and_group_listing"] is False
+
+    @pytest.mark.asyncio
+    async def test_serve_spa_config_reports_the_listing_restriction(self, mock_config):
+        """The UI switches its grant pickers to typed names when the lists are restricted."""
+        import json
+
+        mock_config.RESTRICT_USER_AND_GROUP_LISTING = True
+        with patch("mlflow_oidc_auth.routers.ui.config", mock_config):
+            result = await serve_spa_config(base_path="", authenticated=True)
+        assert json.loads(bytes(result.body).decode())["restrict_user_and_group_listing"] is True
 
     @pytest.mark.asyncio
     async def test_serve_spa_config_unauthenticated(self, mock_request_with_session, mock_config):

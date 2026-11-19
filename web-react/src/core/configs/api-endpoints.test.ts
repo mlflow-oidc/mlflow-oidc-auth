@@ -158,6 +158,30 @@ describe("API Endpoints", () => {
       );
     });
 
+    it("returns correct skill permission URLs, encoding the organization key", () => {
+      expect(STATIC_API_ENDPOINTS.ALL_SKILLS).toBe(
+        "/api/2.0/mlflow/permissions/skills",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.SKILL_USER_PERMISSIONS("@acme/reviewer")).toBe(
+        "/api/2.0/mlflow/permissions/skills/%40acme%2Freviewer/users",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.SKILL_GROUP_PERMISSIONS("reviewer")).toBe(
+        "/api/2.0/mlflow/permissions/skills/reviewer/groups",
+      );
+      expect(DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSIONS("u1")).toBe(
+        "/api/2.0/mlflow/permissions/users/u1/skills",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.USER_SKILL_PERMISSION("u1", "@acme/reviewer"),
+      ).toBe("/api/2.0/mlflow/permissions/users/u1/skills/%40acme%2Freviewer");
+      expect(DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSIONS("g1")).toBe(
+        "/api/2.0/mlflow/permissions/groups/g1/skills",
+      );
+      expect(
+        DYNAMIC_API_ENDPOINTS.GROUP_SKILL_PERMISSION("g1", "@acme/reviewer"),
+      ).toBe("/api/2.0/mlflow/permissions/groups/g1/skills/%40acme%2Freviewer");
+    });
+
     it("returns correct gateway user permissions URLs", () => {
       expect(
         DYNAMIC_API_ENDPOINTS.GATEWAY_ENDPOINT_USER_PERMISSIONS("endpoint1"),

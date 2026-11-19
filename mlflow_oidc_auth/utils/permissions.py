@@ -28,12 +28,15 @@ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
 from mlflow.server.handlers import _get_tracking_store
 
 from mlflow_oidc_auth.cache import CacheBackend, get_cache_backend
+from mlflow_oidc_auth.cache.factory import CACHE_INIT_LOCK
 from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import PermissionResult
 from mlflow_oidc_auth import permission_kinds
 from mlflow_oidc_auth.permissions import ALL_PERMISSIONS, NO_PERMISSIONS, USE, get_permission
 from mlflow_oidc_auth.store import store
+
+from mlflow_oidc_auth.utils.schedule_guard_signal import notify_schedule_guard
 
 logger = get_logger()
 
@@ -54,9 +57,11 @@ def _get_permission_cache() -> CacheBackend:
     """
     global _permission_cache
     if _permission_cache is None:
-        ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
-        # Validated once in config.py (positive int, default 10000).
-        _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
+        with CACHE_INIT_LOCK:
+            if _permission_cache is None:
+                ttl = getattr(config, "PERMISSION_CACHE_TTL_SECONDS", _PERMISSION_CACHE_DEFAULT_TTL)
+                # Validated once in config.py (positive int, default 10000).
+                _permission_cache = get_cache_backend("permissions_v2", maxsize=config.PERMISSION_CACHE_MAX_SIZE, ttl=ttl)
     return _permission_cache
 
 
@@ -93,7 +98,7 @@ def _get_cache_workspace() -> str | None:
     if not config.MLFLOW_ENABLE_WORKSPACES:
         return None
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
     from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
 
     # None also covers resolution outside a Flask request context, which likewise skips
@@ -101,7 +106,7 @@ def _get_cache_workspace() -> str | None:
     # resources are still read in a workspace there (MLflow's resolved one, see
     # utils/grant_workspace.py), so that workspace is part of the key: a decision for one
     # workspace's "churn" must never be served for another's.
-    return get_request_workspace() or f"{_NO_WORKSPACE_CACHE_MARKER}:{current_grant_workspace()}"
+    return get_authorization_workspace() or f"{_NO_WORKSPACE_CACHE_MARKER}:{current_grant_workspace()}"
 
 
 def _make_cache_key(resource_type: str, resource_id: str, username: str, workspace: str | None = None, **qualifiers: str) -> str:
@@ -145,6 +150,7 @@ def invalidate_permission_cache(resource_type: str, resource_id: str, username: 
     if workspace is None:
         workspace = _get_cache_workspace()
     cache.delete(_make_cache_key(resource_type, resource_id, username, workspace, **qualifiers))
+    notify_schedule_guard()
 
 
 def flush_permission_cache() -> None:
@@ -161,6 +167,7 @@ def flush_permission_cache() -> None:
     cache = _get_permission_cache()
     cache.clear()
     logger.debug("Permission cache fully flushed")
+    notify_schedule_guard()
 
 
 # Resource type constants. Defined with the resolver (utils/grant_context.py) and re-exported here.
@@ -173,6 +180,7 @@ from mlflow_oidc_auth.utils.grant_context import (  # noqa: E402
     MCP_SERVER,
     PROMPT,
     REGISTERED_MODEL,
+    SKILL,
     PERMISSION_REGISTRY,
     best_matching_regex,
     flush_grant_contexts,
@@ -240,13 +248,13 @@ def _apply_workspace_fallback(result: PermissionResult, username: str, resource_
     if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
         return result
 
-    from mlflow_oidc_auth.bridge.user import get_request_workspace
+    from mlflow_oidc_auth.bridge.user import get_authorization_workspace
     from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
 
     return workspace_fallback(
         result,
         enabled=True,
-        request_workspace=get_request_workspace(),
+        request_workspace=get_authorization_workspace(),
         resource_type=resource_type,
         in_request_workspace=lambda: _experiment_in_request_workspace(resource_id),
         workspace_permission=lambda workspace: get_workspace_permission_cached(username, workspace),
@@ -735,6 +743,63 @@ def can_delete_mcp_server(name: str, user: str) -> bool:
 def can_manage_mcp_server(name: str, user: str) -> bool:
     permission = _mcp_server_write_permission(name, user)
     return permission is not None and permission.can_manage
+
+
+def effective_skill_permission(key: str, user: str) -> PermissionResult:
+    """The caller's permission on a skill of the request's workspace.
+
+    ``key`` is the skill key (``utils/skill_key.py``). User grant, then group grants
+    (``PERMISSION_SOURCE_ORDER``), then — with workspaces enabled — the caller's permission on the
+    workspace MLflow serves the request from: the one it names, else MLflow's default workspace
+    (``current_grant_workspace``), never ``DEFAULT_MLFLOW_PERMISSION``, so a permissive global
+    default cannot reach into a workspace the caller holds nothing on. With workspaces disabled the
+    global default applies, as for registered models and prompts.
+    """
+    result = resolve_permission(SKILL, key, user)
+    if result.kind != "fallback" or not config.MLFLOW_ENABLE_WORKSPACES:
+        return result
+    from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+    from mlflow_oidc_auth.utils.workspace_cache import get_workspace_permission_cached
+
+    ws_perm = get_workspace_permission_cached(user, current_grant_workspace())
+    if ws_perm is not None:
+        return PermissionResult(ws_perm, "workspace")
+    return PermissionResult(NO_PERMISSIONS, "workspace-deny")
+
+
+def skill_permission_resolver(user: str) -> Callable[[str], PermissionResult]:
+    """:func:`effective_skill_permission` for many skills of one request, from one bulk grant context.
+
+    The same decision, but the caller's direct grants on skills are read once (see
+    ``grant_context.load_grant_context(bulk=True)``) rather than per skill, so filtering a list or
+    authorizing a batch costs a fixed number of statements. The workspace fallback applies in
+    ``current_grant_workspace()`` with workspaces enabled, exactly as the single-skill check.
+
+    Parameters:
+        user: The caller.
+
+    Returns:
+        A function from a skill key to the caller's permission on that skill.
+    """
+    workspace = None
+    if config.MLFLOW_ENABLE_WORKSPACES:
+        from mlflow_oidc_auth.utils.grant_workspace import current_grant_workspace
+
+        workspace = current_grant_workspace()
+    ctx = load_grant_context(user, workspace, bulk=True)
+    return lambda key: resolve(ctx, SKILL, key)
+
+
+def can_read_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_read
+
+
+def can_update_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_update
+
+
+def can_manage_skill(key: str, user: str) -> bool:
+    return effective_skill_permission(key, user).permission.can_manage
 
 
 # ---------------------------------------------------------------------------

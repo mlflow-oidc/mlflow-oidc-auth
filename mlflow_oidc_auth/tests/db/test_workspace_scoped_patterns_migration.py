@@ -1,6 +1,7 @@
 """Workspace-scoped resource patterns migration: existing patterns apply everywhere, downgrade never widens.
 
-Runs on SQLite, and on PostgreSQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` is set (skipped otherwise).
+Runs on SQLite, and on PostgreSQL and MySQL when ``MLFLOW_OIDC_TEST_POSTGRES_URI`` and
+``MLFLOW_OIDC_TEST_MYSQL_URI`` are set (skipped otherwise).
 """
 
 import pytest
@@ -15,6 +16,7 @@ from mlflow_oidc_auth.tests.db.test_phase0_migration import (  # noqa: F401  (fi
     _upgrade,
     db_uri,
     engine,
+    sql,
 )
 
 PREVIOUS_REVISION = "b8c9d0e1f2a3"
@@ -44,9 +46,9 @@ def _seed(engine) -> None:
             text("INSERT INTO users (username, display_name, is_admin, is_service_account, active, managed_by) VALUES ('u', 'u', :f, :f, :t, 'manual')"),
             {"f": False, "t": True},
         )
-        conn.execute(text("INSERT INTO groups (group_name, managed_by) VALUES ('g', 'manual')"))
+        conn.execute(sql(conn, "INSERT INTO {groups} (group_name, managed_by) VALUES ('g', 'manual')"))
         for table, (principal, extra) in TABLES.items():
-            source = "users" if principal == "user_id" else "groups"
+            source = conn.dialect.identifier_preparer.quote("users" if principal == "user_id" else "groups")
             extra_cols = "".join(f", {c}" for c in extra)
             extra_vals = "".join(", :f" for _ in extra)
             conn.execute(
