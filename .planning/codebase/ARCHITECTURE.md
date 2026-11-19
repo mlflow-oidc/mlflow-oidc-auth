@@ -311,9 +311,9 @@ There are 5 enforcement layers, each serving a different purpose:
 - Workspace name extracted from Flask `request.path` (e.g., `/api/3.0/mlflow/workspaces/<name>`)
 - Admin bypass: Admins skip all workspace permission checks
 
-**Layer 3 — Before-request workspace creation gating** (`hooks/before_request.py` lines 479-492)
-- Purpose: Prevent resource creation (`CreateExperiment`, `CreateRegisteredModel`) in workspaces the user cannot manage
-- Check: `get_workspace_permission_cached(username, workspace_name)` → `ws_perm.can_manage`
+**Layer 3 — Before-request workspace creation gating** (`hooks/before_request.py`, `before_request_hook`)
+- Purpose: Prevent resource creation (`CreateExperiment`, `CreateRegisteredModel`, gateway endpoints/secrets/model definitions) in workspaces the user cannot create in
+- Check: `get_workspace_permission_cached(username, workspace_name)` → `permissions.meets_workspace_creation_threshold(ws_perm, config.OIDC_WORKSPACE_CREATION_PERMISSION)` — `can_manage` by default, `can_update` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`. MCP servers and skills use the same threshold through `middleware/registry_support.can_create_in_request_workspace`
 - Only fires when `MLFLOW_ENABLE_WORKSPACES=True` and a workspace context is set
 
 **Layer 4 — After-request filtering** (`hooks/after_request.py`)

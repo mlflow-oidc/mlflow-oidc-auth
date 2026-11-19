@@ -131,7 +131,7 @@ Workspace permissions use the same levels as resource permissions: `READ`, `USE`
 | `READ` | View the workspace and its resources in search/list results |
 | `USE` | Use resources within the workspace |
 | `EDIT` | Modify resources within the workspace |
-| `MANAGE` | Full control: create experiments/models, manage workspace permissions |
+| `MANAGE` | Full control: create experiments/models (`EDIT` is enough with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`), manage workspace permissions |
 | `NO_PERMISSIONS` | Explicit denial — workspace is hidden from all results |
 
 ### No Implicit Access
@@ -197,11 +197,31 @@ Result: Access denied (NO_PERMISSIONS)
 
 ### Creation vs Update Behavior
 
-With workspaces enabled, creation is intentionally stricter than update:
+With workspaces enabled, creation is intentionally stricter than update by default:
 
-- `CreateExperiment` requires workspace `MANAGE`
-- `CreateRegisteredModel` requires workspace `MANAGE`
+- `CreateExperiment` requires workspace `MANAGE` (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
+- `CreateRegisteredModel` requires workspace `MANAGE` (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
 - Updating existing experiments/models follows normal permission resolution, so workspace `EDIT` fallback is sufficient for update operations when no resource-level override exists
+
+#### Letting `EDIT` members create
+
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT` lowers the creation gate to workspace `EDIT` for every
+workspace-gated create (experiments, registered models, gateway resources, MCP servers and skills).
+Members can then create resources, and receive `MANAGE` on what they create, without the
+workspace-level rights `MANAGE` carries: they cannot update or delete the workspace or grant
+workspace access. Deleting resources they did not create still needs `MANAGE` on those resources,
+for example through a resource or regex grant. The default, `MANAGE`, keeps the stricter behaviour.
+
+With `EDIT`, **every** workspace `EDIT` grant becomes a right to create — including the `EDIT` a
+[group rule](#group-rules) gives (rules may grant up to `EDIT` by default, to anyone whose identity
+provider group matches) and the `EDIT` that `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT` gives every
+auto-assigned user. `MANAGE` on what they create also lets them share it with users outside the
+workspace. The server logs a warning at startup when the setting is `EDIT` and workspaces are enabled.
+
+The threshold applies to the workspace a create names. A Flask create (experiments, models, gateway
+resources) that sends no `X-MLFLOW-WORKSPACE` header is still let through for backward
+compatibility, as described below, while the MCP server and skill registries judge such a request
+against the `default` workspace; set the two settings below to treat both alike.
 
 #### Hardening creation for clients that send no workspace context
 
@@ -216,9 +236,12 @@ backward compatibility. Two opt-in settings tighten it:
   that omit the header — it cannot be bypassed by dropping the header.
 
 Admins bypass both guards. Enabling both gives the strictest posture: every non-admin create must name
-a non-default workspace on which the user holds `MANAGE`.
+a non-default workspace on which the user holds `MANAGE` (or `EDIT`, with
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`).
 
-This means the following setup allows users to edit existing resources but not create new ones:
+This means the following setup allows users to edit existing resources but not create new ones in
+the workspaces they are assigned to (with the default `OIDC_WORKSPACE_CREATION_PERMISSION=MANAGE`;
+with `EDIT` they create there too):
 
 ```bash
 MLFLOW_ENABLE_WORKSPACES=true
@@ -237,7 +260,7 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 | Context | Enforcement |
 |---------|-------------|
 | **Workspace API** | `GetWorkspace`, `UpdateWorkspace`, `DeleteWorkspace`, `CreateWorkspace`, `ListWorkspaces` are gated by workspace permission checks |
-| **Resource creation** | `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` on the target workspace |
+| **Resource creation** | `CreateExperiment` and `CreateRegisteredModel` require `MANAGE` on the target workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`) |
 | **Search/list filtering** | `SearchExperiments`, `SearchRegisteredModels`, `SearchLoggedModels`, `ListWorkspaces` are filtered to readable workspaces |
 | **Permission management** | Workspace permission CRUD endpoints require `MANAGE` on the workspace |
 | **Trash** | Deleted experiments and runs are filtered by workspace. Restore and hard-delete are workspace-scoped |
@@ -248,7 +271,8 @@ In practice, both result in denial. The distinction matters for auditing — `NO
 MLflow (3.18+) keeps a skill registry per workspace, and each skill has its own user and group
 grants, recorded in the skill's workspace (see [Permissions → Skill Registry](permissions#skill-registry)).
 Without a grant on a skill, the caller's permission on the workspace decides; creating a skill needs
-`MANAGE` on the workspace. Deleting a workspace removes the grants on its skills.
+`MANAGE` on the workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`). Deleting a
+workspace removes the grants on its skills.
 
 ### MCP server registry
 
@@ -261,7 +285,7 @@ for every route).
   `DEFAULT_MLFLOW_PERMISSION`). **Searching** a workspace's registry needs `READ` on that workspace,
   and lists only the servers the caller can read; a server shared with a non-member is reached by
   name.
-- **Creating** a server needs `MANAGE` on the workspace; the creator is granted `MANAGE` on it.
+- **Creating** a server needs `MANAGE` on the workspace (`EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`); the creator is granted `MANAGE` on it.
 - **Changing, deleting or sharing** a server needs `EDIT` (changes) or `MANAGE` (deletes and grants)
   on it — and someone must hold `MANAGE` on the server: one nobody manages, such as every server
   registered before this release, stays admin-only for changes until an administrator grants
@@ -292,7 +316,8 @@ OIDC_WORKSPACE_DETECTION_PLUGIN=mypackage.workspace_detector
 OIDC_WORKSPACE_DEFAULT_PERMISSION=READ
 ```
 
-If you set `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, newly auto-assigned users can modify existing resources in that workspace but cannot create new experiments or registered models until granted workspace `MANAGE`.
+If you set `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, newly auto-assigned users can modify existing resources in that workspace but cannot create new experiments or registered models until granted workspace `MANAGE`, unless
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT` is set.
 
 ## Workspace Permission Cache
 
@@ -357,7 +382,8 @@ With this rule, the group `team-acme-ds` gets `EDIT` on the workspace `acme`, an
   by hand.
 
 Whoever can create a group whose name matches a rule gets the rule's permission — in your identity
-provider, that may be more people than you think. Keep patterns narrow (anchor the workspace part to
+provider, that may be more people than you think. With `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`, a
+rule's `EDIT` also lets them create resources there. Keep patterns narrow (anchor the workspace part to
 the names you expect, e.g. `(?P<ws>acme|globex)`), and prefer a low permission. Patterns run on
 every login that creates a group; avoid nested quantifiers such as `(a+)+`, which can take very long
 on a long group name.

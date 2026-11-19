@@ -351,6 +351,33 @@ class TestCreate:
         assert _names(api.admin.get(API, headers=A)) == []
         assert _grants(store) == []
 
+    def test_edit_on_the_workspace_creates_when_the_creation_threshold_is_edit(self, api, store, members, monkeypatch):
+        """OIDC_WORKSPACE_CREATION_PERMISSION=EDIT lowers the gate for skills too; the creator still gets MANAGE."""
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+        store.update_workspace_permission("team-a", BOB, "EDIT")
+        _clear_cache()
+
+        assert api.bob.post(API, json={"name": "reviewer"}, headers=A).status_code == 200
+        assert api.bob.post(f"{API}/@acme/linter/versions", json=REMOTE, headers=A).status_code == 200
+        assert _grants(store) == [(BOB, "@acme/linter", "team-a", "MANAGE"), (BOB, "reviewer", "team-a", "MANAGE")]
+
+    def test_manage_on_the_workspace_still_creates_when_the_creation_threshold_is_edit(self, api, store, members, monkeypatch):
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+
+        assert api.alice.post(API, json={"name": "reviewer"}, headers=A).status_code == 200
+        assert _grants(store) == [(ALICE, "reviewer", "team-a", "MANAGE")]
+
+    @pytest.mark.parametrize("permission", ["READ", "USE"])
+    def test_less_than_edit_cannot_create_when_the_creation_threshold_is_edit(self, api, store, members, monkeypatch, permission):
+        monkeypatch.setattr(config, "OIDC_WORKSPACE_CREATION_PERMISSION", "EDIT")
+        store.update_workspace_permission("team-a", BOB, permission)
+        _clear_cache()
+
+        assert api.bob.post(API, json={"name": "reviewer"}, headers=A).status_code == 403
+        assert api.carol.post(API, json={"name": "reviewer"}, headers=A).status_code == 403
+        assert _names(api.admin.get(API, headers=A)) == []
+        assert _grants(store) == []
+
     def test_a_non_member_cannot_create(self, api, store, members):
         assert api.carol.post(API, json={"name": "reviewer"}, headers=A).status_code == 403
         assert api.alice.post(API, json={"name": "reviewer"}, headers=ws("team-b")).status_code == 403

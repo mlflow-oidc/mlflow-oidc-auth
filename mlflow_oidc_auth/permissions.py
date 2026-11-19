@@ -106,6 +106,42 @@ def compare_permissions(permission1: str, permission2: str) -> bool:
 _CAPABILITIES = ("can_read", "can_use", "can_update", "can_delete", "can_manage")
 
 
+def workspace_creation_requirement(threshold: object) -> Permission:
+    """The workspace permission a workspace-gated create needs under ``OIDC_WORKSPACE_CREATION_PERMISSION``.
+
+    The one place the rule lives: ``EDIT`` (in any case, with any surrounding whitespace) needs ``EDIT``;
+    anything else, including an unrecognised value, needs ``MANAGE``. A threshold that is not ``EDIT``
+    therefore never lowers the gate.
+
+    Parameters:
+        threshold: The configured creation threshold.
+
+    Returns:
+        ``EDIT`` or ``MANAGE``.
+    """
+    return EDIT if isinstance(threshold, str) and threshold.strip().upper() == EDIT.name else MANAGE
+
+
+def meets_workspace_creation_threshold(permission: Permission | None, threshold: object) -> bool:
+    """Whether a workspace permission may create resources under ``OIDC_WORKSPACE_CREATION_PERMISSION``.
+
+    Judged by capability, never by priority (``NO_PERMISSIONS`` ranks highest): ``EDIT`` needs a grant that
+    can update, ``MANAGE`` one that can manage (:func:`workspace_creation_requirement`).
+
+    Parameters:
+        permission: The caller's resolved workspace permission, or ``None`` when there is none.
+        threshold: The configured creation threshold.
+
+    Returns:
+        True when the permission meets the threshold.
+    """
+    if permission is None:
+        return False
+    if workspace_creation_requirement(threshold) is EDIT:
+        return permission.can_update
+    return permission.can_manage
+
+
 def intersect_permissions(permissions: Iterable[Permission]) -> Permission:
     """The capabilities held on EVERY one of ``permissions``, as a real permission level.
 

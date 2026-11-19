@@ -11,7 +11,7 @@ MLflow keeps MCP servers unique per ``(workspace, name)``; a name is ``<namespac
 ==========================================  ===================================================
 Route                                       Requires
 ==========================================  ===================================================
-``POST   /mcp-servers``                     MANAGE on the workspace (see :func:`can_create_mcp_server`);
+``POST   /mcp-servers``                     create rights (see :func:`can_create_mcp_server`);
                                             the creator is granted ``MANAGE`` once MLflow
                                             returns success
 ``GET    /mcp-servers``                     authentication; the list is narrowed to READ
@@ -182,10 +182,11 @@ def resolve_mcp_route(path: str, method: str) -> Optional[MCPRoute]:
 def can_create_mcp_server(username: str) -> bool:
     """Whether ``username`` may create an MCP server in the request's workspace.
 
-    With workspaces enabled: ``MANAGE`` on the workspace MLflow serves the request from — the one it
-    names, else the default workspace — subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and
-    ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``, the same threshold as creating experiments, models and
-    gateway resources. (MLflow's own plugin asks for a workspace grant that carries ``can_use``.)
+    With workspaces enabled: ``OIDC_WORKSPACE_CREATION_PERMISSION`` (``MANAGE`` by default) on the
+    workspace MLflow serves the request from — the one it names, else the default workspace —
+    subject to ``OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT`` and ``OIDC_WORKSPACE_DENY_DEFAULT_CREATION``,
+    the same threshold as creating experiments, models and gateway resources. (MLflow's own plugin
+    asks for a workspace grant that carries ``can_use``.)
 
     With workspaces disabled: administrators only, as before per-server permissions.
     """

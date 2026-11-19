@@ -595,7 +595,8 @@ administrators could change them, admin-only until an administrator grants someo
 `allowed_actions` reflects this. A server created since carries its
 creator's `MANAGE` grant, so the normal rules apply to it at once.
 
-**Create rights.** With workspaces enabled: `MANAGE` on the workspace MLflow serves the request
+**Create rights.** With workspaces enabled: `MANAGE` (or `EDIT`, with
+`OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`) on the workspace MLflow serves the request
 from (the one named in `X-MLFLOW-WORKSPACE`, else `default`), subject to
 `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION` — the same
 threshold as creating experiments, models and gateway resources. With workspaces disabled: any
@@ -661,7 +662,8 @@ workspace member out of it.
 
 **Creating a skill.**
 
-- workspaces enabled — `MANAGE` on the workspace, subject to
+- workspaces enabled — `MANAGE` on the workspace (`EDIT` with
+  `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`), subject to
   `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` and `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`: the same
   threshold as creating experiments, models, gateway resources and MCP servers;
 - workspaces disabled — any authenticated user, unless `RESTRICT_RESOURCE_CREATION` is set. That
@@ -731,7 +733,7 @@ For workspace-specific permission behavior, see [Workspaces](workspaces).
 Key points:
 - Workspace permissions serve a dual role: workspace access control **and** resource-level fallback
 - When workspaces are enabled, `DEFAULT_MLFLOW_PERMISSION` is not used as a resource fallback — workspace permissions take that role
-- With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`)
+- With `MLFLOW_ENABLE_WORKSPACES=true` and `OIDC_WORKSPACE_DEFAULT_PERMISSION=EDIT`, users can update existing experiments/models through workspace fallback but cannot create new experiments/models (creation requires workspace `MANAGE`, unless `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`)
 - All workspace-isolated resources (experiments, models, webhooks, trash) are automatically scoped to the active workspace
 - Grants on a registered model, prompt or gateway resource belong to that resource's workspace, as MLflow keeps those names unique per workspace ([details](workspaces#grants-on-models-prompts-and-gateway-resources))
 
@@ -1021,7 +1023,7 @@ This closes a real gap in non-workspace deployments: with a project-prefix schem
 
 ### Interaction with workspaces
 
-When workspaces are enabled, creation is *also* subject to the workspace creation gate (workspace `MANAGE`, plus `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` / `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`). The two checks compose as **AND** — a create must satisfy *both*. Enabling `RESTRICT_RESOURCE_CREATION` therefore never grants more than the workspace gate alone; it only ever adds restriction. If you run with workspaces, the workspace gate is the primary control and `RESTRICT_RESOURCE_CREATION` is optional.
+When workspaces are enabled, creation is *also* subject to the workspace creation gate (workspace `MANAGE`, or `EDIT` with `OIDC_WORKSPACE_CREATION_PERMISSION=EDIT`, plus `OIDC_WORKSPACE_REQUIRE_CREATION_CONTEXT` / `OIDC_WORKSPACE_DENY_DEFAULT_CREATION`). The two checks compose as **AND** — a create must satisfy *both*. Enabling `RESTRICT_RESOURCE_CREATION` therefore never grants more than the workspace gate alone; it only ever adds restriction. If you run with workspaces, the workspace gate is the primary control and `RESTRICT_RESOURCE_CREATION` is optional.
 
 ### Affected endpoints
 
