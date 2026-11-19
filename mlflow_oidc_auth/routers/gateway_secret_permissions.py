@@ -1,10 +1,11 @@
-from typing import Any, Dict, List
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_gateway_secret_manage_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.gateway import GatewaySecretListItem
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
@@ -82,7 +83,7 @@ async def get_gateway_secret_groups(
 
 @gateway_secret_permissions_router.get(
     LIST_SECRETS,
-    response_model=List[Dict[str, Any]],
+    response_model=List[GatewaySecretListItem],
     summary="List all gateway secrets",
     description="Retrieves a list of all gateway secrets from MLflow.",
 )

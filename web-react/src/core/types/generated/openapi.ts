@@ -4248,6 +4248,53 @@ export interface components {
             run_id: string;
         };
         /**
+         * GatewayEndpointListItem
+         * @description A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).
+         */
+        GatewayEndpointListItem: {
+            /**
+             * Auth Type
+             * @description Auth type
+             */
+            auth_type: string;
+            /**
+             * Description
+             * @description Endpoint description, empty for none
+             */
+            description: string;
+            /**
+             * Name
+             * @description Endpoint name
+             */
+            name: string;
+            /**
+             * Route Type
+             * @description Route type
+             */
+            route_type: string;
+            /**
+             * Type
+             * @description Endpoint type
+             */
+            type: string;
+        };
+        /**
+         * GatewayModelDefinitionListItem
+         * @description A gateway model definition the caller may manage (``GET /permissions/gateways/model-definitions``).
+         */
+        GatewayModelDefinitionListItem: {
+            /**
+             * Name
+             * @description Model definition name
+             */
+            name: string;
+            /**
+             * Source
+             * @description Model source, or the provider when the definition has no source
+             */
+            source: string;
+        };
+        /**
          * GatewayPermission
          * @description Model for creating or updating a gateway permission (endpoint, model definition, or secret).
          */
@@ -4278,6 +4325,17 @@ export interface components {
              * @description Regex pattern to match gateway resource names
              */
             regex: string;
+        };
+        /**
+         * GatewaySecretListItem
+         * @description A gateway secret the caller may manage (``GET /permissions/gateways/secrets``). Never carries the secret value.
+         */
+        GatewaySecretListItem: {
+            /**
+             * Key
+             * @description Secret name
+             */
+            key: string;
         };
         /**
          * GroupDetail
@@ -5981,6 +6039,17 @@ export interface components {
             url: string;
         };
         /**
+         * WebhookDeleteResponse
+         * @description The body of ``DELETE /oidc/webhook/{webhook_id}``.
+         */
+        WebhookDeleteResponse: {
+            /**
+             * Message
+             * @description Human-readable confirmation
+             */
+            message: string;
+        };
+        /**
          * WebhookListResponse
          * @description Response model for listing webhooks.
          */
@@ -6638,9 +6707,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewayEndpointListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -6782,9 +6849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewayModelDefinitionListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -6926,9 +6991,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewaySecretListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -19109,9 +19172,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WebhookDeleteResponse"];
                 };
             };
             /** @description Forbidden - Insufficient permissions */

@@ -43,6 +43,7 @@ from mlflow_oidc_auth.models import (
     WebhookListResponse,
     WebhookResponse,
     WebhookTestRequest,
+    WebhookDeleteResponse,
     WebhookTestResponse,
     WebhookUpdateRequest,
 )
@@ -479,6 +480,7 @@ def update_webhook(
 
 @webhook_router.delete(
     "/{webhook_id}",
+    response_model=WebhookDeleteResponse,
     summary="Delete webhook",
     description="Delete a webhook. Only admin users can delete webhooks.",
 )

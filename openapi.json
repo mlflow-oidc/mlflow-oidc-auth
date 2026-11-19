@@ -791,6 +791,66 @@
         "title": "FailedRun",
         "type": "object"
       },
+      "GatewayEndpointListItem": {
+        "description": "A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).",
+        "properties": {
+          "auth_type": {
+            "description": "Auth type",
+            "title": "Auth Type",
+            "type": "string"
+          },
+          "description": {
+            "description": "Endpoint description, empty for none",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "description": "Endpoint name",
+            "title": "Name",
+            "type": "string"
+          },
+          "route_type": {
+            "description": "Route type",
+            "title": "Route Type",
+            "type": "string"
+          },
+          "type": {
+            "description": "Endpoint type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "description",
+          "route_type",
+          "auth_type"
+        ],
+        "title": "GatewayEndpointListItem",
+        "type": "object"
+      },
+      "GatewayModelDefinitionListItem": {
+        "description": "A gateway model definition the caller may manage (``GET /permissions/gateways/model-definitions``).",
+        "properties": {
+          "name": {
+            "description": "Model definition name",
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "Model source, or the provider when the definition has no source",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source"
+        ],
+        "title": "GatewayModelDefinitionListItem",
+        "type": "object"
+      },
       "GatewayPermission": {
         "description": "Model for creating or updating a gateway permission (endpoint, model definition, or secret).",
         "properties": {
@@ -831,6 +891,21 @@
           "permission"
         ],
         "title": "GatewayRegexCreate",
+        "type": "object"
+      },
+      "GatewaySecretListItem": {
+        "description": "A gateway secret the caller may manage (``GET /permissions/gateways/secrets``). Never carries the secret value.",
+        "properties": {
+          "key": {
+            "description": "Secret name",
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "GatewaySecretListItem",
         "type": "object"
       },
       "GroupDetail": {
@@ -4042,6 +4117,21 @@
         "title": "WebhookCreateRequest",
         "type": "object"
       },
+      "WebhookDeleteResponse": {
+        "description": "The body of ``DELETE /oidc/webhook/{webhook_id}``.",
+        "properties": {
+          "message": {
+            "description": "Human-readable confirmation",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "WebhookDeleteResponse",
+        "type": "object"
+      },
       "WebhookListResponse": {
         "description": "Response model for listing webhooks.",
         "properties": {
@@ -5172,8 +5262,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewayEndpointListItem"
                   },
                   "title": "Response List Gateway Endpoints Api 2 0 Mlflow Permissions Gateways Endpoints Get",
                   "type": "array"
@@ -5379,8 +5468,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewayModelDefinitionListItem"
                   },
                   "title": "Response List Gateway Model Definitions Api 2 0 Mlflow Permissions Gateways Model Definitions Get",
                   "type": "array"
@@ -5586,8 +5674,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewaySecretListItem"
                   },
                   "title": "Response List Gateway Secrets Api 2 0 Mlflow Permissions Gateways Secrets Get",
                   "type": "array"
@@ -21049,9 +21136,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Delete Webhook Oidc Webhook  Webhook Id  Delete",
-                  "type": "object"
+                  "$ref": "#/components/schemas/WebhookDeleteResponse"
                 }
               }
             },

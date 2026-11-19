@@ -77,6 +77,7 @@ from mlflow_oidc_auth.models.webhook import (
     WebhookListResponse,
     WebhookResponse,
     WebhookTestRequest,
+    WebhookDeleteResponse,
     WebhookTestResponse,
     WebhookUpdateRequest,
 )
@@ -147,6 +148,7 @@ __all__ = [
     "WebhookTestRequest",
     "WebhookResponse",
     "WebhookListResponse",
+    "WebhookDeleteResponse",
     "WebhookTestResponse",
     "UserPermission",
 ]

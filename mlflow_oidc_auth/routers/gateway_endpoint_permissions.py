@@ -1,10 +1,11 @@
-from typing import Any, Dict, List
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import JSONResponse
 
 from mlflow_oidc_auth.dependencies import check_gateway_endpoint_manage_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.gateway import GatewayEndpointListItem
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
@@ -83,7 +84,7 @@ async def get_gateway_endpoint_groups(
 
 @gateway_endpoint_permissions_router.get(
     LIST_ENDPOINTS,
-    response_model=List[Dict[str, Any]],
+    response_model=List[GatewayEndpointListItem],
     summary="List all gateway endpoints",
     description="Retrieves a list of all gateway endpoints from MLflow.",
 )
