@@ -376,6 +376,19 @@ class TestExperimentRootPathsResolve:
 
         assert _experiment_id_from_artifact_path(artifact_path) == "12", f"{artifact_path!r} fell back to the permissive default"
 
+    @pytest.mark.parametrize("artifact_path", ["file:12/r/a", "FILE:12/r/a", "%66ile:12/r/a", "file:12", "file:///12/r/a"])
+    def test_file_scheme_fallback_resolves_when_mlflow_rejects_the_path(self, artifact_path):
+        """On Python < 3.12.4 MLflow's _decode makes "file:12/r" absolute and validate_path_is_safe raises.
+
+        The fallback must still resolve the scheme, on every Python, so the experiment is the one MLflow names.
+        """
+        from unittest.mock import patch
+
+        from mlflow_oidc_auth.validators import experiment
+
+        with patch.object(experiment, "validate_path_is_safe", side_effect=ValueError("Invalid path")):
+            assert experiment._experiment_id_from_artifact_path(artifact_path) == "12"
+
     @pytest.mark.parametrize("default_permission", ["MANAGE", "NO_PERMISSIONS"])
     @pytest.mark.parametrize(
         "path, method",

@@ -795,12 +795,14 @@
         "description": "A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).",
         "properties": {
           "auth_type": {
-            "description": "Auth type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
+            "deprecated": true,
+            "description": "Auth type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
             "title": "Auth Type",
             "type": "string"
           },
           "description": {
-            "description": "Endpoint description. MLflow's GatewayEndpoint has no such field, so this is always empty today",
+            "deprecated": true,
+            "description": "Endpoint description. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
             "title": "Description",
             "type": "string"
           },
@@ -810,12 +812,14 @@
             "type": "string"
           },
           "route_type": {
-            "description": "Route type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
+            "deprecated": true,
+            "description": "Route type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
             "title": "Route Type",
             "type": "string"
           },
           "type": {
-            "description": "Endpoint type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
+            "deprecated": true,
+            "description": "Endpoint type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
             "title": "Type",
             "type": "string"
           }

@@ -10,8 +10,10 @@ Usage::
     python -I scripts/compare_openapi_structure.py <base> <candidate>
 
 Each argument is a path to an OpenAPI JSON file, or a git ref (``main``, ``origin/main``, a commit), which
-is read as ``<ref>:openapi.json`` from the repository. Exit status: 0 when the structures are equal, 1 when
-they are not (each difference is printed), 2 when an input cannot be read.
+is resolved to a commit and read as ``openapi.json`` from it. Prefix ``file:`` or ``ref:`` to say which is meant;
+a bare argument is a file if one exists, else a ref. An argument beginning with ``-`` is refused. Exit status:
+0 when the structures are equal, 1 when they are not (each difference is printed), 2 when an input cannot be read
+or parsed (invalid JSON, no such file or ref, no git).
 """
 
 import json
@@ -23,26 +25,83 @@ from typing import Any, Dict, List
 _TEXT_KEYS = ("summary", "description")
 
 
+def _fail(message: str) -> "SystemExit":
+    """Build the exit for an unreadable input: one line on stderr, status 2 (1 means "differ").
+
+    Parameters:
+        message: The one-line reason.
+
+    Returns:
+        A ``SystemExit`` with status 2 to raise.
+    """
+    print(message, file=sys.stderr)
+    return SystemExit(2)
+
+
+def _git(*args: str) -> str:
+    """Run git and return its stdout, or exit 2 with a one-line message.
+
+    Parameters:
+        *args: The git arguments.
+
+    Returns:
+        The command's stdout.
+
+    Raises:
+        SystemExit: With status 2 if git is missing or the command fails.
+    """
+    try:
+        result = subprocess.run(["git", *args], capture_output=True, text=True)
+    except OSError as error:
+        raise _fail(f"cannot run git: {error}")
+    if result.returncode != 0:
+        raise _fail(f"git {args[0]} failed: {' '.join(result.stderr.split())[:200]}")
+    return result.stdout
+
+
 def load(source: str) -> Dict[str, Any]:
     """Read an OpenAPI document from a file path or a git ref.
 
+    ``file:<path>`` and ``ref:<ref>`` say which one is meant. A bare argument is a file when one exists at that
+    path, otherwise a ref. A ref is resolved to a commit (``git rev-parse --verify --end-of-options``) and
+    read as ``<sha>:openapi.json``. An argument beginning with ``-`` is refused, so it can never be taken
+    for an option.
+
     Parameters:
-        source: A path to a JSON file, or a git ref naming a commit that holds ``openapi.json``.
+        source: ``file:<path>``, ``ref:<ref>``, or a bare path or ref.
 
     Returns:
         The parsed document.
 
     Raises:
-        SystemExit: With status 2 if the source cannot be read.
+        SystemExit: With status 2 if the source cannot be read or parsed.
     """
-    if os.path.isfile(source):
-        with open(source, encoding="utf-8") as handle:
-            return json.load(handle)
-    result = subprocess.run(["git", "show", f"{source}:openapi.json"], capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"cannot read {source!r}: not a file, and 'git show {source}:openapi.json' failed: {result.stderr.strip()}", file=sys.stderr)
-        raise SystemExit(2)
-    return json.loads(result.stdout)
+    if source.startswith("-"):
+        raise _fail(f"refusing argument {source!r}: it begins with '-'")
+    if source.startswith("file:"):
+        kind, name = "file", source[len("file:") :]
+    elif source.startswith("ref:"):
+        kind, name = "ref", source[len("ref:") :]
+    else:
+        kind, name = ("file" if os.path.isfile(source) else "ref"), source
+    if not name or name.startswith("-"):
+        raise _fail(f"refusing argument {source!r}: empty, or begins with '-'")
+    if kind == "file":
+        try:
+            with open(name, encoding="utf-8") as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError) as error:
+            raise _fail(f"cannot read file {name!r}: {error}")
+    else:
+        sha = _git("rev-parse", "--verify", "--end-of-options", f"{name}^{{commit}}").strip()
+        text = _git("show", f"{sha}:openapi.json")
+    try:
+        document = json.loads(text)
+    except ValueError as error:
+        raise _fail(f"{source!r} is not valid JSON: {error}")
+    if not isinstance(document, dict):
+        raise _fail(f"{source!r} is not an OpenAPI document (a JSON object)")
+    return document
 
 
 def _parameters_as_set(parameters: List[Any]) -> Any:

@@ -298,3 +298,19 @@ def test_factory_allows_a_caller_only_collection_listing():
     from mlflow_oidc_auth.routers._permission_routes import CALLER, add_route
 
     add_route(APIRouter(), _route("list", CALLER, path="/x", params=()))
+
+
+def test_regex_routes_refuse_a_delete_model_that_needs_arguments():
+    """The delete body is the model built with no arguments, after the store delete ran: refuse one that cannot be, at registration."""
+    from pydantic import BaseModel
+
+    from mlflow_oidc_auth.models.responses import StatusOnlyResponse
+    from mlflow_oidc_auth.routers._permission_routes import USER, regex_routes
+
+    class NeedsField(BaseModel):
+        required: str
+
+    common = dict(call={"delete": lambda a: None}, body=None, item=lambda p: p, item_model=StatusOnlyResponse, ops=("delete",))
+    with pytest.raises(TypeError, match="constructible with no arguments"):
+        regex_routes(APIRouter(), USER, "thing", "tag", "/x", "/x/{id}", models={"delete": NeedsField}, **common)
+    regex_routes(APIRouter(), USER, "thing", "tag", "/x", "/x/{id}", models={"delete": StatusOnlyResponse}, **common)

@@ -23,10 +23,26 @@ class GatewayEndpointListItem(ResponseModel):
     """A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``)."""
 
     name: str = Field(..., description="Endpoint name")
-    type: str = Field(..., description="Endpoint type. MLflow's GatewayEndpoint has no such field, so this is always empty today")
-    description: str = Field(..., description="Endpoint description. MLflow's GatewayEndpoint has no such field, so this is always empty today")
-    route_type: str = Field(..., description="Route type. MLflow's GatewayEndpoint has no such field, so this is always empty today")
-    auth_type: str = Field(..., description="Auth type. MLflow's GatewayEndpoint has no such field, so this is always empty today")
+    type: str = Field(
+        ...,
+        deprecated=True,
+        description="Endpoint type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+    )
+    description: str = Field(
+        ...,
+        deprecated=True,
+        description="Endpoint description. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+    )
+    route_type: str = Field(
+        ...,
+        deprecated=True,
+        description="Route type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+    )
+    auth_type: str = Field(
+        ...,
+        deprecated=True,
+        description="Auth type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+    )
 
 
 class GatewayModelDefinitionListItem(ResponseModel):

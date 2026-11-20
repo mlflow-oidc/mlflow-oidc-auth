@@ -1,4 +1,6 @@
 import posixpath
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 from flask import g, has_request_context, request
@@ -184,6 +186,32 @@ def _artifact_experiment_permission(experiment_id: Optional[str], username: str)
     return effective_experiment_permission(experiment_id, username).permission
 
 
+def _strip_file_scheme(artifact_path: str) -> str:
+    """Resolve a ``file:`` scheme the way MLflow's helpers do, for the path MLflow's own normalizer rejected.
+
+    MLflow's ``_decode`` rebuilds the URL with ``urlunparse``, which on Python before 3.12.4 turns ``file:12/r``
+    into ``file:///12/r`` (an absolute path), so ``validate_path_is_safe`` raises there. Parsing the raw
+    ``file:12/r`` would then name no experiment and fall back to the default permission; resolving the scheme
+    here names the same experiment on every supported Python.
+
+    Parameters:
+        artifact_path: The raw artifact path.
+
+    Returns:
+        The path without a ``file:`` scheme (percent-decoded first, like MLflow), or the argument unchanged.
+    """
+    decoded = artifact_path
+    for _ in range(10):
+        step = urllib.parse.unquote(decoded)
+        if step == decoded:
+            break
+        decoded = step
+    parsed = urllib.parse.urlparse(decoded)
+    if parsed.scheme != "file":
+        return artifact_path
+    return urllib.request.url2pathname(parsed.path)
+
+
 def _artifact_path_segments(artifact_path: str) -> list:
     """The normalized, non-empty segments of an artifact path, exactly as MLflow reads it.
 
@@ -198,6 +226,7 @@ def _artifact_path_segments(artifact_path: str) -> list:
         # itself. Logged rather than silent so a future MLflow that changes this helper
         # does not quietly degrade the check.
         logger.warning("Could not normalize artifact path for authorization; parsing the raw value")
+        artifact_path = _strip_file_scheme(artifact_path)
 
     # Match on NORMALIZED SEGMENTS rather than an anchored regex over the raw string.
     #

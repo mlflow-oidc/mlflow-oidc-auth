@@ -1,19 +1,19 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Path
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
 
 from mlflow_oidc_auth.dependencies import check_gateway_secret_manage_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.gateway import GatewaySecretListItem
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
+from mlflow_oidc_auth.routers._gateway_list import as_text, page_models
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_gateway_secrets, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_secrets
-from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery
 
 logger = get_logger()
 
@@ -87,7 +87,9 @@ async def get_gateway_secret_groups(
     summary="List all gateway secrets",
     description="Retrieves a list of all gateway secrets from MLflow.",
 )
-async def list_gateway_secrets(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
+async def list_gateway_secrets(
+    response: Response, username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
+) -> List[GatewaySecretListItem]:
     """
     List gateway secrets accessible to the authenticated user.
 
@@ -97,6 +99,8 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
 
     Parameters:
     -----------
+    response : Response
+        The injected response; receives ``X-Total-Count`` when the request pages or searches.
     username : str
         The authenticated username (injected by dependency).
     is_admin : bool
@@ -107,8 +111,8 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
 
     Returns:
     --------
-    JSONResponse
-        A JSON response containing the list of accessible gateway secrets.
+    List[GatewaySecretListItem]
+        The accessible gateway secrets, validated and serialised against the response model.
 
     Raises:
     -------
@@ -126,14 +130,10 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
             # Regular users only see secrets they can manage
             secrets = filter_manageable_gateway_secrets(username, all_secrets)
 
-        # Paginate strictly after the permission filter: the total never counts a hidden item
-        secrets, headers = paginate_with_headers(secrets, key=lambda s: s.get("secret_name") or s.get("name") or s.get("key") or "", params=page)
-
-        # Format the response to match the expected frontend schema
-        return JSONResponse(
-            headers=headers,
-            content=[GatewaySecretListItem(key=secret.get("secret_name") or secret.get("name") or secret.get("key") or "").model_dump() for secret in secrets],
-        )
+        # Format to the expected frontend schema once, then paginate those models strictly after the
+        # permission filter: the total never counts a hidden item.
+        items = [GatewaySecretListItem(key=as_text(secret.get("secret_name"), secret.get("name"), secret.get("key"))) for secret in secrets]
+        return page_models(items, lambda item: item.key, page, response)
     except Exception as e:
         logger.error(f"Error listing gateway secrets: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway secrets")

@@ -4254,12 +4254,14 @@ export interface components {
         GatewayEndpointListItem: {
             /**
              * Auth Type
-             * @description Auth type. MLflow's GatewayEndpoint has no such field, so this is always empty today
+             * @deprecated
+             * @description Auth type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
              */
             auth_type: string;
             /**
              * Description
-             * @description Endpoint description. MLflow's GatewayEndpoint has no such field, so this is always empty today
+             * @deprecated
+             * @description Endpoint description. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
              */
             description: string;
             /**
@@ -4269,12 +4271,14 @@ export interface components {
             name: string;
             /**
              * Route Type
-             * @description Route type. MLflow's GatewayEndpoint has no such field, so this is always empty today
+             * @deprecated
+             * @description Route type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
              */
             route_type: string;
             /**
              * Type
-             * @description Endpoint type. MLflow's GatewayEndpoint has no such field, so this is always empty today
+             * @deprecated
+             * @description Endpoint type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
              */
             type: string;
         };

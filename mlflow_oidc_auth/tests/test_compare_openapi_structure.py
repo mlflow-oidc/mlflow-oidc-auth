@@ -121,3 +121,68 @@ def test_main_exit_codes(tmp_path):
     assert compare.main([str(a), str(b)]) == 0
     assert compare.main([str(a), str(c)]) == 1
     assert compare.main([str(a)]) == 2
+
+
+def _write(path, document):
+    import json
+
+    path.write_text(json.dumps(document))
+    return str(path)
+
+
+def test_unreadable_inputs_exit_2_not_1(tmp_path, capsys):
+    """Exit 1 means "differ"; an input that cannot be read or parsed is 2, with a one-line message."""
+    good = _write(tmp_path / "good.json", BASE)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    array = _write(tmp_path / "array.json", [])
+    for source in (str(bad), array, "file:" + str(tmp_path / "missing.json")):
+        with pytest.raises(SystemExit) as raised:
+            compare.main([good, source])
+        assert raised.value.code == 2
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 3 and all(line for line in err)
+
+
+def test_missing_git_binary_exits_2(monkeypatch, tmp_path):
+    def no_git(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(compare.subprocess, "run", no_git)
+    with pytest.raises(SystemExit) as raised:
+        compare.load("ref:main")
+    assert raised.value.code == 2
+
+
+@pytest.mark.parametrize("source", ["-p", "--output=x", "file:-x", "ref:--upload-pack=x", "ref:", "file:"])
+def test_arguments_beginning_with_a_dash_are_refused(source, capsys):
+    with pytest.raises(SystemExit) as raised:
+        compare.load(source)
+    assert raised.value.code == 2
+    assert "refusing" in capsys.readouterr().err
+
+
+def test_refs_resolve_to_a_commit_and_prefixes_disambiguate(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    (tmp_path / "openapi.json").write_text(json.dumps(BASE))
+    git("add", "openapi.json")
+    git("commit", "-q", "-m", "base")
+    git("tag", "v1")
+    changed = copy.deepcopy(BASE)
+    _op(changed)["operationId"] = "x"
+    # A file named like the ref shadows it for a bare argument, but not for "ref:".
+    (tmp_path / "v1").write_text(json.dumps(changed))
+    monkeypatch.chdir(tmp_path)
+    assert compare.load("v1") == changed
+    assert compare.load("file:v1") == changed
+    assert compare.load("ref:v1") == BASE
+    assert compare.load("ref:HEAD") == BASE
+    with pytest.raises(SystemExit) as raised:
+        compare.load("ref:no-such-ref")
+    assert raised.value.code == 2

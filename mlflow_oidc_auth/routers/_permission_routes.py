@@ -458,6 +458,7 @@ def regex_routes(
 
     Raises:
         ValueError: Never for the routes this adds, which are all admin-only; see :func:`add_route`.
+        TypeError: If the delete model in ``models`` cannot be constructed with no arguments.
     """
     who, noun, snake = subject.who, f"{subject.prefix}{label} pattern permission", _snake(label)
     for op in ops:
@@ -496,6 +497,13 @@ def regex_routes(
         elif op == "delete" and (models or {}).get("delete") is not None:
             # The caller names only the model; its no-argument instance is the body (an empty one for StatusOnlyResponse).
             default_model = (models or {})["delete"]
+            try:
+                default_model()
+            except Exception as error:
+                # Found at import, not after the store delete already ran and the body cannot be built.
+                raise TypeError(
+                    f"regex_routes: the delete model {getattr(default_model, '__name__', default_model)!r} for {name!r} must be constructible with no arguments: {error}"
+                ) from error
             default_respond = lambda a, r, model=default_model: model()
         else:
             message = f"{_cap(label)} pattern permission {_PAST[op]} for {subject.message}"
