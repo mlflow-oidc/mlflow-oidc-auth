@@ -1156,6 +1156,15 @@ class TestLogoutIdTokenHint:
         row.revoke_auth_session = MagicMock(return_value=True)
         request = mock_request_with_session({"session_id": "sid", "authenticated": True})
         request.state = SimpleNamespace(username="u@x", resolved_session=None)
+        with (
+            patch("mlflow_oidc_auth.routers.auth.config.OIDC_CLIENT_ID", "legacy-client"),
+            patch("mlflow_oidc_auth.routers.auth.config.OIDC_POST_LOGOUT_REDIRECT", True),
+        ):
+            return await self._logout_inner(request, mock_oauth, row)
+
+    async def _logout_inner(self, request, mock_oauth, row):
+        from urllib.parse import parse_qs, urlparse
+
         with patch("mlflow_oidc_auth.routers.auth.oauth", mock_oauth), patch("mlflow_oidc_auth.routers.auth.store", row):
             result = await logout(request)
         row.revoke_auth_session.assert_called_once_with("sid")
@@ -1489,14 +1498,13 @@ class TestOptionalPostLogoutRedirect:
     """OIDC_POST_LOGOUT_REDIRECT=false drops post_logout_redirect_uri only; the session is cleared either way."""
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("setting, expect_redirect", [(None, True), (True, True), (False, False)])
+    @pytest.mark.parametrize("setting, expect_redirect", [(True, True), (False, False)])
     async def test_default_provider(self, mock_request_with_session, mock_oauth, monkeypatch, setting, expect_redirect):
         from mlflow_oidc_auth.routers import auth as auth_module
         from mlflow_oidc_auth.session.token_vault import SessionTokens
 
         monkeypatch.setattr(auth_module.config, "OIDC_CLIENT_ID", "legacy-client")
-        if setting is not None:
-            monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", setting)
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", setting)
         fake_store = _LogoutStore(SessionTokens(provider_id=None, id_token="idt-legacy"), provider_id=None)
 
         request, result = await _do_logout(mock_request_with_session, fake_store, default_client=mock_oauth.oidc)
@@ -1531,6 +1539,79 @@ class TestOptionalPostLogoutRedirect:
         assert ("post_logout_redirect_uri" in query) is expect_redirect
         assert query["client_id"] == ["okta-client"]
         assert query["id_token_hint"] == ["idt-okta"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "global_setting, provider_field, expect_redirect",
+        [(True, None, True), (False, None, False), (True, False, False), (False, True, True), (True, True, True), (False, False, False)],
+    )
+    async def test_a_named_providers_own_setting_overrides_the_global_one(
+        self, mock_request_with_session, monkeypatch, global_setting, provider_field, expect_redirect
+    ):
+        from types import SimpleNamespace as NS
+
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", global_setting)
+        registry = NS(by_id=lambda pid: NS(post_logout_redirect=provider_field) if pid == "okta" else None)
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="okta", id_token="idt-okta"), provider_id="okta")
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert ("post_logout_redirect_uri" in _query(result)) is expect_redirect
+
+    @pytest.mark.asyncio
+    async def test_the_default_provider_ignores_a_registry_override_and_uses_the_global_value(self, mock_request_with_session, mock_oauth, monkeypatch):
+        from types import SimpleNamespace as NS
+
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", True)
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", NS(by_id=lambda pid: NS(post_logout_redirect=False)))
+        fake_store = _LogoutStore(SessionTokens(provider_id=None, id_token="idt"), provider_id=None)
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=mock_oauth.oidc)
+
+        assert "post_logout_redirect_uri" in _query(result)
+
+
+class TestEndSessionUrlQuery:
+    """The end-session URL extends an endpoint's own query and never ends in a dangling ``?``."""
+
+    def test_no_params_adds_nothing(self):
+        from mlflow_oidc_auth.routers.auth import _append_query
+
+        assert _append_query("https://idp/logout", {}) == "https://idp/logout"
+
+    def test_params_start_a_query(self):
+        from mlflow_oidc_auth.routers.auth import _append_query
+
+        assert _append_query("https://idp/logout", {"client_id": "c"}) == "https://idp/logout?client_id=c"
+
+    def test_an_existing_query_is_extended_with_an_ampersand(self):
+        from mlflow_oidc_auth.routers.auth import _append_query
+
+        assert _append_query("https://b2c/logout?p=policy", {"client_id": "c"}) == "https://b2c/logout?p=policy&client_id=c"
+
+    def test_end_session_url_with_nothing_to_send_has_no_dangling_question_mark(self, monkeypatch):
+        from mlflow_oidc_auth.routers.auth import _end_session_url
+
+        assert _end_session_url(MagicMock(), "https://idp/logout", None, None, False) == "https://idp/logout"
+
+    def test_end_session_url_keeps_a_policy_query(self, monkeypatch):
+        from mlflow_oidc_auth.routers import auth as auth_module
+
+        monkeypatch.setattr(auth_module, "_build_ui_url", lambda request, path: "https://app/oidc/ui/auth")
+        url = auth_module._end_session_url(MagicMock(), "https://b2c/logout?p=policy", "cid", "idt", True)
+
+        assert url.startswith("https://b2c/logout?p=policy&")
+        assert url.count("?") == 1
+        assert "post_logout_redirect_uri=https%3A%2F%2Fapp%2Foidc%2Fui%2Fauth" in url and "client_id=cid" in url and "id_token_hint=idt" in url
 
 
 class TestAuthStatusReportsTheSessionsProvider:

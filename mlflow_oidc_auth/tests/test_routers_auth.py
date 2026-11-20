@@ -193,6 +193,7 @@ async def test_login_no_authorize_redirect_raises(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_logout_with_end_session_endpoint(monkeypatch):
+    monkeypatch.setattr(auth_router_mod.config, "OIDC_POST_LOGOUT_REDIRECT", True)
     req = DummyRequest()
     req.session["session_id"] = "sid-bob"
     import types

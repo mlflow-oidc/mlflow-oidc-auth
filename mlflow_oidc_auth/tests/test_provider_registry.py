@@ -742,6 +742,49 @@ class TestPublicClient:
         assert build(app_config=legacy_app_config(OIDC_PUBLIC_CLIENT="true")).providers[0].public_client is False
 
 
+class TestPostLogoutRedirect:
+    """``post_logout_redirect`` overrides OIDC_POST_LOGOUT_REDIRECT for one OIDC provider. Absent follows the global value."""
+
+    def test_it_defaults_to_inheriting_the_global_value(self):
+        assert build([valid_entry()]).providers[0].post_logout_redirect is None
+        assert ProviderConfig(id="bare").post_logout_redirect is None
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_a_boolean_is_accepted(self, value):
+        result = build([valid_entry(post_logout_redirect=value)])
+
+        assert result.errors == []
+        assert result.providers[0].post_logout_redirect is value
+
+    @pytest.mark.parametrize("bad_value", ["true", "false", 1, 0, None, [], {}])
+    def test_a_non_boolean_is_refused(self, bad_value):
+        result = build([valid_entry(post_logout_redirect=bad_value)])
+
+        assert result.providers == []
+        assert any("'post_logout_redirect' must be true or false" in error for error in result.errors)
+
+    def test_it_is_refused_on_a_k8s_provider(self):
+        result = build([valid_entry(type="k8s", in_cluster=True, post_logout_redirect=False)])
+
+        assert result.providers == []
+        assert any("'post_logout_redirect' applies only to an 'oidc' provider" in error for error in result.errors)
+
+    def test_it_is_refused_on_a_saml_provider(self, monkeypatch):
+        from mlflow_oidc_auth import provider_registry as registry_module
+
+        monkeypatch.setattr(registry_module, "_saml_extra_installed", lambda: True)
+
+        result = build([saml_entry(post_logout_redirect=True)])
+
+        assert result.providers == []
+        assert any("'post_logout_redirect' applies only to an 'oidc' provider" in error for error in result.errors)
+
+    def test_the_legacy_provider_takes_the_global_value(self):
+        assert build(app_config=legacy_app_config(OIDC_POST_LOGOUT_REDIRECT=True)).providers[0].post_logout_redirect is True
+        assert build(app_config=legacy_app_config(OIDC_POST_LOGOUT_REDIRECT=False)).providers[0].post_logout_redirect is False
+        assert build(app_config=legacy_app_config()).providers[0].post_logout_redirect is True
+
+
 class TestBearerAdoptsUnboundAccounts:
     """``bearer_adopts_unbound_accounts``: opt-in, strict about its type, OIDC only, never ``default``."""
 
