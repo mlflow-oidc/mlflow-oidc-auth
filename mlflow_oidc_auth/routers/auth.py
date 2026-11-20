@@ -895,7 +895,7 @@ def _end_session_url(request: Request, endpoint: str, client_id: Optional[str], 
     Parameters:
         request: The current request, for the absolute post-logout URI.
         endpoint: The provider's ``end_session_endpoint``.
-        client_id: The relying party's client id, omitted when None.
+        client_id: The relying party's client id, omitted when None or empty.
         id_token: The ID token to offer as ``id_token_hint``, omitted when empty.
         post_logout_redirect: Whether to send ``post_logout_redirect_uri`` (the login page).
 
@@ -905,7 +905,7 @@ def _end_session_url(request: Request, endpoint: str, client_id: Optional[str], 
     params: dict[str, str] = {}
     if post_logout_redirect:
         params["post_logout_redirect_uri"] = _build_ui_url(request, "/auth")
-    if client_id is not None:
+    if client_id:
         params["client_id"] = client_id
     if id_token:
         params["id_token_hint"] = id_token
