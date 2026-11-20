@@ -162,6 +162,12 @@ class AppConfig:
         # TLS verification for OIDC discovery/JWKS and the token endpoint. Default True;
         # only disable for providers with self-signed certs in trusted networks.
         self.OIDC_VERIFY_SSL = config_manager.get_bool("OIDC_VERIFY_SSL", default=True)
+        # RP-initiated logout (OIDC RP-Initiated Logout 1.0): whether to send post_logout_redirect_uri to the
+        # provider's end_session_endpoint. Default True. Set false for providers that offer no way to register
+        # a post-logout redirect URI and show an error page for an unregistered one; the provider then ends
+        # its session and shows its own logged-out page. client_id / id_token_hint are sent either way.
+        # Only an explicit false spelling disables it: a default-true flag must not turn off on a typo.
+        self.OIDC_POST_LOGOUT_REDIRECT = config_manager.get_bool_default_on("OIDC_POST_LOGOUT_REDIRECT")
         # PKCE (RFC 7636), on by default since #312. Binding the authorization code to a
         # per-attempt secret is what stops a code intercepted from a redirect — through a
         # browser log, a proxy, a shared machine — from being redeemed by anyone else.

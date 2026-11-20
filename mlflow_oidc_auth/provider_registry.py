@@ -209,6 +209,9 @@ class ProviderConfig:
             provider that does not declare this is a configuration error, not a public client.
             False by default; for the synthesised ``default`` provider it comes from
             ``OIDC_PUBLIC_CLIENT``.
+        post_logout_redirect: ``oidc`` only. Whether RP-initiated logout sends ``post_logout_redirect_uri`` to this
+            provider's end-session endpoint. None (absent) follows the global
+            ``OIDC_POST_LOGOUT_REDIRECT`` (also for the synthesised ``default`` provider).
         authorize_params: ``oidc`` only. Extra authorization-request parameters, never one of
             ``RESERVED_AUTHORIZE_PARAMS``.
         userinfo_groups: ``oidc`` only. Whether the groups and workspace claims may be read from
@@ -273,6 +276,8 @@ class ProviderConfig:
     public_client: bool = False
     # Opt-in: groups and workspace claims may come from UserInfo when the ID token lacks them.
     userinfo_groups: bool = False
+    # ``oidc`` only: None follows the global OIDC_POST_LOGOUT_REDIRECT; a bool overrides it for this provider.
+    post_logout_redirect: Optional[bool] = None
     bearer_adopts_unbound_accounts: bool = False
     # ``oidc`` only: extra parameters sent on every authorization request, as sorted pairs so the
     # frozen dataclass stays hashable. For parameters a provider defines beyond the standard
@@ -456,6 +461,14 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
         # who wrote it believes it changes something.
         errors.append(f"{label}: 'userinfo_groups' applies only to an 'oidc' provider, not to {provider_type!r}")
 
+    post_logout_redirect = entry.get("post_logout_redirect")
+    if "post_logout_redirect" in entry:
+        if not isinstance(post_logout_redirect, bool):
+            errors.append(f"{label}: 'post_logout_redirect' must be true or false, got {post_logout_redirect!r}")
+        elif provider_type != "oidc":
+            # Only an OIDC provider has an end-session endpoint to send it to (SAML uses single logout).
+            errors.append(f"{label}: 'post_logout_redirect' applies only to an 'oidc' provider, not to {provider_type!r}")
+
     if isinstance(entry.get("id"), str) and entry["id"].strip() in ("internal", "kubernetes"):
         # Reserved: a service account's sign-in source names its provider by id, and these two
         # mean "issued tokens only" and "a Kubernetes account from before sources were recorded".
@@ -584,6 +597,7 @@ def _validate(entry: Dict[str, Any], index: int, seen_ids: set) -> Tuple[Optiona
             client_id=client_id.strip() if isinstance(client_id, str) else None,
             public_client=public_client is True,
             userinfo_groups=userinfo_groups is True,
+            post_logout_redirect=post_logout_redirect if isinstance(post_logout_redirect, bool) else None,
             bearer_adopts_unbound_accounts=bearer_adopts_unbound_accounts is True,
             authorize_params=authorize_params,
             **saml_fields,

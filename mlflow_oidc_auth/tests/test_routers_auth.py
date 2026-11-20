@@ -193,6 +193,8 @@ async def test_login_no_authorize_redirect_raises(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_logout_with_end_session_endpoint(monkeypatch):
+    monkeypatch.setattr(auth_router_mod.config, "OIDC_POST_LOGOUT_REDIRECT", True)
+    monkeypatch.setattr(auth_router_mod.config, "OIDC_CLIENT_ID", "mlflow-client")
     req = DummyRequest()
     req.session["session_id"] = "sid-bob"
     import types
@@ -210,7 +212,7 @@ async def test_logout_with_end_session_endpoint(monkeypatch):
     assert "post_logout_redirect_uri" in res.headers["location"]
     # client_id must be sent so Keycloak does not reject the logout with
     # "Missing parameters: id_token_hint".
-    assert "client_id=" in res.headers["location"]
+    assert "client_id=mlflow-client" in res.headers["location"]
 
 
 @pytest.mark.asyncio

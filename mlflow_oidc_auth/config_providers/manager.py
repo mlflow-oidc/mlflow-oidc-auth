@@ -17,6 +17,9 @@ from mlflow_oidc_auth.logger import get_logger
 
 logger = get_logger()
 
+_TRUE_VALUES = ("true", "1", "t")
+_FALSE_VALUES = ("false", "0", "f", "no", "off", "n")
+
 
 class ConfigManager:
     """Manages configuration retrieval from multiple providers.
@@ -247,7 +250,36 @@ class ConfigManager:
             return default
         if isinstance(value, bool):
             return value
-        return str(value).lower() in ("true", "1", "t")
+        return str(value).lower() in _TRUE_VALUES
+
+    def get_bool_default_on(self, key: str) -> bool:
+        """Get a boolean flag that is on unless it is explicitly switched off.
+
+        For a default-true flag a typo must not silently turn the feature off, so only a false
+        spelling disables it. The true set is the one :meth:`get_bool` recognises.
+
+        Parameters:
+            key: The configuration key.
+
+        Returns:
+            False for a false spelling (false, 0, f, no, off, n; case-insensitive, surrounding
+            whitespace ignored) or a real False. True for a true spelling (true, 1, t), a real True,
+            an unset key or an empty value. Any other value also gives True and logs one warning
+            naming only the key and the value's length, never the value, since configuration can
+            come from a secret provider.
+        """
+        value = self.get(key)
+        if value is None:
+            return True
+        if isinstance(value, bool):
+            return value
+        raw = str(value)
+        spelling = raw.strip().lower()
+        if spelling in _FALSE_VALUES:
+            return False
+        if spelling and spelling not in _TRUE_VALUES:
+            logger.warning("%s is not a recognised boolean (got %d characters, not shown); keeping the default, true.", key, len(raw))
+        return True
 
     def get_int(self, key: str, default: int = 0) -> int:
         """Get an integer configuration value.
