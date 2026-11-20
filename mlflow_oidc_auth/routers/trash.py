@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import warnings
 from datetime import timedelta
-from typing import Any, Callable, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -20,6 +20,7 @@ from mlflow_oidc_auth.audit import emit_audit_event
 from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models.trash import (
+    PermissionSweepResponse,
     TRASH_CLEANUP_ERROR_RESPONSES,
     TRASH_ERROR_RESPONSES,
     DeletedExperimentListResponse,
@@ -28,6 +29,14 @@ from mlflow_oidc_auth.models.trash import (
     RestoredRunResponse,
     TrashCleanupResponse,
 )
+from mlflow_oidc_auth.orphans import (
+    experiments_definitively_missing,
+    order_experiment_ids,
+    read_replica_configured,
+    sweep_workspaces,
+    workspace_listing_is_authoritative,
+)
+from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
 
@@ -50,6 +59,24 @@ RUNS = "/runs"
 CLEANUP = "/cleanup"
 RESTORE_EXPERIMENT = f"{EXPERIMENTS}/{{experiment_id}}/restore"
 RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
+PERMISSIONS_SWEEP = "/permissions/sweep"
+#: Most experiment ids an audit event carries; the event also states the total and whether it was cut.
+_AUDIT_ID_SAMPLE = 100
+
+
+_REPLICA_REFUSAL = (
+    "the tracking store reads from a replica, which cannot prove an experiment is gone; run with dry_run=true and remove rows "
+    "from the cleanup endpoint, or run the sweep against a server without a read replica"
+)
+_WORKSPACE_STORE_REFUSAL = (
+    "the workspace store is not MLflow's built-in one, whose listing may hide workspaces, so an experiment cannot be proven gone; "
+    "run with dry_run=true and remove rows from the cleanup endpoint"
+)
+
+
+def _capped_ids(ids: List[str]) -> dict:
+    """The audit-event fragment for a possibly long id list: a capped sample plus a truncation flag."""
+    return {"experiment_ids": list(ids[:_AUDIT_ID_SAMPLE]), "experiment_ids_truncated": len(ids) > _AUDIT_ID_SAMPLE}
 
 
 @trash_router.get(
@@ -393,6 +420,19 @@ async def permanently_delete_all_trashed_entities(
         if target_experiment_ids:
             target_run_ids.extend(_search_deleted_run_ids(backend_store, target_experiment_ids))
 
+        # Snapshot the grant rows of every target experiment once, before anything at all is deleted
+        # (runs included): only rows that existed now are removed later, so a new experiment that reuses
+        # an id (SQLite) keeps its creator's grant. If the rows cannot be read nothing is deleted: a
+        # delete whose permission rows cannot be scoped is not worth the risk of a stale or over-broad
+        # cleanup.
+        grant_snapshot: Dict[str, Dict[str, List[int]]] = {}
+        if target_experiment_ids:
+            try:
+                grant_snapshot = store.snapshot_experiment_grant_rows(list(target_experiment_ids))
+            except Exception:
+                logger.exception("Could not snapshot the permission rows of %d trashed experiments; nothing will be deleted", len(target_experiment_ids))
+                raise _CandidateLookupError("Could not read permission rows; nothing was deleted")
+
         # Delete runs
         deleted_runs = []
         failed_runs = []
@@ -455,6 +495,7 @@ async def permanently_delete_all_trashed_entities(
 
         # Delete experiments
         deleted_experiments = []
+        failed_permission_cleanups: List[dict] = []
 
         if not skip_experiments:
             for experiment_id in target_experiment_ids:
@@ -491,6 +532,26 @@ async def permanently_delete_all_trashed_entities(
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
 
+            # One batched delete for the experiments actually hard-deleted that had rows: at most one
+            # permission-cache flush per call, none when there is nothing to remove. A failure must not
+            # undo or hide the successful deletes, so it is reported separately and the sweep endpoint
+            # can finish the job later.
+            deleted_set = set(deleted_experiments)
+            with_rows = sorted({eid for per_experiment in grant_snapshot.values() for eid in per_experiment if eid in deleted_set})
+            if with_rows:
+                try:
+                    removed = store.delete_experiment_grant_rows(grant_snapshot, only_experiments=with_rows)
+                    if removed:
+                        emit_audit_event(
+                            "trash.permissions_cleanup",
+                            admin_username,
+                            resource_type="experiment_permission",
+                            detail={"removed_rows": removed, "experiments_with_rows": len(with_rows), **_capped_ids(with_rows)},
+                        )
+                except Exception:
+                    logger.exception("Could not remove the permission rows of %d permanently deleted experiments", len(with_rows))
+                    failed_permission_cleanups.extend({"experiment_id": eid, "error": "Failed to remove permission rows"} for eid in with_rows)
+
         # Prepare response
         response_data = {
             "deleted_runs": deleted_runs,
@@ -504,6 +565,9 @@ async def permanently_delete_all_trashed_entities(
 
         if failed_experiments:
             response_data["failed_experiments"] = failed_experiments
+
+        if failed_permission_cleanups:
+            response_data["failed_permission_cleanups"] = failed_permission_cleanups
 
         logger.info(f"Admin user '{admin_username}' completed cleanup: " f"{len(deleted_runs)} runs, {len(deleted_experiments)} experiments deleted")
 
@@ -526,6 +590,119 @@ async def permanently_delete_all_trashed_entities(
     except Exception:
         logger.exception("Error in cleanup operation for admin %s", admin_username)
         return JSONResponse(status_code=500, content={"error": "Cleanup operation failed"})
+
+
+@trash_router.post(
+    PERMISSIONS_SWEEP,
+    response_model=PermissionSweepResponse,
+    responses=TRASH_CLEANUP_ERROR_RESPONSES,
+    summary="Remove permission rows of experiments that no longer exist",
+    description=(
+        "Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after "
+        "`mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace "
+        "reports it does not exist, in two passes over the same workspace set; any other answer or error keeps it, and it is listed in "
+        "`unresolved_experiments`. The workspaces asked are the ones MLflow lists united with every workspace this plugin records "
+        "grants for; if the listing changes between the passes, nothing is removed by that call. "
+        "A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. "
+        "At most 1000 tracking-store lookups are made per call, over ids in ascending order (numeric when all ids are digits). "
+        "When the budget runs out `truncated` is true and `next_after` is the last id fully decided: call again with `after=<next_after>` "
+        "to continue with the ids after it. "
+        "Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` "
+        "and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: "
+        "run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`. "
+        "A sweep with `dry_run=false` is refused with 409 when the tracking store reads from a read replica "
+        "(a lagging replica says an experiment that was just created does not exist) and, with workspaces enabled, "
+        "when the workspace store is not MLflow's built-in one (a third-party provider may hide workspaces from the listing); "
+        "a dry run still works and sets `replica_reads` when a replica is configured, since its results may then include false positives."
+    ),
+)
+def sweep_orphaned_experiment_permissions(
+    admin_username: str = Depends(check_admin_permission),
+    dry_run: bool = Query(True, description="Only report what would be removed (default). Pass false to delete."),
+    after: Optional[str] = Query(None, description="Resume cursor: only experiment ids after this one are checked. Pass the previous response's `next_after`."),
+) -> JSONResponse:
+    """Remove grant rows that name experiments the tracking store no longer has.
+
+    Parameters:
+        admin_username: The authenticated admin username (injected by dependency).
+        dry_run: When true (the default) nothing is deleted and no rows are snapshotted. False is refused with 409 when
+            the tracking store reads from a replica or, with workspaces enabled, the workspace store is not MLflow's built-in one.
+        after: The experiment id to resume after (the previous page's ``next_after``); None starts from the beginning.
+
+    Returns:
+        A ``PermissionSweepResponse`` body; a 409 ``{"error": ...}`` for a deleting sweep that cannot be trusted; a 500 ``{"error": ...}`` when the grant rows cannot be
+        listed or deleted.
+
+    Raises:
+        Nothing: failures are returned as the 500 body.
+    """
+    replica_reads = read_replica_configured()
+    if not dry_run:
+        # Fail closed before anything is read or snapshotted: these two setups cannot prove an experiment is gone.
+        if replica_reads:
+            return JSONResponse(status_code=409, content={"error": _REPLICA_REFUSAL})
+        if not workspace_listing_is_authoritative():
+            return JSONResponse(status_code=409, content={"error": _WORKSPACE_STORE_REFUSAL})
+    try:
+        page_ids = order_experiment_ids(store.list_experiment_ids_with_grants(), after)
+        # A real sweep snapshots the rows before any tracking-store lookup and deletes only those rows: a
+        # grant created afterwards (an experiment id reused by a new experiment) is never touched. A dry
+        # run deletes nothing, so it takes no snapshot.
+        snapshot = {} if dry_run else store.snapshot_experiment_grant_rows(page_ids)
+        workspaces = sweep_workspaces(store)
+        first = experiments_definitively_missing(page_ids, workspaces)
+        missing_set, unresolved_set = set(first.missing), set(first.unresolved)
+        removed = 0
+        if missing_set and not dry_run:
+            # Confirm again right before deleting, over the workspaces as they are now: an id that exists by
+            # now (moved between workspaces, or recreated) is dropped, and if the workspace set changed
+            # since the first pass nothing is confirmed. The confirmation has its own budget, sized to the
+            # candidates alone, so it never eats into the next page's.
+            candidates = order_experiment_ids(missing_set)
+            confirm_workspaces = sweep_workspaces(store)
+            if confirm_workspaces is None or confirm_workspaces != workspaces:
+                unresolved_set |= missing_set
+                missing_set = set()
+            else:
+                confirmed = experiments_definitively_missing(candidates, confirm_workspaces, limit=len(candidates) * len(confirm_workspaces.checked))
+                # An id the confirmation could not settle is kept, and reported as unresolved.
+                unresolved_set |= confirmed.unresolved
+                missing_set = set(confirmed.missing)
+            if missing_set:
+                removed = store.delete_experiment_grant_rows(snapshot, only_experiments=missing_set)
+        missing, unresolved = order_experiment_ids(missing_set), order_experiment_ids(unresolved_set)
+    except Exception:
+        logger.exception("Error sweeping orphaned experiment permissions for admin %s", admin_username)
+        return JSONResponse(status_code=500, content={"error": "Permission sweep failed"})
+
+    logger.info(f"Admin user '{admin_username}' swept experiment permissions (dry_run={dry_run}): {len(missing)} missing experiments, {removed} rows removed")
+    emit_audit_event(
+        "trash.permissions_sweep",
+        admin_username,
+        resource_type="experiment_permission",
+        detail={
+            "dry_run": dry_run,
+            "missing_count": len(missing),
+            "unresolved_count": len(unresolved),
+            "truncated": first.truncated,
+            "next_after": first.next_after,
+            "after": after,
+            "removed_rows": removed,
+            **_capped_ids(missing),
+        },
+    )
+    return JSONResponse(
+        content={
+            "dry_run": dry_run,
+            "checked_experiments": first.checked,
+            "missing_experiments": missing,
+            "unresolved_experiments": unresolved,
+            "truncated": first.truncated,
+            "next_after": first.next_after,
+            "removed_rows": removed,
+            "replica_reads": replica_reads,
+        }
+    )
 
 
 @trash_router.post(

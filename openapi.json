@@ -772,6 +772,25 @@
         "title": "FailedExperiment",
         "type": "object"
       },
+      "FailedPermissionCleanup": {
+        "description": "An experiment that was permanently deleted but whose permission rows could not be removed.",
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "error"
+        ],
+        "title": "FailedPermissionCleanup",
+        "type": "object"
+      },
       "FailedRun": {
         "description": "A run the cleanup could not delete.",
         "properties": {
@@ -1914,6 +1933,69 @@
           "kind"
         ],
         "title": "NamedPermissionSummary",
+        "type": "object"
+      },
+      "PermissionSweepResponse": {
+        "description": "``POST /oidc/trash/permissions/sweep``.\n\nAttributes:\n    dry_run: True when nothing was deleted.\n    checked_experiments: Experiment ids decided in this call (those after the `after` cursor, up to the lookup budget).\n    missing_experiments: Ids the tracking store definitively does not have (in any workspace).\n    unresolved_experiments: Ids whose existence could not be established; their rows are kept.\n    truncated: True when the lookup budget ran out before the last id; call again with `after=next_after`.\n    next_after: When truncated, the last id fully decided in this call; None otherwise.\n    removed_rows: Grant rows deleted (always 0 for a dry run).\n    replica_reads: True when the tracking store reads from a read replica: a lagging replica reports a just-created experiment\n        as missing, so `missing_experiments` of a dry run may include false positives (a deleting sweep is refused with 409).",
+        "properties": {
+          "checked_experiments": {
+            "title": "Checked Experiments",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "missing_experiments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Experiments",
+            "type": "array"
+          },
+          "next_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next After"
+          },
+          "removed_rows": {
+            "title": "Removed Rows",
+            "type": "integer"
+          },
+          "replica_reads": {
+            "default": false,
+            "title": "Replica Reads",
+            "type": "boolean"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "unresolved_experiments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved Experiments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dry_run",
+          "checked_experiments",
+          "missing_experiments",
+          "unresolved_experiments",
+          "truncated",
+          "removed_rows",
+          "replica_reads",
+          "next_after"
+        ],
+        "title": "PermissionSweepResponse",
         "type": "object"
       },
       "PromptPermission": {
@@ -3430,6 +3512,20 @@
               }
             ],
             "title": "Failed Experiments"
+          },
+          "failed_permission_cleanups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FailedPermissionCleanup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Permission Cleanups"
           },
           "failed_runs": {
             "anyOf": [
@@ -20384,6 +20480,16 @@
             },
             "description": "Resource not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "A deleting permission sweep was refused: the tracking store reads from a replica, or the workspace store is not MLflow's built-in one"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -20564,6 +20670,113 @@
           }
         },
         "summary": "Restore a deleted experiment",
+        "tags": [
+          "trash"
+        ]
+      }
+    },
+    "/oidc/trash/permissions/sweep": {
+      "post": {
+        "description": "Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist, in two passes over the same workspace set; any other answer or error keeps it, and it is listed in `unresolved_experiments`. The workspaces asked are the ones MLflow lists united with every workspace this plugin records grants for; if the listing changes between the passes, nothing is removed by that call. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. At most 1000 tracking-store lookups are made per call, over ids in ascending order (numeric when all ids are digits). When the budget runs out `truncated` is true and `next_after` is the last id fully decided: call again with `after=<next_after>` to continue with the ids after it. Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`. A sweep with `dry_run=false` is refused with 409 when the tracking store reads from a read replica (a lagging replica says an experiment that was just created does not exist) and, with workspaces enabled, when the workspace store is not MLflow's built-in one (a third-party provider may hide workspaces from the listing); a dry run still works and sets `replica_reads` when a replica is configured, since its results may then include false positives.",
+        "operationId": "sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post",
+        "parameters": [
+          {
+            "description": "Only report what would be removed (default). Pass false to delete.",
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "Only report what would be removed (default). Pass false to delete.",
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Resume cursor: only experiment ids after this one are checked. Pass the previous response's `next_after`.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resume cursor: only experiment ids after this one are checked. Pass the previous response's `next_after`.",
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSweepResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid request"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Resource not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "A deleting permission sweep was refused: the tracking store reads from a replica, or the workspace store is not MLflow's built-in one"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashErrorResponse"
+                }
+              }
+            },
+            "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"
+          }
+        },
+        "summary": "Remove permission rows of experiments that no longer exist",
         "tags": [
           "trash"
         ]

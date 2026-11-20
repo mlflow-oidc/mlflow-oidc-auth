@@ -22,11 +22,9 @@ from mlflow_oidc_auth.db.models.workspace import SqlWorkspaceGroupPermission
 from mlflow_oidc_auth.db.models.workspace_rule import SqlWorkspaceGroupRule
 from mlflow_oidc_auth.entities.workspace_rule import RuleGrantChange, WorkspaceGroupRule
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.repository.utils import chunks as _chunks
 
 logger = get_logger()
-
-# Keeps every IN (...) list well under SQLite's bound-parameter limit on large directories.
-_CHUNK = 500
 
 Pair = Tuple[str, str]  # (workspace, group_name)
 
@@ -55,11 +53,6 @@ def _semantics(rule: WorkspaceGroupRule) -> Tuple:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _chunks(values: List, size: int = _CHUNK) -> Iterable[List]:
-    for start in range(0, len(values), size):
-        yield values[start : start + size]
 
 
 class WorkspaceGroupRuleRepository:

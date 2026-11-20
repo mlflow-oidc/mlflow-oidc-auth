@@ -1,6 +1,6 @@
 import functools
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import sqlalchemy
 from mlflow.store.db.utils import (
@@ -77,6 +77,7 @@ from mlflow_oidc_auth.repository import (
     WorkspaceGroupPermissionRepository,
 )
 from mlflow_oidc_auth.repository.saml_assertion import SamlAssertionRepository
+from mlflow_oidc_auth.repository.utils import IN_CLAUSE_CHUNK_SIZE, chunks
 from mlflow_oidc_auth.repository.workspace_regex_permission import (
     WorkspaceRegexPermissionRepository,
 )
@@ -267,6 +268,106 @@ class SqlAlchemyStore:
                 SqlScorerGroupPermission.scorer_name == scorer_name,
             ).delete(synchronize_session=False)
             session.flush()
+
+    @staticmethod
+    def _experiment_keyed_models() -> list:
+        """The tables keyed by an experiment id: user/group experiment grants, user/group scorer grants, schedule authors."""
+        from mlflow_oidc_auth.db.models import (
+            SqlExperimentGroupPermission,
+            SqlExperimentPermission,
+            SqlIssueDetectionScheduleAuthor,
+            SqlScorerGroupPermission,
+            SqlScorerPermission,
+        )
+
+        return [SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission, SqlIssueDetectionScheduleAuthor]
+
+    def snapshot_experiment_grant_rows(self, experiment_ids: List[str]) -> Dict[str, Dict[str, List[int]]]:
+        """Record the primary keys of every row keyed by one of these experiment ids, as of now.
+
+        Covers the user and group experiment grants, the user and group scorer grants (a scorer belongs
+        to an experiment) and the issue-detection schedule author. Regex grants are patterns, not ids,
+        and are not included. Take the snapshot *before* establishing that the experiments are gone and
+        pass it to :meth:`delete_experiment_grant_rows`: a row created afterwards (an experiment id
+        reused by a new experiment) is then never deleted.
+
+        Parameters:
+            experiment_ids: Experiment ids to snapshot.
+
+        Returns:
+            ``{table name: {experiment id: [row ids]}}``; tables and ids without rows are omitted.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When the rows cannot be read; nothing is snapshotted then.
+        """
+        ids = sorted({str(i) for i in experiment_ids if i})
+        snapshot: Dict[str, Dict[str, List[int]]] = {}
+        if not ids:
+            return snapshot
+        with self.ManagedSessionMaker() as session:
+            for model in self._experiment_keyed_models():
+                per_experiment: Dict[str, List[int]] = {}
+                for chunk in chunks(ids, IN_CLAUSE_CHUNK_SIZE):
+                    for row_id, experiment_id in session.query(model.id, model.experiment_id).filter(model.experiment_id.in_(chunk)).all():
+                        per_experiment.setdefault(experiment_id, []).append(row_id)
+                if per_experiment:
+                    snapshot[model.__tablename__] = per_experiment
+        return snapshot
+
+    def delete_experiment_grant_rows(self, snapshot: Dict[str, Dict[str, List[int]]], only_experiments: Optional[Iterable[str]] = None) -> int:
+        """Delete exactly the rows named by a :meth:`snapshot_experiment_grant_rows` result, in one transaction.
+
+        Rows inserted after the snapshot are never touched, whatever experiment id they carry. Either
+        all tables are cleaned or none is. Rows are deleted in batches per table, not one statement per
+        experiment.
+
+        Parameters:
+            snapshot: The result of :meth:`snapshot_experiment_grant_rows`.
+            only_experiments: When given, only rows of these experiment ids are deleted.
+
+        Returns:
+            The number of rows deleted.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When a delete fails; the transaction is rolled back and nothing is deleted.
+        """
+        keep = None if only_experiments is None else {str(i) for i in only_experiments}
+        deleted = 0
+        with self.ManagedSessionMaker() as session:
+            for model in self._experiment_keyed_models():
+                pairs = [
+                    (row_id, experiment_id)
+                    for experiment_id, row_ids in snapshot.get(model.__tablename__, {}).items()
+                    if keep is None or experiment_id in keep
+                    for row_id in row_ids
+                ]
+                for chunk in chunks(pairs, IN_CLAUSE_CHUNK_SIZE):
+                    # The experiment_id filter stays next to the row ids: a row id can be reused (SQLite
+                    # reuses the highest id after a delete), so a row inserted after the snapshot may carry
+                    # a snapshotted id for another experiment. It must not be deleted, which the
+                    # experiments of this batch's own rows guard against.
+                    deleted += (
+                        session.query(model)
+                        .filter(model.id.in_([row_id for row_id, _ in chunk]), model.experiment_id.in_(sorted({experiment_id for _, experiment_id in chunk})))
+                        .delete(synchronize_session=False)
+                    )
+            session.flush()
+        return deleted
+
+    def list_experiment_ids_with_grants(self) -> List[str]:
+        """The distinct experiment ids that any experiment/scorer grant row or schedule-author row names.
+
+        Returns:
+            Sorted experiment ids.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When the rows cannot be read.
+        """
+        found = set()
+        with self.ManagedSessionMaker() as session:
+            for model in self._experiment_keyed_models():
+                found.update(row[0] for row in session.query(model.experiment_id).distinct().all())
+        return sorted(found)
 
     # Scorer permissions (group-scoped)
     def create_group_scorer_permission(self, group_name: str, experiment_id: str, scorer_name: str, permission: str):
@@ -2053,6 +2154,7 @@ _PERMISSION_CUD_METHODS = [
     "update_scorer_permission",
     "delete_scorer_permission",
     "delete_scorer_permissions_for_scorer",
+    "delete_experiment_grant_rows",
     # Scorer permissions (group-scoped)
     "create_group_scorer_permission",
     "update_group_scorer_permission",

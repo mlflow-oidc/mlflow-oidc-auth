@@ -67,6 +67,13 @@ class FailedExperiment(ResponseModel):
     error: str
 
 
+class FailedPermissionCleanup(ResponseModel):
+    """An experiment that was permanently deleted but whose permission rows could not be removed."""
+
+    experiment_id: str
+    error: str
+
+
 class TrashCleanupResponse(ResponseModel):
     """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed.
 
@@ -74,7 +81,7 @@ class TrashCleanupResponse(ResponseModel):
     ``deleted_*`` is gone.
     """
 
-    __absent_fields__ = frozenset({"failed_runs", "failed_experiments"})
+    __absent_fields__ = frozenset({"failed_runs", "failed_experiments", "failed_permission_cleanups"})
 
     deleted_runs: List[str]
     deleted_experiments: List[str]
@@ -82,6 +89,9 @@ class TrashCleanupResponse(ResponseModel):
     total_deleted_experiments: int
     failed_runs: Optional[List[FailedRun]] = None
     failed_experiments: Optional[List[FailedExperiment]] = None
+    #: Experiments that were deleted (they are in ``deleted_experiments``) but whose permission rows
+    #: could not be removed; ``POST /oidc/trash/permissions/sweep`` removes them later.
+    failed_permission_cleanups: Optional[List[FailedPermissionCleanup]] = None
 
 
 class RestoredExperiment(ResponseModel):
@@ -115,6 +125,31 @@ class RestoredRunResponse(ResponseModel):
     run: RestoredRun
 
 
+class PermissionSweepResponse(ResponseModel):
+    """``POST /oidc/trash/permissions/sweep``.
+
+    Attributes:
+        dry_run: True when nothing was deleted.
+        checked_experiments: Experiment ids decided in this call (those after the `after` cursor, up to the lookup budget).
+        missing_experiments: Ids the tracking store definitively does not have (in any workspace).
+        unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+        truncated: True when the lookup budget ran out before the last id; call again with `after=next_after`.
+        next_after: When truncated, the last id fully decided in this call; None otherwise.
+        removed_rows: Grant rows deleted (always 0 for a dry run).
+        replica_reads: True when the tracking store reads from a read replica: a lagging replica reports a just-created experiment
+            as missing, so `missing_experiments` of a dry run may include false positives (a deleting sweep is refused with 409).
+    """
+
+    dry_run: bool
+    checked_experiments: int
+    missing_experiments: List[str]
+    unresolved_experiments: List[str]
+    truncated: bool
+    removed_rows: int
+    replica_reads: bool = False
+    next_after: Optional[str] = None
+
+
 #: The 400/404 bodies every trash endpoint can return, for ``responses=``.
 TRASH_ERROR_RESPONSES = {
     400: {"model": TrashErrorResponse, "description": "Invalid request"},
@@ -125,5 +160,9 @@ TRASH_ERROR_RESPONSES = {
 # ("Failed to retrieve deleted runs/experiments") means nothing was deleted.
 TRASH_CLEANUP_ERROR_RESPONSES = {
     **TRASH_ERROR_RESPONSES,
+    409: {
+        "model": TrashErrorResponse,
+        "description": "A deleting permission sweep was refused: the tracking store reads from a replica, or the workspace store is not MLflow's built-in one",
+    },
     500: {"model": TrashErrorResponse, "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"},
 }
