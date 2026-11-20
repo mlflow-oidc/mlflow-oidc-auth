@@ -444,3 +444,11 @@ def test_permission_inheritance_scenarios():
             assert experiment.validate_can_update_experiment("alice") is False
             assert experiment.validate_can_delete_experiment("alice") is False
             assert experiment.validate_can_manage_experiment("alice") is False
+
+
+def test_strip_file_scheme_never_raises_on_malformed_values():
+    """A malformed URL in the fallback leaves the raw value instead of raising (a 500 in the hook)."""
+    from mlflow_oidc_auth.validators.experiment import _strip_file_scheme
+
+    for raw in ("file://[x/12/r", "file:%2F%2F%5Bx/12", "file:////12/r"):
+        assert isinstance(_strip_file_scheme(raw), str)
