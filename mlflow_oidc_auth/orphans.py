@@ -233,19 +233,23 @@ def read_replica_configured() -> bool:
     """
     import os
 
-    names = []
+    # The names MLflow 3.16-3.18 use, so a future MLflow that moves or renames the constants below still
+    # counts as "replica configured" for these: a missing import must never make the sweep fail open.
+    names = {"_MLFLOW_SERVER_READ_REPLICA_BACKEND_STORE", "MLFLOW_READ_REPLICA_BACKEND_STORE_URI"}
     try:
         from mlflow.server.constants import READ_REPLICA_BACKEND_STORE_URI_ENV_VAR
 
-        names.append(READ_REPLICA_BACKEND_STORE_URI_ENV_VAR)
+        names.add(READ_REPLICA_BACKEND_STORE_URI_ENV_VAR)
     except ImportError:
-        pass
+        # Older or newer MLflow without this constant: the fallback names above still apply.
+        logger.debug("mlflow.server.constants has no READ_REPLICA_BACKEND_STORE_URI_ENV_VAR; using the known names")
     try:
         from mlflow.environment_variables import MLFLOW_READ_REPLICA_BACKEND_STORE_URI
 
-        names.append(MLFLOW_READ_REPLICA_BACKEND_STORE_URI.name)
+        names.add(MLFLOW_READ_REPLICA_BACKEND_STORE_URI.name)
     except ImportError:
-        pass
+        # Same as above: the fallback names still apply.
+        logger.debug("mlflow.environment_variables has no MLFLOW_READ_REPLICA_BACKEND_STORE_URI; using the known names")
     return any(os.environ.get(name) for name in names)
 
 
