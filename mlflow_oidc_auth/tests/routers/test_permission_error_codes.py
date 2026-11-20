@@ -30,7 +30,7 @@ U = USER_PERMISSIONS_ROUTER_PREFIX + "/bob"
 G = GROUP_PERMISSIONS_ROUTER_PREFIX + "/team"
 GRANT = {"permission": "READ"}
 PATTERN = {"regex": "^x", "priority": 1, "permission": "READ"}
-VERB = {"post": "create", "get": "get", "patch": "update", "delete": "delete"}
+VERB = {"post": "create", "get": "retrieve", "patch": "update", "delete": "delete"}
 
 GATEWAYS = {"endpoints": "gateway endpoint", "model-definitions": "gateway model definition", "secrets": "gateway secret"}
 

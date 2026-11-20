@@ -1,18 +1,19 @@
-from typing import Any, Dict, List
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Path
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
 
 from mlflow_oidc_auth.dependencies import check_gateway_endpoint_manage_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.gateway import GatewayEndpointListItem
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
+from mlflow_oidc_auth.routers._gateway_list import as_text, page_models
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_gateway_endpoints, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_endpoints
-from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery
 
 logger = get_logger()
 
@@ -83,11 +84,13 @@ async def get_gateway_endpoint_groups(
 
 @gateway_endpoint_permissions_router.get(
     LIST_ENDPOINTS,
-    response_model=List[Dict[str, Any]],
+    response_model=List[GatewayEndpointListItem],
     summary="List all gateway endpoints",
     description="Retrieves a list of all gateway endpoints from MLflow.",
 )
-async def list_gateway_endpoints(username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE) -> JSONResponse:
+async def list_gateway_endpoints(
+    response: Response, username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
+) -> List[GatewayEndpointListItem]:
     """
     List gateway endpoints accessible to the authenticated user.
 
@@ -99,6 +102,8 @@ async def list_gateway_endpoints(username: str = Depends(get_username), is_admin
 
     Parameters:
     -----------
+    response : Response
+        The injected response; receives ``X-Total-Count`` when the request pages or searches.
     username : str
         The authenticated username (injected by dependency).
     is_admin : bool
@@ -109,8 +114,8 @@ async def list_gateway_endpoints(username: str = Depends(get_username), is_admin
 
     Returns:
     --------
-    JSONResponse
-        A JSON response containing the list of accessible gateway endpoints.
+    List[GatewayEndpointListItem]
+        The accessible gateway endpoints, validated and serialised against the response model.
 
     Raises:
     -------
@@ -128,23 +133,19 @@ async def list_gateway_endpoints(username: str = Depends(get_username), is_admin
             # Regular users only see endpoints they can manage
             endpoints = filter_manageable_gateway_endpoints(username, all_endpoints)
 
-        # Paginate strictly after the permission filter: the total never counts a hidden item
-        endpoints, headers = paginate_with_headers(endpoints, key=lambda e: e.get("name", ""), params=page)
-
-        # Format the response to match the expected frontend schema
-        return JSONResponse(
-            headers=headers,
-            content=[
-                {
-                    "name": endpoint.get("name", ""),
-                    "type": endpoint.get("endpoint_type", ""),
-                    "description": endpoint.get("description", ""),
-                    "route_type": endpoint.get("route_type", ""),
-                    "auth_type": endpoint.get("auth_type", ""),
-                }
-                for endpoint in endpoints
-            ],
-        )
+        # Format to the expected frontend schema once, then paginate those models strictly after the
+        # permission filter: the total never counts a hidden item.
+        items = [
+            GatewayEndpointListItem(
+                name=as_text(endpoint.get("name")),
+                type=as_text(endpoint.get("endpoint_type")),
+                description=as_text(endpoint.get("description")),
+                route_type=as_text(endpoint.get("route_type")),
+                auth_type=as_text(endpoint.get("auth_type")),
+            )
+            for endpoint in endpoints
+        ]
+        return page_models(items, lambda item: item.name, page, response)
     except Exception as e:
         logger.error(f"Error listing gateway endpoints: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway endpoints")

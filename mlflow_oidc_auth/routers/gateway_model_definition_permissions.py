@@ -1,18 +1,19 @@
-from typing import Any, Dict, List
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Path
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
 
 from mlflow_oidc_auth.dependencies import check_gateway_model_definition_manage_permission
 from mlflow_oidc_auth.logger import get_logger
+from mlflow_oidc_auth.models.gateway import GatewayModelDefinitionListItem
 from mlflow_oidc_auth.models.group import GroupPermissionEntry
 from mlflow_oidc_auth.models.permission import UserPermission
+from mlflow_oidc_auth.routers._gateway_list import as_text, page_models
 from mlflow_oidc_auth.routers._prefix import GATEWAY_PERMISSIONS_ROUTER_PREFIX
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.grant_workspace import in_grant_workspace
 from mlflow_oidc_auth.utils import fetch_all_gateway_model_definitions, get_is_admin, get_username
 from mlflow_oidc_auth.utils.batch_permissions import filter_manageable_gateway_model_definitions
-from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
+from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery
 
 logger = get_logger()
 
@@ -82,13 +83,13 @@ async def get_gateway_model_definition_groups(
 
 @gateway_model_definition_permissions_router.get(
     LIST_MODEL_DEFINITIONS,
-    response_model=List[Dict[str, Any]],
+    response_model=List[GatewayModelDefinitionListItem],
     summary="List all gateway model definitions",
     description="Retrieves a list of all gateway model definitions from MLflow.",
 )
 async def list_gateway_model_definitions(
-    username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
-) -> JSONResponse:
+    response: Response, username: str = Depends(get_username), is_admin: bool = Depends(get_is_admin), page: PageQuery = NO_PAGE
+) -> List[GatewayModelDefinitionListItem]:
     """
     List gateway model definitions accessible to the authenticated user.
 
@@ -98,6 +99,8 @@ async def list_gateway_model_definitions(
 
     Parameters:
     -----------
+    response : Response
+        The injected response; receives ``X-Total-Count`` when the request pages or searches.
     username : str
         The authenticated username (injected by dependency).
     is_admin : bool
@@ -108,8 +111,8 @@ async def list_gateway_model_definitions(
 
     Returns:
     --------
-    JSONResponse
-        A JSON response containing the list of accessible gateway model definitions.
+    List[GatewayModelDefinitionListItem]
+        The accessible gateway model definitions, validated and serialised against the response model.
 
     Raises:
     -------
@@ -127,20 +130,12 @@ async def list_gateway_model_definitions(
             # Regular users only see model definitions they can manage
             models = filter_manageable_gateway_model_definitions(username, all_models)
 
-        # Paginate strictly after the permission filter: the total never counts a hidden item
-        models, headers = paginate_with_headers(models, key=lambda m: m.get("name", ""), params=page)
-
-        # Format the response to match the expected frontend schema
-        return JSONResponse(
-            headers=headers,
-            content=[
-                {
-                    "name": model.get("name", ""),
-                    "source": model.get("source") or model.get("provider", ""),
-                }
-                for model in models
-            ],
-        )
+        # Format to the expected frontend schema once, then paginate those models strictly after the
+        # permission filter: the total never counts a hidden item.
+        items = [
+            GatewayModelDefinitionListItem(name=as_text(model.get("name")), source=as_text(model.get("source"), model.get("provider"))) for model in models
+        ]
+        return page_models(items, lambda item: item.name, page, response)
     except Exception as e:
         logger.error(f"Error listing gateway model definitions: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve gateway model definitions")

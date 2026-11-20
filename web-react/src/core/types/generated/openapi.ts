@@ -296,14 +296,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get group experiment pattern permissions
-         * @description Retrieves all experiment regex pattern permissions for a specific group.
+         * List experiment pattern permissions for a group
+         * @description Retrieves a list of regex-based experiment permission patterns for the specified group.
          */
         get: operations["get_group_experiment_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns_get"];
         put?: never;
         /**
          * Create experiment pattern permission for a group
-         * @description Creates a new regex pattern permission for a group to access experiments.
+         * @description Creates a regex-based experiment permission pattern for a group.
          */
         post: operations["create_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns_post"];
         delete?: never;
@@ -320,22 +320,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get specific experiment pattern permission for a group
-         * @description Retrieves a specific experiment regex pattern permission for a group.
+         * Get experiment pattern permission for a group
+         * @description Gets a regex-based experiment permission pattern for a group.
          */
         get: operations["get_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete experiment pattern permission for a group
-         * @description Deletes a specific experiment regex pattern permission for a group.
+         * @description Deletes a regex-based experiment permission pattern for a group.
          */
         delete: operations["delete_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update experiment pattern permission for a group
-         * @description Updates a specific experiment regex pattern permission for a group.
+         * @description Updates a regex-based experiment permission pattern for a group.
          */
         patch: operations["update_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__patch"];
         trace?: never;
@@ -371,19 +371,19 @@ export interface paths {
         put?: never;
         /**
          * Create experiment permission for a group
-         * @description Creates a new permission for a group to access a specific experiment.
+         * @description Creates the experiment permission for a group.
          */
         post: operations["create_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__post"];
         /**
          * Delete experiment permission for a group
-         * @description Deletes the permission for a group on a specific experiment.
+         * @description Deletes the experiment permission for a group.
          */
         delete: operations["delete_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update experiment permission for a group
-         * @description Updates the permission for a group on a specific experiment.
+         * @description Updates the experiment permission for a group.
          */
         patch: operations["update_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__patch"];
         trace?: never;
@@ -423,7 +423,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway endpoint pattern permission for a group
-         * @description Creates a new regex-based permission pattern for gateway endpoint access.
+         * @description Creates a regex-based gateway endpoint permission pattern for a group.
          */
         post: operations["create_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns_post"];
         delete?: never;
@@ -441,21 +441,21 @@ export interface paths {
         };
         /**
          * Get gateway endpoint pattern permission for a group
-         * @description Retrieves a specific regex-based gateway endpoint permission pattern for the specified group.
+         * @description Gets a regex-based gateway endpoint permission pattern for a group.
          */
         get: operations["get_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway endpoint pattern permission for a group
-         * @description Deletes a specific regex-based gateway endpoint permission pattern for the specified group.
+         * @description Deletes a regex-based gateway endpoint permission pattern for a group.
          */
         delete: operations["delete_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway endpoint pattern permission for a group
-         * @description Updates a specific regex-based gateway endpoint permission pattern for the specified group.
+         * @description Updates a regex-based gateway endpoint permission pattern for a group.
          */
         patch: operations["update_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__patch"];
         trace?: never;
@@ -469,25 +469,25 @@ export interface paths {
         };
         /**
          * Get gateway endpoint permission for a group
-         * @description Retrieves the permission for a group on a specific gateway endpoint.
+         * @description Gets the gateway endpoint permission for a group.
          */
         get: operations["get_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__get"];
         put?: never;
         /**
          * Create gateway endpoint permission for a group
-         * @description Creates a new permission for a group to access a specific gateway endpoint.
+         * @description Creates the gateway endpoint permission for a group.
          */
         post: operations["create_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__post"];
         /**
          * Delete gateway endpoint permission for a group
-         * @description Deletes the permission for a group on a specific gateway endpoint.
+         * @description Deletes the gateway endpoint permission for a group.
          */
         delete: operations["delete_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway endpoint permission for a group
-         * @description Updates the permission for a group on a specific gateway endpoint.
+         * @description Updates the gateway endpoint permission for a group.
          */
         patch: operations["update_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__patch"];
         trace?: never;
@@ -527,7 +527,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway model definition pattern permission for a group
-         * @description Creates a new regex-based permission pattern for gateway model definition access.
+         * @description Creates a regex-based gateway model definition permission pattern for a group.
          */
         post: operations["create_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns_post"];
         delete?: never;
@@ -545,21 +545,21 @@ export interface paths {
         };
         /**
          * Get gateway model definition pattern permission for a group
-         * @description Retrieves a specific regex-based gateway model definition permission pattern for the specified group.
+         * @description Gets a regex-based gateway model definition permission pattern for a group.
          */
         get: operations["get_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway model definition pattern permission for a group
-         * @description Deletes a specific regex-based gateway model definition permission pattern for the specified group.
+         * @description Deletes a regex-based gateway model definition permission pattern for a group.
          */
         delete: operations["delete_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway model definition pattern permission for a group
-         * @description Updates a specific regex-based gateway model definition permission pattern for the specified group.
+         * @description Updates a regex-based gateway model definition permission pattern for a group.
          */
         patch: operations["update_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__patch"];
         trace?: never;
@@ -573,25 +573,25 @@ export interface paths {
         };
         /**
          * Get gateway model definition permission for a group
-         * @description Retrieves the permission for a group on a specific gateway model definition.
+         * @description Gets the gateway model definition permission for a group.
          */
         get: operations["get_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__get"];
         put?: never;
         /**
          * Create gateway model definition permission for a group
-         * @description Creates a new permission for a group to access a specific gateway model definition.
+         * @description Creates the gateway model definition permission for a group.
          */
         post: operations["create_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__post"];
         /**
          * Delete gateway model definition permission for a group
-         * @description Deletes the permission for a group on a specific gateway model definition.
+         * @description Deletes the gateway model definition permission for a group.
          */
         delete: operations["delete_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway model definition permission for a group
-         * @description Updates the permission for a group on a specific gateway model definition.
+         * @description Updates the gateway model definition permission for a group.
          */
         patch: operations["update_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__patch"];
         trace?: never;
@@ -631,7 +631,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway secret pattern permission for a group
-         * @description Creates a new regex-based permission pattern for gateway secret access.
+         * @description Creates a regex-based gateway secret permission pattern for a group.
          */
         post: operations["create_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns_post"];
         delete?: never;
@@ -649,21 +649,21 @@ export interface paths {
         };
         /**
          * Get gateway secret pattern permission for a group
-         * @description Retrieves a specific regex-based gateway secret permission pattern for the specified group.
+         * @description Gets a regex-based gateway secret permission pattern for a group.
          */
         get: operations["get_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway secret pattern permission for a group
-         * @description Deletes a specific regex-based gateway secret permission pattern for the specified group.
+         * @description Deletes a regex-based gateway secret permission pattern for a group.
          */
         delete: operations["delete_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway secret pattern permission for a group
-         * @description Updates a specific regex-based gateway secret permission pattern for the specified group.
+         * @description Updates a regex-based gateway secret permission pattern for a group.
          */
         patch: operations["update_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__patch"];
         trace?: never;
@@ -677,25 +677,25 @@ export interface paths {
         };
         /**
          * Get gateway secret permission for a group
-         * @description Retrieves the permission for a group on a specific gateway secret.
+         * @description Gets the gateway secret permission for a group.
          */
         get: operations["get_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__get"];
         put?: never;
         /**
          * Create gateway secret permission for a group
-         * @description Creates a new permission for a group to access a specific gateway secret.
+         * @description Creates the gateway secret permission for a group.
          */
         post: operations["create_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__post"];
         /**
          * Delete gateway secret permission for a group
-         * @description Deletes the permission for a group on a specific gateway secret.
+         * @description Deletes the gateway secret permission for a group.
          */
         delete: operations["delete_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway secret permission for a group
-         * @description Updates the permission for a group on a specific gateway secret.
+         * @description Updates the gateway secret permission for a group.
          */
         patch: operations["update_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__patch"];
         trace?: never;
@@ -768,14 +768,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get group prompt pattern permissions
-         * @description Retrieves all prompt regex pattern permissions for a specific group.
+         * List prompt pattern permissions for a group
+         * @description Retrieves a list of regex-based prompt permission patterns for the specified group.
          */
         get: operations["get_group_prompt_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns_get"];
         put?: never;
         /**
          * Create prompt pattern permission for a group
-         * @description Creates a new regex pattern permission for a group to access prompts.
+         * @description Creates a regex-based prompt permission pattern for a group.
          */
         post: operations["create_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns_post"];
         delete?: never;
@@ -792,22 +792,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get specific prompt pattern permission for a group
-         * @description Retrieves a specific prompt regex pattern permission for a group.
+         * Get prompt pattern permission for a group
+         * @description Gets a regex-based prompt permission pattern for a group.
          */
         get: operations["get_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete prompt pattern permission for a group
-         * @description Deletes a specific prompt regex pattern permission for a group.
+         * @description Deletes a regex-based prompt permission pattern for a group.
          */
         delete: operations["delete_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update prompt pattern permission for a group
-         * @description Updates a specific prompt regex pattern permission for a group.
+         * @description Updates a regex-based prompt permission pattern for a group.
          */
         patch: operations["update_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__patch"];
         trace?: never;
@@ -823,19 +823,19 @@ export interface paths {
         put?: never;
         /**
          * Create prompt permission for a group
-         * @description Creates a new permission for a group to access a specific prompt.
+         * @description Creates the prompt permission for a group.
          */
         post: operations["create_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__post"];
         /**
          * Delete prompt permission for a group
-         * @description Deletes the permission for a group on a specific prompt.
+         * @description Deletes the prompt permission for a group.
          */
         delete: operations["delete_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__delete"];
         options?: never;
         head?: never;
         /**
          * Update prompt permission for a group
-         * @description Updates the permission for a group on a specific prompt.
+         * @description Updates the prompt permission for a group.
          */
         patch: operations["update_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__patch"];
         trace?: never;
@@ -868,14 +868,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get group registered model pattern permissions
-         * @description Retrieves all registered model regex pattern permissions for a specific group.
+         * List registered model pattern permissions for a group
+         * @description Retrieves a list of regex-based registered model permission patterns for the specified group.
          */
         get: operations["get_group_registered_model_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns_get"];
         put?: never;
         /**
          * Create registered model pattern permission for a group
-         * @description Creates a new regex pattern permission for a group to access registered models.
+         * @description Creates a regex-based registered model permission pattern for a group.
          */
         post: operations["create_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns_post"];
         delete?: never;
@@ -892,22 +892,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get specific registered model pattern permission for a group
-         * @description Retrieves a specific registered model regex pattern permission for a group.
+         * Get registered model pattern permission for a group
+         * @description Gets a regex-based registered model permission pattern for a group.
          */
         get: operations["get_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete registered model pattern permission for a group
-         * @description Deletes a specific registered model regex pattern permission for a group.
+         * @description Deletes a regex-based registered model permission pattern for a group.
          */
         delete: operations["delete_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update registered model pattern permission for a group
-         * @description Updates a specific registered model regex pattern permission for a group.
+         * @description Updates a regex-based registered model permission pattern for a group.
          */
         patch: operations["update_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__patch"];
         trace?: never;
@@ -923,19 +923,19 @@ export interface paths {
         put?: never;
         /**
          * Create registered model permission for a group
-         * @description Creates a new permission for a group to access a specific registered model.
+         * @description Creates the registered model permission for a group.
          */
         post: operations["create_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__post"];
         /**
          * Delete registered model permission for a group
-         * @description Deletes the permission for a group on a specific registered model.
+         * @description Deletes the registered model permission for a group.
          */
         delete: operations["delete_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update registered model permission for a group
-         * @description Updates the permission for a group on a specific registered model.
+         * @description Updates the registered model permission for a group.
          */
         patch: operations["update_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__patch"];
         trace?: never;
@@ -948,14 +948,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get group scorer pattern permissions
-         * @description Retrieves all scorer regex pattern permissions for a specific group.
+         * List scorer pattern permissions for a group
+         * @description Retrieves a list of regex-based scorer permission patterns for the specified group.
          */
         get: operations["get_group_scorer_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns_get"];
         put?: never;
         /**
          * Create scorer pattern permission for a group
-         * @description Creates a new regex pattern permission for a group to access scorers.
+         * @description Creates a regex-based scorer permission pattern for a group.
          */
         post: operations["create_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns_post"];
         delete?: never;
@@ -972,22 +972,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get specific scorer pattern permission for a group
-         * @description Retrieves a specific scorer regex pattern permission for a group.
+         * Get scorer pattern permission for a group
+         * @description Gets a regex-based scorer permission pattern for a group.
          */
         get: operations["get_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete scorer pattern permission for a group
-         * @description Deletes a specific scorer regex pattern permission for a group.
+         * @description Deletes a regex-based scorer permission pattern for a group.
          */
         delete: operations["delete_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update scorer pattern permission for a group
-         * @description Updates a specific scorer regex pattern permission for a group.
+         * @description Updates a regex-based scorer permission pattern for a group.
          */
         patch: operations["update_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__patch"];
         trace?: never;
@@ -1023,19 +1023,19 @@ export interface paths {
         put?: never;
         /**
          * Create scorer permission for a group
-         * @description Creates a new permission for a group to access a specific scorer.
+         * @description Creates the scorer permission for a group.
          */
         post: operations["create_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__post"];
         /**
          * Delete scorer permission for a group
-         * @description Deletes the permission for a group on a specific scorer.
+         * @description Deletes the scorer permission for a group.
          */
         delete: operations["delete_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__delete"];
         options?: never;
         head?: never;
         /**
          * Update scorer permission for a group
-         * @description Updates the permission for a group on a specific scorer.
+         * @description Updates the scorer permission for a group.
          */
         patch: operations["update_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__patch"];
         trace?: never;
@@ -1342,8 +1342,8 @@ export interface paths {
         get: operations["list_user_experiment_pattern_permissions_api_2_0_mlflow_permissions_users__username__experiment_patterns_get"];
         put?: never;
         /**
-         * Create experiment pattern permission
-         * @description Creates a new regex-based permission pattern for experiment access.
+         * Create experiment pattern permission for a user
+         * @description Creates a regex-based experiment permission pattern for a user.
          */
         post: operations["create_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns_post"];
         delete?: never;
@@ -1361,21 +1361,21 @@ export interface paths {
         };
         /**
          * Get experiment pattern permission for a user
-         * @description Retrieves a specific regex-based experiment permission pattern for the specified user.
+         * @description Gets a regex-based experiment permission pattern for a user.
          */
         get: operations["get_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete experiment pattern permission for a user
-         * @description Deletes a specific regex-based experiment permission pattern for the specified user.
+         * @description Deletes a regex-based experiment permission pattern for a user.
          */
         delete: operations["delete_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update experiment pattern permission for a user
-         * @description Updates a specific regex-based experiment permission pattern for the specified user.
+         * @description Updates a regex-based experiment permission pattern for a user.
          */
         patch: operations["update_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__patch"];
         trace?: never;
@@ -1409,25 +1409,25 @@ export interface paths {
         };
         /**
          * Get experiment permission for a user
-         * @description Retrieves the permission for a user on a specific experiment.
+         * @description Gets the experiment permission for a user.
          */
         get: operations["get_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__get"];
         put?: never;
         /**
          * Create experiment permission for a user
-         * @description Creates a permission for a user to access a specific experiment.
+         * @description Creates the experiment permission for a user.
          */
         post: operations["create_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__post"];
         /**
          * Delete experiment permission for a user
-         * @description Deletes the permission for a user on a specific experiment.
+         * @description Deletes the experiment permission for a user.
          */
         delete: operations["delete_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update experiment permission for a user
-         * @description Updates the permission for a user on a specific experiment.
+         * @description Updates the experiment permission for a user.
          */
         patch: operations["update_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__patch"];
         trace?: never;
@@ -1467,7 +1467,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway endpoint pattern permission for a user
-         * @description Creates a new regex-based permission pattern for gateway endpoint access.
+         * @description Creates a regex-based gateway endpoint permission pattern for a user.
          */
         post: operations["create_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns_post"];
         delete?: never;
@@ -1485,21 +1485,21 @@ export interface paths {
         };
         /**
          * Get gateway endpoint pattern permission for a user
-         * @description Retrieves a specific regex-based gateway endpoint permission pattern for the specified user.
+         * @description Gets a regex-based gateway endpoint permission pattern for a user.
          */
         get: operations["get_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway endpoint pattern permission for a user
-         * @description Deletes a specific regex-based gateway endpoint permission pattern for the specified user.
+         * @description Deletes a regex-based gateway endpoint permission pattern for a user.
          */
         delete: operations["delete_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway endpoint pattern permission for a user
-         * @description Updates a specific regex-based gateway endpoint permission pattern for the specified user.
+         * @description Updates a regex-based gateway endpoint permission pattern for a user.
          */
         patch: operations["update_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__patch"];
         trace?: never;
@@ -1513,25 +1513,25 @@ export interface paths {
         };
         /**
          * Get gateway endpoint permission for a user
-         * @description Retrieves the permission for a user on a specific gateway endpoint.
+         * @description Gets the gateway endpoint permission for a user.
          */
         get: operations["get_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__get"];
         put?: never;
         /**
          * Create gateway endpoint permission for a user
-         * @description Creates a new permission for a user to access a specific gateway endpoint.
+         * @description Creates the gateway endpoint permission for a user.
          */
         post: operations["create_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__post"];
         /**
          * Delete gateway endpoint permission for a user
-         * @description Deletes the permission for a user on a specific gateway endpoint.
+         * @description Deletes the gateway endpoint permission for a user.
          */
         delete: operations["delete_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway endpoint permission for a user
-         * @description Updates the permission for a user on a specific gateway endpoint.
+         * @description Updates the gateway endpoint permission for a user.
          */
         patch: operations["update_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__patch"];
         trace?: never;
@@ -1571,7 +1571,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway model definition pattern permission for a user
-         * @description Creates a new regex-based permission pattern for gateway model definition access.
+         * @description Creates a regex-based gateway model definition permission pattern for a user.
          */
         post: operations["create_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns_post"];
         delete?: never;
@@ -1589,21 +1589,21 @@ export interface paths {
         };
         /**
          * Get gateway model definition pattern permission for a user
-         * @description Retrieves a specific regex-based gateway model definition permission pattern for the specified user.
+         * @description Gets a regex-based gateway model definition permission pattern for a user.
          */
         get: operations["get_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway model definition pattern permission for a user
-         * @description Deletes a specific regex-based gateway model definition permission pattern for the specified user.
+         * @description Deletes a regex-based gateway model definition permission pattern for a user.
          */
         delete: operations["delete_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway model definition pattern permission for a user
-         * @description Updates a specific regex-based gateway model definition permission pattern for the specified user.
+         * @description Updates a regex-based gateway model definition permission pattern for a user.
          */
         patch: operations["update_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__patch"];
         trace?: never;
@@ -1617,25 +1617,25 @@ export interface paths {
         };
         /**
          * Get gateway model definition permission for a user
-         * @description Retrieves the permission for a user on a specific gateway model definition.
+         * @description Gets the gateway model definition permission for a user.
          */
         get: operations["get_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__get"];
         put?: never;
         /**
          * Create gateway model definition permission for a user
-         * @description Creates a new permission for a user to access a specific gateway model definition.
+         * @description Creates the gateway model definition permission for a user.
          */
         post: operations["create_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__post"];
         /**
          * Delete gateway model definition permission for a user
-         * @description Deletes the permission for a user on a specific gateway model definition.
+         * @description Deletes the gateway model definition permission for a user.
          */
         delete: operations["delete_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway model definition permission for a user
-         * @description Updates the permission for a user on a specific gateway model definition.
+         * @description Updates the gateway model definition permission for a user.
          */
         patch: operations["update_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__patch"];
         trace?: never;
@@ -1675,7 +1675,7 @@ export interface paths {
         put?: never;
         /**
          * Create gateway secret pattern permission for a user
-         * @description Creates a new regex-based permission pattern for gateway secret access.
+         * @description Creates a regex-based gateway secret permission pattern for a user.
          */
         post: operations["create_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns_post"];
         delete?: never;
@@ -1693,21 +1693,21 @@ export interface paths {
         };
         /**
          * Get gateway secret pattern permission for a user
-         * @description Retrieves a specific regex-based gateway secret permission pattern for the specified user.
+         * @description Gets a regex-based gateway secret permission pattern for a user.
          */
         get: operations["get_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete gateway secret pattern permission for a user
-         * @description Deletes a specific regex-based gateway secret permission pattern for the specified user.
+         * @description Deletes a regex-based gateway secret permission pattern for a user.
          */
         delete: operations["delete_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway secret pattern permission for a user
-         * @description Updates a specific regex-based gateway secret permission pattern for the specified user.
+         * @description Updates a regex-based gateway secret permission pattern for a user.
          */
         patch: operations["update_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__patch"];
         trace?: never;
@@ -1721,25 +1721,25 @@ export interface paths {
         };
         /**
          * Get gateway secret permission for a user
-         * @description Retrieves the permission for a user on a specific gateway secret.
+         * @description Gets the gateway secret permission for a user.
          */
         get: operations["get_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__get"];
         put?: never;
         /**
          * Create gateway secret permission for a user
-         * @description Creates a new permission for a user to access a specific gateway secret.
+         * @description Creates the gateway secret permission for a user.
          */
         post: operations["create_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__post"];
         /**
          * Delete gateway secret permission for a user
-         * @description Deletes the permission for a user on a specific gateway secret.
+         * @description Deletes the gateway secret permission for a user.
          */
         delete: operations["delete_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update gateway secret permission for a user
-         * @description Updates the permission for a user on a specific gateway secret.
+         * @description Updates the gateway secret permission for a user.
          */
         patch: operations["update_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__patch"];
         trace?: never;
@@ -1819,7 +1819,7 @@ export interface paths {
         put?: never;
         /**
          * Create prompt pattern permission for a user
-         * @description Creates a new regex-based permission pattern for prompt access.
+         * @description Creates a regex-based prompt permission pattern for a user.
          */
         post: operations["create_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns_post"];
         delete?: never;
@@ -1837,21 +1837,21 @@ export interface paths {
         };
         /**
          * Get prompt pattern permission for a user
-         * @description Retrieves a specific regex-based prompt permission pattern for the specified user.
+         * @description Gets a regex-based prompt permission pattern for a user.
          */
         get: operations["get_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete prompt pattern permission for a user
-         * @description Deletes a specific regex-based prompt permission pattern for the specified user.
+         * @description Deletes a regex-based prompt permission pattern for a user.
          */
         delete: operations["delete_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update prompt pattern permission for a user
-         * @description Updates a specific regex-based prompt permission pattern for the specified user.
+         * @description Updates a regex-based prompt permission pattern for a user.
          */
         patch: operations["update_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__patch"];
         trace?: never;
@@ -1865,25 +1865,25 @@ export interface paths {
         };
         /**
          * Get prompt permission for a user
-         * @description Retrieves the permission for a user on a specific prompt.
+         * @description Gets the prompt permission for a user.
          */
         get: operations["get_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__get"];
         put?: never;
         /**
          * Create prompt permission for a user
-         * @description Creates a new permission for a user to access a specific prompt.
+         * @description Creates the prompt permission for a user.
          */
         post: operations["create_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__post"];
         /**
          * Delete prompt permission for a user
-         * @description Deletes the permission for a user on a specific prompt.
+         * @description Deletes the prompt permission for a user.
          */
         delete: operations["delete_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update prompt permission for a user
-         * @description Updates the permission for a user on a specific prompt.
+         * @description Updates the prompt permission for a user.
          */
         patch: operations["update_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__patch"];
         trace?: never;
@@ -1923,7 +1923,7 @@ export interface paths {
         put?: never;
         /**
          * Create registered model pattern permission for a user
-         * @description Creates a new regex-based permission pattern for registered model access.
+         * @description Creates a regex-based registered model permission pattern for a user.
          */
         post: operations["create_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns_post"];
         delete?: never;
@@ -1941,21 +1941,21 @@ export interface paths {
         };
         /**
          * Get registered model pattern permission for a user
-         * @description Retrieves a specific regex-based registered model permission pattern for the specified user.
+         * @description Gets a regex-based registered model permission pattern for a user.
          */
         get: operations["get_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete registered model pattern permission for a user
-         * @description Deletes a specific regex-based registered model permission pattern for the specified user.
+         * @description Deletes a regex-based registered model permission pattern for a user.
          */
         delete: operations["delete_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update registered model pattern permission for a user
-         * @description Updates a specific regex-based registered model permission pattern for the specified user.
+         * @description Updates a regex-based registered model permission pattern for a user.
          */
         patch: operations["update_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__patch"];
         trace?: never;
@@ -1969,25 +1969,25 @@ export interface paths {
         };
         /**
          * Get registered model permission for a user
-         * @description Retrieves the permission for a user on a specific registered model.
+         * @description Gets the registered model permission for a user.
          */
         get: operations["get_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__get"];
         put?: never;
         /**
          * Create registered model permission for a user
-         * @description Creates a new permission for a user to access a specific registered model.
+         * @description Creates the registered model permission for a user.
          */
         post: operations["create_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__post"];
         /**
          * Delete registered model permission for a user
-         * @description Deletes the permission for a user on a specific registered model.
+         * @description Deletes the registered model permission for a user.
          */
         delete: operations["delete_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__delete"];
         options?: never;
         head?: never;
         /**
          * Update registered model permission for a user
-         * @description Updates the permission for a user on a specific registered model.
+         * @description Updates the registered model permission for a user.
          */
         patch: operations["update_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__patch"];
         trace?: never;
@@ -2007,7 +2007,7 @@ export interface paths {
         put?: never;
         /**
          * Create scorer pattern permission for a user
-         * @description Creates a new regex-based permission pattern for scorer access.
+         * @description Creates a regex-based scorer permission pattern for a user.
          */
         post: operations["create_user_scorer_regex_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns_post"];
         delete?: never;
@@ -2024,22 +2024,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get specific scorer pattern permission for a user
-         * @description Retrieves a specific scorer regex pattern permission for a user.
+         * Get scorer pattern permission for a user
+         * @description Gets a regex-based scorer permission pattern for a user.
          */
         get: operations["get_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__get"];
         put?: never;
         post?: never;
         /**
          * Delete scorer pattern permission for a user
-         * @description Deletes a specific scorer regex pattern permission for a user.
+         * @description Deletes a regex-based scorer permission pattern for a user.
          */
         delete: operations["delete_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__delete"];
         options?: never;
         head?: never;
         /**
          * Update scorer pattern permission for a user
-         * @description Updates a specific scorer regex pattern permission for a user.
+         * @description Updates a regex-based scorer permission pattern for a user.
          */
         patch: operations["update_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__patch"];
         trace?: never;
@@ -2073,25 +2073,25 @@ export interface paths {
         };
         /**
          * Get scorer permission for a user
-         * @description Retrieves the permission for a user on a specific scorer.
+         * @description Gets the scorer permission for a user.
          */
         get: operations["get_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__get"];
         put?: never;
         /**
          * Create scorer permission for a user
-         * @description Creates a new permission for a user to access a specific scorer.
+         * @description Creates the scorer permission for a user.
          */
         post: operations["create_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__post"];
         /**
          * Delete scorer permission for a user
-         * @description Deletes the permission for a user on a specific scorer.
+         * @description Deletes the scorer permission for a user.
          */
         delete: operations["delete_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__delete"];
         options?: never;
         head?: never;
         /**
          * Update scorer permission for a user
-         * @description Updates the permission for a user on a specific scorer.
+         * @description Updates the scorer permission for a user.
          */
         patch: operations["update_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__patch"];
         trace?: never;
@@ -4248,6 +4248,57 @@ export interface components {
             run_id: string;
         };
         /**
+         * GatewayEndpointListItem
+         * @description A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).
+         */
+        GatewayEndpointListItem: {
+            /**
+             * Auth Type
+             * @deprecated
+             * @description Auth type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
+             */
+            auth_type: string;
+            /**
+             * Description
+             * @deprecated
+             * @description Endpoint description. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
+             */
+            description: string;
+            /**
+             * Name
+             * @description Endpoint name
+             */
+            name: string;
+            /**
+             * Route Type
+             * @deprecated
+             * @description Route type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
+             */
+            route_type: string;
+            /**
+             * Type
+             * @deprecated
+             * @description Endpoint type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string
+             */
+            type: string;
+        };
+        /**
+         * GatewayModelDefinitionListItem
+         * @description A gateway model definition the caller may manage (``GET /permissions/gateways/model-definitions``).
+         */
+        GatewayModelDefinitionListItem: {
+            /**
+             * Name
+             * @description Model definition name
+             */
+            name: string;
+            /**
+             * Source
+             * @description Model provider: MLflow's GatewayModelDefinition has no source field, so this is its provider (empty for none)
+             */
+            source: string;
+        };
+        /**
          * GatewayPermission
          * @description Model for creating or updating a gateway permission (endpoint, model definition, or secret).
          */
@@ -4278,6 +4329,17 @@ export interface components {
              * @description Regex pattern to match gateway resource names
              */
             regex: string;
+        };
+        /**
+         * GatewaySecretListItem
+         * @description A gateway secret the caller may manage (``GET /permissions/gateways/secrets``). Never carries the secret value.
+         */
+        GatewaySecretListItem: {
+            /**
+             * Key
+             * @description Secret name
+             */
+            key: string;
         };
         /**
          * GroupDetail
@@ -5981,6 +6043,17 @@ export interface components {
             url: string;
         };
         /**
+         * WebhookDeleteResponse
+         * @description The body of ``DELETE /oidc/webhook/{webhook_id}``.
+         */
+        WebhookDeleteResponse: {
+            /**
+             * Message
+             * @description Human-readable confirmation
+             */
+            message: string;
+        };
+        /**
          * WebhookListResponse
          * @description Response model for listing webhooks.
          */
@@ -6638,9 +6711,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewayEndpointListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -6782,9 +6853,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewayModelDefinitionListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -6926,9 +6995,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["GatewaySecretListItem"][];
                 };
             };
             /** @description Forbidden - Insufficient permissions */
@@ -7296,9 +7363,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to get experiment pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -7344,9 +7411,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to delete experiment pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to delete */
                 id: number;
             };
             cookie?: never;
@@ -7392,9 +7459,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to update experiment pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to update */
                 id: number;
             };
             cookie?: never;
@@ -7490,7 +7557,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant experiment permission to */
+                /** @description The group name to create experiment permission for */
                 group_name: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -7688,7 +7755,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to list gateway endpoint pattern permissions for */
+                /** @description The group name to get gateway endpoint pattern permissions for */
                 group_name: string;
             };
             cookie?: never;
@@ -7786,7 +7853,7 @@ export interface operations {
             path: {
                 /** @description The group name to get gateway endpoint pattern permission for */
                 group_name: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -7980,9 +8047,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant gateway endpoint permission to */
+                /** @description The group name to create gateway endpoint permission for */
                 group_name: string;
-                /** @description The gateway endpoint name to set permissions for */
+                /** @description The gateway endpoint name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -8178,7 +8245,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to list gateway model definition pattern permissions for */
+                /** @description The group name to get gateway model definition pattern permissions for */
                 group_name: string;
             };
             cookie?: never;
@@ -8276,7 +8343,7 @@ export interface operations {
             path: {
                 /** @description The group name to get gateway model definition pattern permission for */
                 group_name: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -8470,9 +8537,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant gateway model definition permission to */
+                /** @description The group name to create gateway model definition permission for */
                 group_name: string;
-                /** @description The gateway model definition name to set permissions for */
+                /** @description The gateway model definition name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -8668,7 +8735,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to list gateway secret pattern permissions for */
+                /** @description The group name to get gateway secret pattern permissions for */
                 group_name: string;
             };
             cookie?: never;
@@ -8766,7 +8833,7 @@ export interface operations {
             path: {
                 /** @description The group name to get gateway secret pattern permission for */
                 group_name: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -8960,9 +9027,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant gateway secret permission to */
+                /** @description The group name to create gateway secret permission for */
                 group_name: string;
-                /** @description The gateway secret name to set permissions for */
+                /** @description The gateway secret name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -9500,9 +9567,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to get prompt pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -9548,9 +9615,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to delete prompt pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to delete */
                 id: number;
             };
             cookie?: never;
@@ -9596,9 +9663,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to update prompt pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to update */
                 id: number;
             };
             cookie?: never;
@@ -9648,9 +9715,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant prompt permission to */
+                /** @description The group name to create prompt permission for */
                 group_name: string;
-                /** @description The prompt name to set permissions for */
+                /** @description The prompt name to create permissions for */
                 prompt_name: string;
             };
             cookie?: never;
@@ -9942,9 +10009,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to get registered model pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -9990,9 +10057,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to delete registered model pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to delete */
                 id: number;
             };
             cookie?: never;
@@ -10038,9 +10105,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to update registered model pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to update */
                 id: number;
             };
             cookie?: never;
@@ -10090,9 +10157,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant registered model permission to */
+                /** @description The group name to create registered model permission for */
                 group_name: string;
-                /** @description The registered model name to set permissions for */
+                /** @description The registered model name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -10338,9 +10405,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to get scorer pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -10386,9 +10453,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to delete scorer pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to delete */
                 id: number;
             };
             cookie?: never;
@@ -10434,9 +10501,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name */
+                /** @description The group name to update scorer pattern permission for */
                 group_name: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to update */
                 id: number;
             };
             cookie?: never;
@@ -10532,7 +10599,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The group name to grant scorer permission to */
+                /** @description The group name to create scorer permission for */
                 group_name: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -11550,7 +11617,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list pattern permissions for */
+                /** @description The username to get experiment pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -11596,7 +11663,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to create pattern permission for */
+                /** @description The username to create experiment pattern permission for */
                 username: string;
             };
             cookie?: never;
@@ -11646,9 +11713,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to get pattern permission for */
+                /** @description The username to get experiment pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: string;
             };
             cookie?: never;
@@ -11694,7 +11761,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to delete pattern permission for */
+                /** @description The username to delete experiment pattern permission for */
                 username: string;
                 /** @description The pattern ID to delete */
                 id: string;
@@ -11742,7 +11809,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to update pattern permission for */
+                /** @description The username to update experiment pattern permission for */
                 username: string;
                 /** @description The pattern ID to update */
                 id: string;
@@ -11840,7 +11907,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant permissions to */
+                /** @description The username to get experiment permission for */
                 username: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -11888,7 +11955,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant permissions to */
+                /** @description The username to create experiment permission for */
                 username: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -11940,7 +12007,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to revoke permissions from */
+                /** @description The username to delete experiment permission for */
                 username: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -11988,7 +12055,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant permissions to */
+                /** @description The username to update experiment permission for */
                 username: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -12086,7 +12153,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list gateway endpoint pattern permissions for */
+                /** @description The username to get gateway endpoint pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -12184,7 +12251,7 @@ export interface operations {
             path: {
                 /** @description The username to get gateway endpoint pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -12378,9 +12445,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant gateway endpoint permission to */
+                /** @description The username to create gateway endpoint permission for */
                 username: string;
-                /** @description The gateway endpoint name to set permissions for */
+                /** @description The gateway endpoint name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -12576,7 +12643,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list gateway model definition pattern permissions for */
+                /** @description The username to get gateway model definition pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -12674,7 +12741,7 @@ export interface operations {
             path: {
                 /** @description The username to get gateway model definition pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -12868,9 +12935,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant gateway model definition permission to */
+                /** @description The username to create gateway model definition permission for */
                 username: string;
-                /** @description The gateway model definition name to set permissions for */
+                /** @description The gateway model definition name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -13066,7 +13133,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list gateway secret pattern permissions for */
+                /** @description The username to get gateway secret pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -13164,7 +13231,7 @@ export interface operations {
             path: {
                 /** @description The username to get gateway secret pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -13358,9 +13425,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant gateway secret permission to */
+                /** @description The username to create gateway secret permission for */
                 username: string;
-                /** @description The gateway secret name to set permissions for */
+                /** @description The gateway secret name to create permissions for */
                 name: string;
             };
             cookie?: never;
@@ -13802,7 +13869,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list prompt pattern permissions for */
+                /** @description The username to get prompt pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -13900,7 +13967,7 @@ export interface operations {
             path: {
                 /** @description The username to get prompt pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: string;
             };
             cookie?: never;
@@ -14094,7 +14161,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant prompt permission to */
+                /** @description The username to create prompt permission for */
                 username: string;
                 /** @description Registered model or prompt name */
                 name: string;
@@ -14292,7 +14359,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list registered model pattern permissions for */
+                /** @description The username to get registered model pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -14390,7 +14457,7 @@ export interface operations {
             path: {
                 /** @description The username to get registered model pattern permission for */
                 username: string;
-                /** @description The pattern ID to retrieve */
+                /** @description The pattern ID to get */
                 id: string;
             };
             cookie?: never;
@@ -14584,7 +14651,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant registered model permission to */
+                /** @description The username to create registered model permission for */
                 username: string;
                 /** @description Registered model or prompt name */
                 name: string;
@@ -14736,7 +14803,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to list scorer pattern permissions for */
+                /** @description The username to get scorer pattern permissions for */
                 username: string;
             };
             cookie?: never;
@@ -14832,9 +14899,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username */
+                /** @description The username to get scorer pattern permission for */
                 username: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to get */
                 id: number;
             };
             cookie?: never;
@@ -14880,9 +14947,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username */
+                /** @description The username to delete scorer pattern permission for */
                 username: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to delete */
                 id: number;
             };
             cookie?: never;
@@ -14928,9 +14995,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username */
+                /** @description The username to update scorer pattern permission for */
                 username: string;
-                /** @description The pattern ID */
+                /** @description The pattern ID to update */
                 id: number;
             };
             cookie?: never;
@@ -15076,7 +15143,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The username to grant scorer permission to */
+                /** @description The username to create scorer permission for */
                 username: string;
                 /** @description The experiment ID */
                 experiment_id: string;
@@ -19109,9 +19176,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["WebhookDeleteResponse"];
                 };
             };
             /** @description Forbidden - Insufficient permissions */

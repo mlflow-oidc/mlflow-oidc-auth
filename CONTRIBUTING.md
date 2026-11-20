@@ -70,6 +70,7 @@ Optional CI-like backend run:
 
 ```bash
 tox -e py314
+tox -e py311   # the declared Python floor; not in the default envlist, so it needs 3.11 installed
 ```
 
 ## Coding Standards

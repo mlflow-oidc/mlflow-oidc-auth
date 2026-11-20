@@ -584,7 +584,7 @@ async def get_group_prompts(
         return items
     except Exception as e:
         logger.error(f"Error getting group prompt permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get group prompt permissions")
+        raise HTTPException(status_code=500, detail="Failed to retrieve group prompt permissions")
 
 
 exact_routes(
@@ -614,9 +614,6 @@ regex_routes(
     "group experiment pattern permissions",
     GROUP_EXPERIMENT_PATTERN_PERMISSIONS,
     GROUP_EXPERIMENT_PATTERN_PERMISSION_DETAIL,
-    specific=ALL_OPS,
-    plural="experiments",
-    group_failures=True,
     body=ExperimentRegexCreate,
     item=_group_pattern(GroupExperimentRegexPermissionItem),
     item_model=GroupExperimentRegexPermissionItem,
@@ -637,9 +634,6 @@ regex_routes(
     "group registered model pattern permissions",
     GROUP_REGISTERED_MODEL_PATTERN_PERMISSIONS,
     GROUP_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
-    specific=ALL_OPS,
-    plural="registered models",
-    group_failures=True,
     body=RegisteredModelRegexCreate,
     item=_group_pattern(GroupRegisteredModelRegexPermissionItem, prompt=True),
     item_model=GroupRegisteredModelRegexPermissionItem,
@@ -660,9 +654,6 @@ regex_routes(
     "group prompt pattern permissions",
     GROUP_PROMPT_PATTERN_PERMISSIONS,
     GROUP_PROMPT_PATTERN_PERMISSION_DETAIL,
-    specific=ALL_OPS,
-    plural="prompts",
-    group_failures=True,
     body=PromptRegexCreate,
     item=_group_pattern(GroupPromptRegexPermissionItem, prompt=True),
     item_model=GroupPromptRegexPermissionItem,
@@ -743,9 +734,6 @@ regex_routes(
     "group scorer pattern permissions",
     GROUP_SCORER_PATTERN_PERMISSIONS,
     GROUP_SCORER_PATTERN_PERMISSION_DETAIL,
-    specific=ALL_OPS,
-    plural="scorers",
-    group_failures=True,
     body=ScorerRegexCreate,
     item=_group_pattern(GroupScorerRegexPermissionItem),
     item_model=GroupScorerRegexPermissionItem,

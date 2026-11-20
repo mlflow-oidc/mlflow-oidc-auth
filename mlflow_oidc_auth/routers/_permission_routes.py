@@ -13,9 +13,10 @@ A spec carries everything that differs between two routes:
 * the audit ``resource_type``,
 * the store call, the response, the messages and how a failure is reported.
 
-The generated routes keep the committed ``openapi.json`` byte for byte, which is why the text
-templates below look as irregular as they do. Failures map the same way on every route: see
-:class:`Failure`.
+Summaries, descriptions, parameter texts and error messages are generated from the resource kind and
+the subject alone, in one wording for every route (#478); the only per-route data are the paths, the
+operation ids (``names``, which clients depend on) and the status codes. Failures map the same way on
+every route: see :class:`Failure`.
 
 Security: ``auth`` is the only thing between a caller and a grant change, and the factory never
 supplies a default for an exact grant. ``tests/routers/test_permission_route_auth.py`` pins the gate
@@ -68,9 +69,8 @@ _METHOD = {"list": "GET", "create": "POST", "get": "GET", "update": "PATCH", "de
 _VERB = {"list": "List", "create": "Create", "get": "Get", "update": "Update", "delete": "Delete"}
 _GERUND = {"list": "listing", "create": "creating", "get": "getting", "update": "updating", "delete": "deleting"}
 _PAST = {"create": "created", "update": "updated", "delete": "deleted"}
-_DOES = {"list": "Retrieves", "get": "Retrieves", "update": "Updates", "delete": "Deletes"}
-_PURPOSE = {"create": "set", "get": "get", "update": "update", "delete": "delete"}
-_ID_TEXT = {"get": "The pattern ID to retrieve", "update": "The pattern ID to update", "delete": "The pattern ID to delete"}
+# The verb of a 500 detail; reads say "retrieve" everywhere (lists, the hand-written routes, skills, MCP servers).
+_FAILURE_VERB = {"get": "retrieve", "list": "retrieve"}
 
 
 def pattern_fields(a: Args) -> Dict[str, Any]:
@@ -79,7 +79,9 @@ def pattern_fields(a: Args) -> Dict[str, Any]:
 
 
 def regex_names(kind: str) -> Dict[str, str]:
-    """Endpoint names of the older pattern routes, which say ``regex`` where newer ones say ``pattern``.
+    """Operation ids of the older pattern routes, which say ``regex`` where newer ones say ``pattern``.
+
+    The ids are part of the published API, so they stay as they were while the texts are uniform.
 
     Parameters:
         kind: Subject and kind, e.g. ``"user_prompt"``.
@@ -309,10 +311,6 @@ USER = Subject("username", "username", "user", "", "{username}")
 GROUP = Subject("group_name", "group name", "group", "group ", "group {group_name}")
 
 
-def _texts(text: Optional[Mapping[str, Mapping[str, str]]], op: str) -> Mapping[str, str]:
-    return (text or {}).get(op, {})
-
-
 def exact_routes(
     router: APIRouter,
     subject: Subject,
@@ -333,7 +331,6 @@ def exact_routes(
     message_model: Any = StatusMessageResponse,
     created: Optional[int] = 201,
     restate_params: bool = False,
-    text: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Add the routes managing exact grants of one resource kind for a user or a group.
 
@@ -344,7 +341,7 @@ def exact_routes(
         tag: OpenAPI tag.
         path: Path of one grant.
         keys: The resource's path parameters as ``(name, description)``; ``{purpose}`` in a
-            description becomes set/get/update/delete. The last one is the audit resource id.
+            description becomes create/get/update/delete. The last one is the audit resource id.
         auth: The authorization dependencies of every route. There is deliberately no default.
         call: The store call of each op.
         body: Request model of create and update.
@@ -357,8 +354,6 @@ def exact_routes(
         message_model: Model of the create, update and delete messages.
         created: Success status of create.
         restate_params: See :class:`Route`; for a gate dependency that declares a path parameter.
-        text: OpenAPI text overrides, by op and then by ``summary``, ``description``,
-            ``subject``, ``body`` or a key name.
 
     Raises:
         ValueError: From :func:`add_route`, if ``auth`` holds no gate dependency.
@@ -367,23 +362,17 @@ def exact_routes(
     resource_key = keys[-1][0]
     on = on or "{" + resource_key + "}"
     for op in ops:
-        t = _texts(text, op)
         verb = "get" if op == "list" else op
         name = f"{verb}_{subject.word}_{snake}_permission" + ("s" if op == "list" else "")
         if op == "list":
             route_path, summary = list_path, f"List {label} permissions for {who}"
             description = f"Retrieves a list of {label} permissions for the specified {subject.word}."
-            params = ((subject.param, str, t.get("subject", f"The {subject.noun} to get {label} permissions for")),)
+            params = ((subject.param, str, f"The {subject.noun} to get {label} permissions for"),)
         else:
             route_path, summary = path, f"{_VERB[op]} {label} permission for {who}"
-            if op == "create":
-                description = f"Creates a new permission for {who} to access a specific {label}."
-                purpose_text = f"The {subject.noun} to grant {label} permission to"
-            else:
-                description = f"{_DOES[op]} the permission for {who} on a specific {label}."
-                purpose_text = f"The {subject.noun} to {op} {label} permission for"
-            params = ((subject.param, str, t.get("subject", purpose_text)),)
-            params += tuple((key, str, t.get(key, key_text.format(purpose=_PURPOSE[op]))) for key, key_text in keys)
+            description = f"{_VERB[op]}s the {label} permission for {who}."
+            params = ((subject.param, str, f"The {subject.noun} to {op} {label} permission for"),)
+            params += tuple((key, str, key_text.format(purpose=op)) for key, key_text in keys)
         audit = None
         if op in _PAST:
             extra = [key for key, _ in keys if key != resource_key]
@@ -399,7 +388,7 @@ def exact_routes(
         if op == "list":
             failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
         else:
-            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {_FAILURE_VERB.get(op, op)} {noun}")
         message = (messages or {}).get(op, f"{_cap(label)} permission {_PAST.get(op)} for {subject.message} on {on}")
         add_route(
             router,
@@ -407,8 +396,8 @@ def exact_routes(
                 name=name,
                 op=op,
                 path=route_path,
-                summary=t.get("summary", summary),
-                description=t.get("description", description),
+                summary=summary,
+                description=description,
                 tag=tag,
                 params=params,
                 auth=auth,
@@ -416,7 +405,7 @@ def exact_routes(
                 respond=(respond or {}).get(op, lambda a, _, message=message: message_model(message=message.format(**vars(a)))),
                 response_model=(models or {}).get(op, message_model),
                 body=(
-                    ("permission_data", body, t.get("body", "The permission details" if op == "create" else "Updated permission details"))
+                    ("permission_data", body, "The permission details" if op == "create" else "Updated permission details")
                     if op in ("create", "update")
                     else None
                 ),
@@ -445,12 +434,6 @@ def regex_routes(
     names: Optional[Mapping[str, str]] = None,
     models: Optional[Mapping[str, Any]] = None,
     respond: Optional[Mapping[str, Callable[[Args, Any], Any]]] = None,
-    quiet_delete: bool = False,
-    specific: Sequence[str] = (),
-    plural: str = "",
-    lab: Optional[str] = None,
-    group_failures: bool = False,
-    text: Optional[Mapping[str, Mapping[str, str]]] = None,
 ) -> None:
     """Add the admin-only routes managing regex (pattern) grants of one kind for a user or a group.
 
@@ -467,46 +450,28 @@ def regex_routes(
         item_model: Response model of get (and of each element of list).
         ops: The routes to add, in registration order.
         id_type: ``str`` ids are parsed up front, and one that is not an integer is a 400.
-        names: Endpoint name of an op, where not ``{verb}_{subject}_{kind}_pattern_permission``.
-        models: Response model of an op, where not the default.
+        names: Operation id of an op, where not ``{verb}_{subject}_{kind}_pattern_permission``.
+        models: Response model of an op, where not the default. A delete's model alone sets its
+            response: the body is that model constructed with no arguments, and one that is
+            ``StatusOnlyResponse`` answers an empty body (and omits unset fields).
         respond: Builds the response of an op, where not the default.
-        quiet_delete: delete answers an empty ``StatusOnlyResponse``.
-        specific: Ops documented in the "specific ... regex pattern permission" wording.
-        plural: The kind in the plural, for that wording of create.
-        lab: How the parameter texts in the regex-based wording name the kind ("" omits it).
-        group_failures: Word the list 500 as "Failed to get ...".
-        text: OpenAPI text overrides, by op and then by ``summary``.
 
     Raises:
         ValueError: Never for the routes this adds, which are all admin-only; see :func:`add_route`.
+        TypeError: If the delete model in ``models`` cannot be constructed with no arguments.
     """
     who, noun, snake = subject.who, f"{subject.prefix}{label} pattern permission", _snake(label)
-    lab = f"{label} " if lab is None else lab
     for op in ops:
-        t = _texts(text, op)
         name = (names or {}).get(op, f"{'get' if op == 'list' else op}_{subject.word}_{snake}_pattern_permission" + ("s" if op == "list" else ""))
-        if op in specific:
-            id_text, subject_text = "The pattern ID", f"The {subject.noun}"
-            summary = {
-                "list": f"Get {subject.word} {label} pattern permissions",
-                "get": f"Get specific {label} pattern permission for {who}",
-            }.get(op, f"{_VERB[op]} {label} pattern permission for {who}")
-            description = {
-                "list": f"Retrieves all {label} regex pattern permissions for a specific {subject.word}.",
-                "create": f"Creates a new regex pattern permission for {who} to access {plural}.",
-            }.get(op, f"{_DOES.get(op)} a specific {label} regex pattern permission for {who}.")
-            if op in ("list", "create"):
-                subject_text = f"The {subject.noun} to {'get' if op == 'list' else 'create'} {label} pattern permission{'s' if op == 'list' else ''} for"
-            body_text = "The pattern permission details"
+        plural = "s" if op == "list" else ""
+        summary = f"{_VERB[op]} {label} pattern permission{plural} for {who}"
+        if op == "list":
+            description = f"Retrieves a list of regex-based {label} permission patterns for the specified {subject.word}."
         else:
-            id_text = _ID_TEXT.get(op)
-            summary = f"{_VERB[op]} {label} pattern permission{'s' if op == 'list' else ''} for {who}"
-            description = {
-                "list": f"Retrieves a list of regex-based {label} permission patterns for the specified {subject.word}.",
-                "create": f"Creates a new regex-based permission pattern for {label} access.",
-            }.get(op, f"{_DOES.get(op)} a specific regex-based {label} permission pattern for the specified {subject.word}.")
-            subject_text = f"The {subject.noun} to {_VERB[op].lower()} {lab}pattern permission{'s' if op == 'list' else ''} for"
-            body_text = "The regex pattern permission details"
+            description = f"{_VERB[op]}s a regex-based {label} permission pattern for {who}."
+        subject_text = f"The {subject.noun} to {op if op != 'list' else 'get'} {label} pattern permission{plural} for"
+        id_text = f"The pattern ID to {op}"
+        body_text = "The regex pattern permission details"
         params: Tuple[Tuple[str, Any, str], ...] = ((subject.param, str, subject_text),)
         if op in ("get", "update", "delete"):
             params += (("id", id_type, id_text),)
@@ -521,18 +486,25 @@ def regex_routes(
                 "delete": lambda a: {"id": a.id},
             }
             audit = (f"{_snake(subject.prefix)}{snake}_regex_permission", lambda a: getattr(a, subject.param), details[op])
-        if op == "list" and group_failures:
-            failure = Failure(f"Error getting {noun}s", _cap(noun), f"Failed to get {noun}s")
-        elif op == "list":
+        if op == "list":
             failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
         else:
-            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {_FAILURE_VERB.get(op, op)} {noun}")
         if op == "list":
             default_model, default_respond = List[item_model], lambda a, r: [item(p) for p in r]
         elif op == "get":
             default_model, default_respond = item_model, lambda a, r: item(r)
-        elif op == "delete" and quiet_delete:
-            default_model, default_respond = StatusOnlyResponse, lambda a, r: StatusOnlyResponse()
+        elif op == "delete" and (models or {}).get("delete") is not None:
+            # The caller names only the model; its no-argument instance is the body (an empty one for StatusOnlyResponse).
+            default_model = (models or {})["delete"]
+            try:
+                default_model()
+            except Exception as error:
+                # Found at import, not after the store delete already ran and the body cannot be built.
+                raise TypeError(
+                    f"regex_routes: the delete model {getattr(default_model, '__name__', default_model)!r} for {name!r} must be constructible with no arguments: {error}"
+                ) from error
+            default_respond = lambda a, r, model=default_model: model()
         else:
             message = f"{_cap(label)} pattern permission {_PAST[op]} for {subject.message}"
             default_model, default_respond = StatusMessageResponse, lambda a, r, message=message: StatusMessageResponse(message=message.format(**vars(a)))
@@ -542,8 +514,8 @@ def regex_routes(
                 name=name,
                 op=op,
                 path=path if op in ("list", "create") else detail_path,
-                summary=t.get("summary", summary),
-                description=t.get("description", description),
+                summary=summary,
+                description=description,
                 tag=tag,
                 params=params,
                 auth=ADMIN,
@@ -552,7 +524,7 @@ def regex_routes(
                 response_model=(models or {}).get(op, default_model),
                 body=body_param,
                 status_code=201 if op == "create" else None,
-                exclude_none=op == "delete" and quiet_delete,
+                exclude_none=(models or {}).get(op) is StatusOnlyResponse,
                 audit=audit,
                 failure=failure,
                 parse_id=id_type is str and op in ("get", "update", "delete"),

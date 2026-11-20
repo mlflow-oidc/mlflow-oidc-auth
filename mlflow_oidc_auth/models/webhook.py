@@ -3,6 +3,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
+from mlflow_oidc_auth.models._base import ResponseModel
+
 # Valid webhook statuses
 VALID_WEBHOOK_STATUSES = ["ACTIVE", "DISABLED"]
 
@@ -183,3 +185,9 @@ class WebhookTestResponse(BaseModel):
     response_status: Optional[int] = Field(None, description="HTTP response status code")
     response_body: Optional[str] = Field(None, description="Response body")
     error_message: Optional[str] = Field(None, description="Error message if test failed")
+
+
+class WebhookDeleteResponse(ResponseModel):
+    """The body of ``DELETE /oidc/webhook/{webhook_id}``."""
+
+    message: str = Field(..., description="Human-readable confirmation")

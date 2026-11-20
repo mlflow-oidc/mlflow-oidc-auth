@@ -791,6 +791,70 @@
         "title": "FailedRun",
         "type": "object"
       },
+      "GatewayEndpointListItem": {
+        "description": "A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).",
+        "properties": {
+          "auth_type": {
+            "deprecated": true,
+            "description": "Auth type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+            "title": "Auth Type",
+            "type": "string"
+          },
+          "description": {
+            "deprecated": true,
+            "description": "Endpoint description. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "description": "Endpoint name",
+            "title": "Name",
+            "type": "string"
+          },
+          "route_type": {
+            "deprecated": true,
+            "description": "Route type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+            "title": "Route Type",
+            "type": "string"
+          },
+          "type": {
+            "deprecated": true,
+            "description": "Endpoint type. Deprecated: MLflow's GatewayEndpoint has no such attribute, so this is always an empty string",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "description",
+          "route_type",
+          "auth_type"
+        ],
+        "title": "GatewayEndpointListItem",
+        "type": "object"
+      },
+      "GatewayModelDefinitionListItem": {
+        "description": "A gateway model definition the caller may manage (``GET /permissions/gateways/model-definitions``).",
+        "properties": {
+          "name": {
+            "description": "Model definition name",
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "Model provider: MLflow's GatewayModelDefinition has no source field, so this is its provider (empty for none)",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source"
+        ],
+        "title": "GatewayModelDefinitionListItem",
+        "type": "object"
+      },
       "GatewayPermission": {
         "description": "Model for creating or updating a gateway permission (endpoint, model definition, or secret).",
         "properties": {
@@ -831,6 +895,21 @@
           "permission"
         ],
         "title": "GatewayRegexCreate",
+        "type": "object"
+      },
+      "GatewaySecretListItem": {
+        "description": "A gateway secret the caller may manage (``GET /permissions/gateways/secrets``). Never carries the secret value.",
+        "properties": {
+          "key": {
+            "description": "Secret name",
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "GatewaySecretListItem",
         "type": "object"
       },
       "GroupDetail": {
@@ -4042,6 +4121,21 @@
         "title": "WebhookCreateRequest",
         "type": "object"
       },
+      "WebhookDeleteResponse": {
+        "description": "The body of ``DELETE /oidc/webhook/{webhook_id}``.",
+        "properties": {
+          "message": {
+            "description": "Human-readable confirmation",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "WebhookDeleteResponse",
+        "type": "object"
+      },
       "WebhookListResponse": {
         "description": "Response model for listing webhooks.",
         "properties": {
@@ -5172,8 +5266,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewayEndpointListItem"
                   },
                   "title": "Response List Gateway Endpoints Api 2 0 Mlflow Permissions Gateways Endpoints Get",
                   "type": "array"
@@ -5379,8 +5472,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewayModelDefinitionListItem"
                   },
                   "title": "Response List Gateway Model Definitions Api 2 0 Mlflow Permissions Gateways Model Definitions Get",
                   "type": "array"
@@ -5586,8 +5678,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": true,
-                    "type": "object"
+                    "$ref": "#/components/schemas/GatewaySecretListItem"
                   },
                   "title": "Response List Gateway Secrets Api 2 0 Mlflow Permissions Gateways Secrets Get",
                   "type": "array"
@@ -5966,7 +6057,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/experiment-patterns": {
       "get": {
-        "description": "Retrieves all experiment regex pattern permissions for a specific group.",
+        "description": "Retrieves a list of regex-based experiment permission patterns for the specified group.",
         "operationId": "get_group_experiment_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns_get",
         "parameters": [
           {
@@ -6013,13 +6104,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get group experiment pattern permissions",
+        "summary": "List experiment pattern permissions for a group",
         "tags": [
           "group experiment pattern permissions"
         ]
       },
       "post": {
-        "description": "Creates a new regex pattern permission for a group to access experiments.",
+        "description": "Creates a regex-based experiment permission pattern for a group.",
         "operationId": "create_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns_post",
         "parameters": [
           {
@@ -6039,7 +6130,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ExperimentRegexCreate",
-                "description": "The pattern permission details"
+                "description": "The regex pattern permission details"
               }
             }
           },
@@ -6081,27 +6172,27 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/experiment-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific experiment regex pattern permission for a group.",
+        "description": "Deletes a regex-based experiment permission pattern for a group.",
         "operationId": "delete_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__delete",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to delete experiment pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to delete experiment pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to delete",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to delete",
               "title": "Id",
               "type": "integer"
             }
@@ -6141,27 +6232,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific experiment regex pattern permission for a group.",
+        "description": "Gets a regex-based experiment permission pattern for a group.",
         "operationId": "get_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__get",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to get experiment pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to get experiment pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -6195,33 +6286,33 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get specific experiment pattern permission for a group",
+        "summary": "Get experiment pattern permission for a group",
         "tags": [
           "group experiment pattern permissions"
         ]
       },
       "patch": {
-        "description": "Updates a specific experiment regex pattern permission for a group.",
+        "description": "Updates a regex-based experiment permission pattern for a group.",
         "operationId": "update_group_experiment_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__experiment_patterns__id__patch",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to update experiment pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to update experiment pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to update",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to update",
               "title": "Id",
               "type": "integer"
             }
@@ -6329,7 +6420,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/experiments/{experiment_id}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific experiment.",
+        "description": "Deletes the experiment permission for a group.",
         "operationId": "delete_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__delete",
         "parameters": [
           {
@@ -6389,7 +6480,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific experiment.",
+        "description": "Updates the experiment permission for a group.",
         "operationId": "update_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__patch",
         "parameters": [
           {
@@ -6460,16 +6551,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific experiment.",
+        "description": "Creates the experiment permission for a group.",
         "operationId": "create_group_experiment_permission_api_2_0_mlflow_permissions_groups__group_name__experiments__experiment_id__post",
         "parameters": [
           {
-            "description": "The group name to grant experiment permission to",
+            "description": "The group name to create experiment permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant experiment permission to",
+              "description": "The group name to create experiment permission for",
               "title": "Group Name",
               "type": "string"
             }
@@ -6592,12 +6683,12 @@
         "operationId": "get_group_gateway_endpoint_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns_get",
         "parameters": [
           {
-            "description": "The group name to list gateway endpoint pattern permissions for",
+            "description": "The group name to get gateway endpoint pattern permissions for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to list gateway endpoint pattern permissions for",
+              "description": "The group name to get gateway endpoint pattern permissions for",
               "title": "Group Name",
               "type": "string"
             }
@@ -6641,7 +6732,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway endpoint access.",
+        "description": "Creates a regex-based gateway endpoint permission pattern for a group.",
         "operationId": "create_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns_post",
         "parameters": [
           {
@@ -6703,7 +6794,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/endpoints-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway endpoint permission pattern for the specified group.",
+        "description": "Deletes a regex-based gateway endpoint permission pattern for a group.",
         "operationId": "delete_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__delete",
         "parameters": [
           {
@@ -6763,7 +6854,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway endpoint permission pattern for the specified group.",
+        "description": "Gets a regex-based gateway endpoint permission pattern for a group.",
         "operationId": "get_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__get",
         "parameters": [
           {
@@ -6778,12 +6869,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -6823,7 +6914,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway endpoint permission pattern for the specified group.",
+        "description": "Updates a regex-based gateway endpoint permission pattern for a group.",
         "operationId": "update_group_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints_patterns__id__patch",
         "parameters": [
           {
@@ -6896,7 +6987,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/endpoints/{name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific gateway endpoint.",
+        "description": "Deletes the gateway endpoint permission for a group.",
         "operationId": "delete_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__delete",
         "parameters": [
           {
@@ -6956,7 +7047,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a group on a specific gateway endpoint.",
+        "description": "Gets the gateway endpoint permission for a group.",
         "operationId": "get_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__get",
         "parameters": [
           {
@@ -7016,7 +7107,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific gateway endpoint.",
+        "description": "Updates the gateway endpoint permission for a group.",
         "operationId": "update_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__patch",
         "parameters": [
           {
@@ -7087,27 +7178,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific gateway endpoint.",
+        "description": "Creates the gateway endpoint permission for a group.",
         "operationId": "create_group_gateway_endpoint_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_endpoints__name__post",
         "parameters": [
           {
-            "description": "The group name to grant gateway endpoint permission to",
+            "description": "The group name to create gateway endpoint permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant gateway endpoint permission to",
+              "description": "The group name to create gateway endpoint permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The gateway endpoint name to set permissions for",
+            "description": "The gateway endpoint name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway endpoint name to set permissions for",
+              "description": "The gateway endpoint name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -7219,12 +7310,12 @@
         "operationId": "get_group_gateway_model_definition_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns_get",
         "parameters": [
           {
-            "description": "The group name to list gateway model definition pattern permissions for",
+            "description": "The group name to get gateway model definition pattern permissions for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to list gateway model definition pattern permissions for",
+              "description": "The group name to get gateway model definition pattern permissions for",
               "title": "Group Name",
               "type": "string"
             }
@@ -7268,7 +7359,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway model definition access.",
+        "description": "Creates a regex-based gateway model definition permission pattern for a group.",
         "operationId": "create_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns_post",
         "parameters": [
           {
@@ -7330,7 +7421,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/model-definitions-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway model definition permission pattern for the specified group.",
+        "description": "Deletes a regex-based gateway model definition permission pattern for a group.",
         "operationId": "delete_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__delete",
         "parameters": [
           {
@@ -7390,7 +7481,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway model definition permission pattern for the specified group.",
+        "description": "Gets a regex-based gateway model definition permission pattern for a group.",
         "operationId": "get_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__get",
         "parameters": [
           {
@@ -7405,12 +7496,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -7450,7 +7541,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway model definition permission pattern for the specified group.",
+        "description": "Updates a regex-based gateway model definition permission pattern for a group.",
         "operationId": "update_group_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions_patterns__id__patch",
         "parameters": [
           {
@@ -7523,7 +7614,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/model-definitions/{name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific gateway model definition.",
+        "description": "Deletes the gateway model definition permission for a group.",
         "operationId": "delete_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__delete",
         "parameters": [
           {
@@ -7583,7 +7674,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a group on a specific gateway model definition.",
+        "description": "Gets the gateway model definition permission for a group.",
         "operationId": "get_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__get",
         "parameters": [
           {
@@ -7643,7 +7734,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific gateway model definition.",
+        "description": "Updates the gateway model definition permission for a group.",
         "operationId": "update_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__patch",
         "parameters": [
           {
@@ -7714,27 +7805,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific gateway model definition.",
+        "description": "Creates the gateway model definition permission for a group.",
         "operationId": "create_group_gateway_model_definition_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_model_definitions__name__post",
         "parameters": [
           {
-            "description": "The group name to grant gateway model definition permission to",
+            "description": "The group name to create gateway model definition permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant gateway model definition permission to",
+              "description": "The group name to create gateway model definition permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The gateway model definition name to set permissions for",
+            "description": "The gateway model definition name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway model definition name to set permissions for",
+              "description": "The gateway model definition name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -7846,12 +7937,12 @@
         "operationId": "get_group_gateway_secret_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns_get",
         "parameters": [
           {
-            "description": "The group name to list gateway secret pattern permissions for",
+            "description": "The group name to get gateway secret pattern permissions for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to list gateway secret pattern permissions for",
+              "description": "The group name to get gateway secret pattern permissions for",
               "title": "Group Name",
               "type": "string"
             }
@@ -7895,7 +7986,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway secret access.",
+        "description": "Creates a regex-based gateway secret permission pattern for a group.",
         "operationId": "create_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns_post",
         "parameters": [
           {
@@ -7957,7 +8048,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/secrets-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway secret permission pattern for the specified group.",
+        "description": "Deletes a regex-based gateway secret permission pattern for a group.",
         "operationId": "delete_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__delete",
         "parameters": [
           {
@@ -8017,7 +8108,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway secret permission pattern for the specified group.",
+        "description": "Gets a regex-based gateway secret permission pattern for a group.",
         "operationId": "get_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__get",
         "parameters": [
           {
@@ -8032,12 +8123,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -8077,7 +8168,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway secret permission pattern for the specified group.",
+        "description": "Updates a regex-based gateway secret permission pattern for a group.",
         "operationId": "update_group_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets_patterns__id__patch",
         "parameters": [
           {
@@ -8150,7 +8241,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/gateways/secrets/{name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific gateway secret.",
+        "description": "Deletes the gateway secret permission for a group.",
         "operationId": "delete_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__delete",
         "parameters": [
           {
@@ -8210,7 +8301,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a group on a specific gateway secret.",
+        "description": "Gets the gateway secret permission for a group.",
         "operationId": "get_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__get",
         "parameters": [
           {
@@ -8270,7 +8361,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific gateway secret.",
+        "description": "Updates the gateway secret permission for a group.",
         "operationId": "update_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__patch",
         "parameters": [
           {
@@ -8341,27 +8432,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific gateway secret.",
+        "description": "Creates the gateway secret permission for a group.",
         "operationId": "create_group_gateway_secret_permission_api_2_0_mlflow_permissions_groups__group_name__gateways_secrets__name__post",
         "parameters": [
           {
-            "description": "The group name to grant gateway secret permission to",
+            "description": "The group name to create gateway secret permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant gateway secret permission to",
+              "description": "The group name to create gateway secret permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The gateway secret name to set permissions for",
+            "description": "The gateway secret name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway secret name to set permissions for",
+              "description": "The gateway secret name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -8782,7 +8873,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/prompts-patterns": {
       "get": {
-        "description": "Retrieves all prompt regex pattern permissions for a specific group.",
+        "description": "Retrieves a list of regex-based prompt permission patterns for the specified group.",
         "operationId": "get_group_prompt_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns_get",
         "parameters": [
           {
@@ -8829,13 +8920,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get group prompt pattern permissions",
+        "summary": "List prompt pattern permissions for a group",
         "tags": [
           "group prompt pattern permissions"
         ]
       },
       "post": {
-        "description": "Creates a new regex pattern permission for a group to access prompts.",
+        "description": "Creates a regex-based prompt permission pattern for a group.",
         "operationId": "create_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns_post",
         "parameters": [
           {
@@ -8855,7 +8946,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/PromptRegexCreate",
-                "description": "The pattern permission details"
+                "description": "The regex pattern permission details"
               }
             }
           },
@@ -8897,27 +8988,27 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/prompts-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific prompt regex pattern permission for a group.",
+        "description": "Deletes a regex-based prompt permission pattern for a group.",
         "operationId": "delete_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__delete",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to delete prompt pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to delete prompt pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to delete",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to delete",
               "title": "Id",
               "type": "integer"
             }
@@ -8957,27 +9048,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific prompt regex pattern permission for a group.",
+        "description": "Gets a regex-based prompt permission pattern for a group.",
         "operationId": "get_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__get",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to get prompt pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to get prompt pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -9011,33 +9102,33 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get specific prompt pattern permission for a group",
+        "summary": "Get prompt pattern permission for a group",
         "tags": [
           "group prompt pattern permissions"
         ]
       },
       "patch": {
-        "description": "Updates a specific prompt regex pattern permission for a group.",
+        "description": "Updates a regex-based prompt permission pattern for a group.",
         "operationId": "update_group_prompt_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__prompts_patterns__id__patch",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to update prompt pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to update prompt pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to update",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to update",
               "title": "Id",
               "type": "integer"
             }
@@ -9090,7 +9181,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/prompts/{prompt_name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific prompt.",
+        "description": "Deletes the prompt permission for a group.",
         "operationId": "delete_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__delete",
         "parameters": [
           {
@@ -9150,7 +9241,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific prompt.",
+        "description": "Updates the prompt permission for a group.",
         "operationId": "update_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__patch",
         "parameters": [
           {
@@ -9221,27 +9312,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific prompt.",
+        "description": "Creates the prompt permission for a group.",
         "operationId": "create_group_prompt_permission_api_2_0_mlflow_permissions_groups__group_name__prompts__prompt_name__post",
         "parameters": [
           {
-            "description": "The group name to grant prompt permission to",
+            "description": "The group name to create prompt permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant prompt permission to",
+              "description": "The group name to create prompt permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The prompt name to set permissions for",
+            "description": "The prompt name to create permissions for",
             "in": "path",
             "name": "prompt_name",
             "required": true,
             "schema": {
-              "description": "The prompt name to set permissions for",
+              "description": "The prompt name to create permissions for",
               "title": "Prompt Name",
               "type": "string"
             }
@@ -9349,7 +9440,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/registered-models-patterns": {
       "get": {
-        "description": "Retrieves all registered model regex pattern permissions for a specific group.",
+        "description": "Retrieves a list of regex-based registered model permission patterns for the specified group.",
         "operationId": "get_group_registered_model_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns_get",
         "parameters": [
           {
@@ -9396,13 +9487,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get group registered model pattern permissions",
+        "summary": "List registered model pattern permissions for a group",
         "tags": [
           "group registered model pattern permissions"
         ]
       },
       "post": {
-        "description": "Creates a new regex pattern permission for a group to access registered models.",
+        "description": "Creates a regex-based registered model permission pattern for a group.",
         "operationId": "create_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns_post",
         "parameters": [
           {
@@ -9422,7 +9513,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RegisteredModelRegexCreate",
-                "description": "The pattern permission details"
+                "description": "The regex pattern permission details"
               }
             }
           },
@@ -9464,27 +9555,27 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/registered-models-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific registered model regex pattern permission for a group.",
+        "description": "Deletes a regex-based registered model permission pattern for a group.",
         "operationId": "delete_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__delete",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to delete registered model pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to delete registered model pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to delete",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to delete",
               "title": "Id",
               "type": "integer"
             }
@@ -9524,27 +9615,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific registered model regex pattern permission for a group.",
+        "description": "Gets a regex-based registered model permission pattern for a group.",
         "operationId": "get_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__get",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to get registered model pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to get registered model pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -9578,33 +9669,33 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get specific registered model pattern permission for a group",
+        "summary": "Get registered model pattern permission for a group",
         "tags": [
           "group registered model pattern permissions"
         ]
       },
       "patch": {
-        "description": "Updates a specific registered model regex pattern permission for a group.",
+        "description": "Updates a regex-based registered model permission pattern for a group.",
         "operationId": "update_group_registered_model_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models_patterns__id__patch",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to update registered model pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to update registered model pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to update",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to update",
               "title": "Id",
               "type": "integer"
             }
@@ -9657,7 +9748,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/registered-models/{name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific registered model.",
+        "description": "Deletes the registered model permission for a group.",
         "operationId": "delete_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__delete",
         "parameters": [
           {
@@ -9717,7 +9808,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific registered model.",
+        "description": "Updates the registered model permission for a group.",
         "operationId": "update_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__patch",
         "parameters": [
           {
@@ -9788,27 +9879,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific registered model.",
+        "description": "Creates the registered model permission for a group.",
         "operationId": "create_group_registered_model_permission_api_2_0_mlflow_permissions_groups__group_name__registered_models__name__post",
         "parameters": [
           {
-            "description": "The group name to grant registered model permission to",
+            "description": "The group name to create registered model permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant registered model permission to",
+              "description": "The group name to create registered model permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The registered model name to set permissions for",
+            "description": "The registered model name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The registered model name to set permissions for",
+              "description": "The registered model name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -9861,7 +9952,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/scorer-patterns": {
       "get": {
-        "description": "Retrieves all scorer regex pattern permissions for a specific group.",
+        "description": "Retrieves a list of regex-based scorer permission patterns for the specified group.",
         "operationId": "get_group_scorer_pattern_permissions_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns_get",
         "parameters": [
           {
@@ -9908,13 +9999,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get group scorer pattern permissions",
+        "summary": "List scorer pattern permissions for a group",
         "tags": [
           "group scorer pattern permissions"
         ]
       },
       "post": {
-        "description": "Creates a new regex pattern permission for a group to access scorers.",
+        "description": "Creates a regex-based scorer permission pattern for a group.",
         "operationId": "create_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns_post",
         "parameters": [
           {
@@ -9934,7 +10025,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ScorerRegexCreate",
-                "description": "The pattern permission details"
+                "description": "The regex pattern permission details"
               }
             }
           },
@@ -9976,27 +10067,27 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/scorer-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific scorer regex pattern permission for a group.",
+        "description": "Deletes a regex-based scorer permission pattern for a group.",
         "operationId": "delete_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__delete",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to delete scorer pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to delete scorer pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to delete",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to delete",
               "title": "Id",
               "type": "integer"
             }
@@ -10036,27 +10127,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific scorer regex pattern permission for a group.",
+        "description": "Gets a regex-based scorer permission pattern for a group.",
         "operationId": "get_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__get",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to get scorer pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to get scorer pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -10090,33 +10181,33 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get specific scorer pattern permission for a group",
+        "summary": "Get scorer pattern permission for a group",
         "tags": [
           "group scorer pattern permissions"
         ]
       },
       "patch": {
-        "description": "Updates a specific scorer regex pattern permission for a group.",
+        "description": "Updates a regex-based scorer permission pattern for a group.",
         "operationId": "update_group_scorer_pattern_permission_api_2_0_mlflow_permissions_groups__group_name__scorer_patterns__id__patch",
         "parameters": [
           {
-            "description": "The group name",
+            "description": "The group name to update scorer pattern permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name",
+              "description": "The group name to update scorer pattern permission for",
               "title": "Group Name",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to update",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to update",
               "title": "Id",
               "type": "integer"
             }
@@ -10224,7 +10315,7 @@
     },
     "/api/2.0/mlflow/permissions/groups/{group_name}/scorers/{experiment_id}/{scorer_name}": {
       "delete": {
-        "description": "Deletes the permission for a group on a specific scorer.",
+        "description": "Deletes the scorer permission for a group.",
         "operationId": "delete_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__delete",
         "parameters": [
           {
@@ -10295,7 +10386,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a group on a specific scorer.",
+        "description": "Updates the scorer permission for a group.",
         "operationId": "update_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__patch",
         "parameters": [
           {
@@ -10377,16 +10468,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a group to access a specific scorer.",
+        "description": "Creates the scorer permission for a group.",
         "operationId": "create_group_scorer_permission_api_2_0_mlflow_permissions_groups__group_name__scorers__experiment_id___scorer_name__post",
         "parameters": [
           {
-            "description": "The group name to grant scorer permission to",
+            "description": "The group name to create scorer permission for",
             "in": "path",
             "name": "group_name",
             "required": true,
             "schema": {
-              "description": "The group name to grant scorer permission to",
+              "description": "The group name to create scorer permission for",
               "title": "Group Name",
               "type": "string"
             }
@@ -11653,12 +11744,12 @@
         "operationId": "list_user_experiment_pattern_permissions_api_2_0_mlflow_permissions_users__username__experiment_patterns_get",
         "parameters": [
           {
-            "description": "The username to list pattern permissions for",
+            "description": "The username to get experiment pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list pattern permissions for",
+              "description": "The username to get experiment pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -11702,16 +11793,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for experiment access.",
+        "description": "Creates a regex-based experiment permission pattern for a user.",
         "operationId": "create_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns_post",
         "parameters": [
           {
-            "description": "The username to create pattern permission for",
+            "description": "The username to create experiment pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to create pattern permission for",
+              "description": "The username to create experiment pattern permission for",
               "title": "Username",
               "type": "string"
             }
@@ -11756,7 +11847,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create experiment pattern permission",
+        "summary": "Create experiment pattern permission for a user",
         "tags": [
           "user experiment pattern permissions"
         ]
@@ -11764,16 +11855,16 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/experiment-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based experiment permission pattern for the specified user.",
+        "description": "Deletes a regex-based experiment permission pattern for a user.",
         "operationId": "delete_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__delete",
         "parameters": [
           {
-            "description": "The username to delete pattern permission for",
+            "description": "The username to delete experiment pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to delete pattern permission for",
+              "description": "The username to delete experiment pattern permission for",
               "title": "Username",
               "type": "string"
             }
@@ -11824,27 +11915,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based experiment permission pattern for the specified user.",
+        "description": "Gets a regex-based experiment permission pattern for a user.",
         "operationId": "get_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__get",
         "parameters": [
           {
-            "description": "The username to get pattern permission for",
+            "description": "The username to get experiment pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to get pattern permission for",
+              "description": "The username to get experiment pattern permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "string"
             }
@@ -11884,16 +11975,16 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based experiment permission pattern for the specified user.",
+        "description": "Updates a regex-based experiment permission pattern for a user.",
         "operationId": "update_user_experiment_pattern_permission_api_2_0_mlflow_permissions_users__username__experiment_patterns__id__patch",
         "parameters": [
           {
-            "description": "The username to update pattern permission for",
+            "description": "The username to update experiment pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to update pattern permission for",
+              "description": "The username to update experiment pattern permission for",
               "title": "Username",
               "type": "string"
             }
@@ -12012,16 +12103,16 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/experiments/{experiment_id}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific experiment.",
+        "description": "Deletes the experiment permission for a user.",
         "operationId": "delete_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__delete",
         "parameters": [
           {
-            "description": "The username to revoke permissions from",
+            "description": "The username to delete experiment permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to revoke permissions from",
+              "description": "The username to delete experiment permission for",
               "title": "Username",
               "type": "string"
             }
@@ -12072,16 +12163,16 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific experiment.",
+        "description": "Gets the experiment permission for a user.",
         "operationId": "get_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__get",
         "parameters": [
           {
-            "description": "The username to grant permissions to",
+            "description": "The username to get experiment permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant permissions to",
+              "description": "The username to get experiment permission for",
               "title": "Username",
               "type": "string"
             }
@@ -12132,16 +12223,16 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific experiment.",
+        "description": "Updates the experiment permission for a user.",
         "operationId": "update_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__patch",
         "parameters": [
           {
-            "description": "The username to grant permissions to",
+            "description": "The username to update experiment permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant permissions to",
+              "description": "The username to update experiment permission for",
               "title": "Username",
               "type": "string"
             }
@@ -12163,7 +12254,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ExperimentPermission",
-                "description": "The permission level to grant"
+                "description": "Updated permission details"
               }
             }
           },
@@ -12203,16 +12294,16 @@
         ]
       },
       "post": {
-        "description": "Creates a permission for a user to access a specific experiment.",
+        "description": "Creates the experiment permission for a user.",
         "operationId": "create_user_experiment_permission_api_2_0_mlflow_permissions_users__username__experiments__experiment_id__post",
         "parameters": [
           {
-            "description": "The username to grant permissions to",
+            "description": "The username to create experiment permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant permissions to",
+              "description": "The username to create experiment permission for",
               "title": "Username",
               "type": "string"
             }
@@ -12234,7 +12325,7 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ExperimentPermission",
-                "description": "The permission level to grant"
+                "description": "The permission details"
               }
             }
           },
@@ -12335,12 +12426,12 @@
         "operationId": "get_user_gateway_endpoint_pattern_permissions_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns_get",
         "parameters": [
           {
-            "description": "The username to list gateway endpoint pattern permissions for",
+            "description": "The username to get gateway endpoint pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list gateway endpoint pattern permissions for",
+              "description": "The username to get gateway endpoint pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -12384,7 +12475,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway endpoint access.",
+        "description": "Creates a regex-based gateway endpoint permission pattern for a user.",
         "operationId": "create_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns_post",
         "parameters": [
           {
@@ -12446,7 +12537,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/endpoints-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway endpoint permission pattern for the specified user.",
+        "description": "Deletes a regex-based gateway endpoint permission pattern for a user.",
         "operationId": "delete_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__delete",
         "parameters": [
           {
@@ -12506,7 +12597,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway endpoint permission pattern for the specified user.",
+        "description": "Gets a regex-based gateway endpoint permission pattern for a user.",
         "operationId": "get_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__get",
         "parameters": [
           {
@@ -12521,12 +12612,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -12566,7 +12657,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway endpoint permission pattern for the specified user.",
+        "description": "Updates a regex-based gateway endpoint permission pattern for a user.",
         "operationId": "update_user_gateway_endpoint_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints_patterns__id__patch",
         "parameters": [
           {
@@ -12639,7 +12730,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/endpoints/{name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific gateway endpoint.",
+        "description": "Deletes the gateway endpoint permission for a user.",
         "operationId": "delete_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__delete",
         "parameters": [
           {
@@ -12699,7 +12790,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific gateway endpoint.",
+        "description": "Gets the gateway endpoint permission for a user.",
         "operationId": "get_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__get",
         "parameters": [
           {
@@ -12759,7 +12850,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific gateway endpoint.",
+        "description": "Updates the gateway endpoint permission for a user.",
         "operationId": "update_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__patch",
         "parameters": [
           {
@@ -12830,27 +12921,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific gateway endpoint.",
+        "description": "Creates the gateway endpoint permission for a user.",
         "operationId": "create_user_gateway_endpoint_permission_api_2_0_mlflow_permissions_users__username__gateways_endpoints__name__post",
         "parameters": [
           {
-            "description": "The username to grant gateway endpoint permission to",
+            "description": "The username to create gateway endpoint permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant gateway endpoint permission to",
+              "description": "The username to create gateway endpoint permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The gateway endpoint name to set permissions for",
+            "description": "The gateway endpoint name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway endpoint name to set permissions for",
+              "description": "The gateway endpoint name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -12962,12 +13053,12 @@
         "operationId": "get_user_gateway_model_definition_pattern_permissions_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns_get",
         "parameters": [
           {
-            "description": "The username to list gateway model definition pattern permissions for",
+            "description": "The username to get gateway model definition pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list gateway model definition pattern permissions for",
+              "description": "The username to get gateway model definition pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -13011,7 +13102,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway model definition access.",
+        "description": "Creates a regex-based gateway model definition permission pattern for a user.",
         "operationId": "create_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns_post",
         "parameters": [
           {
@@ -13073,7 +13164,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/model-definitions-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway model definition permission pattern for the specified user.",
+        "description": "Deletes a regex-based gateway model definition permission pattern for a user.",
         "operationId": "delete_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__delete",
         "parameters": [
           {
@@ -13133,7 +13224,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway model definition permission pattern for the specified user.",
+        "description": "Gets a regex-based gateway model definition permission pattern for a user.",
         "operationId": "get_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__get",
         "parameters": [
           {
@@ -13148,12 +13239,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -13193,7 +13284,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway model definition permission pattern for the specified user.",
+        "description": "Updates a regex-based gateway model definition permission pattern for a user.",
         "operationId": "update_user_gateway_model_definition_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions_patterns__id__patch",
         "parameters": [
           {
@@ -13266,7 +13357,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/model-definitions/{name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific gateway model definition.",
+        "description": "Deletes the gateway model definition permission for a user.",
         "operationId": "delete_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__delete",
         "parameters": [
           {
@@ -13326,7 +13417,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific gateway model definition.",
+        "description": "Gets the gateway model definition permission for a user.",
         "operationId": "get_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__get",
         "parameters": [
           {
@@ -13386,7 +13477,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific gateway model definition.",
+        "description": "Updates the gateway model definition permission for a user.",
         "operationId": "update_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__patch",
         "parameters": [
           {
@@ -13457,27 +13548,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific gateway model definition.",
+        "description": "Creates the gateway model definition permission for a user.",
         "operationId": "create_user_gateway_model_definition_permission_api_2_0_mlflow_permissions_users__username__gateways_model_definitions__name__post",
         "parameters": [
           {
-            "description": "The username to grant gateway model definition permission to",
+            "description": "The username to create gateway model definition permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant gateway model definition permission to",
+              "description": "The username to create gateway model definition permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The gateway model definition name to set permissions for",
+            "description": "The gateway model definition name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway model definition name to set permissions for",
+              "description": "The gateway model definition name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -13589,12 +13680,12 @@
         "operationId": "get_user_gateway_secret_pattern_permissions_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns_get",
         "parameters": [
           {
-            "description": "The username to list gateway secret pattern permissions for",
+            "description": "The username to get gateway secret pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list gateway secret pattern permissions for",
+              "description": "The username to get gateway secret pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -13638,7 +13729,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for gateway secret access.",
+        "description": "Creates a regex-based gateway secret permission pattern for a user.",
         "operationId": "create_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns_post",
         "parameters": [
           {
@@ -13700,7 +13791,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/secrets-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based gateway secret permission pattern for the specified user.",
+        "description": "Deletes a regex-based gateway secret permission pattern for a user.",
         "operationId": "delete_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__delete",
         "parameters": [
           {
@@ -13760,7 +13851,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based gateway secret permission pattern for the specified user.",
+        "description": "Gets a regex-based gateway secret permission pattern for a user.",
         "operationId": "get_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__get",
         "parameters": [
           {
@@ -13775,12 +13866,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -13820,7 +13911,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based gateway secret permission pattern for the specified user.",
+        "description": "Updates a regex-based gateway secret permission pattern for a user.",
         "operationId": "update_user_gateway_secret_pattern_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets_patterns__id__patch",
         "parameters": [
           {
@@ -13893,7 +13984,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/gateways/secrets/{name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific gateway secret.",
+        "description": "Deletes the gateway secret permission for a user.",
         "operationId": "delete_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__delete",
         "parameters": [
           {
@@ -13953,7 +14044,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific gateway secret.",
+        "description": "Gets the gateway secret permission for a user.",
         "operationId": "get_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__get",
         "parameters": [
           {
@@ -14013,7 +14104,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific gateway secret.",
+        "description": "Updates the gateway secret permission for a user.",
         "operationId": "update_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__patch",
         "parameters": [
           {
@@ -14084,27 +14175,27 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific gateway secret.",
+        "description": "Creates the gateway secret permission for a user.",
         "operationId": "create_user_gateway_secret_permission_api_2_0_mlflow_permissions_users__username__gateways_secrets__name__post",
         "parameters": [
           {
-            "description": "The username to grant gateway secret permission to",
+            "description": "The username to create gateway secret permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant gateway secret permission to",
+              "description": "The username to create gateway secret permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The gateway secret name to set permissions for",
+            "description": "The gateway secret name to create permissions for",
             "in": "path",
             "name": "name",
             "required": true,
             "schema": {
-              "description": "The gateway secret name to set permissions for",
+              "description": "The gateway secret name to create permissions for",
               "title": "Name",
               "type": "string"
             }
@@ -14529,12 +14620,12 @@
         "operationId": "get_user_prompt_pattern_permissions_api_2_0_mlflow_permissions_users__username__prompts_patterns_get",
         "parameters": [
           {
-            "description": "The username to list prompt pattern permissions for",
+            "description": "The username to get prompt pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list prompt pattern permissions for",
+              "description": "The username to get prompt pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -14578,7 +14669,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for prompt access.",
+        "description": "Creates a regex-based prompt permission pattern for a user.",
         "operationId": "create_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns_post",
         "parameters": [
           {
@@ -14640,7 +14731,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/prompts-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based prompt permission pattern for the specified user.",
+        "description": "Deletes a regex-based prompt permission pattern for a user.",
         "operationId": "delete_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__delete",
         "parameters": [
           {
@@ -14700,7 +14791,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based prompt permission pattern for the specified user.",
+        "description": "Gets a regex-based prompt permission pattern for a user.",
         "operationId": "get_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__get",
         "parameters": [
           {
@@ -14715,12 +14806,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "string"
             }
@@ -14760,7 +14851,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based prompt permission pattern for the specified user.",
+        "description": "Updates a regex-based prompt permission pattern for a user.",
         "operationId": "update_user_prompt_regex_permission_api_2_0_mlflow_permissions_users__username__prompts_patterns__id__patch",
         "parameters": [
           {
@@ -14833,7 +14924,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/prompts/{name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific prompt.",
+        "description": "Deletes the prompt permission for a user.",
         "operationId": "delete_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__delete",
         "parameters": [
           {
@@ -14893,7 +14984,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific prompt.",
+        "description": "Gets the prompt permission for a user.",
         "operationId": "get_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__get",
         "parameters": [
           {
@@ -14953,7 +15044,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific prompt.",
+        "description": "Updates the prompt permission for a user.",
         "operationId": "update_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__patch",
         "parameters": [
           {
@@ -15024,16 +15115,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific prompt.",
+        "description": "Creates the prompt permission for a user.",
         "operationId": "create_user_prompt_permission_api_2_0_mlflow_permissions_users__username__prompts__name__post",
         "parameters": [
           {
-            "description": "The username to grant prompt permission to",
+            "description": "The username to create prompt permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant prompt permission to",
+              "description": "The username to create prompt permission for",
               "title": "Username",
               "type": "string"
             }
@@ -15156,12 +15247,12 @@
         "operationId": "get_user_registered_model_regex_permissions_api_2_0_mlflow_permissions_users__username__registered_models_patterns_get",
         "parameters": [
           {
-            "description": "The username to list registered model pattern permissions for",
+            "description": "The username to get registered model pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list registered model pattern permissions for",
+              "description": "The username to get registered model pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -15205,7 +15296,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for registered model access.",
+        "description": "Creates a regex-based registered model permission pattern for a user.",
         "operationId": "create_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns_post",
         "parameters": [
           {
@@ -15267,7 +15358,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/registered-models-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific regex-based registered model permission pattern for the specified user.",
+        "description": "Deletes a regex-based registered model permission pattern for a user.",
         "operationId": "delete_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__delete",
         "parameters": [
           {
@@ -15327,7 +15418,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific regex-based registered model permission pattern for the specified user.",
+        "description": "Gets a regex-based registered model permission pattern for a user.",
         "operationId": "get_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__get",
         "parameters": [
           {
@@ -15342,12 +15433,12 @@
             }
           },
           {
-            "description": "The pattern ID to retrieve",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID to retrieve",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "string"
             }
@@ -15387,7 +15478,7 @@
         ]
       },
       "patch": {
-        "description": "Updates a specific regex-based registered model permission pattern for the specified user.",
+        "description": "Updates a regex-based registered model permission pattern for a user.",
         "operationId": "update_user_registered_model_regex_permission_api_2_0_mlflow_permissions_users__username__registered_models_patterns__id__patch",
         "parameters": [
           {
@@ -15460,7 +15551,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/registered-models/{name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific registered model.",
+        "description": "Deletes the registered model permission for a user.",
         "operationId": "delete_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__delete",
         "parameters": [
           {
@@ -15520,7 +15611,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific registered model.",
+        "description": "Gets the registered model permission for a user.",
         "operationId": "get_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__get",
         "parameters": [
           {
@@ -15580,7 +15671,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific registered model.",
+        "description": "Updates the registered model permission for a user.",
         "operationId": "update_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__patch",
         "parameters": [
           {
@@ -15651,16 +15742,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific registered model.",
+        "description": "Creates the registered model permission for a user.",
         "operationId": "create_user_registered_model_permission_api_2_0_mlflow_permissions_users__username__registered_models__name__post",
         "parameters": [
           {
-            "description": "The username to grant registered model permission to",
+            "description": "The username to create registered model permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant registered model permission to",
+              "description": "The username to create registered model permission for",
               "title": "Username",
               "type": "string"
             }
@@ -15728,12 +15819,12 @@
         "operationId": "get_user_scorer_regex_permissions_api_2_0_mlflow_permissions_users__username__scorer_patterns_get",
         "parameters": [
           {
-            "description": "The username to list scorer pattern permissions for",
+            "description": "The username to get scorer pattern permissions for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to list scorer pattern permissions for",
+              "description": "The username to get scorer pattern permissions for",
               "title": "Username",
               "type": "string"
             }
@@ -15777,7 +15868,7 @@
         ]
       },
       "post": {
-        "description": "Creates a new regex-based permission pattern for scorer access.",
+        "description": "Creates a regex-based scorer permission pattern for a user.",
         "operationId": "create_user_scorer_regex_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns_post",
         "parameters": [
           {
@@ -15839,27 +15930,27 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/scorer-patterns/{id}": {
       "delete": {
-        "description": "Deletes a specific scorer regex pattern permission for a user.",
+        "description": "Deletes a regex-based scorer permission pattern for a user.",
         "operationId": "delete_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__delete",
         "parameters": [
           {
-            "description": "The username",
+            "description": "The username to delete scorer pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username",
+              "description": "The username to delete scorer pattern permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to delete",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to delete",
               "title": "Id",
               "type": "integer"
             }
@@ -15899,27 +15990,27 @@
         ]
       },
       "get": {
-        "description": "Retrieves a specific scorer regex pattern permission for a user.",
+        "description": "Gets a regex-based scorer permission pattern for a user.",
         "operationId": "get_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__get",
         "parameters": [
           {
-            "description": "The username",
+            "description": "The username to get scorer pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username",
+              "description": "The username to get scorer pattern permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to get",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to get",
               "title": "Id",
               "type": "integer"
             }
@@ -15953,33 +16044,33 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get specific scorer pattern permission for a user",
+        "summary": "Get scorer pattern permission for a user",
         "tags": [
           "user scorer pattern permissions"
         ]
       },
       "patch": {
-        "description": "Updates a specific scorer regex pattern permission for a user.",
+        "description": "Updates a regex-based scorer permission pattern for a user.",
         "operationId": "update_user_scorer_pattern_permission_api_2_0_mlflow_permissions_users__username__scorer_patterns__id__patch",
         "parameters": [
           {
-            "description": "The username",
+            "description": "The username to update scorer pattern permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username",
+              "description": "The username to update scorer pattern permission for",
               "title": "Username",
               "type": "string"
             }
           },
           {
-            "description": "The pattern ID",
+            "description": "The pattern ID to update",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The pattern ID",
+              "description": "The pattern ID to update",
               "title": "Id",
               "type": "integer"
             }
@@ -16087,7 +16178,7 @@
     },
     "/api/2.0/mlflow/permissions/users/{username}/scorers/{experiment_id}/{scorer_name}": {
       "delete": {
-        "description": "Deletes the permission for a user on a specific scorer.",
+        "description": "Deletes the scorer permission for a user.",
         "operationId": "delete_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__delete",
         "parameters": [
           {
@@ -16158,7 +16249,7 @@
         ]
       },
       "get": {
-        "description": "Retrieves the permission for a user on a specific scorer.",
+        "description": "Gets the scorer permission for a user.",
         "operationId": "get_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__get",
         "parameters": [
           {
@@ -16229,7 +16320,7 @@
         ]
       },
       "patch": {
-        "description": "Updates the permission for a user on a specific scorer.",
+        "description": "Updates the scorer permission for a user.",
         "operationId": "update_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__patch",
         "parameters": [
           {
@@ -16311,16 +16402,16 @@
         ]
       },
       "post": {
-        "description": "Creates a new permission for a user to access a specific scorer.",
+        "description": "Creates the scorer permission for a user.",
         "operationId": "create_user_scorer_permission_api_2_0_mlflow_permissions_users__username__scorers__experiment_id___scorer_name__post",
         "parameters": [
           {
-            "description": "The username to grant scorer permission to",
+            "description": "The username to create scorer permission for",
             "in": "path",
             "name": "username",
             "required": true,
             "schema": {
-              "description": "The username to grant scorer permission to",
+              "description": "The username to create scorer permission for",
               "title": "Username",
               "type": "string"
             }
@@ -21049,9 +21140,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Delete Webhook Oidc Webhook  Webhook Id  Delete",
-                  "type": "object"
+                  "$ref": "#/components/schemas/WebhookDeleteResponse"
                 }
               }
             },
