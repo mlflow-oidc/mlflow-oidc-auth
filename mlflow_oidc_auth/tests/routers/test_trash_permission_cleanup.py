@@ -104,6 +104,73 @@ class TestCleanupRemovesRows:
         assert "secret" not in result.body.decode()
 
 
+class TestBatchedCleanup:
+    @pytest.mark.asyncio
+    async def test_several_experiments_flush_the_cache_at_most_once_and_audit_once(self, auth_store):
+        backend = _backend(["1", "2"])
+        with patch.object(_trash, "_get_store", return_value=backend), patch(FLUSH) as flush, patch.object(_trash, "emit_audit_event") as audit:
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1,2", older_than=None)
+        assert sorted(json.loads(result.body)["deleted_experiments"]) == ["1", "2"]
+        assert auth_store.list_experiment_ids_with_grants() == []
+        assert flush.call_count == 1
+        events = [c for c in audit.call_args_list if c.args[0] == "trash.permissions_cleanup"]
+        assert len(events) == 1
+        detail = events[0].kwargs["detail"]
+        assert detail["removed_rows"] == 10 and detail["experiments_with_rows"] == 2
+        assert detail["experiment_ids"] == ["1", "2"] and detail["experiment_ids_truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_nothing_is_flushed_or_audited_when_no_experiment_had_rows(self, auth_store):
+        backend = _backend(["7", "8"])
+        with patch.object(_trash, "_get_store", return_value=backend), patch(FLUSH) as flush, patch.object(_trash, "emit_audit_event") as audit:
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="7,8", older_than=None)
+        assert sorted(json.loads(result.body)["deleted_experiments"]) == ["7", "8"]
+        assert not flush.called
+        assert [c for c in audit.call_args_list if c.args[0] == "trash.permissions_cleanup"] == []
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    @pytest.mark.asyncio
+    async def test_only_hard_deleted_experiments_lose_rows(self, auth_store):
+        backend = _backend(["1", "2"])
+        backend._hard_delete_experiment.side_effect = lambda exp_id: (_ for _ in ()).throw(Exception("boom")) if exp_id == "2" else None
+        with patch.object(_trash, "_get_store", return_value=backend):
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1,2", older_than=None)
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == ["1"] and payload["failed_experiments"][0]["experiment_id"] == "2"
+        assert auth_store.list_experiment_ids_with_grants() == ["2"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_snapshot_deletes_no_experiment(self, auth_store):
+        backend = _backend(["1", "2"])
+        with (
+            patch.object(_trash, "_get_store", return_value=backend),
+            patch.object(auth_store, "snapshot_experiment_grant_rows", side_effect=Exception("db down")),
+        ):
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1,2", older_than=None)
+        payload = json.loads(result.body)
+        assert payload["deleted_experiments"] == []
+        assert sorted(f["experiment_id"] for f in payload["failed_experiments"]) == ["1", "2"]
+        assert not backend._hard_delete_experiment.called
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_batch_delete_reports_every_experiment_that_had_rows(self, auth_store):
+        backend = _backend(["1", "2", "9"])
+        with patch.object(_trash, "_get_store", return_value=backend), patch.object(auth_store, "delete_experiment_grant_rows", side_effect=Exception("x")):
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1,2,9", older_than=None)
+        payload = json.loads(result.body)
+        assert sorted(payload["deleted_experiments"]) == ["1", "2", "9"]
+        assert [f["experiment_id"] for f in payload["failed_permission_cleanups"]] == ["1", "2"]
+
+    def test_a_reused_row_id_cannot_remove_another_experiments_grant(self, auth_store):
+        snapshot = auth_store.snapshot_experiment_grant_rows(["2"])
+        victim = snapshot["experiment_permissions"]["2"][0]
+        # a stale snapshot that claims row `victim` belongs to experiment 1
+        removed = auth_store.delete_experiment_grant_rows({"experiment_permissions": {"1": [victim]}})
+        assert removed == 0
+        assert victim in auth_store.snapshot_experiment_grant_rows(["2"])["experiment_permissions"]["2"]
+
+
 class TestSnapshotRace:
     @pytest.mark.asyncio
     async def test_cleanup_keeps_a_grant_created_after_the_snapshot(self, auth_store):
@@ -254,6 +321,45 @@ class TestSweep:
         body = json.loads(sweep(admin_username="admin", dry_run=False).body)
         assert body["missing_experiments"] == []
         assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    @pytest.mark.asyncio
+    async def test_over_budget_ids_are_unresolved_and_the_sweep_says_it_was_truncated(self, auth_store, tracking, monkeypatch):
+        tracking({})
+        monkeypatch.setattr("mlflow_oidc_auth.orphans._EXTERNAL_LOOKUP_LIMIT", 1)
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["truncated"] is True
+        assert body["missing_experiments"] == ["1"] and body["unresolved_experiments"] == ["2"]
+        assert auth_store.list_experiment_ids_with_grants() == ["2"]
+
+    @pytest.mark.asyncio
+    async def test_not_truncated_within_budget(self, auth_store, tracking):
+        tracking({None: {"2"}})
+        assert json.loads(sweep(admin_username="admin", dry_run=True).body)["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_the_confirmation_pass_unresolved_ids_are_reported(self, auth_store, tracking):
+        t = tracking({})
+        real = _trash.experiments_definitively_missing
+        calls = []
+
+        def lookup(ids):
+            calls.append(1)
+            if len(calls) == 2:
+                t.broken = {"2"}
+            return real(ids)
+
+        with patch.object(_trash, "experiments_definitively_missing", lookup):
+            body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == ["1"] and body["unresolved_experiments"] == ["2"]
+        assert auth_store.list_experiment_ids_with_grants() == ["2"]
+
+    @pytest.mark.asyncio
+    async def test_the_sweep_audit_is_capped(self, auth_store, tracking):
+        tracking({})
+        with patch.object(_trash, "emit_audit_event") as audit, patch.object(_trash, "_AUDIT_ID_SAMPLE", 1):
+            sweep(admin_username="admin", dry_run=True)
+        detail = audit.call_args.kwargs["detail"]
+        assert detail["missing_count"] == 2 and detail["experiment_ids"] == ["1"] and detail["experiment_ids_truncated"] is True
 
     @pytest.mark.asyncio
     async def test_non_admin_gets_403(self, auth_store):

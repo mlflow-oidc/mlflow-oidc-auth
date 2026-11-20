@@ -772,6 +772,25 @@
         "title": "FailedExperiment",
         "type": "object"
       },
+      "FailedPermissionCleanup": {
+        "description": "An experiment that was permanently deleted but whose permission rows could not be removed.",
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "experiment_id": {
+            "title": "Experiment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "experiment_id",
+          "error"
+        ],
+        "title": "FailedPermissionCleanup",
+        "type": "object"
+      },
       "FailedRun": {
         "description": "A run the cleanup could not delete.",
         "properties": {
@@ -1838,7 +1857,7 @@
         "type": "object"
       },
       "PermissionSweepResponse": {
-        "description": "``POST /oidc/trash/permissions/sweep``.\n\nAttributes:\n    dry_run: True when nothing was deleted.\n    checked_experiments: Distinct experiment ids that some grant row names.\n    missing_experiments: Ids the tracking store definitively does not have (in any workspace).\n    unresolved_experiments: Ids whose existence could not be established; their rows are kept.\n    removed_rows: Grant rows deleted (always 0 for a dry run).",
+        "description": "``POST /oidc/trash/permissions/sweep``.\n\nAttributes:\n    dry_run: True when nothing was deleted.\n    checked_experiments: Distinct experiment ids that some grant row names.\n    missing_experiments: Ids the tracking store definitively does not have (in any workspace).\n    unresolved_experiments: Ids whose existence could not be established (including ids past the lookup budget); their rows are kept.\n    truncated: True when the lookup budget ran out, so some ids were left unresolved only for that reason; run the sweep again.\n    removed_rows: Grant rows deleted (always 0 for a dry run).",
         "properties": {
           "checked_experiments": {
             "title": "Checked Experiments",
@@ -1859,6 +1878,10 @@
             "title": "Removed Rows",
             "type": "integer"
           },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
           "unresolved_experiments": {
             "items": {
               "type": "string"
@@ -1872,6 +1895,7 @@
           "checked_experiments",
           "missing_experiments",
           "unresolved_experiments",
+          "truncated",
           "removed_rows"
         ],
         "title": "PermissionSweepResponse",
@@ -3396,7 +3420,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/FailedExperiment"
+                  "$ref": "#/components/schemas/FailedPermissionCleanup"
                 },
                 "type": "array"
               },

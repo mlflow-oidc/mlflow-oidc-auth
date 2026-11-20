@@ -67,6 +67,13 @@ class FailedExperiment(ResponseModel):
     error: str
 
 
+class FailedPermissionCleanup(ResponseModel):
+    """An experiment that was permanently deleted but whose permission rows could not be removed."""
+
+    experiment_id: str
+    error: str
+
+
 class TrashCleanupResponse(ResponseModel):
     """``POST /oidc/trash/cleanup``. ``failed_*`` are present only when something failed.
 
@@ -84,7 +91,7 @@ class TrashCleanupResponse(ResponseModel):
     failed_experiments: Optional[List[FailedExperiment]] = None
     #: Experiments that were deleted (they are in ``deleted_experiments``) but whose permission rows
     #: could not be removed; ``POST /oidc/trash/permissions/sweep`` removes them later.
-    failed_permission_cleanups: Optional[List[FailedExperiment]] = None
+    failed_permission_cleanups: Optional[List[FailedPermissionCleanup]] = None
 
 
 class RestoredExperiment(ResponseModel):
@@ -125,7 +132,8 @@ class PermissionSweepResponse(ResponseModel):
         dry_run: True when nothing was deleted.
         checked_experiments: Distinct experiment ids that some grant row names.
         missing_experiments: Ids the tracking store definitively does not have (in any workspace).
-        unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+        unresolved_experiments: Ids whose existence could not be established (including ids past the lookup budget); their rows are kept.
+        truncated: True when the lookup budget ran out, so some ids were left unresolved only for that reason; run the sweep again.
         removed_rows: Grant rows deleted (always 0 for a dry run).
     """
 
@@ -133,6 +141,7 @@ class PermissionSweepResponse(ResponseModel):
     checked_experiments: int
     missing_experiments: List[str]
     unresolved_experiments: List[str]
+    truncated: bool
     removed_rows: int
 
 

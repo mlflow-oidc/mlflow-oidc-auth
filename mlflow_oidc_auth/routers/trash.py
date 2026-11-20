@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import warnings
 from datetime import timedelta
-from typing import Any, Callable, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -54,6 +54,13 @@ CLEANUP = "/cleanup"
 RESTORE_EXPERIMENT = f"{EXPERIMENTS}/{{experiment_id}}/restore"
 RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
 PERMISSIONS_SWEEP = "/permissions/sweep"
+#: Most experiment ids an audit event carries; the event also states the total and whether it was cut.
+_AUDIT_ID_SAMPLE = 100
+
+
+def _capped_ids(ids: List[str]) -> dict:
+    """The audit-event fragment for a possibly long id list: a capped sample plus a truncation flag."""
+    return {"experiment_ids": list(ids[:_AUDIT_ID_SAMPLE]), "experiment_ids_truncated": len(ids) > _AUDIT_ID_SAMPLE}
 
 
 @trash_router.get(
@@ -462,7 +469,23 @@ async def permanently_delete_all_trashed_entities(
         failed_permission_cleanups: List[dict] = []
 
         if not skip_experiments:
+            # Snapshot the grant rows of every target experiment once, before anything is deleted: only
+            # rows that existed now are removed later, so a new experiment that reuses an id (SQLite)
+            # keeps its creator's grant. If the snapshot cannot be taken no experiment is hard-deleted
+            # (they are reported in failed_experiments): a delete whose permission rows could not be
+            # scoped is not worth the risk of a stale or over-broad cleanup.
+            grant_snapshot: Optional[Dict[str, Dict[str, List[int]]]] = None
+            if target_experiment_ids:
+                try:
+                    grant_snapshot = store.snapshot_experiment_grant_rows(list(target_experiment_ids))
+                except Exception:
+                    logger.exception("Could not snapshot the permission rows of %d trashed experiments; none will be deleted", len(target_experiment_ids))
+            else:
+                grant_snapshot = {}
             for experiment_id in target_experiment_ids:
+                if grant_snapshot is None:
+                    failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
+                    continue
                 # A run can be kept above for many reasons (artifact deletion failure, age
                 # requirement not met, wrong lifecycle stage, or a get_run error). Rather than track every one of those paths individually, check
                 # directly, right before hard-deleting the experiment, whether it still owns
@@ -488,15 +511,6 @@ async def permanently_delete_all_trashed_entities(
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Run(s) remain in this experiment"})
                     continue
 
-                # Snapshot the grant rows first: only rows that existed before the delete are removed, so a
-                # new experiment that reuses the id (SQLite) keeps its creator's grant.
-                try:
-                    grant_snapshot = store.snapshot_experiment_grant_rows([experiment_id])
-                except Exception:
-                    logger.exception("Could not snapshot the permission rows of experiment %s before deleting it", experiment_id)
-                    failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
-                    continue
-
                 try:
                     backend_store._hard_delete_experiment(experiment_id)
                     deleted_experiments.append(experiment_id)
@@ -504,23 +518,25 @@ async def permanently_delete_all_trashed_entities(
                 except Exception as e:
                     logger.error(f"Error deleting experiment {experiment_id}: {str(e)}")
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
-                    continue
 
-                # The experiment is gone for good: its grants name nothing now. A failure here must not
-                # undo or hide the successful delete, so it is reported separately and the sweep
-                # endpoint can finish the job later.
+            # One batched delete for the experiments actually hard-deleted that had rows: at most one
+            # permission-cache flush per call, none when there is nothing to remove. A failure must not
+            # undo or hide the successful deletes, so it is reported separately and the sweep endpoint
+            # can finish the job later.
+            with_rows = sorted({eid for per_experiment in (grant_snapshot or {}).values() for eid in per_experiment if eid in set(deleted_experiments)})
+            if with_rows:
                 try:
-                    removed = store.delete_experiment_grant_rows(grant_snapshot)
-                    emit_audit_event(
-                        "trash.permissions_cleanup",
-                        admin_username,
-                        resource_type="experiment_permission",
-                        resource_id=experiment_id,
-                        detail={"removed_rows": removed},
-                    )
+                    removed = store.delete_experiment_grant_rows(grant_snapshot, only_experiments=with_rows)
+                    if removed:
+                        emit_audit_event(
+                            "trash.permissions_cleanup",
+                            admin_username,
+                            resource_type="experiment_permission",
+                            detail={"removed_rows": removed, "experiments_with_rows": len(with_rows), **_capped_ids(with_rows)},
+                        )
                 except Exception:
-                    logger.exception("Could not remove the permission rows of permanently deleted experiment %s", experiment_id)
-                    failed_permission_cleanups.append({"experiment_id": experiment_id, "error": "Failed to remove permission rows"})
+                    logger.exception("Could not remove the permission rows of %d permanently deleted experiments", len(with_rows))
+                    failed_permission_cleanups.extend({"experiment_id": eid, "error": "Failed to remove permission rows"} for eid in with_rows)
 
         # Prepare response
         response_data = {
@@ -596,12 +612,16 @@ def sweep_orphaned_experiment_permissions(
         # The rows are snapshotted before any tracking-store lookup and only those rows are deleted:
         # a grant created afterwards (an experiment id reused by a new experiment) is never touched.
         snapshot = store.snapshot_experiment_grant_rows(granted_ids)
-        missing_set, unresolved_set = experiments_definitively_missing(granted_ids)
+        missing_set, unresolved_set, truncated = experiments_definitively_missing(granted_ids)
         removed = 0
         if missing_set and not dry_run:
             # Confirm again right before deleting: an id that exists by now (moved between workspaces,
             # or recreated) is dropped.
-            missing_set, _ = experiments_definitively_missing(sorted(missing_set))
+            candidates = missing_set
+            missing_set, confirm_unresolved, confirm_truncated = experiments_definitively_missing(sorted(candidates))
+            # An id the confirmation could not settle is kept, and reported as unresolved.
+            unresolved_set = unresolved_set | confirm_unresolved
+            truncated = truncated or confirm_truncated
             if missing_set:
                 removed = store.delete_experiment_grant_rows(snapshot, only_experiments=missing_set)
         missing, unresolved = sorted(missing_set), sorted(unresolved_set)
@@ -614,7 +634,14 @@ def sweep_orphaned_experiment_permissions(
         "trash.permissions_sweep",
         admin_username,
         resource_type="experiment_permission",
-        detail={"dry_run": dry_run, "missing_experiments": missing, "removed_rows": removed},
+        detail={
+            "dry_run": dry_run,
+            "missing_count": len(missing),
+            "unresolved_count": len(unresolved),
+            "truncated": truncated,
+            "removed_rows": removed,
+            **_capped_ids(missing),
+        },
     )
     return JSONResponse(
         content={
@@ -622,6 +649,7 @@ def sweep_orphaned_experiment_permissions(
             "checked_experiments": len(granted_ids),
             "missing_experiments": missing,
             "unresolved_experiments": unresolved,
+            "truncated": truncated,
             "removed_rows": removed,
         }
     )

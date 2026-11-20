@@ -563,8 +563,8 @@ deletion times.
 
 **Permission rows.** When the cleanup permanently deletes an experiment it also deletes that
 experiment's user and group experiment grants, its user and group scorer grants and its issue-detection
-schedule-author row (the rows that existed before the delete, removed in one transaction; then the permission cache is flushed and an audit event
-`trash.permissions_cleanup` is written). Regex grants are patterns, not ids, and are kept. If the
+schedule-author row (the rows that existed before the delete, snapshotted for all target experiments up front and removed in one batched transaction after the deletes; then the permission cache is flushed once, and one audit event
+`trash.permissions_cleanup` with the row count and a capped sample of experiment ids is written, none when nothing was removed). If the snapshot cannot be taken, no experiment is deleted and all are listed in `failed_experiments`. Regex grants are patterns, not ids, and are kept. If the
 grants cannot be removed, the experiment stays deleted (it is in `deleted_experiments`), the call is
 still 200, and the experiment is listed in `failed_permission_cleanups` with the error
 `Failed to remove permission rows`; run the sweep below to finish the job.
@@ -584,7 +584,7 @@ experiment still exists and keeps its grants.
 **Caveat: reused ids.** On stores that reuse experiment ids (SQLite reuses an id after the highest
 id was hard-deleted), an id removed by `mlflow gc` that a new experiment has already reused looks like
 an existing experiment. Its stale grants cannot be told apart from the new experiment's and are kept.
-Run the sweep promptly after a purge, or use the cleanup endpoint instead of `mlflow gc`. The response also carries `checked_experiments`
+Run the sweep promptly after a purge, or use the cleanup endpoint instead of `mlflow gc`. At most 1000 tracking-store lookups are made per pass; ids beyond that are reported in `unresolved_experiments` (never as missing) and `truncated` is `true`, so run the sweep again. The response also carries `checked_experiments`
 (distinct ids named by grant rows) and `dry_run`; a sweep is audited as `trash.permissions_sweep`.
 
 ---

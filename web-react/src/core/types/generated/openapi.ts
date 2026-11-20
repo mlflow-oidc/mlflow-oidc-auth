@@ -4258,6 +4258,16 @@ export interface components {
             experiment_id: string;
         };
         /**
+         * FailedPermissionCleanup
+         * @description An experiment that was permanently deleted but whose permission rows could not be removed.
+         */
+        FailedPermissionCleanup: {
+            /** Error */
+            error: string;
+            /** Experiment Id */
+            experiment_id: string;
+        };
+        /**
          * FailedRun
          * @description A run the cleanup could not delete.
          */
@@ -4910,7 +4920,8 @@ export interface components {
          *         dry_run: True when nothing was deleted.
          *         checked_experiments: Distinct experiment ids that some grant row names.
          *         missing_experiments: Ids the tracking store definitively does not have (in any workspace).
-         *         unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+         *         unresolved_experiments: Ids whose existence could not be established (including ids past the lookup budget); their rows are kept.
+         *         truncated: True when the lookup budget ran out, so some ids were left unresolved only for that reason; run the sweep again.
          *         removed_rows: Grant rows deleted (always 0 for a dry run).
          */
         PermissionSweepResponse: {
@@ -4922,6 +4933,8 @@ export interface components {
             missing_experiments: string[];
             /** Removed Rows */
             removed_rows: number;
+            /** Truncated */
+            truncated: boolean;
             /** Unresolved Experiments */
             unresolved_experiments: string[];
         };
@@ -5685,7 +5698,7 @@ export interface components {
             /** Failed Experiments */
             failed_experiments?: components["schemas"]["FailedExperiment"][] | null;
             /** Failed Permission Cleanups */
-            failed_permission_cleanups?: components["schemas"]["FailedExperiment"][] | null;
+            failed_permission_cleanups?: components["schemas"]["FailedPermissionCleanup"][] | null;
             /** Failed Runs */
             failed_runs?: components["schemas"]["FailedRun"][] | null;
             /** Total Deleted Experiments */

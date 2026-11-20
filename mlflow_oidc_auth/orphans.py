@@ -286,7 +286,7 @@ def _experiment_locations(experiment_ids: List[str]) -> Dict[str, Tuple[str, str
     return names
 
 
-def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str], Set[str]]:
+def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str], Set[str], bool]:
     """Split ``experiment_ids`` into those the tracking store definitively lacks and those it could not settle.
 
     Stricter than :func:`_experiment_locations`, which treats every failure as "unresolved": an id is
@@ -295,30 +295,40 @@ def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str
     deletes on this result must delete only the missing ids - never on uncertainty. A trashed
     (soft-deleted) experiment still exists, so it is in neither set; neither is any other id that exists.
 
+    At most :data:`_EXTERNAL_LOOKUP_LIMIT` store calls are made per pass. An id the budget did not reach is
+    *unresolved* (never missing) and the third return value is true, so the caller can say the sweep was
+    cut short and should be run again.
+
     Parameters:
         experiment_ids: Experiment ids to check.
 
     Returns:
-        ``(missing, unresolved)``.
+        ``(missing, unresolved, truncated)``; ``truncated`` is true when the lookup budget ran out.
     """
     from mlflow.exceptions import MlflowException
     from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
     workspaces = _lookup_workspaces()
     if not workspaces:
-        return set(), set(experiment_ids)
+        return set(), set(experiment_ids), False
     try:
         from mlflow.server.handlers import _get_tracking_store
 
         tracking_store = _get_tracking_store()
     except Exception:
         logger.warning("Orphan sweep: tracking store unavailable; nothing is reported missing")
-        return set(), set(experiment_ids)
+        return set(), set(experiment_ids), False
+    budget = _Budget("experiments")
     missing: Set[str] = set()
     unresolved: Set[str] = set()
+    truncated = False
     for experiment_id in experiment_ids:
         outcome = "missing"
         for workspace in workspaces:
+            if not budget.take():
+                outcome = "unresolved"
+                truncated = True
+                break
             try:
                 with _in_workspace(workspace):
                     tracking_store.get_experiment(experiment_id)
@@ -335,7 +345,7 @@ def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str
             missing.add(experiment_id)
         elif outcome == "unresolved":
             unresolved.add(experiment_id)
-    return missing, unresolved
+    return missing, unresolved, truncated
 
 
 def _prompt_kinds(names: List[str]) -> Dict[str, Set[bool]]:

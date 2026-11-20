@@ -327,11 +327,17 @@ class SqlAlchemyStore:
         deleted = 0
         with self.ManagedSessionMaker() as session:
             for model in self._experiment_keyed_models():
-                row_ids = sorted(
-                    rid for experiment_id, rids in snapshot.get(model.__tablename__, {}).items() if keep is None or experiment_id in keep for rid in rids
-                )
-                for start in range(0, len(row_ids), 500):
-                    deleted += session.query(model).filter(model.id.in_(row_ids[start : start + 500])).delete(synchronize_session=False)
+                for experiment_id, row_ids in snapshot.get(model.__tablename__, {}).items():
+                    if keep is not None and experiment_id not in keep:
+                        continue
+                    # Match the snapshotted experiment id as well as the row id, so a reused row id can
+                    # never remove another experiment's grant.
+                    for start in range(0, len(row_ids), 500):
+                        deleted += (
+                            session.query(model)
+                            .filter(model.id.in_(row_ids[start : start + 500]), model.experiment_id == experiment_id)
+                            .delete(synchronize_session=False)
+                        )
             session.flush()
         return deleted
 
