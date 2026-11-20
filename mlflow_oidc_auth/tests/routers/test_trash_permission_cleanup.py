@@ -40,6 +40,8 @@ def auth_store(tmp_path):
         s.create_group_experiment_permission("team", exp, "READ")
         s.create_scorer_permission(exp, "scorer", "alice@example.com", "MANAGE")
         s.create_group_scorer_permission("team", exp, "scorer", "READ")
+    for exp in ("1", "2"):
+        s.record_detection_schedule_author(exp, None, "alice@example.com", "fp")
     # Patterns are not ids: they must survive any cleanup.
     s.create_experiment_regex_permission("^1$", 1, "READ", "alice@example.com")
     with patch.object(_trash, "store", s):
@@ -92,7 +94,7 @@ class TestCleanupRemovesRows:
         backend = _backend(["1"])
         with (
             patch.object(_trash, "_get_store", return_value=backend),
-            patch.object(auth_store, "delete_permissions_for_experiments", side_effect=Exception("db down: secret")),
+            patch.object(auth_store, "delete_experiment_grant_rows", side_effect=Exception("db down: secret")),
         ):
             result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1", older_than=None)
         assert result.status_code == 200
@@ -100,6 +102,71 @@ class TestCleanupRemovesRows:
         assert payload["deleted_experiments"] == ["1"]
         assert payload["failed_permission_cleanups"] == [{"experiment_id": "1", "error": "Failed to remove permission rows"}]
         assert "secret" not in result.body.decode()
+
+
+class TestSnapshotRace:
+    @pytest.mark.asyncio
+    async def test_cleanup_keeps_a_grant_created_after_the_snapshot(self, auth_store):
+        backend = _backend(["1"])
+        auth_store.create_user("bob@example.com", "Bob")
+
+        def hard_delete(exp_id):
+            # an id reused by a new experiment, whose creator is granted MANAGE
+            auth_store.create_experiment_permission("1", "bob@example.com", "MANAGE")
+
+        backend._hard_delete_experiment.side_effect = hard_delete
+        with patch.object(_trash, "_get_store", return_value=backend):
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1", older_than=None)
+        assert json.loads(result.body)["deleted_experiments"] == ["1"]
+        rows = auth_store.list_experiment_permissions_for_experiment("1")
+        assert [r.user_id for r in rows] and len(rows) == 1  # only bob's new row remains
+        assert auth_store.snapshot_experiment_grant_rows(["1"]).keys() == {"experiment_permissions"}
+
+    @pytest.mark.asyncio
+    async def test_cleanup_removes_schedule_author_rows(self, auth_store):
+        backend = _backend(["1"])
+        with patch.object(_trash, "_get_store", return_value=backend):
+            await cleanup(admin_username="admin", run_ids=None, experiment_ids="1", older_than=None)
+        assert auth_store.get_detection_schedule_author("1") is None
+        assert auth_store.get_detection_schedule_author("2") is not None
+
+    @pytest.mark.asyncio
+    async def test_sweep_keeps_a_grant_created_after_the_snapshot(self, auth_store, tracking):
+        auth_store.create_user("bob@example.com", "Bob")
+        t = tracking({None: {"2"}})
+        real = _trash.experiments_definitively_missing
+
+        def lookup(ids):
+            result = real(ids)
+            if not getattr(lookup, "done", False):
+                lookup.done = True
+                auth_store.create_experiment_permission("3", "bob@example.com", "MANAGE")
+                auth_store.create_scorer_permission("1", "late", "bob@example.com", "MANAGE")
+            return result
+
+        with patch.object(_trash, "experiments_definitively_missing", lookup):
+            body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == ["1"]
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2", "3"]  # 1 keeps only the late scorer row
+        assert auth_store.snapshot_experiment_grant_rows(["1"]).keys() == {"scorer_permissions"}
+        assert auth_store.get_detection_schedule_author("1") is None
+
+    @pytest.mark.asyncio
+    async def test_sweep_drops_an_id_that_exists_at_the_second_lookup(self, auth_store, tracking):
+        t = tracking({None: set()})
+        real = _trash.experiments_definitively_missing
+        calls = []
+
+        def lookup(ids):
+            calls.append(list(ids))
+            if len(calls) == 2:
+                t.existing = {None: {"1"}}  # moved or recreated in the meantime
+            return real(ids)
+
+        with patch.object(_trash, "experiments_definitively_missing", lookup):
+            body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == ["2"]
+        assert auth_store.list_experiment_ids_with_grants() == ["1"]
 
 
 class _Tracking:
@@ -150,7 +217,7 @@ class TestSweep:
         tracking({None: {"2"}})
         with patch(FLUSH) as flush:
             body = json.loads(sweep(admin_username="admin", dry_run=False).body)
-        assert body["missing_experiments"] == ["1"] and body["removed_rows"] == 4
+        assert body["missing_experiments"] == ["1"] and body["removed_rows"] == 5
         assert auth_store.list_experiment_ids_with_grants() == ["2"]
         assert flush.called
 

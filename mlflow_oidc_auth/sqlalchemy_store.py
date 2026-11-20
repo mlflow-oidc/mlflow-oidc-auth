@@ -1,6 +1,6 @@
 import functools
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import sqlalchemy
 from mlflow.store.db.utils import (
@@ -268,54 +268,82 @@ class SqlAlchemyStore:
             ).delete(synchronize_session=False)
             session.flush()
 
-    def delete_permissions_for_experiments(self, experiment_ids: List[str]) -> int:
-        """Delete every grant row keyed by one of these experiment ids, in one transaction.
+    @staticmethod
+    def _experiment_keyed_models() -> list:
+        """The tables keyed by an experiment id: user/group experiment grants, user/group scorer grants, schedule authors."""
+        from mlflow_oidc_auth.db.models import (
+            SqlExperimentGroupPermission,
+            SqlExperimentPermission,
+            SqlIssueDetectionScheduleAuthor,
+            SqlScorerGroupPermission,
+            SqlScorerPermission,
+        )
 
-        Covers the user and group experiment grants and the user and group scorer grants (a scorer
-        belongs to an experiment). Regex grants are patterns, not ids, and are left alone. One bulk
-        delete per table; either all four tables are cleaned or none is.
+        return [SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission, SqlIssueDetectionScheduleAuthor]
+
+    def snapshot_experiment_grant_rows(self, experiment_ids: List[str]) -> Dict[str, Dict[str, List[int]]]:
+        """Record the primary keys of every row keyed by one of these experiment ids, as of now.
+
+        Covers the user and group experiment grants, the user and group scorer grants (a scorer belongs
+        to an experiment) and the issue-detection schedule author. Regex grants are patterns, not ids,
+        and are not included. Take the snapshot *before* establishing that the experiments are gone and
+        pass it to :meth:`delete_experiment_grant_rows`: a row created afterwards (an experiment id
+        reused by a new experiment) is then never deleted.
 
         Args:
-            experiment_ids: Ids of experiments that no longer exist.
+            experiment_ids: Experiment ids to snapshot.
+
+        Returns:
+            ``{table name: {experiment id: [row ids]}}``; tables and ids without rows are omitted.
+        """
+        ids = sorted({str(i) for i in experiment_ids if i})
+        snapshot: Dict[str, Dict[str, List[int]]] = {}
+        if not ids:
+            return snapshot
+        with self.ManagedSessionMaker() as session:
+            for model in self._experiment_keyed_models():
+                per_experiment: Dict[str, List[int]] = {}
+                for start in range(0, len(ids), 500):
+                    for row_id, experiment_id in session.query(model.id, model.experiment_id).filter(model.experiment_id.in_(ids[start : start + 500])).all():
+                        per_experiment.setdefault(experiment_id, []).append(row_id)
+                if per_experiment:
+                    snapshot[model.__tablename__] = per_experiment
+        return snapshot
+
+    def delete_experiment_grant_rows(self, snapshot: Dict[str, Dict[str, List[int]]], only_experiments: Optional[Iterable[str]] = None) -> int:
+        """Delete exactly the rows named by a :meth:`snapshot_experiment_grant_rows` result, in one transaction.
+
+        Rows inserted after the snapshot are never touched, whatever experiment id they carry. Either
+        all tables are cleaned or none is.
+
+        Args:
+            snapshot: The result of :meth:`snapshot_experiment_grant_rows`.
+            only_experiments: When given, only rows of these experiment ids are deleted.
 
         Returns:
             The number of rows deleted.
         """
-        from mlflow_oidc_auth.db.models import (
-            SqlExperimentGroupPermission,
-            SqlExperimentPermission,
-            SqlScorerGroupPermission,
-            SqlScorerPermission,
-        )
-
-        ids = sorted({str(i) for i in experiment_ids if i})
-        if not ids:
-            return 0
+        keep = None if only_experiments is None else {str(i) for i in only_experiments}
         deleted = 0
         with self.ManagedSessionMaker() as session:
-            for start in range(0, len(ids), 500):
-                chunk = ids[start : start + 500]
-                for model in (SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission):
-                    deleted += session.query(model).filter(model.experiment_id.in_(chunk)).delete(synchronize_session=False)
+            for model in self._experiment_keyed_models():
+                row_ids = sorted(
+                    rid for experiment_id, rids in snapshot.get(model.__tablename__, {}).items() if keep is None or experiment_id in keep for rid in rids
+                )
+                for start in range(0, len(row_ids), 500):
+                    deleted += session.query(model).filter(model.id.in_(row_ids[start : start + 500])).delete(synchronize_session=False)
             session.flush()
         return deleted
 
     def list_experiment_ids_with_grants(self) -> List[str]:
-        """The distinct experiment ids that any user/group experiment or scorer grant row names.
+        """The distinct experiment ids that any experiment/scorer grant row or schedule-author row names.
 
         Returns:
             Sorted experiment ids.
         """
-        from mlflow_oidc_auth.db.models import (
-            SqlExperimentGroupPermission,
-            SqlExperimentPermission,
-            SqlScorerGroupPermission,
-            SqlScorerPermission,
-        )
-
         found = set()
         with self.ManagedSessionMaker() as session:
-            for model in (SqlExperimentPermission, SqlExperimentGroupPermission, SqlScorerPermission, SqlScorerGroupPermission):
+            for model in self._experiment_keyed_models():
                 found.update(row[0] for row in session.query(model.experiment_id).distinct().all())
         return sorted(found)
 
@@ -2104,7 +2132,7 @@ _PERMISSION_CUD_METHODS = [
     "update_scorer_permission",
     "delete_scorer_permission",
     "delete_scorer_permissions_for_scorer",
-    "delete_permissions_for_experiments",
+    "delete_experiment_grant_rows",
     # Scorer permissions (group-scoped)
     "create_group_scorer_permission",
     "update_group_scorer_permission",

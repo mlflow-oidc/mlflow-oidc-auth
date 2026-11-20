@@ -488,6 +488,15 @@ async def permanently_delete_all_trashed_entities(
                     failed_experiments.append({"experiment_id": experiment_id, "error": "Run(s) remain in this experiment"})
                     continue
 
+                # Snapshot the grant rows first: only rows that existed before the delete are removed, so a
+                # new experiment that reuses the id (SQLite) keeps its creator's grant.
+                try:
+                    grant_snapshot = store.snapshot_experiment_grant_rows([experiment_id])
+                except Exception:
+                    logger.exception("Could not snapshot the permission rows of experiment %s before deleting it", experiment_id)
+                    failed_experiments.append({"experiment_id": experiment_id, "error": "Failed to delete experiment"})
+                    continue
+
                 try:
                     backend_store._hard_delete_experiment(experiment_id)
                     deleted_experiments.append(experiment_id)
@@ -501,7 +510,7 @@ async def permanently_delete_all_trashed_entities(
                 # undo or hide the successful delete, so it is reported separately and the sweep
                 # endpoint can finish the job later.
                 try:
-                    removed = store.delete_permissions_for_experiments([experiment_id])
+                    removed = store.delete_experiment_grant_rows(grant_snapshot)
                     emit_audit_event(
                         "trash.permissions_cleanup",
                         admin_username,
@@ -562,7 +571,10 @@ async def permanently_delete_all_trashed_entities(
         "Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after "
         "`mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace "
         "reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. "
-        "A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true."
+        "A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. "
+        "Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` "
+        "and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: "
+        "run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`."
     ),
 )
 def sweep_orphaned_experiment_permissions(
@@ -581,11 +593,18 @@ def sweep_orphaned_experiment_permissions(
     """
     try:
         granted_ids = store.list_experiment_ids_with_grants()
+        # The rows are snapshotted before any tracking-store lookup and only those rows are deleted:
+        # a grant created afterwards (an experiment id reused by a new experiment) is never touched.
+        snapshot = store.snapshot_experiment_grant_rows(granted_ids)
         missing_set, unresolved_set = experiments_definitively_missing(granted_ids)
-        missing, unresolved = sorted(missing_set), sorted(unresolved_set)
         removed = 0
-        if missing and not dry_run:
-            removed = store.delete_permissions_for_experiments(missing)
+        if missing_set and not dry_run:
+            # Confirm again right before deleting: an id that exists by now (moved between workspaces,
+            # or recreated) is dropped.
+            missing_set, _ = experiments_definitively_missing(sorted(missing_set))
+            if missing_set:
+                removed = store.delete_experiment_grant_rows(snapshot, only_experiments=missing_set)
+        missing, unresolved = sorted(missing_set), sorted(unresolved_set)
     except Exception:
         logger.exception("Error sweeping orphaned experiment permissions for admin %s", admin_username)
         return JSONResponse(status_code=500, content={"error": "Permission sweep failed"})

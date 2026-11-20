@@ -3332,7 +3332,7 @@ export interface paths {
         put?: never;
         /**
          * Remove permission rows of experiments that no longer exist
-         * @description Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true.
+         * @description Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`.
          */
         post: operations["sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post"];
         delete?: never;
