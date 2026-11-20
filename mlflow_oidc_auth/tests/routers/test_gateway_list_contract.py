@@ -5,7 +5,6 @@ them. These tests feed MLflow-shaped dictionaries (the fields of the entity data
 ``to_dict``), including ``None`` and non-string values, through each route of a small app and check the bytes.
 """
 
-import json
 from unittest.mock import patch
 
 import pytest
