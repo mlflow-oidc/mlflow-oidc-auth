@@ -17,7 +17,7 @@ See config_providers/ for detailed configuration of each provider.
 """
 
 import secrets
-from typing import Any, Optional
+from typing import Optional
 
 from dotenv import load_dotenv
 
