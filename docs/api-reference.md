@@ -584,6 +584,14 @@ listings differ, the workspace set changed during the sweep and no candidate is 
 id in `unresolved_experiments`: the sweep never deletes on uncertainty. A trashed (soft-deleted)
 experiment still exists and keeps its grants.
 
+**When a deleting sweep is refused (409).** A sweep with `dry_run=false` answers 409 `{"error": ...}` and reads and deletes nothing in two setups
+that cannot prove an experiment is gone: (1) the tracking store reads from a read replica (`MLFLOW_READ_REPLICA_BACKEND_STORE_URI`),
+because MLflow's experiment lookup goes through the replica and a lagging replica reports a just-created experiment as missing, which would delete its creator's
+grant; run with `dry_run=true` and remove rows from the cleanup endpoint, or run the sweep against a server without a read replica; (2) workspaces are
+enabled and the workspace store is not MLflow's built-in SQL one, because a third-party provider may filter its listing by request context and an
+experiment in a hidden workspace would look missing. A dry run still works in both cases; with a read replica configured its response has
+`replica_reads: true`, meaning `missing_experiments` may include false positives. A default deployment (no replica, workspaces disabled) is unaffected.
+
 **Caveat: reused ids.** On stores that reuse experiment ids (SQLite reuses an id after the highest
 id was hard-deleted), an id removed by `mlflow gc` that a new experiment has already reused looks like
 an existing experiment. Its stale grants cannot be told apart from the new experiment's and are kept.

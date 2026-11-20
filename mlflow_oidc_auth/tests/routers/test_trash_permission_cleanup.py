@@ -386,6 +386,76 @@ class TestSweep:
         assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
 
 
+class TestSweepRefusals:
+    REPLICA_ENV = "_MLFLOW_SERVER_READ_REPLICA_BACKEND_STORE"
+
+    def test_a_deleting_sweep_with_a_read_replica_is_refused_and_deletes_nothing(self, auth_store, tracking, monkeypatch):
+        tracking({None: {"2"}})
+        monkeypatch.setenv(self.REPLICA_ENV, "sqlite:///replica.db")
+        result = _trash.sweep_orphaned_experiment_permissions(admin_username="admin", dry_run=False, after=None)
+        assert result.status_code == 409
+        assert "replica" in json.loads(result.body)["error"]
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    def test_the_public_replica_setting_is_seen_too(self, auth_store, tracking, monkeypatch):
+        tracking({None: {"2"}})
+        monkeypatch.setenv("MLFLOW_READ_REPLICA_BACKEND_STORE_URI", "sqlite:///replica.db")
+        assert _trash.sweep_orphaned_experiment_permissions(admin_username="admin", dry_run=False, after=None).status_code == 409
+
+    def test_a_dry_run_with_a_read_replica_works_and_flags_false_positives(self, auth_store, tracking, monkeypatch):
+        tracking({None: {"2"}})
+        monkeypatch.setenv(self.REPLICA_ENV, "sqlite:///replica.db")
+        body = json.loads(sweep(admin_username="admin", dry_run=True).body)
+        assert body["replica_reads"] is True and body["missing_experiments"] == ["1"] and body["removed_rows"] == 0
+
+    def test_a_default_deployment_still_deletes_and_does_not_flag_replica_reads(self, auth_store, tracking, monkeypatch):
+        monkeypatch.delenv(self.REPLICA_ENV, raising=False)
+        monkeypatch.delenv("MLFLOW_READ_REPLICA_BACKEND_STORE_URI", raising=False)
+        tracking({None: {"2"}})
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["replica_reads"] is False and body["removed_rows"] == 5
+        assert auth_store.list_experiment_ids_with_grants() == ["2"]
+
+    @staticmethod
+    def _enable_workspaces(monkeypatch, workspace_store):
+        from mlflow_oidc_auth.config import config
+
+        monkeypatch.setattr(config, "MLFLOW_ENABLE_WORKSPACES", True, raising=False)
+        monkeypatch.setattr("mlflow.server.handlers._get_workspace_store", lambda *a, **k: workspace_store)
+
+    def test_a_deleting_sweep_with_a_third_party_workspace_store_is_refused(self, auth_store, tracking, monkeypatch):
+        tracking({"team-a": {"2"}}, workspaces=("team-a",))
+        self._enable_workspaces(monkeypatch, MagicMock())
+        result = _trash.sweep_orphaned_experiment_permissions(admin_username="admin", dry_run=False, after=None)
+        assert result.status_code == 409
+        assert "workspace store" in json.loads(result.body)["error"]
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    def test_a_deleting_sweep_is_refused_when_the_workspace_store_cannot_be_identified(self, auth_store, tracking, monkeypatch):
+        tracking({"team-a": {"2"}}, workspaces=("team-a",))
+        self._enable_workspaces(monkeypatch, None)
+
+        def boom(*a, **k):
+            raise RuntimeError("no store")
+
+        monkeypatch.setattr("mlflow.server.handlers._get_workspace_store", boom)
+        assert _trash.sweep_orphaned_experiment_permissions(admin_username="admin", dry_run=False, after=None).status_code == 409
+
+    def test_a_dry_run_with_a_third_party_workspace_store_works(self, auth_store, tracking, monkeypatch):
+        tracking({"team-a": {"2"}}, workspaces=("team-a",))
+        self._enable_workspaces(monkeypatch, MagicMock())
+        body = json.loads(sweep(admin_username="admin", dry_run=True).body)
+        assert body["missing_experiments"] == ["1"] and body["removed_rows"] == 0 and body["replica_reads"] is False
+
+    def test_the_builtin_workspace_store_still_deletes(self, auth_store, tracking, monkeypatch):
+        from mlflow.store.workspace.sqlalchemy_store import SqlAlchemyStore as BuiltinWorkspaceStore
+
+        tracking({"team-a": {"2"}}, workspaces=("team-a",))
+        self._enable_workspaces(monkeypatch, BuiltinWorkspaceStore.__new__(BuiltinWorkspaceStore))
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == ["1"] and body["removed_rows"] == 5
+
+
 class TestSweepSnapshotsOnlyWhenDeleting:
     def test_a_dry_run_takes_no_snapshot(self, auth_store, tracking):
         tracking({})

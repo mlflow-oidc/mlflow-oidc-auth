@@ -223,6 +223,53 @@ class _Budget:
         return True
 
 
+def read_replica_configured() -> bool:
+    """True when MLflow's tracking store reads from a read replica.
+
+    MLflow's ``get_experiment`` reads through the replica, which can lag and answer "does not exist" for an
+    experiment that was just created, so such an answer proves nothing. Both the server-internal variable
+    MLflow builds its store from and the public setting it is derived from are consulted, so a replica
+    configured either way is seen.
+    """
+    import os
+
+    names = []
+    try:
+        from mlflow.server.constants import READ_REPLICA_BACKEND_STORE_URI_ENV_VAR
+
+        names.append(READ_REPLICA_BACKEND_STORE_URI_ENV_VAR)
+    except ImportError:
+        pass
+    try:
+        from mlflow.environment_variables import MLFLOW_READ_REPLICA_BACKEND_STORE_URI
+
+        names.append(MLFLOW_READ_REPLICA_BACKEND_STORE_URI.name)
+    except ImportError:
+        pass
+    return any(os.environ.get(name) for name in names)
+
+
+def workspace_listing_is_authoritative() -> bool:
+    """True when the workspace listing can be trusted to name every workspace an experiment may live in.
+
+    Workspaces disabled: there is nothing to list, so yes. Enabled: only MLflow's built-in SQL workspace store
+    is known to list every workspace; a third-party provider may filter its listing by the request context, and
+    an experiment in a hidden workspace would then look missing. Anything that cannot be established is "no".
+    """
+    from mlflow_oidc_auth.config import config
+
+    if not getattr(config, "MLFLOW_ENABLE_WORKSPACES", False):
+        return True
+    try:
+        from mlflow.server.handlers import _get_workspace_store
+        from mlflow.store.workspace.sqlalchemy_store import SqlAlchemyStore as BuiltinWorkspaceStore
+
+        return type(_get_workspace_store()) is BuiltinWorkspaceStore
+    except Exception:
+        logger.warning("Orphan sweep: the workspace store could not be identified", exc_info=True)
+        return False
+
+
 def _lookup_workspaces() -> Optional[List[Optional[str]]]:
     """The workspaces an MLflow lookup has to be tried in.
 

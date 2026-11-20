@@ -29,7 +29,13 @@ from mlflow_oidc_auth.models.trash import (
     RestoredRunResponse,
     TrashCleanupResponse,
 )
-from mlflow_oidc_auth.orphans import experiments_definitively_missing, order_experiment_ids, sweep_workspaces
+from mlflow_oidc_auth.orphans import (
+    experiments_definitively_missing,
+    order_experiment_ids,
+    read_replica_configured,
+    sweep_workspaces,
+    workspace_listing_is_authoritative,
+)
 from mlflow_oidc_auth.store import store
 from mlflow_oidc_auth.utils.data_fetching import fetch_all_experiments
 from mlflow_oidc_auth.utils.pagination import NO_PAGE, PageQuery, paginate_with_headers
@@ -56,6 +62,16 @@ RESTORE_RUN = f"{RUNS}/{{run_id}}/restore"
 PERMISSIONS_SWEEP = "/permissions/sweep"
 #: Most experiment ids an audit event carries; the event also states the total and whether it was cut.
 _AUDIT_ID_SAMPLE = 100
+
+
+_REPLICA_REFUSAL = (
+    "the tracking store reads from a replica, which cannot prove an experiment is gone; run with dry_run=true and remove rows "
+    "from the cleanup endpoint, or run the sweep against a server without a read replica"
+)
+_WORKSPACE_STORE_REFUSAL = (
+    "the workspace store is not MLflow's built-in one, whose listing may hide workspaces, so an experiment cannot be proven gone; "
+    "run with dry_run=true and remove rows from the cleanup endpoint"
+)
 
 
 def _capped_ids(ids: List[str]) -> dict:
@@ -593,7 +609,11 @@ async def permanently_delete_all_trashed_entities(
         "to continue with the ids after it. "
         "Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` "
         "and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: "
-        "run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`."
+        "run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`. "
+        "A sweep with `dry_run=false` is refused with 409 when the tracking store reads from a read replica "
+        "(a lagging replica says an experiment that was just created does not exist) and, with workspaces enabled, "
+        "when the workspace store is not MLflow's built-in one (a third-party provider may hide workspaces from the listing); "
+        "a dry run still works and sets `replica_reads` when a replica is configured, since its results may then include false positives."
     ),
 )
 def sweep_orphaned_experiment_permissions(
@@ -605,16 +625,24 @@ def sweep_orphaned_experiment_permissions(
 
     Parameters:
         admin_username: The authenticated admin username (injected by dependency).
-        dry_run: When true (the default) nothing is deleted and no rows are snapshotted.
+        dry_run: When true (the default) nothing is deleted and no rows are snapshotted. False is refused with 409 when
+            the tracking store reads from a replica or, with workspaces enabled, the workspace store is not MLflow's built-in one.
         after: The experiment id to resume after (the previous page's ``next_after``); None starts from the beginning.
 
     Returns:
-        A ``PermissionSweepResponse`` body; a 500 ``{"error": ...}`` when the grant rows cannot be
+        A ``PermissionSweepResponse`` body; a 409 ``{"error": ...}`` for a deleting sweep that cannot be trusted; a 500 ``{"error": ...}`` when the grant rows cannot be
         listed or deleted.
 
     Raises:
         Nothing: failures are returned as the 500 body.
     """
+    replica_reads = read_replica_configured()
+    if not dry_run:
+        # Fail closed before anything is read or snapshotted: these two setups cannot prove an experiment is gone.
+        if replica_reads:
+            return JSONResponse(status_code=409, content={"error": _REPLICA_REFUSAL})
+        if not workspace_listing_is_authoritative():
+            return JSONResponse(status_code=409, content={"error": _WORKSPACE_STORE_REFUSAL})
     try:
         page_ids = order_experiment_ids(store.list_experiment_ids_with_grants(), after)
         # A real sweep snapshots the rows before any tracking-store lookup and deletes only those rows: a
@@ -672,6 +700,7 @@ def sweep_orphaned_experiment_permissions(
             "truncated": first.truncated,
             "next_after": first.next_after,
             "removed_rows": removed,
+            "replica_reads": replica_reads,
         }
     )
 

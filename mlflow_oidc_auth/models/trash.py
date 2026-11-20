@@ -136,6 +136,8 @@ class PermissionSweepResponse(ResponseModel):
         truncated: True when the lookup budget ran out before the last id; call again with `after=next_after`.
         next_after: When truncated, the last id fully decided in this call; None otherwise.
         removed_rows: Grant rows deleted (always 0 for a dry run).
+        replica_reads: True when the tracking store reads from a read replica: a lagging replica reports a just-created experiment
+            as missing, so `missing_experiments` of a dry run may include false positives (a deleting sweep is refused with 409).
     """
 
     dry_run: bool
@@ -144,6 +146,7 @@ class PermissionSweepResponse(ResponseModel):
     unresolved_experiments: List[str]
     truncated: bool
     removed_rows: int
+    replica_reads: bool = False
     next_after: Optional[str] = None
 
 
@@ -157,5 +160,9 @@ TRASH_ERROR_RESPONSES = {
 # ("Failed to retrieve deleted runs/experiments") means nothing was deleted.
 TRASH_CLEANUP_ERROR_RESPONSES = {
     **TRASH_ERROR_RESPONSES,
+    409: {
+        "model": TrashErrorResponse,
+        "description": "A deleting permission sweep was refused: the tracking store reads from a replica, or the workspace store is not MLflow's built-in one",
+    },
     500: {"model": TrashErrorResponse, "description": "Cleanup failed; after a failed lookup of candidates nothing was deleted"},
 }
