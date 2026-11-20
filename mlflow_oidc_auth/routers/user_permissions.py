@@ -45,6 +45,7 @@ from mlflow_oidc_auth.models import (
     ScorerRegexCreate,
     ScorerRegexPermissionRecord,
     ScorerRegexPermissionResponse,
+    StatusOnlyResponse,
     UserGatewayRegexPermissionItem,
 )
 from mlflow_oidc_auth.permissions import NO_PERMISSIONS
@@ -215,20 +216,6 @@ exact_routes(
         "delete": "Experiment permission has been deleted.",
     },
     created=None,
-    text={
-        "create": {
-            "description": "Creates a permission for a user to access a specific experiment.",
-            "subject": "The username to grant permissions to",
-            "body": "The permission level to grant",
-        },
-        "get": {"subject": "The username to grant permissions to", "experiment_id": "The experiment ID to set permissions for"},
-        "update": {
-            "subject": "The username to grant permissions to",
-            "experiment_id": "The experiment ID to set permissions for",
-            "body": "The permission level to grant",
-        },
-        "delete": {"subject": "The username to revoke permissions from", "experiment_id": "The experiment ID to revoke permissions for"},
-    },
 )
 
 regex_routes(
@@ -241,7 +228,6 @@ regex_routes(
     ops=("create", "list", "get", "update", "delete"),
     names={"list": "list_user_experiment_pattern_permissions"},
     id_type=str,
-    lab="",
     body=ExperimentRegexCreate,
     item=lambda p: ExperimentRegexPermission(id=str(p.id), regex=p.regex, priority=p.priority, permission=p.permission, workspace=pattern_workspace_of(p)),
     item_model=ExperimentRegexPermission,
@@ -252,7 +238,6 @@ regex_routes(
         "update": lambda a: store.update_experiment_regex_permission(id=int(a.id), **pattern_fields(a), username=a.username),
         "delete": lambda a: store.delete_experiment_regex_permission(a.username, int(a.id)),
     },
-    text={"create": {"summary": "Create experiment pattern permission"}},
 )
 
 
@@ -344,13 +329,13 @@ regex_routes(
     USER_PROMPT_PATTERN_PERMISSION_DETAIL,
     names={**regex_names("user_prompt"), "list": "get_user_prompt_pattern_permissions"},
     id_type=str,
-    quiet_delete=True,
     body=PromptRegexCreate,
     item=lambda r: RegisteredModelRegexPermissionRecord(**r.to_json()),
     item_model=RegisteredModelRegexPermissionRecord,
-    models={"get": PromptRegexPermissionResponse, "update": PromptRegexPermissionResponse},
+    models={"get": PromptRegexPermissionResponse, "update": PromptRegexPermissionResponse, "delete": StatusOnlyResponse},
     respond={
-        op: lambda a, rm: PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json())) for op in ("get", "update")
+        **{op: lambda a, rm: PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json())) for op in ("get", "update")},
+        "delete": lambda a, r: StatusOnlyResponse(),
     },
     call={
         "list": lambda a: store.list_prompt_regex_permissions(username=a.username),
@@ -498,7 +483,6 @@ regex_routes(
     USER_SCORER_PATTERN_PERMISSIONS,
     USER_SCORER_PATTERN_PERMISSION_DETAIL,
     names={"list": "get_user_scorer_regex_permissions", "create": "create_user_scorer_regex_permission"},
-    specific=("get", "update", "delete"),
     body=ScorerRegexCreate,
     item=lambda p: ScorerRegexPermissionRecord(**p.to_json()),
     item_model=ScorerRegexPermissionRecord,
@@ -523,14 +507,16 @@ regex_routes(
     USER_REGISTERED_MODEL_PATTERN_PERMISSION_DETAIL,
     names=regex_names("user_registered_model"),
     id_type=str,
-    quiet_delete=True,
     body=RegisteredModelRegexCreate,
     item=lambda r: RegisteredModelRegexPermissionRecord(**r.to_json()),
     item_model=RegisteredModelRegexPermissionRecord,
-    models={"get": RegisteredModelRegexPermissionResponse, "update": RegisteredModelRegexPermissionResponse},
+    models={"get": RegisteredModelRegexPermissionResponse, "update": RegisteredModelRegexPermissionResponse, "delete": StatusOnlyResponse},
     respond={
-        op: lambda a, rm: RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-        for op in ("get", "update")
+        **{
+            op: lambda a, rm: RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
+            for op in ("get", "update")
+        },
+        "delete": lambda a, r: StatusOnlyResponse(),
     },
     call={
         "list": lambda a: store.list_registered_model_regex_permissions(username=a.username),

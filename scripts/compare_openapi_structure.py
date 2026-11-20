@@ -1,0 +1,146 @@
+"""Check that two OpenAPI documents differ only in text (#478).
+
+Compares paths, methods, operation ids, tags, parameters (name, location, required, schema), request bodies
+and responses (status codes and schema references). ``summary``, ``description`` and the ``description``
+of a parameter are ignored, so a wording change passes and anything structural fails.
+
+Usage::
+
+    python -I scripts/compare_openapi_structure.py <base> <candidate>
+
+Each argument is a path to an OpenAPI JSON file, or a git ref (``main``, ``origin/main``, a commit), which
+is read as ``<ref>:openapi.json`` from the repository. Exit status: 0 when the structures are equal, 1 when
+they are not (each difference is printed), 2 when an input cannot be read.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from typing import Any, Dict, List
+
+_TEXT_KEYS = ("summary", "description")
+
+
+def load(source: str) -> Dict[str, Any]:
+    """Read an OpenAPI document from a file path or a git ref.
+
+    Parameters:
+        source: A path to a JSON file, or a git ref naming a commit that holds ``openapi.json``.
+
+    Returns:
+        The parsed document.
+
+    Raises:
+        SystemExit: With status 2 if the source cannot be read.
+    """
+    if os.path.isfile(source):
+        with open(source, encoding="utf-8") as handle:
+            return json.load(handle)
+    result = subprocess.run(["git", "show", f"{source}:openapi.json"], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"cannot read {source!r}: not a file, and 'git show {source}:openapi.json' failed: {result.stderr.strip()}", file=sys.stderr)
+        raise SystemExit(2)
+    return json.loads(result.stdout)
+
+
+def strip_text(node: Any, in_schema: bool = False) -> Any:
+    """Return ``node`` without the wording a text-only change may touch.
+
+    Drops ``summary`` and ``description`` from operations and parameters, and the top-level
+    ``description`` of a parameter's or request body's schema (where FastAPI repeats the parameter text).
+    Component schemas are kept whole, so a change to a model (including its field descriptions) counts as
+    structural.
+
+    Parameters:
+        node: A JSON value from an operation or a path item.
+        in_schema: Whether the walk is inside a schema, where ``description`` is kept.
+
+    Returns:
+        A copy with the text removed.
+    """
+    if isinstance(node, list):
+        return [strip_text(item, in_schema) for item in node]
+    if not isinstance(node, dict):
+        return node
+    out: Dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "schema" and isinstance(value, dict) and not in_schema:
+            # An inline parameter or body schema: its own description is the parameter / body text.
+            out[key] = strip_text({k: v for k, v in value.items() if k != "description"}, True)
+        elif key == "schemas":
+            out[key] = strip_text(value, True)
+        elif not in_schema and key in _TEXT_KEYS:
+            continue
+        else:
+            out[key] = strip_text(value, in_schema)
+    return out
+
+
+def structure(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Reduce a document to what must not change under a text-only edit.
+
+    Parameters:
+        document: A parsed OpenAPI document.
+
+    Returns:
+        Paths with their methods, the components, and the rest of the document, without wording.
+    """
+    return {
+        "paths": strip_text(document.get("paths", {})),
+        "components": strip_text(document.get("components", {}), True),
+        "servers": document.get("servers"),
+        "openapi": document.get("openapi"),
+    }
+
+
+def diff(a: Any, b: Any, where: str = "") -> List[str]:
+    """List the differences between two JSON values, with the path to each.
+
+    Parameters:
+        a: The base value.
+        b: The candidate value.
+        where: The path to the values, for the message.
+
+    Returns:
+        One line per difference.
+    """
+    if isinstance(a, dict) and isinstance(b, dict):
+        lines: List[str] = []
+        for key in sorted(set(a) | set(b)):
+            if key not in a:
+                lines.append(f"added   {where}/{key}")
+            elif key not in b:
+                lines.append(f"removed {where}/{key}")
+            else:
+                lines += diff(a[key], b[key], f"{where}/{key}")
+        return lines
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        return [line for index, (x, y) in enumerate(zip(a, b)) for line in diff(x, y, f"{where}[{index}]")]
+    return [] if a == b else [f"changed {where}: {json.dumps(a)[:120]} -> {json.dumps(b)[:120]}"]
+
+
+def main(argv: List[str]) -> int:
+    """Compare two documents.
+
+    Parameters:
+        argv: ``[base, candidate]``.
+
+    Returns:
+        The exit status.
+    """
+    if len(argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    differences = diff(structure(load(argv[0])), structure(load(argv[1])))
+    for line in differences:
+        print(line)
+    if differences:
+        print(f"{len(differences)} structural difference(s)")
+        return 1
+    print("openapi structure equal (text-only changes, if any)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
