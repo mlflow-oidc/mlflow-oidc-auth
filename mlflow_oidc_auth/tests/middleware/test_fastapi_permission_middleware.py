@@ -1046,6 +1046,7 @@ class TestGatewayCredentialStripping:
     SENT = {
         "Cookie": "mlflow_oidc_session=not-a-real-session",
         "Authorization": "Bearer not-a-real-token",
+        "X-MLflow-Assistant-Delegation": "not-a-real-delegation",
         "X-Custom": "kept",
     }
 
@@ -1064,6 +1065,7 @@ class TestGatewayCredentialStripping:
         with patch("mlflow_oidc_auth.middleware.fastapi_permission_middleware.can_use_gateway_endpoint", return_value=True):
             response = TestClient(self._app(is_admin, route)).post(path, headers=self.SENT, json=body or {})
         assert response.status_code == 200, response.text
+        assert "x-mlflow-assistant-delegation" not in response.json()["headers"]
         return response.json()["headers"]
 
     @pytest.mark.parametrize("is_admin", [False, True])

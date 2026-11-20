@@ -24,6 +24,7 @@ from mlflow_oidc_auth.config import config
 from mlflow_oidc_auth.entities.auth_context import (
     AUTH_CONTEXT_KEY,
     AUTH_METHOD_BASIC,
+    AUTH_METHOD_DELEGATION,
     AUTH_METHOD_BEARER,
     AUTH_METHOD_WORKLOAD,
     AUTH_METHOD_SESSION,
@@ -74,6 +75,8 @@ _KUBERNETES_BEARER = "kubernetes"
 
 def _auth_method(request: Request, workload_bearer: bool = False) -> str:
     """The credential :meth:`AuthMiddleware._authenticate_user` tried, in the order it tries them."""
+    if "x-mlflow-assistant-delegation" in request.headers:
+        return AUTH_METHOD_DELEGATION
     auth_header = request.headers.get("authorization") or ""
     # Must stay in step with the scheme checks in ``_authenticate_user``.
     if auth_header.startswith("Basic "):
@@ -907,6 +910,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Tuple of (success, username, error_message)
         """
+        delegation = request.headers.get("X-MLflow-Assistant-Delegation")
+        if delegation is not None:
+            try:
+                from mlflow.server.assistant.delegation import verify_delegation_credential
+            except ImportError:
+                return False, None, "Assistant delegation is unavailable"
+
+            username = verify_delegation_credential(delegation)
+            if username:
+                return True, username.lower(), ""
+            return False, None, "Invalid Assistant delegation"
+
         # Try basic authentication first
         auth_header = request.headers.get("authorization")
         if auth_header and auth_header.startswith("Basic "):

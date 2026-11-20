@@ -20,6 +20,7 @@ AUTH_METHOD_SESSION = "session"
 AUTH_METHOD_BEARER = "bearer"
 AUTH_METHOD_WORKLOAD = "workload"
 AUTH_METHOD_BASIC = "basic"
+AUTH_METHOD_DELEGATION = "assistant-delegation"
 
 
 @dataclass(frozen=True)

@@ -64,6 +64,20 @@ compiler or `libxmlsec1` headers are needed. Only required to configure a `type:
 without it the plugin runs unchanged and any SAML provider is skipped with a logged reason. See
 [SAML Authentication](saml-auth).
 
+## Assistant tool authentication
+
+Assistant tools can authenticate as the signed-in user with MLflow's short-lived
+delegation credentials. This requires an MLflow build with Assistant delegation
+and the `MLFLOW_ENABLE_ASSISTANT_DELEGATION` opt-in; MLflow 3.16 does not provide
+these capabilities. Enable the opt-in in the server environment when starting
+with `--app-name oidc-auth`.
+
+Delegated requests retain the user's workspace and resource permission checks.
+Inactive or deleted users are denied. Delegation does not support service
+accounts or interactive-login-only operations such as issuing access tokens.
+The server manages the signing key; do not configure or copy it into tool or job
+environments.
+
 ## OIDC Provider Setup
 
 Before starting the server, register a client application with your OIDC provider.
