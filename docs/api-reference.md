@@ -512,7 +512,7 @@ All trash endpoints require **admin** permissions.
 | GET | `/oidc/trash/experiments` | List deleted experiments |
 | GET | `/oidc/trash/runs` | List deleted runs. Query: `experiment_ids`, `older_than` |
 | POST | `/oidc/trash/cleanup` | Permanently delete trashed items. Query: `older_than`, `run_ids`, `experiment_ids` |
-| POST | `/oidc/trash/permissions/sweep` | Remove grant rows of experiments that no longer exist. Query: `dry_run` (default `true`) |
+| POST | `/oidc/trash/permissions/sweep` | Remove grant rows of experiments that no longer exist. Query: `dry_run` (default `true`), `after` (resume cursor) |
 | POST | `/oidc/trash/experiments/{experiment_id}/restore` | Restore a deleted experiment |
 | POST | `/oidc/trash/runs/{run_id}/restore` | Restore a deleted run |
 
@@ -564,7 +564,7 @@ deletion times.
 **Permission rows.** When the cleanup permanently deletes an experiment it also deletes that
 experiment's user and group experiment grants, its user and group scorer grants and its issue-detection
 schedule-author row (the rows that existed before the delete, snapshotted for all target experiments up front and removed in one batched transaction after the deletes; then the permission cache is flushed once, and one audit event
-`trash.permissions_cleanup` with the row count and a capped sample of experiment ids is written, none when nothing was removed). If the snapshot cannot be taken, no experiment is deleted and all are listed in `failed_experiments`. Regex grants are patterns, not ids, and are kept. If the
+`trash.permissions_cleanup` with the row count and a capped sample of experiment ids is written, none when nothing was removed). The snapshot is taken before any run or experiment is deleted; if it cannot be taken nothing at all is deleted and the call answers 500 `{"error": "Could not read permission rows; nothing was deleted"}`. Regex grants are patterns, not ids, and are kept. If the
 grants cannot be removed, the experiment stays deleted (it is in `deleted_experiments`), the call is
 still 200, and the experiment is listed in `failed_permission_cleanups` with the error
 `Failed to remove permission rows`; run the sweep below to finish the job.
@@ -572,11 +572,14 @@ still 200, and the experiment is listed in `failed_permission_cleanups` with the
 **Sweep for purges done outside the plugin.** `mlflow gc` bypasses the plugin and leaves grants
 that name experiments that no longer exist. `POST /oidc/trash/permissions/sweep` (admin only)
 finds those rows (the schedule-author row included) and, with `dry_run=false`, deletes them. The rows are
-snapshotted before the tracking store is asked, only those rows are deleted, and the missing ids are
+snapshotted before the tracking store is asked (a dry run snapshots nothing), only those rows are deleted, and the missing ids are
 confirmed a second time right before the delete, so a grant created or an experiment moved in the
 meantime is never removed. `dry_run` defaults to `true`: the default
 call only reports `missing_experiments` and deletes nothing (`removed_rows` is 0). An experiment id is
-removed only when **every** workspace answers that it does not exist. Any other answer or error
+removed only when **every** workspace answers that it does not exist, in both passes. The workspaces asked are the union of MLflow's
+workspace listing at the first pass, the listing again at the confirmation pass and every workspace name this plugin records (workspace
+permissions, workspace-scoped grants and patterns), so an experiment in a workspace missing from a listing is still found. If the two
+listings differ, the workspace set changed during the sweep and no candidate is removed by that call (they are reported as unresolved). Any other answer or error
 (tracking store unreachable, workspaces not listable, a lookup failing) keeps the rows and lists the
 id in `unresolved_experiments`: the sweep never deletes on uncertainty. A trashed (soft-deleted)
 experiment still exists and keeps its grants.
@@ -584,8 +587,11 @@ experiment still exists and keeps its grants.
 **Caveat: reused ids.** On stores that reuse experiment ids (SQLite reuses an id after the highest
 id was hard-deleted), an id removed by `mlflow gc` that a new experiment has already reused looks like
 an existing experiment. Its stale grants cannot be told apart from the new experiment's and are kept.
-Run the sweep promptly after a purge, or use the cleanup endpoint instead of `mlflow gc`. At most 1000 tracking-store lookups are made per pass; ids beyond that are reported in `unresolved_experiments` (never as missing) and `truncated` is `true`, so run the sweep again. The response also carries `checked_experiments`
-(distinct ids named by grant rows) and `dry_run`; a sweep is audited as `trash.permissions_sweep`.
+Run the sweep promptly after a purge, or use the cleanup endpoint instead of `mlflow gc`. At most 1000 tracking-store lookups are made per call, walking ids in ascending order (numeric when every id is all digits, else
+lexicographic). When the budget runs out `truncated` is `true` and `next_after` is the last id fully decided: run the sweep again with
+`after=<next_after>` to process the ids after it, until `truncated` is `false`. Ids not yet reached are neither missing nor unresolved. The
+confirmation pass has its own budget, only for the confirmed candidates, so it does not use up the next page's. The response also carries
+`checked_experiments` (ids decided in this call) and `dry_run`; a sweep is audited as `trash.permissions_sweep`.
 
 ---
 

@@ -203,16 +203,19 @@ def _prompt_flag(row) -> bool:
 class _Budget:
     """Caps MLflow store calls per resource type and run; a resource past the cap is unresolved."""
 
-    def __init__(self, what: str):
+    def __init__(self, what: str, limit: Optional[int] = None):
         self.what = what
-        self.left = _EXTERNAL_LOOKUP_LIMIT
+        self.limit = _EXTERNAL_LOOKUP_LIMIT if limit is None else limit
+        self.left = self.limit
         self.warned = False
 
     def take(self) -> bool:
         if self.left <= 0:
             if not self.warned:
                 logger.warning(
-                    "Orphan check: more than %d MLflow lookups needed for %s; the rest are reported as unresolved", _EXTERNAL_LOOKUP_LIMIT, self.what
+                    "Orphan check: more than %d MLflow lookups needed for %s; the rest were not looked up (unresolved, or left for a resumed sweep)",
+                    self.limit,
+                    self.what,
                 )
                 self.warned = True
             return False
@@ -286,48 +289,148 @@ def _experiment_locations(experiment_ids: List[str]) -> Dict[str, Tuple[str, str
     return names
 
 
-def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str], Set[str], bool]:
-    """Split ``experiment_ids`` into those the tracking store definitively lacks and those it could not settle.
+class SweepWorkspaces(NamedTuple):
+    """The workspaces one sweep pass asks about.
 
-    Stricter than :func:`_experiment_locations`, which treats every failure as "unresolved": an id is
-    *missing* only when every workspace answered ``RESOURCE_DOES_NOT_EXIST`` for it. Any other error, an
-    unavailable tracking store or an unlistable workspace set makes it *unresolved*. A caller that
-    deletes on this result must delete only the missing ids - never on uncertainty. A trashed
-    (soft-deleted) experiment still exists, so it is in neither set; neither is any other id that exists.
+    Attributes:
+        listed: What MLflow's workspace store listed (``(None,)`` when workspaces are disabled).
+        checked: ``listed`` plus every workspace the plugin itself records grants or rules for, so an
+            experiment in a workspace the listing left out (created since, or filtered from it) is still looked for there.
+    """
 
-    At most :data:`_EXTERNAL_LOOKUP_LIMIT` store calls are made per pass. An id the budget did not reach is
-    *unresolved* (never missing) and the third return value is true, so the caller can say the sweep was
-    cut short and should be run again.
+    listed: Tuple[Optional[str], ...]
+    checked: Tuple[Optional[str], ...]
+
+
+class SweepLookup(NamedTuple):
+    """The outcome of :func:`experiments_definitively_missing`.
+
+    Attributes:
+        missing: Ids every checked workspace reported as not existing.
+        unresolved: Ids that could not be settled (an error, an unavailable store or workspace set).
+        truncated: True when the lookup budget ran out before the last id.
+        next_after: When truncated, the last id fully decided (pass it as the next call's ``after``); else None.
+        checked: How many ids were decided in this call (missing, existing or unresolved).
+    """
+
+    missing: Set[str]
+    unresolved: Set[str]
+    truncated: bool
+    next_after: Optional[str]
+    checked: int
+
+
+def order_experiment_ids(experiment_ids: Iterable[str], after: Optional[str] = None) -> List[str]:
+    """The one stable order a sweep walks experiment ids in, from strictly after the cursor.
+
+    Ids are ordered numerically when every id (and the cursor) is all digits, as MLflow's SQL stores
+    assign them, and lexicographically otherwise.
 
     Parameters:
-        experiment_ids: Experiment ids to check.
+        experiment_ids: Experiment ids; duplicates are dropped.
+        after: The cursor: only ids that sort strictly after it are returned. None returns all.
 
     Returns:
-        ``(missing, unresolved, truncated)``; ``truncated`` is true when the lookup budget ran out.
+        The ids after the cursor, in order.
+    """
+    ids = {str(i) for i in experiment_ids if i}
+    numeric = all(i.isdigit() for i in ids) and (after is None or after.isdigit())
+    key = (lambda i: (int(i), i)) if numeric else (lambda i: (0, i))
+    ordered = sorted(ids, key=key)
+    if after is None:
+        return ordered
+    return [i for i in ordered if key(i) > key(after)]
+
+
+def recorded_workspaces(store=None) -> Set[str]:
+    """Every workspace name the plugin itself records: workspace permissions and workspace-keyed grants and patterns.
+
+    Parameters:
+        store: The store to read; defaults to the singleton.
+
+    Returns:
+        Real workspace names; the unresolved and every-workspace markers are left out.
+
+    Raises:
+        sqlalchemy.exc.SQLAlchemyError: When a table cannot be read.
+    """
+    from mlflow_oidc_auth.utils.grant_workspace import EVERY_WORKSPACE, UNRESOLVED_WORKSPACE
+
+    columns = [getattr(model, "workspace") for kind in permission_kinds.table_owning_kinds() for model in kind.models if hasattr(model, "workspace")]
+    names: Set[str] = set()
+    with _store_or_singleton(store).ManagedSessionMaker() as session:
+        for column in columns:
+            names.update(row[0] for row in session.query(column).distinct().all())
+    return {n for n in names if n and n not in (UNRESOLVED_WORKSPACE, EVERY_WORKSPACE)}
+
+
+def sweep_workspaces(store=None) -> Optional[SweepWorkspaces]:
+    """The workspaces a sweep pass must all ask: MLflow's listing united with the ones the plugin records.
+
+    Parameters:
+        store: The auth store to read recorded workspaces from; defaults to the singleton.
+
+    Returns:
+        The workspaces, or None when they cannot be established (listing or recorded names unreadable):
+        a caller must then treat every id as unresolved.
+    """
+    listed = _lookup_workspaces()
+    if not listed:
+        return None
+    if listed == [None]:
+        return SweepWorkspaces((None,), (None,))
+    try:
+        recorded = recorded_workspaces(store)
+    except Exception:
+        logger.warning("Orphan sweep: recorded workspaces could not be read; nothing is reported missing", exc_info=True)
+        return None
+    return SweepWorkspaces(tuple(listed), tuple(sorted(set(listed) | recorded)))
+
+
+def experiments_definitively_missing(experiment_ids: List[str], workspaces: Optional[SweepWorkspaces], limit: Optional[int] = None) -> SweepLookup:
+    """Split ``experiment_ids`` (taken in the order given) into those the tracking store definitively lacks and those it could not settle.
+
+    Stricter than :func:`_experiment_locations`, which treats every failure as "unresolved": an id is
+    *missing* only when every workspace in ``workspaces.checked`` answered ``RESOURCE_DOES_NOT_EXIST``
+    for it. Any other error, an unavailable tracking store or an unknown workspace set makes it
+    *unresolved*. A caller that deletes on this result must delete only the missing ids - never on
+    uncertainty, and only when the same ids are missing again on a second pass over the same workspaces.
+    A trashed (soft-deleted) experiment still exists, so it is in neither set; neither is any other id that exists.
+
+    At most ``limit`` (default :data:`_EXTERNAL_LOOKUP_LIMIT`) store calls are made. When the budget runs
+    out the walk stops: ids not reached are neither missing nor unresolved, and ``next_after`` names the
+    last id decided so the sweep can resume strictly after it.
+
+    Parameters:
+        experiment_ids: Experiment ids to check, already in :func:`order_experiment_ids` order.
+        workspaces: The workspaces to ask, from :func:`sweep_workspaces`; None marks every id unresolved.
+        limit: The lookup budget; defaults to :data:`_EXTERNAL_LOOKUP_LIMIT`.
+
+    Returns:
+        A :class:`SweepLookup`.
     """
     from mlflow.exceptions import MlflowException
     from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 
-    workspaces = _lookup_workspaces()
-    if not workspaces:
-        return set(), set(experiment_ids), False
+    if workspaces is None:
+        return SweepLookup(set(), set(experiment_ids), False, None, len(experiment_ids))
     try:
         from mlflow.server.handlers import _get_tracking_store
 
         tracking_store = _get_tracking_store()
     except Exception:
         logger.warning("Orphan sweep: tracking store unavailable; nothing is reported missing")
-        return set(), set(experiment_ids), False
-    budget = _Budget("experiments")
+        return SweepLookup(set(), set(experiment_ids), False, None, len(experiment_ids))
+    budget = _Budget("experiments", limit)
     missing: Set[str] = set()
     unresolved: Set[str] = set()
-    truncated = False
+    decided = 0
+    last_decided: Optional[str] = None
     for experiment_id in experiment_ids:
         outcome = "missing"
-        for workspace in workspaces:
+        for workspace in workspaces.checked:
             if not budget.take():
-                outcome = "unresolved"
-                truncated = True
+                outcome = "cut"
                 break
             try:
                 with _in_workspace(workspace):
@@ -341,11 +444,15 @@ def experiments_definitively_missing(experiment_ids: List[str]) -> Tuple[Set[str
             except Exception:
                 outcome = "unresolved"
                 break
+        if outcome == "cut":
+            return SweepLookup(missing, unresolved, True, last_decided, decided)
         if outcome == "missing":
             missing.add(experiment_id)
         elif outcome == "unresolved":
             unresolved.add(experiment_id)
-    return missing, unresolved, truncated
+        decided += 1
+        last_decided = experiment_id
+    return SweepLookup(missing, unresolved, False, None, decided)
 
 
 def _prompt_kinds(names: List[str]) -> Dict[str, Set[bool]]:

@@ -3332,7 +3332,7 @@ export interface paths {
         put?: never;
         /**
          * Remove permission rows of experiments that no longer exist
-         * @description Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist; any other answer or error keeps it, and it is listed in `unresolved_experiments`. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`.
+         * @description Finds experiment and scorer grant rows whose experiment id is not in the tracking store (for example after `mlflow gc`) and, unless `dry_run` is true, deletes them. An id is removed only when every workspace reports it does not exist, in two passes over the same workspace set; any other answer or error keeps it, and it is listed in `unresolved_experiments`. The workspaces asked are the ones MLflow lists united with every workspace this plugin records grants for; if the listing changes between the passes, nothing is removed by that call. A trashed experiment still exists and is kept. Regex grants are patterns and are never touched. `dry_run` defaults to true. At most 1000 tracking-store lookups are made per call, over ids in ascending order (numeric when all ids are digits). When the budget runs out `truncated` is true and `next_after` is the last id fully decided: call again with `after=<next_after>` to continue with the ids after it. Only rows that existed when the sweep started are deleted. On stores that reuse experiment ids (SQLite), an id removed by `mlflow gc` and already reused by a new experiment looks like an existing experiment, so its stale grants cannot be told apart and are kept: run the sweep promptly, or use the cleanup endpoint instead of `mlflow gc`.
          */
         post: operations["sweep_orphaned_experiment_permissions_oidc_trash_permissions_sweep_post"];
         delete?: never;
@@ -4918,10 +4918,11 @@ export interface components {
          *
          *     Attributes:
          *         dry_run: True when nothing was deleted.
-         *         checked_experiments: Distinct experiment ids that some grant row names.
+         *         checked_experiments: Experiment ids decided in this call (those after the `after` cursor, up to the lookup budget).
          *         missing_experiments: Ids the tracking store definitively does not have (in any workspace).
-         *         unresolved_experiments: Ids whose existence could not be established (including ids past the lookup budget); their rows are kept.
-         *         truncated: True when the lookup budget ran out, so some ids were left unresolved only for that reason; run the sweep again.
+         *         unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+         *         truncated: True when the lookup budget ran out before the last id; call again with `after=next_after`.
+         *         next_after: When truncated, the last id fully decided in this call; None otherwise.
          *         removed_rows: Grant rows deleted (always 0 for a dry run).
          */
         PermissionSweepResponse: {
@@ -4931,6 +4932,8 @@ export interface components {
             dry_run: boolean;
             /** Missing Experiments */
             missing_experiments: string[];
+            /** Next After */
+            next_after: string | null;
             /** Removed Rows */
             removed_rows: number;
             /** Truncated */
@@ -18657,6 +18660,8 @@ export interface operations {
             query?: {
                 /** @description Only report what would be removed (default). Pass false to delete. */
                 dry_run?: boolean;
+                /** @description Resume cursor: only experiment ids after this one are checked. Pass the previous response's `next_after`. */
+                after?: string | null;
             };
             header?: never;
             path?: never;

@@ -21,6 +21,7 @@ cleanup = checked(_trash.permanently_delete_all_trashed_entities)
 
 def sweep(**kwargs):
     """The sync handler, its body checked against the declared model."""
+    kwargs.setdefault("after", None)  # called directly, the Query() default would be passed through
     result = _trash.sweep_orphaned_experiment_permissions(**kwargs)
     PermissionSweepResponse.model_validate_json(result.body)
     return result
@@ -147,10 +148,25 @@ class TestBatchedCleanup:
             patch.object(auth_store, "snapshot_experiment_grant_rows", side_effect=Exception("db down")),
         ):
             result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1,2", older_than=None)
-        payload = json.loads(result.body)
-        assert payload["deleted_experiments"] == []
-        assert sorted(f["experiment_id"] for f in payload["failed_experiments"]) == ["1", "2"]
+        assert result.status_code == 500
+        assert json.loads(result.body) == {"error": "Could not read permission rows; nothing was deleted"}
         assert not backend._hard_delete_experiment.called
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_snapshot_deletes_no_runs_either(self, auth_store):
+        from types import SimpleNamespace
+
+        backend = _backend(["1"])
+        backend.search_runs.return_value = [SimpleNamespace(info=SimpleNamespace(run_id="r1"))]
+        with (
+            patch.object(_trash, "_get_store", return_value=backend),
+            patch.object(auth_store, "snapshot_experiment_grant_rows", side_effect=Exception("db down")),
+        ):
+            result = await cleanup(admin_username="admin", run_ids=None, experiment_ids="1", older_than=None)
+        assert result.status_code == 500
+        assert not backend._hard_delete_run.called and not backend._hard_delete_experiment.called
+        assert not backend.get_run.called
         assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
 
     @pytest.mark.asyncio
@@ -203,8 +219,8 @@ class TestSnapshotRace:
         t = tracking({None: {"2"}})
         real = _trash.experiments_definitively_missing
 
-        def lookup(ids):
-            result = real(ids)
+        def lookup(ids, *args, **kwargs):
+            result = real(ids, *args, **kwargs)
             if not getattr(lookup, "done", False):
                 lookup.done = True
                 auth_store.create_experiment_permission("3", "bob@example.com", "MANAGE")
@@ -224,11 +240,11 @@ class TestSnapshotRace:
         real = _trash.experiments_definitively_missing
         calls = []
 
-        def lookup(ids):
+        def lookup(ids, *args, **kwargs):
             calls.append(list(ids))
             if len(calls) == 2:
                 t.existing = {None: {"1"}}  # moved or recreated in the meantime
-            return real(ids)
+            return real(ids, *args, **kwargs)
 
         with patch.object(_trash, "experiments_definitively_missing", lookup):
             body = json.loads(sweep(admin_username="admin", dry_run=False).body)
@@ -327,8 +343,8 @@ class TestSweep:
         tracking({})
         monkeypatch.setattr("mlflow_oidc_auth.orphans._EXTERNAL_LOOKUP_LIMIT", 1)
         body = json.loads(sweep(admin_username="admin", dry_run=False).body)
-        assert body["truncated"] is True
-        assert body["missing_experiments"] == ["1"] and body["unresolved_experiments"] == ["2"]
+        assert body["truncated"] is True and body["next_after"] == "1"
+        assert body["missing_experiments"] == ["1"] and body["unresolved_experiments"] == []
         assert auth_store.list_experiment_ids_with_grants() == ["2"]
 
     @pytest.mark.asyncio
@@ -342,11 +358,11 @@ class TestSweep:
         real = _trash.experiments_definitively_missing
         calls = []
 
-        def lookup(ids):
+        def lookup(ids, *args, **kwargs):
             calls.append(1)
             if len(calls) == 2:
                 t.broken = {"2"}
-            return real(ids)
+            return real(ids, *args, **kwargs)
 
         with patch.object(_trash, "experiments_definitively_missing", lookup):
             body = json.loads(sweep(admin_username="admin", dry_run=False).body)
@@ -368,3 +384,115 @@ class TestSweep:
         response = TestClient(app).post("/oidc/trash/permissions/sweep?dry_run=false")
         assert response.status_code == 403
         assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+
+class TestSweepSnapshotsOnlyWhenDeleting:
+    def test_a_dry_run_takes_no_snapshot(self, auth_store, tracking):
+        tracking({})
+        with patch.object(auth_store, "snapshot_experiment_grant_rows", wraps=auth_store.snapshot_experiment_grant_rows) as snap:
+            sweep(admin_username="admin", dry_run=True)
+            assert not snap.called
+            sweep(admin_username="admin", dry_run=False)
+            assert snap.called
+
+
+@pytest.fixture
+def many(auth_store):
+    for exp in ("3", "4", "5", "6"):
+        auth_store.create_experiment_permission(exp, "alice@example.com", "MANAGE")
+    return auth_store
+
+
+class TestSweepPaging:
+    def test_ids_are_ordered_numerically_when_all_digits_else_lexicographically(self):
+        from mlflow_oidc_auth.orphans import order_experiment_ids
+
+        assert order_experiment_ids(["10", "9", "2", "9"]) == ["2", "9", "10"]
+        assert order_experiment_ids(["10", "9", "2"], after="9") == ["10"]
+        assert order_experiment_ids(["b", "a", "10"]) == ["10", "a", "b"]
+        assert order_experiment_ids(["b", "a"], after="a") == ["b"]
+
+    def test_two_pages_cover_all_ids_and_early_existing_ids_do_not_starve_later_ones(self, many, tracking, monkeypatch):
+        tracking({None: {"1", "2"}})  # existing experiments early in the order, missing 3..6 after them
+        monkeypatch.setattr("mlflow_oidc_auth.orphans._EXTERNAL_LOOKUP_LIMIT", 4)
+        first = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert first["truncated"] is True and first["next_after"] == "4"
+        assert first["missing_experiments"] == ["3", "4"] and first["checked_experiments"] == 4
+        second = json.loads(sweep(admin_username="admin", dry_run=False, after=first["next_after"]).body)
+        assert second["truncated"] is False and second["next_after"] is None
+        assert second["missing_experiments"] == ["5", "6"]
+        assert many.list_experiment_ids_with_grants() == ["1", "2"]
+
+    def test_the_confirmation_pass_does_not_use_the_next_pages_budget(self, many, tracking, monkeypatch):
+        tracking({})
+        monkeypatch.setattr("mlflow_oidc_auth.orphans._EXTERNAL_LOOKUP_LIMIT", 3)
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        # three ids looked up and all confirmed with a budget of their own: nothing is left unresolved
+        assert body["missing_experiments"] == ["1", "2", "3"] and body["unresolved_experiments"] == []
+        assert body["next_after"] == "3" and body["removed_rows"] == 11
+
+
+class TestSweepWorkspaceSet:
+    def test_an_experiment_in_a_workspace_the_listing_omits_keeps_its_grants_when_the_plugin_records_that_workspace(self, auth_store, tracking):
+        tracking({"team-b": {"1", "2"}}, workspaces=("team-a",))
+        auth_store.create_workspace_permission("team-b", "alice@example.com", "READ")  # the plugin knows team-b
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        # sweep_workspaces only unites the recorded names when workspaces are enabled; the stand-in listing is not [None]
+        assert body["missing_experiments"] == [] and body["removed_rows"] == 0
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    def test_an_experiment_in_a_workspace_only_the_second_listing_has_is_never_removed(self, auth_store, tracking, monkeypatch):
+        tracking({"team-b": {"1"}}, workspaces=("team-a",))
+        listings = iter([["team-a"], ["team-a", "team-b"]])
+        monkeypatch.setattr("mlflow_oidc_auth.orphans._lookup_workspaces", lambda: next(listings))
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == [] and body["removed_rows"] == 0
+        assert sorted(body["unresolved_experiments"]) == ["1", "2"]
+        assert auth_store.list_experiment_ids_with_grants() == ["1", "2"]
+
+    def test_a_workspace_set_that_is_stable_still_deletes(self, auth_store, tracking):
+        tracking({"team-b": {"2"}}, workspaces=("team-a", "team-b"))
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["missing_experiments"] == ["1"] and body["removed_rows"] == 5
+
+    def test_a_recorded_workspace_is_asked_even_when_unlisted(self, auth_store, tracking):
+        from mlflow_oidc_auth.orphans import recorded_workspaces
+
+        auth_store.create_workspace_permission("team-b", "alice@example.com", "READ")
+        assert recorded_workspaces(auth_store) == {"team-b"}
+        t = tracking({"team-b": {"1"}}, workspaces=("team-a",))
+        asked = []
+        original = t.get_experiment
+
+        def spy(experiment_id):
+            asked.append((t.workspace, experiment_id))
+            return original(experiment_id)
+
+        t.get_experiment = spy
+        sweep(admin_username="admin", dry_run=True)
+        assert ("team-b", "1") in asked
+        assert ("team-b", "2") in asked
+
+    def test_an_error_from_any_workspace_in_the_union_keeps_the_rows(self, auth_store, tracking):
+        t = tracking({}, workspaces=("team-a", "team-b"), broken={"1"})
+        body = json.loads(sweep(admin_username="admin", dry_run=False).body)
+        assert body["unresolved_experiments"] == ["1"] and body["missing_experiments"] == ["2"]
+        assert t is not None
+        assert auth_store.list_experiment_ids_with_grants() == ["1"]
+
+
+class TestBatchedStoreDelete:
+    def test_rows_of_many_experiments_are_deleted_in_chunks_and_a_reused_row_id_is_still_guarded(self, many, monkeypatch):
+        monkeypatch.setattr("mlflow_oidc_auth.sqlalchemy_store.IN_CLAUSE_CHUNK_SIZE", 3)
+        ids = ["1", "2", "3", "4", "5", "6"]
+        snapshot = many.snapshot_experiment_grant_rows(ids)
+        assert sum(len(rows) for rows in snapshot["experiment_permissions"].values()) == 6
+        statements = []
+        from sqlalchemy import event
+
+        event.listen(many.engine, "before_cursor_execute", lambda conn, cur, stmt, *a: statements.append(stmt))
+        removed = many.delete_experiment_grant_rows(snapshot, only_experiments=["1", "3", "4", "5", "6"])
+        deletes = [s for s in statements if s.startswith("DELETE FROM experiment_permissions")]
+        assert len(deletes) == 2  # 5 pairs in chunks of 3, not one statement per experiment
+        assert many.snapshot_experiment_grant_rows(["2"])["experiment_permissions"]["2"]  # not asked for: kept
+        assert removed >= 5

@@ -77,6 +77,7 @@ from mlflow_oidc_auth.repository import (
     WorkspaceGroupPermissionRepository,
 )
 from mlflow_oidc_auth.repository.saml_assertion import SamlAssertionRepository
+from mlflow_oidc_auth.repository.utils import IN_CLAUSE_CHUNK_SIZE, chunks
 from mlflow_oidc_auth.repository.workspace_regex_permission import (
     WorkspaceRegexPermissionRepository,
 )
@@ -290,11 +291,14 @@ class SqlAlchemyStore:
         pass it to :meth:`delete_experiment_grant_rows`: a row created afterwards (an experiment id
         reused by a new experiment) is then never deleted.
 
-        Args:
+        Parameters:
             experiment_ids: Experiment ids to snapshot.
 
         Returns:
             ``{table name: {experiment id: [row ids]}}``; tables and ids without rows are omitted.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When the rows cannot be read; nothing is snapshotted then.
         """
         ids = sorted({str(i) for i in experiment_ids if i})
         snapshot: Dict[str, Dict[str, List[int]]] = {}
@@ -303,8 +307,8 @@ class SqlAlchemyStore:
         with self.ManagedSessionMaker() as session:
             for model in self._experiment_keyed_models():
                 per_experiment: Dict[str, List[int]] = {}
-                for start in range(0, len(ids), 500):
-                    for row_id, experiment_id in session.query(model.id, model.experiment_id).filter(model.experiment_id.in_(ids[start : start + 500])).all():
+                for chunk in chunks(ids, IN_CLAUSE_CHUNK_SIZE):
+                    for row_id, experiment_id in session.query(model.id, model.experiment_id).filter(model.experiment_id.in_(chunk)).all():
                         per_experiment.setdefault(experiment_id, []).append(row_id)
                 if per_experiment:
                     snapshot[model.__tablename__] = per_experiment
@@ -314,30 +318,39 @@ class SqlAlchemyStore:
         """Delete exactly the rows named by a :meth:`snapshot_experiment_grant_rows` result, in one transaction.
 
         Rows inserted after the snapshot are never touched, whatever experiment id they carry. Either
-        all tables are cleaned or none is.
+        all tables are cleaned or none is. Rows are deleted in batches per table, not one statement per
+        experiment.
 
-        Args:
+        Parameters:
             snapshot: The result of :meth:`snapshot_experiment_grant_rows`.
             only_experiments: When given, only rows of these experiment ids are deleted.
 
         Returns:
             The number of rows deleted.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When a delete fails; the transaction is rolled back and nothing is deleted.
         """
         keep = None if only_experiments is None else {str(i) for i in only_experiments}
         deleted = 0
         with self.ManagedSessionMaker() as session:
             for model in self._experiment_keyed_models():
-                for experiment_id, row_ids in snapshot.get(model.__tablename__, {}).items():
-                    if keep is not None and experiment_id not in keep:
-                        continue
-                    # Match the snapshotted experiment id as well as the row id, so a reused row id can
-                    # never remove another experiment's grant.
-                    for start in range(0, len(row_ids), 500):
-                        deleted += (
-                            session.query(model)
-                            .filter(model.id.in_(row_ids[start : start + 500]), model.experiment_id == experiment_id)
-                            .delete(synchronize_session=False)
-                        )
+                pairs = [
+                    (row_id, experiment_id)
+                    for experiment_id, row_ids in snapshot.get(model.__tablename__, {}).items()
+                    if keep is None or experiment_id in keep
+                    for row_id in row_ids
+                ]
+                for chunk in chunks(pairs, IN_CLAUSE_CHUNK_SIZE):
+                    # The experiment_id filter stays next to the row ids: a row id can be reused (SQLite
+                    # reuses the highest id after a delete), so a row inserted after the snapshot may carry
+                    # a snapshotted id for another experiment. It must not be deleted, which the
+                    # experiments of this batch's own rows guard against.
+                    deleted += (
+                        session.query(model)
+                        .filter(model.id.in_([row_id for row_id, _ in chunk]), model.experiment_id.in_(sorted({experiment_id for _, experiment_id in chunk})))
+                        .delete(synchronize_session=False)
+                    )
             session.flush()
         return deleted
 
@@ -346,6 +359,9 @@ class SqlAlchemyStore:
 
         Returns:
             Sorted experiment ids.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: When the rows cannot be read.
         """
         found = set()
         with self.ManagedSessionMaker() as session:

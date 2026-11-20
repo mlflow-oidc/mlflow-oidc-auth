@@ -130,10 +130,11 @@ class PermissionSweepResponse(ResponseModel):
 
     Attributes:
         dry_run: True when nothing was deleted.
-        checked_experiments: Distinct experiment ids that some grant row names.
+        checked_experiments: Experiment ids decided in this call (those after the `after` cursor, up to the lookup budget).
         missing_experiments: Ids the tracking store definitively does not have (in any workspace).
-        unresolved_experiments: Ids whose existence could not be established (including ids past the lookup budget); their rows are kept.
-        truncated: True when the lookup budget ran out, so some ids were left unresolved only for that reason; run the sweep again.
+        unresolved_experiments: Ids whose existence could not be established; their rows are kept.
+        truncated: True when the lookup budget ran out before the last id; call again with `after=next_after`.
+        next_after: When truncated, the last id fully decided in this call; None otherwise.
         removed_rows: Grant rows deleted (always 0 for a dry run).
     """
 
@@ -143,6 +144,7 @@ class PermissionSweepResponse(ResponseModel):
     unresolved_experiments: List[str]
     truncated: bool
     removed_rows: int
+    next_after: Optional[str] = None
 
 
 #: The 400/404 bodies every trash endpoint can return, for ``responses=``.

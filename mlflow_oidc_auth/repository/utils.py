@@ -1,5 +1,6 @@
 import re
 import warnings
+from typing import Iterable, List, Sequence, TypeVar
 
 from mlflow.exceptions import MlflowException
 from mlflow.protos.databricks_pb2 import INVALID_STATE, RESOURCE_DOES_NOT_EXIST
@@ -7,6 +8,25 @@ from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.orm import Session
 
 from mlflow_oidc_auth.db.models import SqlGroup, SqlUser, SqlUserGroup
+
+_T = TypeVar("_T")
+
+#: Keeps every IN (...) list well under SQLite's bound-parameter limit on large directories.
+IN_CLAUSE_CHUNK_SIZE = 500
+
+
+def chunks(values: Sequence[_T], size: int = IN_CLAUSE_CHUNK_SIZE) -> Iterable[List[_T]]:
+    """Split ``values`` into consecutive lists of at most ``size`` items, for ``IN (...)`` clauses.
+
+    Parameters:
+        values: The items to split.
+        size: The largest list to yield.
+
+    Returns:
+        An iterator over the lists; nothing for empty ``values``.
+    """
+    for start in range(0, len(values), size):
+        yield list(values[start : start + size])
 
 
 def get_user(session: Session, username: str) -> SqlUser:
