@@ -779,10 +779,10 @@ class TestPostLogoutRedirect:
         assert result.providers == []
         assert any("'post_logout_redirect' applies only to an 'oidc' provider" in error for error in result.errors)
 
-    def test_the_legacy_provider_takes_the_global_value(self):
-        assert build(app_config=legacy_app_config(OIDC_POST_LOGOUT_REDIRECT=True)).providers[0].post_logout_redirect is True
-        assert build(app_config=legacy_app_config(OIDC_POST_LOGOUT_REDIRECT=False)).providers[0].post_logout_redirect is False
-        assert build(app_config=legacy_app_config()).providers[0].post_logout_redirect is True
+    def test_the_legacy_provider_carries_no_setting_of_its_own(self):
+        """None, so the router follows the live global flag for it like for any provider without an override."""
+        assert build(app_config=legacy_app_config(OIDC_POST_LOGOUT_REDIRECT=False)).providers[0].post_logout_redirect is None
+        assert build(app_config=legacy_app_config()).providers[0].post_logout_redirect is None
 
 
 class TestBearerAdoptsUnboundAccounts:

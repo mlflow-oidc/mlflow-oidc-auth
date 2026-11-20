@@ -1565,38 +1565,97 @@ class TestOptionalPostLogoutRedirect:
         assert ("post_logout_redirect_uri" in _query(result)) is expect_redirect
 
     @pytest.mark.asyncio
-    async def test_the_default_provider_ignores_a_registry_override_and_uses_the_global_value(self, mock_request_with_session, mock_oauth, monkeypatch):
+    @pytest.mark.parametrize("global_setting, expect_redirect", [(True, True), (False, False)])
+    async def test_the_default_provider_follows_the_live_global_flag(self, mock_request_with_session, mock_oauth, monkeypatch, global_setting, expect_redirect):
+        """The synthesised default provider has no setting of its own, so it reads the global flag at logout time."""
         from types import SimpleNamespace as NS
 
+        from mlflow_oidc_auth.provider_registry import DEFAULT_PROVIDER_ID, ProviderConfig
         from mlflow_oidc_auth.routers import auth as auth_module
         from mlflow_oidc_auth.session.token_vault import SessionTokens
 
-        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", True)
-        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", NS(by_id=lambda pid: NS(post_logout_redirect=False)))
+        default_provider = ProviderConfig(id=DEFAULT_PROVIDER_ID, type="oidc")
+        assert default_provider.post_logout_redirect is None
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", NS(by_id=lambda pid: default_provider if pid == DEFAULT_PROVIDER_ID else None))
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", global_setting)
         fake_store = _LogoutStore(SessionTokens(provider_id=None, id_token="idt"), provider_id=None)
 
         _, result = await _do_logout(mock_request_with_session, fake_store, default_client=mock_oauth.oidc)
 
-        assert "post_logout_redirect_uri" in _query(result)
+        assert ("post_logout_redirect_uri" in _query(result)) is expect_redirect
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "entry_value, global_setting, expect_redirect",
+        [(False, True, False), (True, False, True), (None, True, True), (None, False, False)],
+    )
+    async def test_a_real_registry_entry_setting_drives_logout(self, mock_request_with_session, monkeypatch, entry_value, global_setting, expect_redirect):
+        """The entry is parsed by the server's own loader from JSON, then logout runs for that named provider."""
+        import json
+
+        from mlflow_oidc_auth.provider_registry import build_provider_registry
+        from mlflow_oidc_auth.routers import auth as auth_module
+        from mlflow_oidc_auth.session.token_vault import SessionTokens
+
+        entry = {
+            "id": "okta",
+            "type": "oidc",
+            "audience": "mlflow",
+            "issuer": "https://okta.example.com",
+            "discovery_url": "https://okta.example.com/.well-known/openid-configuration",
+        }
+        if entry_value is not None:
+            entry["post_logout_redirect"] = entry_value
+
+        class _Manager:
+            def get(self, key, default=None):
+                return json.dumps([entry]) if key == "AUTH_PROVIDERS" else default
+
+        app_config = SimpleNamespace(
+            OIDC_PROVIDER_DISPLAY_NAME="x",
+            OIDC_AUDIENCE=None,
+            OIDC_ISSUER=None,
+            OIDC_DISCOVERY_URL="https://idp/.well-known/openid-configuration",
+            OIDC_CLIENT_ID="c",
+        )
+        registry = build_provider_registry(_Manager(), app_config)
+        assert registry.errors == [] and registry.by_id("okta").post_logout_redirect is entry_value
+        monkeypatch.setattr(auth_module.config, "AUTH_PROVIDERS", registry)
+        monkeypatch.setattr(auth_module.config, "OIDC_POST_LOGOUT_REDIRECT", global_setting)
+        default = _ProviderClient("default", {"end_session_endpoint": "https://default/logout"})
+        okta = _ProviderClient("okta", {"end_session_endpoint": "https://okta/logout"})
+        fake_store = _LogoutStore(SessionTokens(provider_id="okta", id_token="idt-okta"), provider_id="okta")
+
+        _, result = await _do_logout(mock_request_with_session, fake_store, default_client=default, named={"okta": okta})
+
+        assert result.headers["location"].startswith("https://okta/logout?")
+        assert ("post_logout_redirect_uri" in _query(result)) is expect_redirect
 
 
 class TestEndSessionUrlQuery:
-    """The end-session URL extends an endpoint's own query and never ends in a dangling ``?``."""
+    """The end-session URL extends an endpoint's own query, keeps its fragment last and never ends in a dangling ``?``."""
 
-    def test_no_params_adds_nothing(self):
+    @pytest.mark.parametrize(
+        "endpoint, expected",
+        [
+            ("https://idp/logout", "https://idp/logout?client_id=c"),
+            ("https://idp/logout?", "https://idp/logout?client_id=c"),
+            ("https://idp/logout?p=x", "https://idp/logout?p=x&client_id=c"),
+            ("https://idp/logout#frag", "https://idp/logout?client_id=c#frag"),
+            ("https://idp/logout?p=x#frag", "https://idp/logout?p=x&client_id=c#frag"),
+            ("https://idp/logout?p=&q=1", "https://idp/logout?p=&q=1&client_id=c"),
+        ],
+    )
+    def test_params_extend_the_query_and_keep_the_fragment_last(self, endpoint, expected):
         from mlflow_oidc_auth.routers.auth import _append_query
 
-        assert _append_query("https://idp/logout", {}) == "https://idp/logout"
+        assert _append_query(endpoint, {"client_id": "c"}) == expected
 
-    def test_params_start_a_query(self):
+    @pytest.mark.parametrize("endpoint", ["https://idp/logout", "https://idp/logout?", "https://idp/logout?p=x#frag"])
+    def test_no_params_returns_the_endpoint_unchanged(self, endpoint):
         from mlflow_oidc_auth.routers.auth import _append_query
 
-        assert _append_query("https://idp/logout", {"client_id": "c"}) == "https://idp/logout?client_id=c"
-
-    def test_an_existing_query_is_extended_with_an_ampersand(self):
-        from mlflow_oidc_auth.routers.auth import _append_query
-
-        assert _append_query("https://b2c/logout?p=policy", {"client_id": "c"}) == "https://b2c/logout?p=policy&client_id=c"
+        assert _append_query(endpoint, {}) == endpoint
 
     def test_end_session_url_with_nothing_to_send_has_no_dangling_question_mark(self, monkeypatch):
         from mlflow_oidc_auth.routers.auth import _end_session_url

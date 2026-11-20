@@ -180,6 +180,40 @@ class TestConfigManager(unittest.TestCase):
         self.assertFalse(manager.get_bool("NONEXISTENT"))
         self.assertTrue(manager.get_bool("NONEXISTENT", default=True))
 
+    def _default_on(self, value):
+        manager = ConfigManager(auto_discover=False)
+        provider = MockConfigProvider({} if value is None else {"FLAG": value})
+        manager.register_provider(provider)
+        return manager.get_bool_default_on("FLAG")
+
+    def test_get_bool_default_on_false_spellings_disable(self) -> None:
+        for raw in ["false", "FALSE", " False ", "0", "f", "no", "No", "off", "OFF", "n", False]:
+            self.assertFalse(self._default_on(raw), raw)
+
+    def test_get_bool_default_on_true_spellings_unset_and_empty_are_silent(self) -> None:
+        for raw in ["true", "True ", "1", "t", True, None, "", "   "]:
+            with patch("mlflow_oidc_auth.config_providers.manager.logger") as log:
+                self.assertTrue(self._default_on(raw), raw)
+            log.warning.assert_not_called()
+
+    def test_get_bool_default_on_unrecognised_keeps_default_and_warns_without_echoing(self) -> None:
+        secret = "s3cr3t-typo-value"
+        with patch("mlflow_oidc_auth.config_providers.manager.logger") as log:
+            self.assertTrue(self._default_on(secret))
+        self.assertEqual(log.warning.call_count, 1)
+        call = log.warning.call_args
+        message = call.args[0] % call.args[1:]
+        self.assertIn("FLAG", message)
+        self.assertIn("characters", message)
+        self.assertIn(str(len(secret)), message)
+        self.assertNotIn(secret, message)
+        self.assertFalse([arg for arg in call.args if secret in str(arg)])
+
+    def test_get_bool_is_unchanged_for_existing_callers(self) -> None:
+        manager = ConfigManager(auto_discover=False)
+        manager.register_provider(MockConfigProvider({"V": "yes"}))
+        self.assertFalse(manager.get_bool("V"))
+
     def test_get_int(self) -> None:
         """Test integer value parsing."""
         manager = ConfigManager(auto_discover=False)

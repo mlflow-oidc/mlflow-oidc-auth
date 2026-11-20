@@ -211,7 +211,7 @@ class ProviderConfig:
             ``OIDC_PUBLIC_CLIENT``.
         post_logout_redirect: ``oidc`` only. Whether RP-initiated logout sends ``post_logout_redirect_uri`` to this
             provider's end-session endpoint. None (absent) follows the global
-            ``OIDC_POST_LOGOUT_REDIRECT``; the synthesised ``default`` provider carries that value.
+            ``OIDC_POST_LOGOUT_REDIRECT`` (also for the synthesised ``default`` provider).
         authorize_params: ``oidc`` only. Extra authorization-request parameters, never one of
             ``RESERVED_AUTHORIZE_PARAMS``.
         userinfo_groups: ``oidc`` only. Whether the groups and workspace claims may be read from
@@ -1248,8 +1248,6 @@ def _legacy_entry(app_config: Any) -> Dict[str, Any]:
         # OIDC_USERINFO_GROUPS. ``is True`` for the same reason: anything but a real boolean must
         # not let UserInfo decide group membership.
         "userinfo_groups": getattr(app_config, "OIDC_USERINFO_GROUPS", False) is True,
-        # OIDC_POST_LOGOUT_REDIRECT: on unless it is explicitly False (an AppConfig from before it existed has none).
-        "post_logout_redirect": getattr(app_config, "OIDC_POST_LOGOUT_REDIRECT", True) is not False,
         # OIDC_AUTHORIZE_PARAMS, a JSON object. Text that is not JSON is passed on as-is, so the
         # entry is refused with the same message a registry entry would get.
         "authorize_params": _legacy_authorize_params(getattr(app_config, "OIDC_AUTHORIZE_PARAMS", None)),
@@ -1443,7 +1441,6 @@ def _legacy_providers(app_config: Any) -> List[ProviderConfig]:
             client_id=entry["client_id"],
             public_client=entry["public_client"],
             userinfo_groups=entry["userinfo_groups"],
-            post_logout_redirect=entry["post_logout_redirect"],
             allow_tokens_without_expiry=False,
             authorize_params=authorize_params,
         )

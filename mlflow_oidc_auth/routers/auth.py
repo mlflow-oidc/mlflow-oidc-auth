@@ -9,7 +9,7 @@ import time
 from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from joserfc.errors import BadSignatureError
 from fastapi import APIRouter, HTTPException, Request
@@ -861,31 +861,31 @@ async def _revoke_refresh_token_at_idp(provider_id: str, tokens: Optional[Sessio
 
 
 def _append_query(url: str, params: dict[str, str]) -> str:
-    """Append ``params`` to ``url``, extending an existing query (``?p=policy``) and adding nothing when there are none.
+    """Append ``params`` to the query of ``url``, keeping its existing query items and its fragment (last).
 
     Parameters:
-        url: A URL that may already carry a query string.
+        url: A URL that may already carry a query string and a fragment.
         params: Query parameters to add.
 
     Returns:
-        The URL with the parameters appended.
+        The URL with the parameters added to its query; ``url`` unchanged when there are none.
     """
     if not params:
         return url
-    separator = "&" if urlparse(url).query else "?"
-    return f"{url}{separator}{urlencode(params)}"
+    parts = urlsplit(url)
+    query = parse_qsl(parts.query, keep_blank_values=True) + list(params.items())
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 def _post_logout_redirect_enabled(provider_id: str) -> bool:
     """Whether RP-initiated logout at ``provider_id`` sends ``post_logout_redirect_uri``.
 
-    The provider's own registry setting when it has one, else the global ``OIDC_POST_LOGOUT_REDIRECT``. The
-    ``default`` provider always takes the global value.
+    The provider's own registry setting when it is not None, else the live global ``OIDC_POST_LOGOUT_REDIRECT``,
+    uniformly for every provider (the synthesised ``default`` one carries no setting of its own).
     """
-    if provider_id != DEFAULT_PROVIDER_ID:
-        override = getattr(config.AUTH_PROVIDERS.by_id(provider_id), "post_logout_redirect", None)
-        if isinstance(override, bool):
-            return override
+    override = getattr(config.AUTH_PROVIDERS.by_id(provider_id), "post_logout_redirect", None)
+    if isinstance(override, bool):
+        return override
     return config.OIDC_POST_LOGOUT_REDIRECT is not False
 
 
@@ -1033,7 +1033,7 @@ async def logout(request: Request):
                 logout_url = _end_session_url(
                     request,
                     end_session_endpoint,
-                    config.OIDC_CLIENT_ID or "",
+                    config.OIDC_CLIENT_ID,  # omitted from the URL when None or empty (misconfigured server only)
                     session_tokens.id_token if session_tokens is not None else None,
                     _post_logout_redirect_enabled(DEFAULT_PROVIDER_ID),
                 )

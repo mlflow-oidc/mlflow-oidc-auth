@@ -237,31 +237,14 @@ class TestAppConfig(unittest.TestCase):
         self.assertEqual(len(config2.SECRET_KEY), 32)
 
     def test_post_logout_redirect_defaults_to_true(self):
-        """OIDC_POST_LOGOUT_REDIRECT is on when the variable is unset."""
+        """AppConfig reads OIDC_POST_LOGOUT_REDIRECT through the manager: on when the variable is unset."""
         env = {k: v for k, v in os.environ.items() if k != "OIDC_POST_LOGOUT_REDIRECT"}
         with patch.dict(os.environ, env, clear=True):
             self.assertTrue(AppConfig().OIDC_POST_LOGOUT_REDIRECT)
 
-    def test_post_logout_redirect_only_an_explicit_false_disables_it(self):
-        """A default-true flag: only a false spelling (case-insensitive, stripped) turns it off."""
-        for raw in ["false", "FALSE", " False ", "0", "f", "no", "No", "off", "OFF", "n"]:
-            with patch.dict(os.environ, {"OIDC_POST_LOGOUT_REDIRECT": raw}):
-                self.assertFalse(AppConfig().OIDC_POST_LOGOUT_REDIRECT, raw)
-        for raw in ["true", "True ", "1", "t", "yes", "on", "y"]:
-            with patch.dict(os.environ, {"OIDC_POST_LOGOUT_REDIRECT": raw}):
-                with patch("mlflow_oidc_auth.config.logger") as log:
-                    self.assertTrue(AppConfig().OIDC_POST_LOGOUT_REDIRECT, raw)
-                self.assertFalse([c for c in log.warning.call_args_list if "OIDC_POST_LOGOUT_REDIRECT" in str(c)], raw)
-
-    def test_post_logout_redirect_garbage_keeps_the_default_and_warns_without_echoing(self):
-        secret = "s3cr3t-typo-value"
-        with patch.dict(os.environ, {"OIDC_POST_LOGOUT_REDIRECT": secret}):
-            with patch("mlflow_oidc_auth.config.logger") as log:
-                self.assertTrue(AppConfig().OIDC_POST_LOGOUT_REDIRECT)
-        messages = [c for c in log.warning.call_args_list if "OIDC_POST_LOGOUT_REDIRECT" in str(c.args[0])]
-        self.assertEqual(len(messages), 1)
-        self.assertNotIn(secret, repr(messages[0]))
-        self.assertIn(len(secret), messages[0].args)
+    def test_post_logout_redirect_false_spelling_reaches_appconfig(self):
+        with patch.dict(os.environ, {"OIDC_POST_LOGOUT_REDIRECT": "false"}):
+            self.assertFalse(AppConfig().OIDC_POST_LOGOUT_REDIRECT)
 
     def test_boolean_environment_variables_edge_cases(self):
         """Test edge cases for boolean environment variable parsing."""

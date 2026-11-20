@@ -29,10 +29,6 @@ from mlflow_oidc_auth.provider_registry import build_provider_registry
 load_dotenv()  # take environment variables from .env.
 logger = get_logger()
 
-# Spellings of a boolean, for a flag that is on unless explicitly switched off.
-_TRUE_SPELLINGS = frozenset({"true", "1", "t", "yes", "on", "y"})
-_FALSE_SPELLINGS = frozenset({"false", "0", "f", "no", "off", "n"})
-
 
 def get_bool_env_variable(variable: str, default_value: bool) -> bool:
     """Get a boolean value from configuration.
@@ -171,7 +167,7 @@ class AppConfig:
         # a post-logout redirect URI and show an error page for an unregistered one; the provider then ends
         # its session and shows its own logged-out page. client_id / id_token_hint are sent either way.
         # Only an explicit false spelling disables it: a default-true flag must not turn off on a typo.
-        self.OIDC_POST_LOGOUT_REDIRECT = self._parse_post_logout_redirect(config_manager.get("OIDC_POST_LOGOUT_REDIRECT", None))
+        self.OIDC_POST_LOGOUT_REDIRECT = config_manager.get_bool_default_on("OIDC_POST_LOGOUT_REDIRECT")
         # PKCE (RFC 7636), on by default since #312. Binding the authorization code to a
         # per-attempt secret is what stops a code intercepted from a redirect — through a
         # browser log, a proxy, a shared machine — from being redeemed by anyone else.
@@ -546,33 +542,6 @@ class AppConfig:
                 "WORKSPACE_RULES_MAX_PERMISSION=MANAGE lets workspace group rules grant MANAGE, which can update or delete a workspace "
                 "and grant MANAGE onward. Anyone who can create a group whose name matches such a rule gains that. Prefer EDIT."
             )
-
-    @staticmethod
-    def _parse_post_logout_redirect(value: Any) -> bool:
-        """Parse OIDC_POST_LOGOUT_REDIRECT, a default-true flag, so that only an explicit false disables it.
-
-        Parameters:
-            value: The raw configuration value, or None when unset.
-
-        Returns:
-            False for a false spelling (false, 0, f, no, off, n; case-insensitive, whitespace
-            stripped); True otherwise. An unrecognised value keeps the default and logs a warning
-            that does not echo it, since configuration can come from a secret provider.
-        """
-        if value is None:
-            return True
-        if isinstance(value, bool):
-            return value
-        raw = str(value)
-        spelling = raw.strip().lower()
-        if spelling in _FALSE_SPELLINGS:
-            return False
-        if spelling not in _TRUE_SPELLINGS:
-            logger.warning(
-                "OIDC_POST_LOGOUT_REDIRECT is not a recognised boolean (got %d characters, not shown); keeping the default, true.",
-                len(raw),
-            )
-        return True
 
     def _resolve_workspace_creation_permission(self) -> None:
         """Normalise OIDC_WORKSPACE_CREATION_PERMISSION to EDIT or MANAGE.
