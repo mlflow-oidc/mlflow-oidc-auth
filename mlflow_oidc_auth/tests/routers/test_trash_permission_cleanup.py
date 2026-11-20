@@ -216,7 +216,7 @@ class TestSnapshotRace:
     @pytest.mark.asyncio
     async def test_sweep_keeps_a_grant_created_after_the_snapshot(self, auth_store, tracking):
         auth_store.create_user("bob@example.com", "Bob")
-        t = tracking({None: {"2"}})
+        tracking({None: {"2"}})
         real = _trash.experiments_definitively_missing
 
         def lookup(ids, *args, **kwargs):
