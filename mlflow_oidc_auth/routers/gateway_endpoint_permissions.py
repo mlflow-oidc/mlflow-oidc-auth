@@ -130,19 +130,19 @@ async def list_gateway_endpoints(username: str = Depends(get_username), is_admin
             endpoints = filter_manageable_gateway_endpoints(username, all_endpoints)
 
         # Paginate strictly after the permission filter: the total never counts a hidden item
-        endpoints, headers = paginate_with_headers(endpoints, key=lambda e: e.get("name", ""), params=page)
+        endpoints, headers = paginate_with_headers(endpoints, key=lambda e: e.get("name") or "", params=page)
 
         # Format the response to match the expected frontend schema
         return JSONResponse(
             headers=headers,
             content=[
-                {
-                    "name": endpoint.get("name", ""),
-                    "type": endpoint.get("endpoint_type", ""),
-                    "description": endpoint.get("description", ""),
-                    "route_type": endpoint.get("route_type", ""),
-                    "auth_type": endpoint.get("auth_type", ""),
-                }
+                GatewayEndpointListItem(
+                    name=endpoint.get("name") or "",
+                    type=endpoint.get("endpoint_type") or "",
+                    description=endpoint.get("description") or "",
+                    route_type=endpoint.get("route_type") or "",
+                    auth_type=endpoint.get("auth_type") or "",
+                ).model_dump()
                 for endpoint in endpoints
             ],
         )

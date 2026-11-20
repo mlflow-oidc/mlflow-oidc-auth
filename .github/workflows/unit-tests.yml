@@ -133,17 +133,22 @@ jobs:
           retention-days: 7
 
   # The declared floor (requires-python >= 3.11, #471): code using 3.12+ syntax or stdlib would pass
-  # the 3.14 shards and then fail to import for a user on 3.11. Lighter than the shards: every module
-  # is byte-compiled, then the non-hooks suite runs in one process. No Postgres service, so the
-  # migration tests that need one skip here; the 3.14 shards run them.
+  # the 3.14 shards and then fail to import for a user on 3.11. Runs the whole suite, hooks (the
+  # authz boundary) included, sharded exactly like the 3.14 job so it is not the critical path; the
+  # aggregator checks its shard reports too. No Postgres service, so the migration tests that need
+  # one skip here; the 3.14 shards run them.
   #
   # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code); holds no secrets
   # and only the workflow's read-only token (contents: read); changes no state beyond its own runner.
   python-311:
-    name: Python 3.11 (floor)
+    name: Python 3.11 floor (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -151,14 +156,29 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+      # Byte-compiling is whole-tree and cheap, so one shard does it.
       - name: Byte-compile every module
+        if: matrix.shard == 0
         run: |
           python -c "import compileall, sys; sys.exit(0 if compileall.compile_dir('mlflow_oidc_auth', quiet=1) else 1)"
       - name: Run tests
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
         run: |
           python -m pip install --upgrade pip
           pip install tox
-          tox -e py311 -- --ignore=mlflow_oidc_auth/tests/hooks
+          tox -e py311 -- "--shard-count=${SHARD_COUNT}" "--shard-index=${SHARD_INDEX}" --shard-report=shard-report.json --junitxml=junit.xml
+      - name: Upload shard report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          # Not matched by the 3.14 pattern unit-test-shard-*.
+          name: unit-test-311-shard-${{ matrix.shard }}
+          path: |
+            shard-report.json
+            junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
 
   # Capabilities (AGENTS.md, "agentic CI"): holds untrusted input (fork PR code); holds no secrets
   # and only the workflow's read-only token; changes no state beyond its own runner. The MySQL
@@ -215,14 +235,21 @@ jobs:
         with:
           pattern: unit-test-shard-*
           path: shards
+      - name: Download Python 3.11 shard reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: unit-test-311-shard-*
+          path: shards-311
       - name: Check that the shards ran every test exactly once
         run: |
-          reports=(shards/*/shard-report.json)
-          if [ "${#reports[@]}" -ne "${SHARD_COUNT}" ] || [ ! -f "${reports[0]}" ]; then
-            echo "expected ${SHARD_COUNT} shard reports, found: ${reports[*]}"
-            exit 1
-          fi
-          python3 scripts/ci/check_shards.py "${reports[@]}"
+          for dir in shards shards-311; do
+            reports=("${dir}"/*/shard-report.json)
+            if [ "${#reports[@]}" -ne "${SHARD_COUNT}" ] || [ ! -f "${reports[0]}" ]; then
+              echo "expected ${SHARD_COUNT} shard reports in ${dir}, found: ${reports[*]}"
+              exit 1
+            fi
+            python3 scripts/ci/check_shards.py "${reports[@]}"
+          done
       - name: Require every job to pass
         env:
           FRONTEND: ${{ needs.frontend.result }}

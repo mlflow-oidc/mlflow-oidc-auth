@@ -69,6 +69,8 @@ _METHOD = {"list": "GET", "create": "POST", "get": "GET", "update": "PATCH", "de
 _VERB = {"list": "List", "create": "Create", "get": "Get", "update": "Update", "delete": "Delete"}
 _GERUND = {"list": "listing", "create": "creating", "get": "getting", "update": "updating", "delete": "deleting"}
 _PAST = {"create": "created", "update": "updated", "delete": "deleted"}
+# The verb of a 500 detail; reads say "retrieve" everywhere (lists, the hand-written routes, skills, MCP servers).
+_FAILURE_VERB = {"get": "retrieve", "list": "retrieve"}
 
 
 def pattern_fields(a: Args) -> Dict[str, Any]:
@@ -386,7 +388,7 @@ def exact_routes(
         if op == "list":
             failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
         else:
-            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {_FAILURE_VERB.get(op, op)} {noun}")
         message = (messages or {}).get(op, f"{_cap(label)} permission {_PAST.get(op)} for {subject.message} on {on}")
         add_route(
             router,
@@ -449,7 +451,8 @@ def regex_routes(
         ops: The routes to add, in registration order.
         id_type: ``str`` ids are parsed up front, and one that is not an integer is a 400.
         names: Operation id of an op, where not ``{verb}_{subject}_{kind}_pattern_permission``.
-        models: Response model of an op, where not the default. A delete whose model is
+        models: Response model of an op, where not the default. A delete's model alone sets its
+            response: the body is that model constructed with no arguments, and one that is
             ``StatusOnlyResponse`` answers an empty body (and omits unset fields).
         respond: Builds the response of an op, where not the default.
 
@@ -485,11 +488,15 @@ def regex_routes(
         if op == "list":
             failure = Failure(f"Error listing {noun}s", _cap(noun), f"Failed to retrieve {noun}s")
         else:
-            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {op} {noun}")
+            failure = Failure(f"Error {_GERUND[op]} {noun}", _cap(noun), f"Failed to {_FAILURE_VERB.get(op, op)} {noun}")
         if op == "list":
             default_model, default_respond = List[item_model], lambda a, r: [item(p) for p in r]
         elif op == "get":
             default_model, default_respond = item_model, lambda a, r: item(r)
+        elif op == "delete" and (models or {}).get("delete") is not None:
+            # The caller names only the model; its no-argument instance is the body (an empty one for StatusOnlyResponse).
+            default_model = (models or {})["delete"]
+            default_respond = lambda a, r, model=default_model: model()
         else:
             message = f"{_cap(label)} pattern permission {_PAST[op]} for {subject.message}"
             default_model, default_respond = StatusMessageResponse, lambda a, r, message=message: StatusMessageResponse(message=message.format(**vars(a)))

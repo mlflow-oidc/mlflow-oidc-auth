@@ -185,8 +185,12 @@ tox -e py -- --shard-count=4 --shard-index=2
 Use the `--opt=value` form: pytest registers these options from the test suite's `conftest.py`.
 Plain `tox -e py` (and plain `pytest`) still runs everything in one process.
 
+The declared Python floor (3.11) has its own environment, `tox -e py311`. It is not in the default
+`envlist` (a bare `tox` would fail where 3.11 is not installed); CI runs it sharded the same way,
+and the aggregator checks its shard reports too.
+
 The final "Run Unit testing" job — the check name to gate on — passes only if the frontend job
-and every shard passed, and runs `scripts/ci/check_shards.py` to confirm the shards collected the
+and every shard passed, and runs `scripts/ci/check_shards.py` to confirm the shards (3.14 and 3.11) collected the
 same suite and together ran every collected test exactly once.
 
 Files are balanced by the per-file durations in `mlflow_oidc_auth/tests/shard_weights.json`. A

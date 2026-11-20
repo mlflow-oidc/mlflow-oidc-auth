@@ -795,12 +795,12 @@
         "description": "A gateway endpoint the caller may manage (``GET /permissions/gateways/endpoints``).",
         "properties": {
           "auth_type": {
-            "description": "Auth type",
+            "description": "Auth type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
             "title": "Auth Type",
             "type": "string"
           },
           "description": {
-            "description": "Endpoint description, empty for none",
+            "description": "Endpoint description. MLflow's GatewayEndpoint has no such field, so this is always empty today",
             "title": "Description",
             "type": "string"
           },
@@ -810,12 +810,12 @@
             "type": "string"
           },
           "route_type": {
-            "description": "Route type",
+            "description": "Route type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
             "title": "Route Type",
             "type": "string"
           },
           "type": {
-            "description": "Endpoint type",
+            "description": "Endpoint type. MLflow's GatewayEndpoint has no such field, so this is always empty today",
             "title": "Type",
             "type": "string"
           }
@@ -839,7 +839,7 @@
             "type": "string"
           },
           "source": {
-            "description": "Model source, or the provider when the definition has no source",
+            "description": "Model provider: MLflow's GatewayModelDefinition has no source field, so this is its provider (empty for none)",
             "title": "Source",
             "type": "string"
           }

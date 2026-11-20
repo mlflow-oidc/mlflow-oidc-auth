@@ -74,10 +74,10 @@ from mlflow_oidc_auth.models.workspace import (
 )
 from mlflow_oidc_auth.models.webhook import (
     WebhookCreateRequest,
+    WebhookDeleteResponse,
     WebhookListResponse,
     WebhookResponse,
     WebhookTestRequest,
-    WebhookDeleteResponse,
     WebhookTestResponse,
     WebhookUpdateRequest,
 )
@@ -146,9 +146,9 @@ __all__ = [
     "WebhookCreateRequest",
     "WebhookUpdateRequest",
     "WebhookTestRequest",
-    "WebhookResponse",
     "WebhookListResponse",
     "WebhookDeleteResponse",
+    "WebhookResponse",
     "WebhookTestResponse",
     "UserPermission",
 ]

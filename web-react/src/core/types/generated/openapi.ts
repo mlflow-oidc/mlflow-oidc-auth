@@ -4254,12 +4254,12 @@ export interface components {
         GatewayEndpointListItem: {
             /**
              * Auth Type
-             * @description Auth type
+             * @description Auth type. MLflow's GatewayEndpoint has no such field, so this is always empty today
              */
             auth_type: string;
             /**
              * Description
-             * @description Endpoint description, empty for none
+             * @description Endpoint description. MLflow's GatewayEndpoint has no such field, so this is always empty today
              */
             description: string;
             /**
@@ -4269,12 +4269,12 @@ export interface components {
             name: string;
             /**
              * Route Type
-             * @description Route type
+             * @description Route type. MLflow's GatewayEndpoint has no such field, so this is always empty today
              */
             route_type: string;
             /**
              * Type
-             * @description Endpoint type
+             * @description Endpoint type. MLflow's GatewayEndpoint has no such field, so this is always empty today
              */
             type: string;
         };
@@ -4290,7 +4290,7 @@ export interface components {
             name: string;
             /**
              * Source
-             * @description Model source, or the provider when the definition has no source
+             * @description Model provider: MLflow's GatewayModelDefinition has no source field, so this is its provider (empty for none)
              */
             source: string;
         };

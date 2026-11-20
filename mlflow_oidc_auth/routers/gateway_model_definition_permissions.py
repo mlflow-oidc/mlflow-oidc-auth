@@ -129,16 +129,16 @@ async def list_gateway_model_definitions(
             models = filter_manageable_gateway_model_definitions(username, all_models)
 
         # Paginate strictly after the permission filter: the total never counts a hidden item
-        models, headers = paginate_with_headers(models, key=lambda m: m.get("name", ""), params=page)
+        models, headers = paginate_with_headers(models, key=lambda m: m.get("name") or "", params=page)
 
         # Format the response to match the expected frontend schema
         return JSONResponse(
             headers=headers,
             content=[
-                {
-                    "name": model.get("name", ""),
-                    "source": model.get("source") or model.get("provider", ""),
-                }
+                GatewayModelDefinitionListItem(
+                    name=model.get("name") or "",
+                    source=model.get("source") or model.get("provider") or "",
+                ).model_dump()
                 for model in models
             ],
         )

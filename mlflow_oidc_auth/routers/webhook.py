@@ -40,10 +40,10 @@ from mlflow_oidc_auth.dependencies import check_admin_permission
 from mlflow_oidc_auth.logger import get_logger
 from mlflow_oidc_auth.models import (
     WebhookCreateRequest,
+    WebhookDeleteResponse,
     WebhookListResponse,
     WebhookResponse,
     WebhookTestRequest,
-    WebhookDeleteResponse,
     WebhookTestResponse,
     WebhookUpdateRequest,
 )

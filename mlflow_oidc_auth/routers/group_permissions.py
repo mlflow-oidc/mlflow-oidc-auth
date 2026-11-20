@@ -584,7 +584,7 @@ async def get_group_prompts(
         return items
     except Exception as e:
         logger.error(f"Error getting group prompt permissions: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get group prompt permissions")
+        raise HTTPException(status_code=500, detail="Failed to retrieve group prompt permissions")
 
 
 exact_routes(

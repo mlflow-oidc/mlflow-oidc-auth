@@ -2,7 +2,8 @@
 
 Compares paths, methods, operation ids, tags, parameters (name, location, required, schema), request bodies
 and responses (status codes and schema references). ``summary``, ``description`` and the ``description``
-of a parameter are ignored, so a wording change passes and anything structural fails.
+of a parameter are ignored, so a wording change passes and anything structural fails. Parameters are compared as a set
+keyed by (name, location): a reorder is not a difference. Component schemas are compared whole, descriptions included.
 
 Usage::
 
@@ -44,6 +45,23 @@ def load(source: str) -> Dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def _parameters_as_set(parameters: List[Any]) -> Any:
+    """Key a parameter list by ``(name, in)`` so a reorder is not a difference.
+
+    Parameters:
+        parameters: The ``parameters`` array of an operation or path item.
+
+    Returns:
+        A dict keyed ``"<in>:<name>"``, or the list unchanged if an entry has no name and location (a ``$ref``).
+    """
+    keyed: Dict[str, Any] = {}
+    for parameter in parameters:
+        if not isinstance(parameter, dict) or "name" not in parameter or "in" not in parameter:
+            return parameters
+        keyed[f"{parameter['in']}:{parameter['name']}"] = parameter
+    return keyed
+
+
 def strip_text(node: Any, in_schema: bool = False) -> Any:
     """Return ``node`` without the wording a text-only change may touch.
 
@@ -61,6 +79,8 @@ def strip_text(node: Any, in_schema: bool = False) -> Any:
     """
     if isinstance(node, list):
         return [strip_text(item, in_schema) for item in node]
+    if isinstance(node, dict) and not in_schema and isinstance(node.get("parameters"), list):
+        node = {**node, "parameters": _parameters_as_set(node["parameters"])}
     if not isinstance(node, dict):
         return node
     out: Dict[str, Any] = {}

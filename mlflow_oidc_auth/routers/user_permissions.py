@@ -334,8 +334,7 @@ regex_routes(
     item_model=RegisteredModelRegexPermissionRecord,
     models={"get": PromptRegexPermissionResponse, "update": PromptRegexPermissionResponse, "delete": StatusOnlyResponse},
     respond={
-        **{op: lambda a, rm: PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json())) for op in ("get", "update")},
-        "delete": lambda a, r: StatusOnlyResponse(),
+        op: lambda a, rm: PromptRegexPermissionResponse(prompt_permission=RegisteredModelRegexPermissionRecord(**rm.to_json())) for op in ("get", "update")
     },
     call={
         "list": lambda a: store.list_prompt_regex_permissions(username=a.username),
@@ -512,11 +511,8 @@ regex_routes(
     item_model=RegisteredModelRegexPermissionRecord,
     models={"get": RegisteredModelRegexPermissionResponse, "update": RegisteredModelRegexPermissionResponse, "delete": StatusOnlyResponse},
     respond={
-        **{
-            op: lambda a, rm: RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
-            for op in ("get", "update")
-        },
-        "delete": lambda a, r: StatusOnlyResponse(),
+        op: lambda a, rm: RegisteredModelRegexPermissionResponse(registered_model_permission=RegisteredModelRegexPermissionRecord(**rm.to_json()))
+        for op in ("get", "update")
     },
     call={
         "list": lambda a: store.list_registered_model_regex_permissions(username=a.username),

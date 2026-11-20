@@ -127,17 +127,12 @@ async def list_gateway_secrets(username: str = Depends(get_username), is_admin: 
             secrets = filter_manageable_gateway_secrets(username, all_secrets)
 
         # Paginate strictly after the permission filter: the total never counts a hidden item
-        secrets, headers = paginate_with_headers(secrets, key=lambda s: s.get("secret_name") or s.get("name") or s.get("key", ""), params=page)
+        secrets, headers = paginate_with_headers(secrets, key=lambda s: s.get("secret_name") or s.get("name") or s.get("key") or "", params=page)
 
         # Format the response to match the expected frontend schema
         return JSONResponse(
             headers=headers,
-            content=[
-                {
-                    "key": secret.get("secret_name") or secret.get("name") or secret.get("key", ""),
-                }
-                for secret in secrets
-            ],
+            content=[GatewaySecretListItem(key=secret.get("secret_name") or secret.get("name") or secret.get("key") or "").model_dump() for secret in secrets],
         )
     except Exception as e:
         logger.error(f"Error listing gateway secrets: {e}")
