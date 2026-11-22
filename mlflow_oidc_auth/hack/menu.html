@@ -59,7 +59,7 @@
         /** Wait for a menu anchor (settings preferred, docs fallback), then invoke cb(anchor). */
         function waitForMenuAnchor(cb) {
             function findAnchor() {
-                return document.querySelector('a[href^="#/settings"]') || document.querySelector('a[href*="mlflow.org/docs/latest/genai/"]');
+                return document.querySelector('a[href^="#/settings"]') || document.querySelector('li > a[href*="mlflow.org/docs/"]');
             }
 
             var el = findAnchor();
@@ -116,7 +116,7 @@
             }
 
             function getPreferredAnchorLink() {
-                return container.querySelector('a[href^="#/settings"]') || container.querySelector('a[href*="mlflow.org/docs/latest/genai/"]');
+                return container.querySelector('a[href^="#/settings"]') || container.querySelector('li > a[href*="mlflow.org/docs/"]');
             }
 
             function reorderInjectedItems() {
